@@ -86,13 +86,20 @@ pub fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Field<'a>,
                 data: None,
             })
         }
-        5 | 9 | 16 | 17 => {
+        5 | 9 | 16 | 17 | 19 => {
             let length = read_u32(bytes, *offset).ok_or(Error::Heap)? as usize;
             *offset = offset.checked_add(4).ok_or(Error::Quantity)?;
             let end = offset.checked_add(length).ok_or(Error::Quantity)?;
             let data = bytes.get(*offset..end).ok_or(Error::Heap)?;
             if matches!(tag, 5 | 9) && (data.is_empty() || data.contains(&0)) {
                 return Err(Error::Heap);
+            }
+            if tag == 19
+                && (data.len() != 8
+                    || u64::from_le_bytes(data.try_into().map_err(|_| Error::CanonicalValue)?)
+                        > u64::MAX >> 1)
+            {
+                return Err(Error::CanonicalValue);
             }
             *offset = end;
             Ok(Field {
@@ -109,4 +116,37 @@ fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_le_bytes(
         bytes.get(offset..offset.checked_add(4)?)?.try_into().ok()?,
     ))
+}
+
+#[cfg(test)]
+mod immediate_tests {
+    use super::*;
+    #[test]
+    fn immediate_locator_is_canonical_and_distinct_from_heap_word() {
+        for value in [0, 1, u64::MAX >> 1] {
+            let mut encoded = vec![19];
+            encoded.extend_from_slice(&8u32.to_le_bytes());
+            encoded.extend_from_slice(&value.to_le_bytes());
+            let mut offset = 0;
+            let field = parse_field(&encoded, &mut offset).unwrap();
+            assert_eq!(field.tag, 19);
+            assert_eq!(field.data, Some(value.to_le_bytes().as_slice()));
+            assert_eq!(offset, encoded.len());
+            for length in 0..encoded.len() {
+                assert!(parse_field(&encoded[..length], &mut 0).is_err());
+            }
+        }
+        let mut too_large = vec![19];
+        too_large.extend_from_slice(&8u32.to_le_bytes());
+        too_large.extend_from_slice(&(1u64 << 63).to_le_bytes());
+        assert!(matches!(
+            parse_field(&too_large, &mut 0),
+            Err(Error::CanonicalValue)
+        ));
+        let short = [19, 1, 0, 0, 0, 0];
+        assert!(parse_field(&short, &mut 0).is_err());
+        let mut word = vec![15];
+        word.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert_eq!(parse_field(&word, &mut 0).unwrap().tag, 15);
+    }
 }

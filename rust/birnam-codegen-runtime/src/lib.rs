@@ -14,6 +14,9 @@ mod compiled_source;
 mod embedding;
 mod foreign;
 mod generation_projection;
+mod image;
+mod materialization;
+mod reflection;
 mod source;
 mod source_evaluation;
 mod source_metadata;
@@ -34,11 +37,15 @@ struct State {
     synchronous_implementation_entry: Oop,
     binding_entry: Oop,
     implementation_getter: Oop,
+    dnu_adapter: Oop,
     ns: Oop,
     receiver: Oop,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     sources: source::Sources,
+    image_busy: Cell<bool>,
+    materializations: RefCell<Vec<materialization::Cached>>,
+    image_stage: RefCell<Option<image::Stage>>,
     ready: Cell<bool>,
     thread: std::thread::ThreadId,
 }
@@ -163,8 +170,16 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.synchronous_implementation_entry,
             s.binding_entry,
             s.implementation_getter,
+            s.dnu_adapter,
         ];
         values.extend_from_slice(&s.scoped.borrow());
+        values.extend(
+            s.image_stage
+                .borrow()
+                .iter()
+                .flat_map(|stage| stage.roots()),
+        );
+        values.extend(s.materializations.borrow().iter().map(|entry| entry.method));
         for value in values {
             s.send(*v, b"visit:", &[value])?;
         }
@@ -378,12 +393,13 @@ unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop,
         let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
         let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
         let arity = s.send(c, b"at:", &[abi::size(2).unwrap()])?;
-        let arity = abi::as_size(arity).ok_or_else(invalid)?;
-        if arity != args.len() {
+        let policy = abi::as_size(arity).ok_or_else(invalid)?;
+        let arity = policy & 0xff;
+        if args.len() < arity || (policy & 0x100 == 0 && arity != args.len()) {
             return s.transfer(b"answerTo:with:", &[*k, s.named(b"nil")?]);
         }
         let mut values = vec![implementation, selector, *k, r];
-        values.extend_from_slice(args);
+        values.extend_from_slice(&args[..arity]);
         s.transfer(b"prepareSend", &values)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -430,12 +446,25 @@ impl State {
                 b"addMethod",
                 &[self.names[b"implementation".as_slice()], getter],
             )?;
-            let binding = q.keep(self.send(self.id.root, b"sequence", &[selector, arity])?);
+            let sync = q.keep(self.send(template, b"isSynchronous", &[])?);
+            let getter = q.keep(self.send(self.implementation_getter, b"withContext:", &[sync])?);
+            self.send(
+                behavior,
+                b"addMethod",
+                &[self.names[b"isSynchronous".as_slice()], getter],
+            )?;
+            let binding = context;
             let binder = q.keep(self.send(self.binding_entry, b"withContext:", &[binding])?);
             self.send(
                 behavior,
                 b"addMethod",
                 &[self.names[b"withImplementation:".as_slice()], binder],
+            )?;
+            let dnu = q.keep(self.send(self.dnu_adapter, b"withContext:", &[context])?);
+            self.send(
+                behavior,
+                b"addMethod",
+                &[self.names[b"forDoesNotUnderstand".as_slice()], dnu],
             )?;
             self.send(
                 self.id.root,
@@ -537,11 +566,13 @@ unsafe extern "C" fn enter_implementation_sync(
         let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
         let arity =
             abi::as_size(s.send(c, b"at:", &[abi::size(2).unwrap()])?).ok_or_else(invalid)?;
-        if n != arity {
+        let policy = arity;
+        let arity = policy & 0xff;
+        if n < arity || (policy & 0x100 == 0 && n != arity) {
             return s.named(b"nil");
         }
         let mut values = vec![r];
-        values.extend_from_slice(args);
+        values.extend_from_slice(&args[..arity]);
         s.id.send(implementation, selector, &values)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -582,10 +613,40 @@ unsafe extern "C" fn bind_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop, 
             return Err(invalid());
         };
         let q = s.scope(&[c, r, *implementation]);
-        let selector = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
-        let arity = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
+        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
+        let arity = q.keep(s.send(c, b"at:", &[abi::size(2).unwrap()])?);
         let method = q.keep(s.implementation(&q, r, *implementation, selector, arity)?);
         Ok(method)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// Id's DNU packet contains the selector followed by original arguments. Source
+// Methods consume their declared prefix; native Methods retain their own ABI.
+unsafe extern "C" fn dnu_adapter(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = state((*p).ns)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let q = s.scope(&[c, r]);
+        let policy =
+            abi::as_size(s.send(c, b"at:", &[abi::size(2).unwrap()])?).ok_or_else(invalid)?;
+        if policy & 0x100 != 0 {
+            return Ok(r);
+        }
+        let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
+        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
+        s.implementation(
+            &q,
+            r,
+            implementation,
+            selector,
+            abi::size(policy | 0x100).ok_or_else(invalid)?,
+        )
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -815,6 +876,49 @@ const NAMES: &[&[u8]] = &[
     b"methodDescriptorFor:",
     b"initialGenerationProjection",
     b"candidateInventory:selection:",
+    b"isSynchronous",
+    b"admitCodeObject:synchronous:",
+    b"portableImageBindings",
+    b"compilePortableImageCode:bindings:selection:",
+    b"beginPortableImageRebuild:bindings:selection:",
+    b"beginPortableImageMapped:programs:bindings:selection:",
+    b"portableImageBlockMethod:synchronous:",
+    b"preparePortableImageBinding:implementation:",
+    b"installPortableImageBinding:on:as:source:",
+    b"finishPortableImageUnit",
+    b"cancelPortableImageUnit",
+    b"portableImageSources",
+    b"preparePortableImageSources:",
+    b"finishPortableImageSources",
+    b"preparedPortableImageBinding:",
+    b"beginPortableImageApplication",
+    b"allocation:bytes:identity:",
+    b"binding:value:weak:",
+    b"Generation",
+    b"beginImageApplication",
+    b"finishImageApplication",
+    b"validate",
+    b"allocationsDo:",
+    b"bindingsDo:",
+    b"isBehavior:",
+    b"ownerOf:",
+    b"nameOf:",
+    b"materializeSynchronous:captures:",
+    b"materializeResumable:captures:",
+    b"materializationCount",
+    b"evictMaterializations",
+    b"canonicalBytesOf:",
+    b"fromMethod:codeObject:captures:",
+    b"CodeObject",
+    b"allMethodsOf:",
+    b"directMethodsOf:",
+    b"removeMethod:on:",
+    b"removeMethod:",
+    b"directMethodFor:in:",
+    b"Execution",
+    b"Map",
+    b"kind:",
+    b"forDoesNotUnderstand",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -962,6 +1066,49 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"methodDescriptorFor:"),
     Literal::new(b"initialGenerationProjection"),
     Literal::new(b"candidateInventory:selection:"),
+    Literal::new(b"isSynchronous"),
+    Literal::new(b"admitCodeObject:synchronous:"),
+    Literal::new(b"portableImageBindings"),
+    Literal::new(b"compilePortableImageCode:bindings:selection:"),
+    Literal::new(b"beginPortableImageRebuild:bindings:selection:"),
+    Literal::new(b"beginPortableImageMapped:programs:bindings:selection:"),
+    Literal::new(b"portableImageBlockMethod:synchronous:"),
+    Literal::new(b"preparePortableImageBinding:implementation:"),
+    Literal::new(b"installPortableImageBinding:on:as:source:"),
+    Literal::new(b"finishPortableImageUnit"),
+    Literal::new(b"cancelPortableImageUnit"),
+    Literal::new(b"portableImageSources"),
+    Literal::new(b"preparePortableImageSources:"),
+    Literal::new(b"finishPortableImageSources"),
+    Literal::new(b"preparedPortableImageBinding:"),
+    Literal::new(b"beginPortableImageApplication"),
+    Literal::new(b"allocation:bytes:identity:"),
+    Literal::new(b"binding:value:weak:"),
+    Literal::new(b"Generation"),
+    Literal::new(b"beginImageApplication"),
+    Literal::new(b"finishImageApplication"),
+    Literal::new(b"validate"),
+    Literal::new(b"allocationsDo:"),
+    Literal::new(b"bindingsDo:"),
+    Literal::new(b"isBehavior:"),
+    Literal::new(b"ownerOf:"),
+    Literal::new(b"nameOf:"),
+    Literal::new(b"materializeSynchronous:captures:"),
+    Literal::new(b"materializeResumable:captures:"),
+    Literal::new(b"materializationCount"),
+    Literal::new(b"evictMaterializations"),
+    Literal::new(b"canonicalBytesOf:"),
+    Literal::new(b"fromMethod:codeObject:captures:"),
+    Literal::new(b"CodeObject"),
+    Literal::new(b"allMethodsOf:"),
+    Literal::new(b"directMethodsOf:"),
+    Literal::new(b"removeMethod:on:"),
+    Literal::new(b"removeMethod:"),
+    Literal::new(b"directMethodFor:in:"),
+    Literal::new(b"Execution"),
+    Literal::new(b"Map"),
+    Literal::new(b"kind:"),
+    Literal::new(b"forDoesNotUnderstand"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1189,6 +1336,126 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(candidate_inventory::inventory),
         convention: 0,
     },
+    MethodSpec {
+        name: 147,
+        entry: Some(image::bindings_entry),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 148,
+        entry: Some(image::compile),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 149,
+        entry: Some(image::rebuild),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 150,
+        entry: Some(image::mapped),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 151,
+        entry: Some(image::method),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 152,
+        entry: Some(image::prepare),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 153,
+        entry: Some(image::install),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 154,
+        entry: Some(image::finish),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 155,
+        entry: Some(image::cancel),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 156,
+        entry: Some(image::sources),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 157,
+        entry: Some(image::prepare_sources),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 158,
+        entry: Some(image::finish_sources),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 159,
+        entry: Some(image::prepared),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 160,
+        entry: Some(image::begin_application),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 161,
+        entry: Some(image::allocation),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 162,
+        entry: Some(image::binding),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 172,
+        entry: Some(materialization::synchronous),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 173,
+        entry: Some(materialization::resumable),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 174,
+        entry: Some(materialization::count),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 175,
+        entry: Some(materialization::evict),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 179,
+        entry: Some(reflection::all_methods),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 180,
+        entry: Some(reflection::direct_methods),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 181,
+        entry: Some(reflection::remove),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 187,
+        entry: Some(dnu_adapter),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1264,15 +1531,36 @@ unsafe extern "C" fn initialize(
                 b"methodAt:",
                 &[names[b"implementationValue".as_slice()]],
             )?,
+            dnu_adapter: send(
+                image,
+                b"methodAt:",
+                &[names[b"forDoesNotUnderstand".as_slice()]],
+            )?,
             ns: *ns,
             receiver,
             names: names.clone(),
             scoped: RefCell::new(Vec::new()),
             sources: source::Sources::default(),
+            image_busy: Cell::new(false),
+            materializations: RefCell::new(Vec::new()),
+            image_stage: RefCell::new(None),
             ready: Cell::new(false),
             thread: std::thread::current().id(),
         }));
         INSTANCE.store(s, Ordering::Release);
+        for (entry, synchronous) in [
+            (s.implementation_entry, false),
+            (s.synchronous_implementation_entry, true),
+        ] {
+            send(
+                entry,
+                b"admitCodeObject:synchronous:",
+                &[
+                    named(b"nil")?,
+                    named(if synchronous { b"true" } else { b"false" })?,
+                ],
+            )?;
+        }
         for spec in METHODS {
             let name = NAMES[spec.name];
             if matches!(
@@ -1281,12 +1569,16 @@ unsafe extern "C" fn initialize(
                     | b"enterImplementationSync"
                     | b"bindImplementation"
                     | b"implementationValue"
+                    | b"forDoesNotUnderstand"
             ) {
                 continue;
             }
             let target = if matches!(
                 name,
                 b"defineMethod:on:as:"
+                    | b"allMethodsOf:"
+                    | b"directMethodsOf:"
+                    | b"removeMethod:on:"
                     | b"methodForArity:implementation:"
                     | b"methodForTemplate:implementation:"
                     | b"vtableOf:"

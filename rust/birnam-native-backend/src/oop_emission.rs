@@ -273,7 +273,8 @@ fn compile_mode(
     let register = e.name(b"fromStep:descriptor:selection:owner:")?;
     let code_object = e.name(b"CodeObject")?;
     let from_canonical = e.name(b"fromCanonicalBytes:")?;
-    let admit_code = e.name(b"admitCodeObject:")?;
+    let admit_code = e.name(b"admitCodeObject:synchronous:")?;
+    let false_name = e.name(b"false")?;
     let bytes_view = e.name(b"bytes")?;
     let method_names = (0..e.functions.len())
         .map(|i| e.name(format!("compiledFunction{i}").as_bytes()))
@@ -358,7 +359,12 @@ fn compile_mode(
         if e.descriptors[i].is_some() {
             writeln!(out,"O descriptor=string(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=string(&c,selection_{i},sizeof(selection_{i}));O a[]={{method,descriptor,selection,owner}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,4);").unwrap();
         }
-        writeln!(out,"O encoded=string(&c,program_{i},sizeof(program_{i}));encoded=call(&c,encoded,{bytes_view},0,0);O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(is_error(&c,code))return finish(&c,code);method=call(&c,method,{admit_code},&code,1);if(c.error)return finish(&c,0);").unwrap();
+        let mode = if e.descriptors[i].is_some() {
+            false_name
+        } else {
+            e.names.iter().position(|v| v == b"true").unwrap()
+        };
+        writeln!(out,"O encoded=string(&c,program_{i},sizeof(program_{i}));encoded=call(&c,encoded,{bytes_view},0,0);O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(is_error(&c,code))return finish(&c,code);O admission[]={{code,named(&c,{mode})}};method=call(&c,method,{admit_code},admission,2);if(c.error)return finish(&c,0);").unwrap();
         writeln!(
             out,
             "methods[{i}]=method;raw(&c,owner,S_RETAIN,&method,1);if(c.error)return finish(&c,0);}}"

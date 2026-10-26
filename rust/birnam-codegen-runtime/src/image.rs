@@ -1,8 +1,42 @@
-//! Image compilation and staged native ownership through existing owners.
+//! Image staging owns copied inputs and constructed Methods. Other owners are
+//! reached through Id; mapped bodies never fall back to the compiler.
 use super::*;
-use birnam_codegen::image::Plan;
+use birnam_codegen::{backend_request::Request, image::Plan};
+#[derive(Clone)]
+enum Body {
+    Object {
+        bytes: std::rc::Rc<Vec<u8>>,
+        range: std::ops::Range<usize>,
+    },
+    Rebuild(Request),
+    Ready(Oop),
+}
+pub(super) struct Stage {
+    bodies: Vec<Body>,
+    templates: Vec<Oop>,
+    prepared: Vec<Option<Oop>>,
+    finished: bool,
+    source_owner: Option<Oop>,
+}
+impl Stage {
+    pub(super) fn roots(&self) -> Vec<Oop> {
+        self.bodies
+            .iter()
+            .filter_map(|v| {
+                if let Body::Ready(m) = v {
+                    Some(*m)
+                } else {
+                    None
+                }
+            })
+            .chain(self.templates.iter().copied())
+            .chain(self.prepared.iter().flatten().copied())
+            .chain(self.source_owner)
+            .collect()
+    }
+}
 #[derive(Clone, Copy)]
-pub(super) enum Op {
+enum Op {
     Bindings,
     Compile,
     Rebuild,
@@ -18,350 +52,344 @@ pub(super) enum Op {
     Prepared,
     BeginApplication,
 }
-impl Op {
-    pub fn count(self) -> usize {
-        match self {
-            Self::Bindings | Self::Finish | Self::Cancel | Self::Sources | Self::FinishSources | Self::BeginApplication => 0,
-            Self::PrepareSources | Self::Prepared => 1,
-            Self::Compile | Self::Rebuild => 3,
-            Self::Mapped | Self::Install => 4,
-            Self::Method | Self::Prepare => 2,
-        }
-    }
+unsafe fn call(s: &State, q: &Scope<'_>, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+    unsafe { Ok(q.keep(s.send(r, n, a)?)) }
 }
-// Private immutable inputs, never foreign borrowed views. Cloning a pending
-// object keeps its bytes alive without holding a Stage borrow across Id calls.
-#[derive(Clone)]
-enum Body {
-    Object { bytes: std::rc::Rc<Vec<u8>>, range: std::ops::Range<usize> },
-    Rebuild(Request),
-    Ready(Oop),
-}
-pub(super) struct Stage {
-    bodies: Vec<Body>,
-    templates: Vec<Oop>,
-    prepared: Vec<Option<Oop>>,
-    finished: bool,
-    source_owner: Option<Oop>,
-}
-impl Stage {
-    pub fn roots(&self) -> Vec<Oop> {
-        self.bodies
-            .iter()
-            .filter_map(|body| match body { Body::Ready(method) => Some(*method), _ => None })
-            .chain(self.templates.iter().copied())
-            .chain(self.prepared.iter().flatten().copied())
-            .chain(self.source_owner)
-            .collect()
-    }
-}
-unsafe fn value(s: &State, q: &Scope<'_>, family: &[u8], bytes: &[u8]) -> Result<Oop, Outcome> {
+unsafe fn value(s: &State, q: &Scope<'_>, family: &[u8], bytes: &[u8]) -> Result<Oop, Oop> {
     unsafe {
-        q.keep(object(s.send(
-            s.named(family)?,
-            b"fromBytes:",
-            &[Operand::bytes(bytes)],
-        )?)?)
+        let data = q.keep(s.byte_values(bytes)?);
+        call(s, q, s.named(family)?, b"fromBytes:", &[data])
     }
 }
-unsafe fn load_object(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
+unsafe fn at(s: &State, q: &Scope<'_>, r: Oop, i: usize) -> Result<Oop, Oop> {
+    unsafe { compiled_source::field(s, q, r, i) }
+}
+unsafe fn number(s: &State, q: &Scope<'_>, i: usize) -> Result<Oop, Oop> {
     unsafe {
-        let input = Scope { s, tokens: RefCell::new(Vec::new()) };
-        let bytes = value(s, &input, b"Bytes", bytes)?;
-        q.keep(object(s.send(s.named(b"TCC")?, b"loadObject:", &[Operand::object(bytes)])?)?)
+        call(
+            s,
+            q,
+            s.named(b"Integer")?,
+            b"fromWord:",
+            &[abi::size(i).ok_or_else(invalid)?],
+        )
     }
 }
-unsafe fn vector(s: &State, q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Outcome> {
+unsafe fn fail(s: &State, q: &Scope<'_>, kind: &[u8], message: &[u8]) -> Result<Oop, Oop> {
     unsafe {
-        let mut v = q.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?)?;
-        for &x in values {
-            v = q.keep(object(s.send(v, b"add:", &[Operand::object(x)])?)?)?;
-        }
-        Ok(v)
+        let kind = q.keep(s.intern(kind)?);
+        let text = q.keep(s.text(message)?);
+        s.send(s.named(b"Error")?, b"kind:message:", &[kind, text])
     }
 }
-pub(super) unsafe fn operation(
+unsafe fn generation(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Oop> {
+    unsafe { call(s, q, s.named(b"Generation")?, name, &[]) }
+}
+pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result<Oop, Oop> {
+    unsafe {
+        let Request::Program {
+            program,
+            source,
+            filename,
+            persistent,
+            synchronous,
+        } = request
+        else {
+            return Err(invalid());
+        };
+        let p = value(s, q, b"Bytes", program)?;
+        let source = q.keep(s.text(source)?);
+        let filename = q.keep(s.text(filename)?);
+        let persistent = s.named(if *persistent { b"true" } else { b"false" })?;
+        let sync = s.named(if *synchronous { b"true" } else { b"false" })?;
+        call(
+            s,
+            q,
+            s.named(b"NativeBackend")?,
+            b"emit:source:filename:persistent:synchronous:",
+            &[p, source, filename, persistent, sync],
+        )
+    }
+}
+// Callbacks only copy references into this owner's active scope. They do not
+// allocate managed objects or inspect foreign payloads while listing allocations.
+pub(super) unsafe extern "C" fn allocation(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [object, _, _] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        s.scoped.borrow_mut().push(*object);
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn binding(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [selector, method, _] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        s.scoped
+            .borrow_mut()
+            .extend_from_slice(&[*selector, *method]);
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe fn direct_bindings(
     s: &State,
     q: &Scope<'_>,
-    op: Op,
-    args: &[Operand],
-) -> Result<Operand, Outcome> {
+    behavior: Oop,
+) -> Result<Vec<(Oop, Oop)>, Oop> {
+    unsafe {
+        q.keep(behavior);
+        let start = s.scoped.borrow().len();
+        s.send(behavior, b"bindingsDo:", &[s.receiver])?;
+        let entries = s.scoped.borrow()[start..].to_vec();
+        if entries.len() % 2 != 0 {
+            return Err(invalid());
+        }
+        Ok(entries
+            .chunks_exact(2)
+            .map(|row| (row[0], row[1]))
+            .collect())
+    }
+}
+unsafe fn bindings(s: &State, q: &Scope<'_>) -> Result<Oop, Oop> {
+    unsafe {
+        let start = s.scoped.borrow().len();
+        s.send(s.id.root, b"allocationsDo:", &[s.receiver])?;
+        let objects = s.scoped.borrow()[start..].to_vec();
+        let nil = s.named(b"nil")?;
+        let mut rows = Vec::new();
+        for object in objects {
+            if abi::as_size(s.send(s.id.root, b"isBehavior:", &[object])?) != Some(1) {
+                continue;
+            }
+            let owner = call(s, q, s.id.root, b"ownerOf:", &[object])?;
+            let target = if !owner.is_null()
+                && owner != nil
+                && s.send(s.id.root, b"behaviorOf:", &[owner])? == object
+            {
+                owner
+            } else if !s.send(s.ns, b"nameOf:", &[object])?.is_null() {
+                object
+            } else {
+                continue;
+            };
+            q.keep(target);
+            for (selector, method) in direct_bindings(s, q, object)? {
+                let implementation = call(s, q, s.receiver, b"implementationOf:", &[method])?;
+                if implementation == nil {
+                    continue;
+                }
+                if s.is_error(implementation)? {
+                    return Ok(implementation);
+                }
+                let sync = call(s, q, method, b"isSynchronous", &[])?;
+                rows.push(s.vector(q, &[target, selector, implementation, nil, sync])?);
+            }
+        }
+        s.vector(q, &rows)
+    }
+}
+unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oop, Oop> {
     unsafe {
         if s.image_busy.replace(true) {
             return Err(invalid());
         }
-        struct Busy<'a>(&'a std::cell::Cell<bool>);
+        struct Busy<'a>(&'a Cell<bool>);
         impl Drop for Busy<'_> {
             fn drop(&mut self) {
                 self.0.set(false);
             }
         }
         let _busy = Busy(&s.image_busy);
-        let nil = q.keep(s.named(b"nil")?)?;
-        let yes = q.keep(s.named(b"true")?)?;
+        let nil = q.keep(s.named(b"nil")?);
+        let yes = q.keep(s.named(b"true")?);
         match op {
-            Op::BeginApplication => {
-                if !s.image_stage.borrow().as_ref().is_some_and(|stage| stage.finished) {
-                    return publication::fail(s, q, b"imageApplicationRequired", b"image application requires a prepared Image stage");
-                }
-                return publication::send(s, q, b"beginImageApplication", &[]);
-            }
+            Op::Bindings => bindings(s, q),
             Op::Sources => {
-                let owner = publication::source_owner(s, q)?;
-                let checked = q.keep(object(s.send(owner, b"validate", &[])?)?)?;
-                if checked != owner { return Ok(Operand::object(checked)); }
-                let tag = q.keep(s.id.intern_name(b"sourceRegistryV2")?)?;
-                return vector(s, q, &[tag, owner]).map(Operand::object);
+                let owner = s.source_owner(q)?;
+                let checked = call(s, q, owner, b"validate", &[])?;
+                if checked != owner {
+                    return Ok(checked);
+                }
+                let tag = q.keep(s.intern(b"sourceRegistryV2")?);
+                s.vector(q, &[tag, owner])
             }
             Op::PrepareSources => {
-                let source = object(args[0])?;
-                if s.index(q, source, b"size")? != 2 { return Err(invalid()); }
-                let at = |i| -> Result<Oop, Outcome> {
-                    let index = q.keep(object(s.send(s.named(b"Integer")?, b"fromWord:", &[Operand::word(i)])?)?)?;
-                    q.keep(object(s.send(source, b"at:", &[Operand::object(index)])?)?)
-                };
-                if at(0)? != s.id.intern_name(b"sourceRegistryV2")? { return Err(invalid()); }
-                let owner = at(1)?;
-                if owner == nil { return Err(invalid()); }
-                // The restored object's Methods are not installed yet. Keep only
-                // its identity in this operation's existing image stage.
+                let source = args[0];
+                if s.index(call(s, q, source, b"size", &[])?)? != 2 {
+                    return Err(invalid());
+                }
+                if at(s, q, source, 0)? != s.intern(b"sourceRegistryV2")? {
+                    return Err(invalid());
+                }
+                let owner = at(s, q, source, 1)?;
+                if owner == nil {
+                    return Err(invalid());
+                }
                 let mut stage = s.image_stage.borrow_mut();
                 let stage = stage.as_mut().ok_or_else(invalid)?;
-                if stage.finished { return Err(invalid()); }
+                if stage.finished {
+                    return Err(invalid());
+                }
                 stage.source_owner = Some(owner);
-                return Ok(Operand::object(yes));
-            }
-            Op::Prepared => {
-                let i = s.send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?.as_word().ok_or_else(invalid)?;
-                let method = s.image_stage.borrow().as_ref().ok_or_else(invalid)?
-                    .prepared.get(i).copied().flatten().ok_or_else(invalid)?;
-                q.keep(method)?;
-                return Ok(Operand::object(method));
+                Ok(yes)
             }
             Op::FinishSources => {
                 let owner = {
                     let stage = s.image_stage.borrow();
                     let stage = stage.as_ref().ok_or_else(invalid)?;
-                    if !stage.finished { return Err(invalid()); }
+                    if !stage.finished {
+                        return Err(invalid());
+                    }
                     stage.source_owner.ok_or_else(invalid)?
                 };
-                q.keep(owner)?;
-                if publication::source_owner(s, q)? != owner { return Err(invalid()); }
-                let checked = q.keep(object(s.send(owner, b"validate", &[])?)?)?;
-                if checked != owner { return Ok(Operand::object(checked)); }
-                return Ok(Operand::object(yes));
+                q.keep(owner);
+                if s.source_owner(q)? != owner {
+                    return Err(invalid());
+                }
+                let checked = call(s, q, owner, b"validate", &[])?;
+                Ok(if checked == owner { yes } else { checked })
             }
-            Op::Bindings => {
-                let mut rows = Vec::new();
-                let count = s
-                    .send(s.id.receiver, b"behaviorCount", &[])?
-                    .as_word()
-                    .ok_or_else(invalid)?;
-                // Root the registry snapshot before building language Vectors:
-                // those allocations can collect and compact the live registry.
-                let mut behaviors = Vec::with_capacity(count);
-                for i in 0..count {
-                    behaviors.push(q.keep(object(s.send(
-                        s.id.receiver,
-                        b"behaviorAt:",
-                        &[Operand::word(i)],
-                    )?)?)?);
+            Op::BeginApplication => {
+                if !s.image_stage.borrow().as_ref().is_some_and(|s| s.finished) {
+                    return fail(
+                        s,
+                        q,
+                        b"imageApplicationRequired",
+                        b"image application requires a prepared Image stage",
+                    );
                 }
-                for vt in behaviors {
-                    let target = match s
-                        .send(s.id.receiver, b"ownerOf:", &[Operand::object(vt)])?
-                        .as_object()
-                    {
-                        Some(owner)
-                            if s.send(
-                                s.id.receiver,
-                                b"behaviorOf:",
-                                &[Operand::object(owner)],
-                            )?
-                            .as_object()
-                                == Some(vt) =>
-                        {
-                            owner
-                        }
-                        _ if s
-                            .send(s.ns, b"nameOf:", &[Operand::object(vt)])?
-                            .as_object()
-                            .is_some() =>
-                        {
-                            vt
-                        }
-                        _ => continue,
-                    };
-                    // A native owner can manage several representation families
-                    // (Store owns both StoreVt and CellVt). Only its own dictionary
-                    // targets that object; other exported behaviors target themselves.
-                    q.keep(target)?;
-                    for j in 0..1_048_576usize {
-                        let Some(selector) = s
-                            .send(
-                                s.id.receiver,
-                                b"selectorAt:in:",
-                                &[Operand::word(j), Operand::object(vt)],
-                            )?
-                            .as_object()
-                        else {
-                            break;
-                        };
-                        q.keep(selector)?;
-                        let entry = s.send(
-                            s.id.receiver,
-                            b"bindingOf:in:",
-                            &[Operand::object(selector), Operand::object(vt)],
-                        )?;
-                        if entry.as_entry().is_none() {
-                            continue;
-                        }
-                        let Some(implementation) = s
-                            .send(s.named(b"Execution")?, b"implementationOfEntry:", &[entry])?
-                            .as_object()
-                        else {
-                            continue;
-                        };
-                        q.keep(implementation)?;
-                        rows.push(vector(s, q, &[target, selector, implementation, nil])?);
-                    }
-                }
-                return vector(s, q, &rows).map(Operand::object);
+                generation(s, q, b"beginImageApplication")
             }
             Op::Compile | Op::Rebuild | Op::Mapped => {
                 if !matches!(op, Op::Compile) && s.image_stage.borrow().is_some() {
                     return Err(invalid());
                 }
                 let offset = usize::from(matches!(op, Op::Mapped));
-                let p = s.bytes(object(args[offset])?)?;
-                let b = s.bytes(object(args[offset + 1])?)?;
-                let sel = s.bytes(object(args[offset + 2])?)?;
-                let Some(plan) = Plan::new(&p, &b, &sel, !matches!(op, Op::Mapped)) else {
-                    return Ok(Operand::object(nil));
-                };
-                let generated = if matches!(op, Op::Mapped) {
-                    vec![]
-                } else {
-                    match backend::all(s, q, if matches!(op, Op::Compile) { &plan.requests } else { &plan.requests[2 * plan.programs..] }) {
-                        Ok(v) => v,
-                        Err(backend::Failure::Native(e)) => return Err(e),
-                        Err(backend::Failure::Rejected(_)) => return Ok(Operand::object(nil)),
-                    }
+                let p = s.bytes(args[offset])?;
+                let b = s.bytes(args[offset + 1])?;
+                let selection = s.bytes(args[offset + 2])?;
+                let Some(plan) = Plan::new(&p, &b, &selection, false) else {
+                    return Ok(nil);
                 };
                 if matches!(op, Op::Compile) {
                     let mut objects = Vec::new();
-                    for c in &generated {
-                        let source = value(s, q, b"String", c)?;
-                        let object = q.keep(object(s.send(
-                            s.named(b"TCC")?,
-                            b"compileObject:",
-                            &[Operand::object(source)],
-                        )?)?)?;
+                    for request in &plan.requests[..2 * plan.programs] {
+                        let input = s.scope(&[]);
+                        let q = &input;
+                        let source = emit(s, q, request)?;
+                        if s.is_error(source)? {
+                            return Ok(source);
+                        }
+                        let object = call(s, q, s.named(b"TCC")?, b"compileObject:", &[source])?;
                         if s.is_error(object)? {
-                            return Ok(Operand::object(object));
+                            return Ok(object);
                         }
                         objects.push(s.bytes(object)?);
                     }
-                    return value(s, q, b"Bytes", &plan.encode(&objects).ok_or_else(invalid)?)
-                        .map(Operand::object);
+                    return value(s, q, b"Bytes", &plan.encode(&objects).ok_or_else(invalid)?);
                 }
-                // Copy the foreign borrow before any callback, then decode slices
-                // of this private immutable snapshot. No foreign borrow crosses
-                // a send, and the snapshot outlives every loader request.
-                let bundle = if matches!(op, Op::Mapped) {
-                    Some(std::rc::Rc::new(s.bytes(object(args[0])?)?))
-                } else {
-                    None
-                };
-                let objects = bundle
-                    .as_deref()
-                    .map(|bytes| plan.decode(bytes).ok_or_else(invalid))
-                    .transpose()?;
-                let mut stage = Stage {
-                    bodies: if let Some(ref objects) = objects {
-                        let bytes = bundle.as_ref().ok_or_else(invalid)?;
-                        objects[..2 * plan.programs].iter().map(|object| {
+                let bodies = if matches!(op, Op::Mapped) {
+                    let bytes = std::rc::Rc::new(s.bytes(args[0])?);
+                    let objects = plan.decode(&bytes).ok_or_else(invalid)?;
+                    objects
+                        .iter()
+                        .map(|object| {
                             let start = object.as_ptr().addr() - bytes.as_ptr().addr();
-                            Body::Object { bytes: bytes.clone(), range: start..start + object.len() }
-                        }).collect()
-                    } else {
-                        plan.requests[..2 * plan.programs].iter().cloned().map(Body::Rebuild).collect()
-                    },
+                            Body::Object {
+                                bytes: bytes.clone(),
+                                range: start..start + object.len(),
+                            }
+                        })
+                        .collect()
+                } else {
+                    plan.requests[..2 * plan.programs]
+                        .iter()
+                        .cloned()
+                        .map(Body::Rebuild)
+                        .collect()
+                };
+                let mut stage = Stage {
+                    bodies,
                     templates: Vec::new(),
                     prepared: vec![None; plan.bindings],
                     finished: false,
                     source_owner: None,
                 };
-                // Only identical selected payloads at the same arity share a
-                // mapping. Adapter requests remain live and ordered; arity alone
-                // never substitutes a different selected program. Bodies are
-                // emitted/loaded only by Method, before normal image application.
-                let mut templates = std::collections::HashMap::new();
-                for i in 2 * plan.programs..plan.requests.len() {
-                    let selected = if let Some(ref objects) = objects {
-                        objects[i]
-                    } else { generated[i - 2 * plan.programs].as_slice() };
-                    let key = match plan.requests[i] {
-                        Request::Named { arity, synchronous: false } => Some((arity, selected)),
-                        _ => None,
+                // These are ordinary current Codegen constructors, with no redundant C units.
+                for request in &plan.requests[2 * plan.programs..] {
+                    let Request::Named { arity, synchronous } = request else {
+                        return Err(invalid());
                     };
-                    if let Some(template) = key.and_then(|key| templates.get(&key)).copied() {
-                        stage.templates.push(template);
-                        continue;
-                    }
-                    let unit = if let Some(ref objects) = objects {
-                        load_object(s, q, objects[i])?
-                    } else {
-                        s.native_unit(q, &generated[i - 2 * plan.programs])?
-                    };
-                    if s.is_error(unit)? {
-                        return Ok(Operand::object(unit));
-                    }
-                    let template = q.keep(object(s.send(unit, b"initializeWith:",
-                        &[Operand::object(nil)])?)?)?;
+                    let arity = number(s, q, *arity as usize)?;
+                    let sync = s.named(if *synchronous { b"true" } else { b"false" })?;
+                    let template = call(
+                        s,
+                        q,
+                        s.receiver,
+                        b"methodTemplateForArity:synchronous:",
+                        &[arity, sync],
+                    )?;
                     if template == nil || s.is_error(template)? {
-                        return Ok(Operand::object(template));
+                        return Ok(template);
                     }
-                    templates.insert(key.ok_or_else(invalid)?, template);
                     stage.templates.push(template);
                 }
                 *s.image_stage.borrow_mut() = Some(stage);
-                return Ok(Operand::object(yes));
+                Ok(yes)
             }
             Op::Method => {
-                let i = s
-                    .send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?
-                    .as_word()
+                let i = s.index(args[0])?;
+                let index = i
+                    .checked_mul(2)
+                    .and_then(|v| v.checked_add(usize::from(args[1] == yes)))
                     .ok_or_else(invalid)?;
-                let sync = object(args[1])? == yes;
-                let index = i.checked_mul(2).and_then(|i| i.checked_add(usize::from(sync))).ok_or_else(invalid)?;
-                let body = s.image_stage.borrow().as_ref()
-                    .and_then(|stage| stage.bodies.get(index)).cloned().ok_or_else(invalid)?;
+                let body = s
+                    .image_stage
+                    .borrow()
+                    .as_ref()
+                    .and_then(|v| v.bodies.get(index))
+                    .cloned()
+                    .ok_or_else(invalid)?;
                 let unit = match body {
-                    Body::Ready(method) => return Ok(Operand::object(method)),
-                    Body::Object { bytes, range } => load_object(s, q, &bytes[range])?,
-                    Body::Rebuild(request) => {
-                        let c = match backend::emit(s, q, &request) {
-                            Ok(c) => c,
-                            Err(backend::Failure::Native(e)) => return Err(e),
-                            Err(backend::Failure::Rejected(_)) => return Ok(Operand::object(nil)),
+                    Body::Ready(method) => return Ok(method),
+                    Body::Object { bytes, range } => {
+                        let unit = {
+                            let input = s.scope(&[]);
+                            let data = value(s, &input, b"Bytes", &bytes[range])?;
+                            s.send(s.named(b"TCC")?, b"loadObject:", &[data])?
                         };
-                        s.native_unit(q, &c)?
+                        q.keep(unit)
+                    }
+                    Body::Rebuild(request) => {
+                        let source = emit(s, q, &request)?;
+                        if s.is_error(source)? {
+                            return Ok(source);
+                        }
+                        call(s, q, s.named(b"TCC")?, b"compile:", &[source])?
                     }
                 };
-                if s.is_error(unit)? { return Ok(Operand::object(unit)); }
-                let method = q.keep(object(s.send(unit, b"initialize", &[])?)?)?;
-                if method == nil || s.is_error(method)? { return Ok(Operand::object(method)); }
-                // The existing image_busy extent prevents nested stage mutation.
-                // Publish only success; a failed request can be retried or cancelled.
-                s.image_stage.borrow_mut().as_mut().ok_or_else(invalid)?.bodies[index] = Body::Ready(method);
-                return Ok(Operand::object(method));
+                if s.is_error(unit)? {
+                    return Ok(unit);
+                }
+                let method = call(s, q, unit, b"initialize", &[])?;
+                if method == nil || s.is_error(method)? {
+                    return Ok(method);
+                }
+                s.image_stage
+                    .borrow_mut()
+                    .as_mut()
+                    .ok_or_else(invalid)?
+                    .bodies[index] = Body::Ready(method);
+                Ok(method)
             }
             Op::Prepare => {
-                let i = s
-                    .send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?
-                    .as_word()
-                    .ok_or_else(invalid)?;
+                let i = s.index(args[0])?;
                 let template = {
                     let stage = s.image_stage.borrow();
                     let stage = stage.as_ref().ok_or_else(invalid)?;
@@ -370,57 +398,82 @@ pub(super) unsafe fn operation(
                     }
                     *stage.templates.get(i).ok_or_else(invalid)?
                 };
-                q.keep(template)?;
-                let method = q.keep(object(s.send(s.named(b"Reflect")?,
+                q.keep(template);
+                let method = call(
+                    s,
+                    q,
+                    s.reflect,
                     b"methodForTemplate:implementation:",
-                    &[Operand::object(template), args[1]])?)?)?;
+                    &[template, args[1]],
+                )?;
                 if method == nil || s.is_error(method)? {
-                    return Ok(Operand::object(method));
+                    return Ok(method);
                 }
                 s.image_stage
                     .borrow_mut()
                     .as_mut()
                     .ok_or_else(invalid)?
                     .prepared[i] = Some(method);
-                return Ok(Operand::object(yes));
+                Ok(yes)
+            }
+            Op::Prepared => {
+                let i = s.index(args[0])?;
+                s.image_stage
+                    .borrow()
+                    .as_ref()
+                    .and_then(|s| s.prepared.get(i))
+                    .copied()
+                    .flatten()
+                    .ok_or_else(invalid)
             }
             Op::Finish => {
                 let mut stage = s.image_stage.borrow_mut();
-                let st = stage.as_mut().ok_or_else(invalid)?;
-                if st.prepared.iter().any(Option::is_none) {
-                    return Ok(Operand::object(nil));
+                let stage = stage.as_mut().ok_or_else(invalid)?;
+                if stage.prepared.iter().any(Option::is_none) {
+                    return Ok(nil);
                 }
-                st.finished = true;
-                return Ok(Operand::object(yes));
+                stage.finished = true;
+                Ok(yes)
             }
             Op::Install => {
-                let i = s
-                    .send(s.named(b"Integer")?, b"wordOf:", &[args[0]])?
-                    .as_word()
-                    .ok_or_else(invalid)?;
+                let i = s.index(args[0])?;
                 let method = {
                     let stage = s.image_stage.borrow();
-                    let st = stage.as_ref().ok_or_else(invalid)?;
-                    if !st.finished {
-                        return Err(invalid());
-                    }
-                    st.prepared.get(i).copied().flatten().ok_or_else(invalid)?
+                    let stage = stage.as_ref().filter(|v| v.finished).ok_or_else(invalid)?;
+                    stage
+                        .prepared
+                        .get(i)
+                        .copied()
+                        .flatten()
+                        .ok_or_else(invalid)?
                 };
-                q.keep(method)?;
-                let behavior = q.keep(object(s.send(
-                    s.id.receiver,
-                    b"ensurePrivateVtableFor:",
-                    &[args[1]],
-                )?)?)?;
-                let result = s.send(behavior, b"addMethod:as:",
-                    &[Operand::object(method), args[2]])?;
-                return Ok(if result.as_object() == Some(method) { args[1] } else { result });
+                q.keep(method);
+                let behavior = call(s, q, s.id.root, b"ensurePrivateVtableFor:", &[args[1]])?;
+                let result = s.send(behavior, b"addMethod:as:", &[method, args[2]])?;
+                Ok(if result == method { args[1] } else { result })
             }
             Op::Cancel => {
-                publication::send(s, q, b"finishImageApplication", &[])?;
-                *s.image_stage.borrow_mut() = None;
-                return Ok(Operand::object(yes));
+                generation(s, q, b"finishImageApplication")?;
+                s.image_stage.borrow_mut().take();
+                Ok(yes)
             }
         }
     }
 }
+macro_rules! entries{($(($f:ident,$op:ident,$n:expr)),*$(,)?)=>{$(pub(super) unsafe extern "C" fn $f(_:Oop,c:Oop,_:Oop,a:*const Oop,n:usize)->Oop{(||unsafe{let s=state(c)?;let a=borrowed_slice(a,n).filter(|v|v.len()==$n).ok_or_else(invalid)?;let q=s.scope(a);operation(s,&q,Op::$op,a)})().unwrap_or_else(abi::fault_reference)})*};}
+entries![
+    (bindings_entry, Bindings, 0),
+    (compile, Compile, 3),
+    (rebuild, Rebuild, 3),
+    (mapped, Mapped, 4),
+    (method, Method, 2),
+    (prepare, Prepare, 2),
+    (install, Install, 4),
+    (finish, Finish, 0),
+    (cancel, Cancel, 0),
+    (sources, Sources, 0),
+    (prepare_sources, PrepareSources, 1),
+    (finish_sources, FinishSources, 0),
+    (prepared, Prepared, 1),
+    (begin_application, BeginApplication, 0)
+];

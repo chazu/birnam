@@ -1,12 +1,13 @@
 //! Weak records of Execution's own native representations. Id alone allocates
 //! and reclaims their storage. No dependency sends occur inside the pure engine.
-use birnam_abi::Oop;
 use super::word_index::WordIndex;
+use birnam_abi::Oop;
 #[derive(Clone, Copy)]
 struct Record {
     behavior: Oop,
     family: Oop,
     words: usize,
+    image_shell: bool,
 }
 #[derive(Default)]
 pub(crate) struct Objects {
@@ -20,8 +21,15 @@ impl Objects {
                 behavior,
                 family: behavior,
                 words,
+                image_shell: false,
             },
         );
+    }
+    pub(crate) fn image_shell(&self, o: Oop) -> bool {
+        self.records.get(&o.addr()).is_some_and(|r| r.image_shell)
+    }
+    pub(crate) fn set_image_shell(&mut self, o: Oop, value: bool) {
+        self.records.get_mut(&o.addr()).unwrap().image_shell = value;
     }
     pub(crate) fn remove(&mut self, object: Oop) {
         self.records.remove(&object.addr());
@@ -94,7 +102,10 @@ mod tests {
                 let object = ptr::without_provenance_mut(key);
                 assert_eq!(objects.vtable_of(object), reference.get(&key).map(|x| x.0));
                 assert_eq!(objects.family_of(object), reference.get(&key).map(|x| x.1));
-                assert_eq!(objects.payload_size(object), reference.get(&key).map(|x| x.2 * size_of::<usize>()));
+                assert_eq!(
+                    objects.payload_size(object),
+                    reference.get(&key).map(|x| x.2 * size_of::<usize>())
+                );
             }
             for &key in keys.iter().step_by(3) {
                 let object = ptr::without_provenance_mut(key);
@@ -110,7 +121,10 @@ mod tests {
             let object = ptr::without_provenance_mut(key);
             assert_eq!(objects.vtable_of(object), Some(behavior));
             assert_eq!(objects.family_of(object), Some(family));
-            assert_eq!(objects.payload_size(object), Some(words * size_of::<usize>()));
+            assert_eq!(
+                objects.payload_size(object),
+                Some(words * size_of::<usize>())
+            );
         }
     }
 

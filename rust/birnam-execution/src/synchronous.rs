@@ -382,15 +382,29 @@ unsafe extern "C" fn invoke_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usi
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+unsafe extern "C" fn dnu_identity(_: Oop, _: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
+    if n == 0 {
+        r
+    } else {
+        abi::fault_reference(invalid())
+    }
+}
 unsafe extern "C" fn install(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let [method, selector] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
+        let submitted = *method;
+        let q = s.scope(&[r, submitted, *selector]);
+        let method = if *selector == s.names[b"doesNotUnderstand:".as_slice()] {
+            q.keep(s.send(*method, b"forDoesNotUnderstand", &[])?)
+        } else {
+            *method
+        };
         s.send(s.gc, b"prepareAllocation", &[])?;
-        s.send(r, b"addMethod", &[*selector, *method])?;
-        Ok(*method)
+        s.send(r, b"addMethod", &[*selector, method])?;
+        Ok(submitted)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -684,6 +698,18 @@ const NAMES: &[&[u8]] = &[
     b"setLayoutOf:to:rest:",
     b"slotAt:in:",
     b"slotAt:in:put:",
+    b"isSynchronous",
+    b"admitCodeObject:synchronous:",
+    b"captureAt:",
+    b"imageShellFromMethod:codeObject:",
+    b"restoreImageCaptures:of:",
+    b"fromMethod:codeObject:captures:",
+    b"captureCountOf:",
+    b"CodeObject",
+    b"isError",
+    b"withNativeSignature:",
+    b"parameterCountOf:",
+    b"forDoesNotUnderstand",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -884,6 +910,18 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"setLayoutOf:to:rest:"),
     Literal::new(b"slotAt:in:"),
     Literal::new(b"slotAt:in:put:"),
+    Literal::new(b"isSynchronous"),
+    Literal::new(b"admitCodeObject:synchronous:"),
+    Literal::new(b"captureAt:"),
+    Literal::new(b"imageShellFromMethod:codeObject:"),
+    Literal::new(b"restoreImageCaptures:of:"),
+    Literal::new(b"fromMethod:codeObject:captures:"),
+    Literal::new(b"captureCountOf:"),
+    Literal::new(b"CodeObject"),
+    Literal::new(b"isError"),
+    Literal::new(b"withNativeSignature:"),
+    Literal::new(b"parameterCountOf:"),
+    Literal::new(b"forDoesNotUnderstand"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1321,6 +1359,41 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(reflection::from_method),
         convention: 0,
     },
+    MethodSpec {
+        name: 198,
+        entry: Some(reflection::block_synchronous),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 199,
+        entry: Some(reflection::admit_selected),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 200,
+        entry: Some(reflection::capture_at),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 201,
+        entry: Some(reflection::shell),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 202,
+        entry: Some(reflection::restore_captures),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 203,
+        entry: Some(reflection::from_code),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 209,
+        entry: Some(dnu_identity),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1430,10 +1503,17 @@ unsafe extern "C" fn initialize(
                 | b"captureCount"
                 | b"clone" => block_vt,
                 b"methodFor:" | b"addMethod:as:" => base,
-                b"codeObject" => block_vt,
+                b"codeObject"
+                | b"isSynchronous"
+                | b"captureAt:"
+                | b"imageShellFromMethod:codeObject:"
+                | b"restoreImageCaptures:of:"
+                | b"fromMethod:codeObject:captures:" => block_vt,
                 b"invokeOn:"
                 | b"invokeOn:arguments:"
                 | b"captured"
+                | b"forDoesNotUnderstand"
+                | b"admitCodeObject:synchronous:"
                 | b"admitCodeObject:"
                 | b"bindingMatchesIn:as:" => send(id.root, b"methodBehavior", &[])?,
                 n if n.starts_with(b"value") => block_vt,
@@ -1470,6 +1550,12 @@ unsafe extern "C" fn initialize(
             send(id.root, b"methodBehavior", &[])?,
             b"addMethod",
             &[names[b"codeObject".as_slice()], nil_code],
+        )?;
+        let sync = keep(send(s.code_getter, b"withContext:", &[named(b"true")?])?)?;
+        send(
+            send(id.root, b"methodBehavior", &[])?,
+            b"addMethod",
+            &[names[b"isSynchronous".as_slice()], sync],
         )?;
         send(id.root, b"ownerOf:put:", &[block_vt, block])?;
         // The factory has no Block fields; it is a rooted ordinary object. Only actual

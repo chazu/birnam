@@ -10,11 +10,15 @@ fn bytes(q: &Scope<'_>, o: Oop) -> Result<Vec<u8>, Oop> {
     q.read_bytes(o)
 }
 fn blob(q: &Scope<'_>, b: &[u8]) -> Result<Oop, Oop> {
-    q.keep(object(q.state.send(
-        object(q.state.named(b"Bytes")?)?,
-        b"fromBytes:",
-        &[q.byte_values(b)?],
-    )?)?)
+    let value = q.state.scoped(|input| {
+        let data = input.byte_values(b)?;
+        input.state.send(
+            object(input.state.named(b"Bytes")?)?,
+            b"fromBytes:",
+            &[data],
+        )
+    })?;
+    q.keep(object(value)?)
 }
 fn vector(q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Oop> {
     let mut out = q.call(object(q.state.named(b"Vector")?)?, b"new", &[])?;

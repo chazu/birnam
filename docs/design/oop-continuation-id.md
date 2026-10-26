@@ -451,3 +451,48 @@ cleanup and discarded-handle refusal. [Receipt](../measurements/generation-oop-2
 This is not image or full-language completion: image compiler connections,
 Store/Relational, remaining native fixtures, installed tooling and restored workers
 still need integration and acceptance.
+
+## Image and portable materialization reconnection
+
+The retained image operations now use Oop messages. Previously, image compilation
+and reflection depended on the removed carrier and native-entry interfaces. The
+new sequence is: snapshot allocated objects and vtable bindings through Id;
+query each owner's portable representation; construct Codegen Methods; restore
+Execution-owned Blocks and captures; install current bindings. Id's ordinary
+lookup and direct Method entry are unchanged. No Id operation, payload catalog,
+or shared native runtime state was added.
+
+Execution owns Block capture restoration and rejects repeated initialization.
+Codegen owns its image stage and bounded materialization cache; reflection obtains
+implementations through Method messages. NativeBackend records whether each
+portable body is synchronous. `BIRNAMO2` stores two native bodies per portable
+program; named templates use Codegen's existing constructors. Mapped recovery
+loads those objects without invoking the compiler; explicit rebuild uses portable
+programs without parsing recorded source. Image owns the immediate-reference
+locator described in Design 60O. Word exports its existing immediate vtable so
+methods installed there can be restored.
+Temporary byte-conversion Sequences now leave their scoped roots after each
+conversion instead of remaining alive for the complete inventory or save.
+
+Id's missing-message packet remains the selector followed by original arguments.
+When `addMethod:as:` installs `doesNotUnderstand:`, it asks the Method for its
+handler form. Native Methods return themselves. Codegen's source Methods construct
+an independent context that accepts their declared argument prefix. Installation
+still acknowledges the submitted Method, which retains its original arity;
+lookup returns the installed handler. No additional Method lookup occurs on an
+ordinary send, and neither a captured Method nor its implementation is rewritten.
+
+`scripts/oop-image-test.sh` runs the core, published Bootstrap, Host and Generation
+gates, the existing 107 Portable Code checks, handler/restoration checks, immediate
+locator admission, and fresh-process mapped/rebuilt recovery. The image probe
+preserves aliases, a cycle, immediate identity and behavior, native signatures,
+missing-message errors, and task suspension across GC. The default CLI is also
+checked against the saved bootstrap image. Store/Relational, restored workers,
+remaining native fixtures, installed tooling and performance qualification remain
+outside this milestone.
+
+The fresh combined gate passed on 2026-10-26. Its 124,711,349-byte image saved in
+211 seconds, loaded mapped in 47 seconds, rebuilt in 34 seconds, and reached the
+CLI input result in 51 seconds. Each is one startup-inclusive acceptance run, not
+a comparative benchmark; image/startup performance remains unqualified.
+[Receipt](../measurements/image-oop-20261026.json).

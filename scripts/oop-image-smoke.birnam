@@ -1,0 +1,34 @@
+// ImageTestPath is supplied by the runner; main must run without this file.
+[[|
+let cycle := [Cell with: nil]; [cycle set: cycle];
+let store := [ObjectModel newSlots: #[[Integer wordOf: 137] #[cycle cycle]] parent: ObjectVt];
+[Globals at: #ImageStoreProbe put: store];
+[Reflect defineMethod: #imageWordAnswer on: ImmediateWordVt as: [:self | 23]];
+let actor := [Object clone];
+let native := [Execution block: [:self :word |
+  [word wrappingAdd: [Execution wordResultOf: 1 selector: #word]]
+] withNativeSignature: "ww"];
+[Reflect defineMethod: #nativeBump: on: actor as: native];
+[Globals at: #ImageNativeProbe put: actor];
+[Globals at: #main put: [|
+  let store := ImageStoreProbe; let pair := [ObjectModel slot: 1 in: store];
+  let captured := [Cell with: 0];
+  let task := [TaskControl start: [:task | [task wait]; [captured set: 42]; 19]];
+  let waiting := [[task pollOutcome] isNil];
+  [GC collectPrecisely];
+  [task resolve: [task waitToken] with: nil];
+  [System println: #[
+    [[ObjectModel slot: 0 in: store] == [Integer wordOf: 137]]
+    [[pair at: 0] == [pair at: 1]]
+    [[[pair at: 0] value] == [pair at: 0]]
+    [[[ObjectModel slot: 0 in: store] imageWordAnswer] = 23]
+    [[Integer fromWord: [ImageNativeProbe nativeBump: [Integer wordOf: 7]]] = 8]
+    [[[Object missing: 1 with: 2] kind] == #doesNotUnderstand]
+    waiting
+    [[captured value] = 42]
+    [[task pollOutcome] = #[#success 19]]
+  ]]
+]];
+[System println: [System saveImage: ImageTestPath]];
+[System println: [[System imageSaveReport] status]]
+] value]

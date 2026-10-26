@@ -1,0 +1,47 @@
+// Run before saving the image; keep rejection and dispatch checks independent.
+[[|
+let checks := [Cell with: #[]];
+let check := [:answer | [checks set: [[checks value] add: answer]]];
+let target := [Object clone];
+[check value: [[[target missing] kind] == #doesNotUnderstand]];
+[check value: [[[target missing: 1] kind] == #doesNotUnderstand]];
+[check value: [[[target missing: 1 with: 2] kind] == #doesNotUnderstand]];
+let handler := [Reflect methodForArity: 1 implementation: [:self :selector | selector]];
+let behavior := [Vtable ensurePrivateVtableFor: target];
+[check value: [[behavior addMethod: handler as: #doesNotUnderstand:] == handler]];
+let installed := [target methodFor: #doesNotUnderstand:];
+[check value: [[target missing: 1 with: 2] == #missing:with:]];
+// Installing a handler must not relax the submitted Method's ordinary arity.
+[check value: [[handler invokeOn: target arguments: #[#missing: 1]] isNil]];
+[check value: [[handler invokeOn: target arguments: #[#missing:]] == #missing:]];
+let rebound := [installed withImplementation: [:self :selector | 42]];
+[behavior addMethod: rebound as: #doesNotUnderstand:];
+[GC collectPrecisely];
+[check value: [[target missing: 1] = 42]];
+[check value: [[installed invokeOn: target arguments: #[#missing: 1]] == #missing:]];
+let synchronous := [[Codegen methodTemplateForArity: 1 synchronous: true] withImplementation: [:self :selector | selector]];
+[behavior addMethod: synchronous as: #doesNotUnderstand:];
+[check value: [[target missing: 1] == #missing:]];
+[check value: [[synchronous invokeOn: target arguments: #[#missing: 1]] isNil]];
+
+let native := [ImageTestNativeMethods methodAt: #packetCount];
+[behavior addMethod: native as: #doesNotUnderstand:];
+[check value: [native bindingMatchesIn: behavior as: #doesNotUnderstand:]];
+[check value: [[Integer fromWord: [target missing: 1 with: 2]] = 3]];
+
+let value := [Cell with: 17];
+let closure := [| [value value]];
+let code := [closure codeObject];
+let source := [NativeBackend emit: [CodeObject canonicalBytesOf: code] source: "" filename: "<image-test>" persistent: false synchronous: false];
+// Execution owns Block storage and permits a shell's captures to be filled once.
+let method := [[TCC compile: source] initialize];
+let shell := [Block imageShellFromMethod: method codeObject: code];
+[check value: [[Block restoreImageCaptures: #[value] of: shell] == shell]];
+[GC collectPrecisely];
+[check value: [[shell value] = 17]];
+[check value: [[[Block restoreImageCaptures: #[value] of: shell] kind] == #nativeInvalidRequest]];
+let wrong := [Block imageShellFromMethod: method codeObject: code];
+[check value: [[[Block restoreImageCaptures: #[] of: wrong] kind] == #nativeInvalidRequest]];
+[check value: [[Block restoreImageCaptures: #[value] of: wrong] == wrong]];
+[checks value]
+] value]

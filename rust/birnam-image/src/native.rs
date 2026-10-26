@@ -152,8 +152,12 @@ impl State {
     }
     unsafe fn text(&self, q: &Scope<'_>, family: &[u8], b: &[u8]) -> Result<Oop, Failure> {
         unsafe {
-            let v = q.keep(self.byte_value(b)?)?;
-            q.keep(self.send(self.named(family)?, b"fromBytes:", &[v])?)
+            let value = {
+                let input = Scope::new(self);
+                let v = input.keep(self.byte_value(b)?)?;
+                self.send(self.named(family)?, b"fromBytes:", &[v])?
+            };
+            q.keep(value)
         }
     }
     unsafe fn word(&self, v: usize) -> Result<Oop, Failure> {
@@ -231,15 +235,16 @@ impl State {
     unsafe fn behavior(&self, o: Oop) -> Result<Oop, Failure> {
         unsafe { object(self.send(self.id.root, b"behaviorOf:", &[o])?) }
     }
-    // Match ObjectModel ensurePrivateVtableFor: without mutating dictionaries.
-    // A behavior is already its own method target; its behavior is the Id.
+    // A vtable is itself the dictionary target; ordinary receivers use their
+    // current vtable. The Id API receiver is distinct from the metatable.
     unsafe fn method_behavior(&self, target: Oop) -> Result<Oop, Failure> {
-        let behavior = unsafe { self.behavior(target) }?;
-        Ok(if behavior == self.id.root {
-            target
-        } else {
-            behavior
-        })
+        unsafe {
+            if abi::as_size(self.send(self.id.root, b"isBehavior:", &[target])?) == Some(1) {
+                Ok(target)
+            } else {
+                self.behavior(target)
+            }
+        }
     }
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Failure> {
         unsafe { Ok(optional(self.send(o, b"isError", &[])?) == Some(self.named(b"true")?)) }
@@ -254,7 +259,7 @@ impl State {
 }
 // The old native shims cannot execute these message-based object files.
 fn runtime_abi() -> u64 {
-    support::wyhash(support::runtime_abi_hash(), b"Id-oop-image-v2")
+    support::wyhash(support::runtime_abi_hash(), b"Id-oop-image-v3")
 }
 fn composition_identity(decoded: &v8::DecodedImage<'_>) -> Vec<u8> {
     use sha2::{Digest, Sha256};
@@ -301,6 +306,7 @@ enum Value {
     Integer(u64),
     Float(u64),
     Word(u64),
+    Immediate(u64),
     String(Vec<u8>),
     Bytes(Vec<u8>),
 }
@@ -318,6 +324,11 @@ impl Value {
                     Self::Float(_) => 14,
                     _ => 15,
                 });
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Self::Immediate(n) => {
+                out.push(19);
+                out.extend_from_slice(&8u32.to_le_bytes());
                 out.extend_from_slice(&n.to_le_bytes());
             }
             Self::Symbol(b) | Self::Export(b) | Self::String(b) | Self::Bytes(b) => {
@@ -364,6 +375,9 @@ impl Value {
                     _ => Self::Word(n),
                 }
             }
+            19 => Self::Immediate(u64::from_le_bytes(
+                field.data.ok_or_else(bad)?.try_into().map_err(|_| bad())?,
+            )),
             5 => Self::Symbol(field.data.ok_or_else(bad)?.to_vec()),
             9 => Self::Export(field.data.ok_or_else(bad)?.to_vec()),
             16 => Self::String(field.data.ok_or_else(bad)?.to_vec()),
@@ -416,8 +430,16 @@ impl Graph<'_, '_> {
             if o.is_null() {
                 return Ok(Value::Null);
             }
-            if let Some(v) = abi::as_size(o) {
-                return Ok(Value::Word(v as u64));
+            if abi::as_size(o).is_some() {
+                let index = if let Some(index) = self.indices.get(&o.addr()) {
+                    *index
+                } else {
+                    let index = u32::try_from(self.objects.len()).map_err(|_| bad())?;
+                    self.indices.insert(o.addr(), index);
+                    self.objects.push(o);
+                    index
+                };
+                return Ok(Value::Heap(index));
             }
             self.q.keep(o)?;
             for (n, v) in [
@@ -454,6 +476,15 @@ impl Graph<'_, '_> {
             let mut i = 0;
             while i < self.objects.len() {
                 let o = self.objects[i];
+                if let Some(bits) = abi::as_size(o) {
+                    self.nodes.push(Node {
+                        locator: Value::Immediate(bits as u64),
+                        fields: Vec::new(),
+                        program: None,
+                    });
+                    i += 1;
+                    continue;
+                }
                 // Current owner policy selects an unpublished payload or refuses
                 // persistence. Returning self preserves ordinary Error values too.
                 let payload = self.s.call(self.q, o, b"imagePayload", &[])?;
@@ -811,11 +842,28 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Oop
         }
         let mut binding_values = Vec::new();
         let mut selectors = Vec::new();
+        let mut named_styles = Vec::new();
         for row in rows {
             let values = s.sequence(q, row)?;
-            if values.len() != 4 {
+            if !matches!(values.len(), 4 | 5) {
                 return Err(bad());
             }
+            let sync = if values.len() == 5 {
+                if values[4] == s.named(b"true")? {
+                    true
+                } else if values[4] == s.named(b"false")? {
+                    false
+                } else {
+                    return Err(bad());
+                }
+            } else {
+                false
+            };
+            named_styles.push(if sync {
+                selection::Disposition::Synchronous
+            } else {
+                selection::Disposition::Resumable
+            });
             selectors.push(s.symbol(values[1])?);
             binding_values.push([
                 graph.reference(values[0])?,
@@ -838,6 +886,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Oop
         let mut sources_bytes = Vec::new();
         graph.reference(owners)?.encode(&mut sources_bytes);
         let programs = graph.finish()?;
+
         let specs = binding_values
             .iter()
             .zip(&selectors)
@@ -857,7 +906,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Oop
         let selection = selection::encode(
             &programs,
             &bindings,
-            &vec![selection::Disposition::Resumable; specs.len()],
+            &named_styles,
             &vec![selection::Disposition::Resumable; count],
         )
         .map_err(|_| bad())?;
@@ -953,7 +1002,7 @@ unsafe fn save(s: &State, q: &Scope<'_>, system: Oop, path: &Path) -> Result<Oop
         *s.report.borrow_mut() = Report {
             status: b"saved",
             saved: facts.len(),
-            code: count * 2 + specs.len(),
+            code: count * 2,
             detail: Vec::new(),
         };
         Ok(s.named(b"true")?)
@@ -1006,7 +1055,7 @@ unsafe fn resolve(
             Value::True => s.named(b"true"),
             Value::False => s.named(b"false"),
             Value::Null => Ok(ptr::null_mut()),
-            Value::Word(n) => abi::size(*n as usize).ok_or_else(bad),
+
             Value::Symbol(b) => q.keep(s.intern(b)?),
             Value::Export(b) => q.keep(s.named(b)?),
             Value::Heap(i) => objects
@@ -1029,6 +1078,10 @@ unsafe fn restore_heap(
         let mut objects = vec![ptr::null_mut(); nodes.len()];
         for (i, node) in nodes.iter().enumerate() {
             let v = match &node.locator {
+                Value::Immediate(n) => usize::try_from(*n)
+                    .ok()
+                    .and_then(abi::size)
+                    .ok_or_else(bad)?,
                 Value::Integer(n) | Value::Float(n) | Value::Word(n) => {
                     let family = match node.locator {
                         Value::Integer(_) => b"Integer".as_slice(),
@@ -1535,66 +1588,30 @@ unsafe fn load(
         // resident exports. Old heap objects held by callers keep their methods.
         // Only resident binding keys are needed here. Query their actual owners;
         // constructing a full code/provenance report creates avoidable heap work.
-        let count = abi::as_size(s.send(s.id.root, b"behaviorCount", &[])?).ok_or_else(bad)?;
-        let mut behaviors = Vec::with_capacity(count);
-        for index in 0..count {
-            behaviors.push(q.keep(object(s.send(
-                s.id.root,
-                b"behaviorAt:",
-                &[s.word(index)?],
-            )?)?)?);
-        }
+        let rows = s.sequence(q, s.call(q, codegen, b"portableImageBindings", &[])?)?;
         let mut removals = Vec::new();
-        for behavior in behaviors {
-            let owner = optional(s.send(s.id.root, b"ownerOf:", &[behavior])?);
-            let target = if let Some(owner) = owner {
-                q.keep(owner)?;
-                if s.behavior(owner)? == behavior {
-                    owner
-                } else if s.export(behavior)?.is_some() {
-                    behavior
-                } else {
-                    continue;
-                }
-            } else if s.export(behavior)?.is_some() {
-                behavior
-            } else {
-                continue;
-            };
-            if s.export(target)?.is_none() {
-                continue;
+        for row in rows {
+            let row = s.sequence(q, row)?;
+            if row.len() < 4 {
+                return Err(bad());
             }
-            q.keep(target)?;
-            for index in 0..1_048_576usize {
-                let Some(selector) =
-                    optional(s.send(s.id.root, b"selectorAt:in:", &[s.word(index)?, behavior])?)
-                else {
-                    break;
-                };
-                q.keep(selector)?;
-                if publication
+            let target = row[0];
+            let selector = row[1];
+            if s.export(target)?.is_none()
+                || publication
                     .iter()
                     .any(|&(_, t, n, _, _)| t == target && n == selector)
-                {
-                    continue;
-                }
-                let entry = s.send(s.id.root, b"bindingOf:in:", &[selector, behavior])?;
-                if optional(entry).is_none() {
-                    continue;
-                }
-                if optional(s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[entry])?)
-                    .is_none()
-                {
-                    continue;
-                }
-                removals.push((
-                    ptr::null_mut(),
-                    target,
-                    selector,
-                    s.named(b"nil")?,
-                    behavior,
-                ));
+            {
+                continue;
             }
+            let behavior = q.keep(s.method_behavior(target)?)?;
+            removals.push((
+                ptr::null_mut(),
+                target,
+                selector,
+                s.named(b"nil")?,
+                behavior,
+            ));
         }
         removals.extend(publication);
         let publication = removals;
@@ -2088,7 +2105,7 @@ literals![
     b"isError",
     b"true",
     b"rejected",
-    b"Id-oop-image-v2",
+    b"Id-oop-image-v3",
     b"0123456789abcdef",
     b"nil",
     b"false",
@@ -2243,6 +2260,7 @@ literals![
     b"ImageFormat",
     b"inspect:architecture:abi:",
     b"compose:",
+    b"isBehavior:",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {

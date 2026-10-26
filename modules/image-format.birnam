@@ -57,8 +57,8 @@ let retentionPolicies := {0 -> true, 1 -> true, 2 -> true};
 // Generic row projections use masks; the admission policy stays here.
 let factMask := "1110010111001000000";
 let exportMask := "0000000001000000000";
-let locatorMask := "0000000001001111111";
-let nativePayloadMask := "0000000000000111110";
+let locatorMask := "00000000010011111111";
+let nativePayloadMask := "00000000000001111101";
 let ordinaryFieldMask := "1111010111101000001";
 let referenceMask := "0000000100001000001";
 let blockMask := "0000000000001000001";
@@ -207,7 +207,7 @@ let blockMask := "0000000000001000001";
 // 3 u32-length bytes, 4 u32-length nonempty NUL-free name. '-' rejects a tag.
 [Reflect defineMethod: #field: on: ImageFormat as: [:self :p |
   [self checked: [|
-    let field := [[p at: 0] readTaggedFieldAt: [self position: p] schema: "0001-4-204-22111332"];
+    let field := [[p at: 0] readTaggedFieldAt: [self position: p] schema: "0001-4-204-221113323"];
     [self require: [field notNil] context: fieldContext];
     [[field notNil] ifTrue: [| [[p at: 1] set: [field at: 3]]]];
     field
@@ -246,7 +246,7 @@ let blockMask := "0000000000001000001";
 // Heap objects are #[locator vectorOfFields]. All loops are bounded by bytes.
 [Reflect defineMethod: #heap:into: on: ImageFormat as: [:self :payload :objects |
   [self checked: [|
-    let rows := [payload readTaggedTableWithSchema: "0001-4-204-22111332" limit: 1048576];
+    let rows := [payload readTaggedTableWithSchema: "0001-4-204-221113323" limit: 1048576];
     [self require: [rows notNil] context: heapFramingContext];
   [self checked: [|
     [self require: [[[[objects value] size] + [rows size]] <= 1048576] context: heapQuantityContext];
@@ -378,6 +378,12 @@ let blockMask := "0000000000001000001";
     [self consider: [all firstLocatorOutside: locatorMask] priority: 0 context: locatorContext into: first];
     let payloads := [all whereLocatorTags: nativePayloadMask];
     [self consider: [payloads firstFieldCountNot: 0] priority: 1 context: nativePayloadContext into: first];
+    // Immediate Oops have no payload allocation and no mutable vtable links.
+    // Keep them distinct from raw slots and boxed Word values.
+    [self each: [all whereLocatorTags: "00000000000000000001"] do: [:object :j |
+      let bits := [[object at: 0] at: 2];
+      [self require: [[[bits size] = 8] ifTrue: [| [[bits readU32At: 4] < 2147483648]] ifFalse: [| false]] context: heapContext]
+    ]];
     let exports := [all whereLocatorTags: exportMask];
     let systems := [exports whereLocatorData: "SystemVt"];
     [self consider: [systems firstFieldCountNot: 0] priority: 2 context: heapContext into: first];
@@ -436,7 +442,7 @@ let blockMask := "0000000000001000001";
   [[policy = 1] ifTrue: [| [self require: [[self unsignedGreater: argument than: basis] not] context: factsContext]]];
   [self require: [count <= [[[bytes size] - 36] / 13]] context: factsContext];
   [self checked: [|
-  let records := [bytes readTaggedRecordsAt: [self position: p] count: count prefixBytes: 10 fields: 3 schema: "0001-4-204-22111332"];
+  let records := [bytes readTaggedRecordsAt: [self position: p] count: count prefixBytes: 10 fields: 3 schema: "0001-4-204-221113323"];
   [self require: [records notNil] context: factsContext];
   [self checked: [|
     let first := [self cell: nil];

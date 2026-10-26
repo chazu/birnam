@@ -352,6 +352,7 @@ literals![
     b"ownerOf:put:",
     b"Word",
     b"WordVt",
+    b"ImmediateWordVt",
     b"Roots",
     b"GC",
     b"ObjectModel",
@@ -531,7 +532,11 @@ unsafe extern "C" fn initialize(
             // the identity or eight-byte storage of constructed Word objects.
             let size_behavior = s.send(id.root, b"sizeBehavior", &[])?;
             s.send(id.root, b"parentOf:put:", &[size_behavior, behavior])?;
-            for (name, value) in [(b"Word".as_slice(), prototype), (b"WordVt", behavior)] {
+            for (name, value) in [
+                (b"Word".as_slice(), prototype),
+                (b"WordVt", behavior),
+                (b"ImmediateWordVt", size_behavior),
+            ] {
                 s.send(*namespace, b"at:put:", &[s.names[name], value])?;
             }
             s.ready.set(true);

@@ -1,154 +1,131 @@
-//! The reflection operations consumed by stdlib and runtime tooling.
+//! Live reflection over current owner messages; no foreign Method payload reads.
 use super::*;
 use std::collections::HashSet;
-#[derive(Clone, Copy)]
-pub(super) enum Op {
-    Behavior,
-    Global,
-    Names,
-    Methods,
-    DirectMethods,
-    Parent,
+unsafe fn call(s: &State, q: &Scope<'_>, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+    unsafe { Ok(q.keep(s.send(r, n, a)?)) }
 }
-impl Op {
-    pub fn count(self) -> usize {
-        if matches!(self, Self::Names) { 0 } else { 1 }
-    }
-}
-unsafe fn call(
-    s: &State,
-    q: &Scope<'_>,
-    r: Oop,
-    name: &[u8],
-    args: &[Operand],
-) -> Result<Oop, Outcome> {
-    unsafe { q.keep(object(s.send(r, name, args)?)?) }
-}
-// Native exports win, then source-owned Globals. All observations go through
-// the owners and remain rooted across collecting or replaced lookup methods.
-unsafe fn target_name(s: &State, q: &Scope<'_>, target: Oop) -> Result<Option<Oop>, Outcome> {
+unsafe fn target_name(s: &State, q: &Scope<'_>, target: Oop) -> Result<Oop, Oop> {
     unsafe {
-        if let Some(name) = s.send(s.ns, b"nameOf:", &[Operand::object(target)])?.as_object() {
-            return q.keep(name).map(Some);
+        let exported = call(s, q, s.ns, b"nameOf:", &[target])?;
+        if !exported.is_null() {
+            return Ok(exported);
         }
-        let globals = q.keep(s.named(b"Globals")?)?;
-        let nil = q.keep(s.named(b"nil")?)?;
-        s.send(globals, b"nameOf:", &[Operand::object(target)])?
-            .as_object().filter(|name| *name != nil).map(|name| q.keep(name)).transpose()
+        call(s, q, s.named(b"Globals")?, b"nameOf:", &[target])
     }
 }
-pub(super) unsafe fn operation(
-    s: &State,
-    q: &Scope<'_>,
-    op: Op,
-    args: &[Operand],
-) -> Result<Operand, Outcome> {
-    unsafe {
+unsafe fn methods(c: Oop, a: *const Oop, n: usize, direct: bool) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [target] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*target]);
         let nil = s.named(b"nil")?;
-        if matches!(op, Op::Behavior) {
-            return s.send(s.id.receiver, b"behaviorOf:", args);
-        }
-        if matches!(op, Op::Parent) {
-            return s.send(s.id.receiver, b"parentOf:", args);
-        }
-        if matches!(op, Op::Global) {
-            let exported = s.send(s.ns, b"at:", args)?;
-            return if exported.kind() == native::UNIT {
-                s.send(s.named(b"Globals")?, b"at:", args)
+        let mut behavior =
+            if direct && abi::as_size(s.send(s.id.root, b"isBehavior:", &[*target])?) == Some(1) {
+                *target
             } else {
-                Ok(exported)
+                call(s, &q, s.id.root, b"behaviorOf:", &[*target])?
             };
-        }
-        let mut out = call(s, q, s.named(b"Vector")?, b"new", &[])?;
-        if matches!(op, Op::Names) {
-            let count = s.send(s.ns, b"count", &[])?.as_word().ok_or_else(invalid)?;
-            for index in 0..count {
-                let name = call(s, q, s.ns, b"nameAt:", &[Operand::word(index)])?;
-                out = call(s, q, out, b"add:", &[Operand::object(name)])?;
-            }
-            return Ok(Operand::object(out));
-        }
-        let direct = matches!(op, Op::DirectMethods);
-        let mut behavior = if direct && s.send(s.id.receiver, b"isBehavior:", args)?.as_word() == Some(1) {
-            object(args[0])?
-        } else { call(s, q, s.id.receiver, b"behaviorOf:", args)? };
         let mut seen = HashSet::new();
         let mut visited = HashSet::new();
+        let mut rows = Vec::new();
         loop {
             if !visited.insert(behavior) {
                 return Err(invalid());
             }
-            let owner = s
-                .send(s.id.receiver, b"ownerOf:", &[Operand::object(behavior)])?
-                .as_object()
-                .unwrap_or(behavior);
-            q.keep(owner)?;
-            let target = if let Some(name) = target_name(s, q, owner)? {
-                name
-            } else if owner != behavior {
-                target_name(s, q, behavior)?.unwrap_or(nil)
+            q.keep(behavior);
+            let owner = call(s, &q, s.id.root, b"ownerOf:", &[behavior])?;
+            let owner = if owner.is_null() || owner == nil {
+                behavior
             } else {
-                nil
+                owner
             };
-            q.keep(target)?;
-            for index in 0..1_048_576 {
-                let Some(selector) = s
-                    .send(
-                        s.id.receiver,
-                        b"selectorAt:in:",
-                        &[Operand::word(index), Operand::object(behavior)],
-                    )?
-                    .as_object()
-                else {
-                    break;
-                };
-                q.keep(selector)?;
+            let mut target = target_name(s, &q, owner)?;
+            if (target.is_null() || target == nil) && owner != behavior {
+                target = target_name(s, &q, behavior)?;
+            }
+            if target.is_null() {
+                target = nil;
+            }
+            for (selector, method) in image::direct_bindings(s, &q, behavior)? {
                 if !seen.insert(selector) {
                     continue;
                 }
-                let entry = s.send(
-                    s.id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(selector), Operand::object(behavior)],
-                )?;
-                let implementation = if entry.as_entry().is_some() {
-                    s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[entry])?
-                        .as_object()
-                        .unwrap_or(nil)
-                } else {
-                    nil
-                };
-                q.keep(implementation)?;
-                let mut row = call(s, q, s.named(b"Map")?, b"new", &[])?;
+                let implementation = call(s, &q, s.receiver, b"implementationOf:", &[method])?;
+                let mut row = call(s, &q, s.named(b"Map")?, b"new", &[])?;
                 for (key, value) in [
                     (b"selector".as_slice(), selector),
                     (b"target", target),
                     (b"method", implementation),
                 ] {
-                    let key = q.keep(s.id.intern_name(key)?)?;
-                    row = call(
-                        s,
-                        q,
-                        row,
-                        b"at:put:",
-                        &[Operand::object(key), Operand::object(value)],
-                    )?;
+                    let key = q.keep(s.intern(key)?);
+                    row = call(s, &q, row, b"at:put:", &[key, value])?;
                 }
                 if direct {
-                    let key = q.keep(s.id.intern_name(b"vtable")?)?;
-                    row = call(s, q, row, b"at:put:", &[Operand::object(key), Operand::object(behavior)])?;
+                    let key = q.keep(s.intern(b"vtable")?);
+                    row = call(s, &q, row, b"at:put:", &[key, behavior])?;
                 }
-                out = call(s, q, out, b"add:", &[Operand::object(row)])?;
+                rows.push(row);
             }
-            if direct { break; }
-            let Some(parent) = s
-                .send(s.id.receiver, b"parentOf:", &[Operand::object(behavior)])?
-                .as_object()
-            else {
+            if direct {
                 break;
-            };
-            behavior = q.keep(parent)?;
+            }
+            behavior = call(s, &q, s.id.root, b"parentOf:", &[behavior])?;
+            if behavior.is_null() {
+                break;
+            }
         }
-        Ok(Operand::object(out))
-    }
+        s.vector(&q, &rows)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn all_methods(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { methods(c, a, n, false) }
+}
+pub(super) unsafe extern "C" fn direct_methods(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { methods(c, a, n, true) }
+}
+pub(super) unsafe extern "C" fn remove(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [selector, target] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*selector, *target]);
+        let behavior = if abi::as_size(s.send(s.id.root, b"isBehavior:", &[*target])?) == Some(1) {
+            *target
+        } else {
+            call(s, &q, s.id.root, b"behaviorOf:", &[*target])?
+        };
+        let method = call(
+            s,
+            &q,
+            s.named(b"Execution")?,
+            b"directMethodFor:in:",
+            &[*selector, behavior],
+        )?;
+        if method == s.named(b"nil")? {
+            let kind = q.keep(s.intern(b"missingDirectMethod")?);
+            return s.send(s.named(b"Error")?, b"kind:", &[kind]);
+        }
+        let result = call(s, &q, behavior, b"removeMethod:", &[*selector])?;
+        if !result.is_null() && s.is_error(result)? {
+            return Ok(result);
+        }
+        Ok(*target)
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }

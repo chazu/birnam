@@ -7,9 +7,9 @@
 > a clean exact-current cut: no v7 reader or writer remains, and old images or
 > native image artifacts are not compatibility inputs.
 
-> **Current runtime admission:** Design 83 advances the runtime ABI to 6
-> (`5582a42725e647a6`) for the 40-byte behavior payload, following ABI 5
-> for exact-entry adapters. Image format 8 is unchanged.
+> **Current Oop runtime admission (2026-10-26):** the runtime ABI hash
+> now uses `Id-oop-image-v3`. Image format 8 adds the immediate-reference locator
+> below. Older runtime images and `BIRNAMO1` native bundles are rejected.
 
 ## 1. Problem
 
@@ -86,6 +86,19 @@ its private vtable.
 VtableLocator is therefore ExportRef, PortableBlockVtableRef, or one of the
 four constructor locators. Constructor locators and PortableProgramRef reject
 in ordinary fields, Facts, and CodeBindingInventory.
+
+### Immediate Oop references
+
+```text
+ImmediateOop := 0x13 || length:u32-le (= 8) || value:u64-le
+```
+
+The value is an unsigned 63-bit immediate Oop value. This locator occupies a
+logical heap identity row with zero fields, but loading reconstructs the immediate
+reference without allocating a box. Repeated references use that row's `HeapRef`.
+The locator is rejected in ordinary fields and cannot have private behavior links.
+It is distinct from raw slot words (`0x03`) and identity-bearing boxed Word values
+(`0x0f`). Image owns this encoding; Id acquires no payload classification.
 
 ## 4. Classification order
 

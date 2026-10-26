@@ -175,3 +175,196 @@ pub(super) unsafe extern "C" fn from_method(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+
+pub(super) unsafe extern "C" fn admit_selected(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [code, sync] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        if *sync != s.named(b"true")? && *sync != s.named(b"false")? {
+            return Err(invalid());
+        }
+        let q = s.scope(&[r, *code, *sync]);
+        let result = admit(ptr::null_mut(), c, r, code, 1);
+        if abi::is_fault(result) {
+            return Err(abi::object_reference(result));
+        }
+        let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
+        let getter = q.keep(s.send(s.code_getter, b"withContext:", &[*sync])?);
+        s.send(
+            behavior,
+            b"addMethod",
+            &[s.names[b"isSynchronous".as_slice()], getter],
+        )?;
+        Ok(r)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn block_synchronous(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    _: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        if r == s.block {
+            return Ok(s.nil);
+        }
+        let q = s.scope(&[r]);
+        let method = q.keep(s.field(r, 0)?);
+        s.send(method, b"isSynchronous", &[])
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn capture_at(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [index] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let i = resumable::index(s, *index)?
+            .checked_add(1)
+            .ok_or_else(invalid)?;
+        s.field(r, i)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) -> Result<Oop, Oop> {
+    unsafe {
+        let q = s.scope(&[method, code]);
+        if let Some(v) = captures {
+            q.keep(v);
+        }
+        let factory = q.keep(s.named(b"CodeObject")?);
+        let count = q.keep(s.send(factory, b"captureCountOf:", &[code])?);
+        let count = resumable::index(s, count)?;
+        if count > 1_048_576 {
+            return Err(invalid());
+        }
+        let admitted = q.keep(s.send(method, b"codeObject", &[])?);
+        if admitted != s.nil {
+            let actual_count = q.keep(s.send(factory, b"captureCountOf:", &[admitted])?);
+            let actual_arity = q.keep(s.send(factory, b"parameterCountOf:", &[admitted])?);
+            let arity = q.keep(s.send(factory, b"parameterCountOf:", &[code])?);
+            if resumable::index(s, actual_count)? != count
+                || resumable::index(s, actual_arity)? != resumable::index(s, arity)?
+            {
+                return Err(invalid());
+            }
+        }
+
+        let owned = q.keep(s.send(method, b"captured", &[])?);
+        let owned = q.keep(s.send(owned, b"admitCodeObject:", &[code])?);
+        let mut values = vec![owned];
+        if let Some(captures) = captures {
+            if abi::as_size(s.send(captures, b"sizeWord", &[])?) != Some(count) {
+                return Err(invalid());
+            }
+            for i in 0..count {
+                values.push(q.keep(s.send(captures, b"atWord:", &[abi::size(i).unwrap()])?));
+            }
+        } else {
+            values.resize(count + 1, s.nil);
+        }
+        let block = q.keep(s.make_block(s.block_vt, &values)?);
+        let signature = q.keep(s.send(code, b"nativeSignature", &[])?);
+        if signature == s.nil {
+            Ok(block)
+        } else {
+            let wrapped = q.keep(s.send(
+                s.receiver,
+                b"block:withNativeSignature:",
+                &[block, signature],
+            )?);
+            if s.send(wrapped, b"isError", &[])? == s.named(b"true")? {
+                return Ok(wrapped);
+            }
+            let method = q.keep(s.field(wrapped, 0)?);
+            s.send(method, b"admitCodeObject:", &[code])?;
+            Ok(wrapped)
+        }
+    }
+}
+pub(super) unsafe extern "C" fn from_code(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [method, code, captures] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        with_code(s, *method, *code, Some(*captures))
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn shell(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [method, code] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*method, *code]);
+        let block = q.keep(with_code(s, *method, *code, None)?);
+        if s.storage.borrow().family_of(block) != Some(s.block_vt) {
+            return if s.send(block, b"isError", &[])? == s.named(b"true")? {
+                Ok(block)
+            } else {
+                Err(invalid())
+            };
+        }
+        s.storage.borrow_mut().set_image_shell(block, true);
+        Ok(block)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn restore_captures(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [captures, block] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*captures, *block]);
+        let count = abi::as_size(s.send(*captures, b"sizeWord", &[])?).ok_or_else(invalid)?;
+        if !s.storage.borrow().image_shell(*block)
+            || s.storage.borrow().payload_size(*block)
+                != count
+                    .checked_add(1)
+                    .and_then(|v| v.checked_mul(size_of::<Oop>()))
+        {
+            return Err(invalid());
+        }
+        let mut values = Vec::new();
+        for i in 0..count {
+            values.push(q.keep(s.send(*captures, b"atWord:", &[abi::size(i).unwrap()])?));
+        }
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let mut storage = s.storage.borrow_mut();
+        if !storage.image_shell(*block) {
+            return Err(invalid());
+        }
+        for (i, v) in values.iter().enumerate() {
+            if !storage.write_payload_word(*block, i + 1, v.addr()) {
+                return Err(invalid());
+            }
+        }
+        storage.set_image_shell(*block, false);
+        Ok(*block)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}

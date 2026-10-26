@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-26",
+  "base_commit": "9b7a1cd3",
+  "command": "bash scripts/oop-image-test.sh",
+  "exit_code": 0,
+  "core_unit_tests": 189,
+  "authored_task_control_checks": 177,
+  "generation_lifecycle_checks": 28,
+  "portable_code_checks": 107,
+  "dispatch_and_block_restoration_checks": 18,
+  "immediate_locator_admission_checks": 8,
+  "image_main_checks": 9,
+  "image_acceptance": {
+    "passed": true,
+    "runs": [
+      {
+        "name": "dispatch and Block restoration",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true true true true true true true true true true true true]\n",
+        "stderr": "",
+        "elapsed_seconds": 10.702678083
+      },
+      {
+        "name": "immediate locator admission",
+        "exit_code": 0,
+        "stdout": "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "stderr": "",
+        "elapsed_seconds": 11.64798725
+      },
+      {
+        "name": "save",
+        "exit_code": 0,
+        "stdout": "true\n#saved\n",
+        "stderr": "",
+        "elapsed_seconds": 210.669993584
+      },
+      {
+        "name": "mapped without parser or compiler",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true true true]\nOOP_IMAGE_MAPPED_OK\n",
+        "stderr": "",
+        "elapsed_seconds": 47.318259667000035
+      },
+      {
+        "name": "explicit rebuild without parser",
+        "exit_code": 0,
+        "stdout": "#[true true true true true true true true true]\nOOP_IMAGE_REBUILT_OK\n",
+        "stderr": "",
+        "elapsed_seconds": 34.142607750000025
+      },
+      {
+        "name": "default image-backed CLI",
+        "exit_code": 0,
+        "stdout": "42\n",
+        "stderr": "",
+        "elapsed_seconds": 50.661269042000015
+      }
+    ],
+    "image_bytes": 124711349,
+    "image_sha256": "a85713e11a27f26cd94a787304c5442cf2058a2a9c0dfb93c0ae9256d60a946b"
+  },
+  "contract": "No Id interface or Oop calling-convention changes. Ordinary dispatch remains current lookup followed by direct selected Method entry. Image representations, Codegen staging and Method contexts, and Execution Block captures remain owner-controlled and communicate through Id messages.",
+  "timing_scope": "Single local acceptance runs, including startup and the complete named operation. The save used a published Bootstrap source startup; loads used fresh processes. These are not a matched regression benchmark. The image is the full source Host world plus the probe.",
+  "workspace_check": {
+    "command": "cargo check --offline --locked --workspace --keep-going",
+    "exit_code": 101,
+    "remaining_errors": {
+      "birnam-store": 93,
+      "birnam-relational": 51
+    }
+  },
+  "remaining": [
+    "Store and Relational migration",
+    "Retained native integration fixture migration",
+    "Complete installed tooling/project/REPL and restored worker acceptance",
+    "Image/startup and full-language performance qualification"
+  ],
+  "logs": {
+    ".cargo-target/oop-image-gate.log": "da7a2e18edb0b75c7b17918c152068794e4c183eab86f49cee6122809c23ff19",
+    ".cargo-target/oop-image-workspace-check.log": "5f8b863a74a75376ed9aafed949ad260dff09eb6499470dfbd1b560211dda57d",
+    ".cargo-target/oop-slice/qualification/unit.log": "b388351e43db77e1b2efd9507e0a5bdef419326f621986a66a56d0a85be9685f",
+    ".cargo-target/oop-slice/image-unit.log": "db71f8b6ad7a94eb3d4cd9fb5cc8777ebe756fcc63c338ff50d58ed3375111fe",
+    ".cargo-target/oop-slice/image-qualification/roundtrip-41yf9smp/receipt.json": "c8dd8fc55a4d55f535b73c680dff804e22e182ad3d61f02da85f4d1fe90493de",
+    ".cargo-target/oop-slice/image-qualification/roundtrip-41yf9smp/portable.log": "fdb12bfdfdecef269ef35443bfb642145643066d078c75758f96e20e22355b89"
+  }
+}

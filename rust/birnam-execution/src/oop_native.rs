@@ -122,6 +122,15 @@ pub(super) unsafe extern "C" fn with_signature(
         let method = *fields.first().ok_or_else(invalid)?;
         let context = q.keep(s.send(s.id.root, b"sequence", &[method, *sig])?);
         fields[0] = q.keep(s.send(s.native_value, b"withContext:", &[context])?);
+        let code = q.keep(s.send(method, b"codeObject", &[])?);
+        if code != s.nil {
+            let code = q.keep(s.send(code, b"withNativeSignature:", &[*sig])?);
+            if s.send(code, b"isError", &[])? == s.named(b"true")? {
+                return Ok(code);
+            }
+            let sync = q.keep(s.send(method, b"isSynchronous", &[])?);
+            s.send(fields[0], b"admitCodeObject:synchronous:", &[code, sync])?;
+        }
         s.make_block(s.block_vt, &fields)
     })()
     .unwrap_or_else(abi::fault_reference)

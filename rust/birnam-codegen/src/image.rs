@@ -15,13 +15,14 @@ mod tests {
     fn mapped_plan_checks_inventory_authority_without_emitting_source() {
         let programs =
             include_bytes!("../../../tests/fixtures/portable-code-v1/inventory-nested-closure.bin");
-        let bindings = include_bytes!("../../../tests/fixtures/portable-code-v1/bindings-mixed.bin");
+        let bindings =
+            include_bytes!("../../../tests/fixtures/portable-code-v1/bindings-mixed.bin");
         let selection =
             include_bytes!("../../../tests/fixtures/portable-code-v1/selection-mixed.bin");
         let plan = Plan::new(programs, bindings, selection, false).unwrap();
         // Constructing this plan now produces canonical requests, never C.
         assert_eq!(plan.requests.len(), 2 * plan.programs + plan.bindings);
-        let objects = vec![b"trusted object".to_vec(); plan.requests.len()];
+        let objects = vec![b"trusted object".to_vec(); 2 * plan.programs];
         let encoded = plan.encode(&objects).unwrap();
         assert_eq!(
             plan.decode(&encoded),
@@ -40,6 +41,9 @@ mod tests {
         for n in 0..encoded.len() {
             assert!(plan.decode(&encoded[..n]).is_none());
         }
+        let mut old_bundle = encoded.clone();
+        old_bundle[..8].copy_from_slice(b"BIRNAMO1");
+        assert!(plan.decode(&old_bundle).is_none());
         let mut corrupt = encoded.clone();
         corrupt[8] ^= 1;
         assert!(plan.decode(&corrupt).is_none());
@@ -52,16 +56,32 @@ impl Plan {
     pub fn new(programs: &[u8], bindings: &[u8], selection: &[u8], _emit: bool) -> Option<Self> {
         let p = portable_inventory::inspect(programs).ok()?;
         let b = code_binding_inventory::inspect(bindings).ok()?;
-        materialization_selection::inspect(selection, programs, bindings).ok()?;
+        let selected = materialization_selection::inspect(selection, programs, bindings).ok()?;
         let mut hash = Sha256::new();
         for bytes in [programs, bindings, selection] {
             hash.update((bytes.len() as u64).to_le_bytes());
             hash.update(bytes);
         }
         use crate::backend_request::Request;
-        let mut requests=Vec::new();
-        for i in 0..p.program_count as usize {for synchronous in [false,true]{requests.push(Request::Program{program:p.program(i)?.to_vec(),source:vec![],filename:b"<compiler>".to_vec(),persistent:false,synchronous});}}
-        for i in 0..b.binding_count as usize { requests.push(Request::Named{arity:b.binding(i)?.arity,synchronous:false}); }
+        let mut requests = Vec::new();
+        for i in 0..p.program_count as usize {
+            for synchronous in [false, true] {
+                requests.push(Request::Program {
+                    program: p.program(i)?.to_vec(),
+                    source: vec![],
+                    filename: b"<compiler>".to_vec(),
+                    persistent: false,
+                    synchronous,
+                });
+            }
+        }
+        for i in 0..b.binding_count as usize {
+            requests.push(Request::Named {
+                arity: b.binding(i)?.arity,
+                synchronous: selected.row(i)?.disposition
+                    == materialization_selection::Disposition::Synchronous,
+            });
+        }
         Some(Self {
             programs: p.program_count as usize,
             bindings: b.binding_count as usize,
@@ -70,10 +90,10 @@ impl Plan {
         })
     }
     pub fn encode(&self, objects: &[Vec<u8>]) -> Option<Vec<u8>> {
-        if objects.len() != self.requests.len() {
+        if objects.len() != 2 * self.programs {
             return None;
         }
-        let mut out = b"BIRNAMO1".to_vec();
+        let mut out = b"BIRNAMO2".to_vec();
         out.extend_from_slice(&self.authority);
         out.extend_from_slice(&(objects.len() as u32).to_le_bytes());
         for bytes in objects {
@@ -89,11 +109,11 @@ impl Plan {
         Some(out)
     }
     pub fn decode<'a>(&self, bytes: &'a [u8]) -> Option<Vec<&'a [u8]>> {
-        if bytes.get(..8)? != b"BIRNAMO1" || bytes.get(8..40)? != self.authority {
+        if bytes.get(..8)? != b"BIRNAMO2" || bytes.get(8..40)? != self.authority {
             return None;
         }
         let count = u32::from_le_bytes(bytes.get(40..44)?.try_into().ok()?) as usize;
-        if count != self.requests.len() {
+        if count != 2 * self.programs {
             return None;
         }
         let mut offset = 44usize;
