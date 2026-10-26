@@ -3,7 +3,6 @@
   "scope": "Float arithmetic and conversions through Id and completed Integer/String/Error objects",
   "install_name": "@rpath/libbirnam_float.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ]
 }

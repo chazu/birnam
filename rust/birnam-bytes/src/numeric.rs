@@ -4,30 +4,29 @@ struct Numeric<'a> {
     text: &'a Bytes,
 }
 impl Numeric<'_> {
-    unsafe fn integer(&self, value: i64) -> Result<Operand, Outcome> {
+    unsafe fn integer(&self, value: i64) -> Result<Oop, Oop> {
         unsafe {
-            self.text.id.send_named(
-                self.text.binding(b"Integer")?,
-                b"fromWord:",
-                &[Operand::word(value as usize)],
-            )
-        }
-    }
-    unsafe fn index(&self, value: Operand) -> Result<Option<i64>, Outcome> {
-        unsafe {
-            let v =
+            let word = self.text.word(value as u64)?;
+            self.text.rooted(&[word], || {
                 self.text
-                    .id
-                    .send_named(self.text.binding(b"Integer")?, b"wordOf:", &[value])?;
-            Ok(if v.kind() == native::UNIT {
-                None
-            } else {
-                Some(v.as_word().ok_or_else(invalid)? as i64)
+                    .send(self.text.binding(b"Integer")?, b"fromWord:", &[word])
             })
         }
     }
+    unsafe fn index(&self, value: Oop) -> Result<Option<i64>, Oop> {
+        unsafe {
+            let value = self
+                .text
+                .send(self.text.binding(b"Integer")?, b"wordOf:", &[value])?;
+            if value.is_null() {
+                Ok(None)
+            } else {
+                Ok(Some(self.text.number(value)? as i64))
+            }
+        }
+    }
 }
-unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
+unsafe fn run(t: &Bytes, r: Oop, args: &[Oop], op: usize) -> Result<Oop, Oop> {
     unsafe {
         let n = Numeric { text: t };
         let expected = match op {
@@ -44,7 +43,7 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
             values.push(object(*arg)?);
         }
         t.rooted(&values, || {
-            let nil = Operand::object(t.nil);
+            let nil = t.nil;
             let mut indices = Vec::new();
             if matches!(op, 11 | 12 | 13 | 14) {
                 for arg in args {
@@ -55,16 +54,12 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                 }
             }
             if op == 19 {
-                let mut bytes = t.copy(r, Kind::Bytes)?;
-                let name = t.id.send_named(t.id.receiver, b"symbolBytesOf:", args)?;
-                let Some(name) = name.as_bytes() else {
-                    return Ok(nil);
-                };
-                // Own the borrowed Id name before allocating the result Bytes.
-                bytes.extend_from_slice(
-                    borrowed_bytes(name.pointer, name.length).ok_or_else(invalid)?,
-                );
-                return t.make(bytes, Kind::Bytes);
+                if t.send(t.id.root, b"isSymbol:", args)? != abi::size(1).unwrap() {
+                    return Ok(t.nil);
+                }
+                let mut bytes = t.copy(r)?;
+                bytes.extend_from_slice(&t.read_bytes(args[0])?);
+                return t.make(bytes);
             }
             if op == 22 {
                 let mut values = Vec::new();
@@ -74,7 +69,7 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                     };
                     values.push(v);
                 }
-                let bytes = t.copy(r, Kind::Bytes)?;
+                let bytes = t.copy(r)?;
                 let schema = t.input_bytes(object(args[4])?)?;
                 let Some(rows) = crate::binary_rows::records(
                     &bytes, values[0], values[1], values[2], values[3], &schema,
@@ -104,21 +99,9 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                 if limit > 1_048_576 {
                     return Ok(nil);
                 }
-                let bytes = t.copy(r, Kind::Bytes)?;
+                let bytes = t.copy(r)?;
                 let Some(rows) = crate::binary_rows::rows(&bytes, &schema, limit) else {
                     return Ok(nil);
-                };
-                let key = t.id.intern_name(b"Vector")?;
-                let factory =
-                    object(t.id.send_named(t.namespace, b"at:", &[Operand::object(key)])?)?;
-                let vector = |items: &[Oop]| -> Result<Oop, Outcome> {
-                    let mut out = object(t.id.send_named(factory, b"new", &[])?)?;
-                    for &item in items {
-                        out = object(t.rooted(&[out], || {
-                            t.id.send_named(out, b"add:", &[Operand::object(item)])
-                        })?)?;
-                    }
-                    Ok(out)
                 };
                 let table = std::sync::Arc::new(crate::tagged_view::Table { bytes, rows });
                 if op == 20 {
@@ -131,17 +114,24 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                         .collect();
                     return t.view(crate::tagged_view::View::Rows(std::sync::Arc::new(rows)));
                 }
+                let key = t.selector(b"Vector")?;
+                let factory = object(t.send(t.namespace, b"at:", &[key])?)?;
+                let vector = |items: &[Oop]| -> Result<Oop, Oop> {
+                    let mut out = object(t.send(factory, b"new", &[])?)?;
+                    for &item in items {
+                        out = object(t.rooted(&[out], || t.send(out, b"add:", &[item]))?)?;
+                    }
+                    Ok(out)
+                };
                 let mut out = vector(&[])?;
                 for i in 0..table.rows.len() {
                     out = object(t.rooted(&[out], || {
                         let row =
                             object(t.view(crate::tagged_view::View::Row(table.clone(), i, i))?)?;
-                        t.rooted(&[row], || {
-                            t.id.send_named(out, b"add:", &[Operand::object(row)])
-                        })
+                        t.rooted(&[row], || t.send(out, b"add:", &[row]))
                     })?)?;
                 }
-                return Ok(Operand::object(out));
+                return Ok(out);
             }
             if op == 17 {
                 // Caller supplies the tagged-field schema: empty, fixed 8 bytes,
@@ -153,11 +143,7 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                 let schema = t.input_bytes(object(args[1])?)?;
                 let parsed = {
                     let buffers = t.buffers.borrow();
-                    let b = &buffers
-                        .get(&r.addr())
-                        .filter(|b| b.kind == Kind::Bytes)
-                        .ok_or_else(invalid)?
-                        .bytes;
+                    let b = &buffers.get(&r.addr()).ok_or_else(invalid)?.bytes;
                     (|| {
                         let tag = *b.get(start)?;
                         let shape = *schema.get(tag as usize)?;
@@ -204,36 +190,26 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                     };
                     t.rooted(&[index], || {
                         let data = match data {
-                            Some(b) => object(t.make(b, Kind::Bytes)?)?,
+                            Some(b) => object(t.make(b)?)?,
                             None => t.nil,
                         };
                         t.rooted(&[data], || {
                             let end = object(n.integer(end as i64)?)?;
                             t.rooted(&[end], || {
-                                let key = t.id.intern_name(b"Vector")?;
-                                let vector = object(t.id.send_named(
-                                    t.namespace,
-                                    b"at:",
-                                    &[Operand::object(key)],
-                                )?)?;
-                                let mut out = object(t.id.send_named(vector, b"new", &[])?)?;
+                                let key = t.selector(b"Vector")?;
+                                let vector = object(t.send(t.namespace, b"at:", &[key])?)?;
+                                let mut out = object(t.send(vector, b"new", &[])?)?;
                                 for o in [tag, index, data, end] {
-                                    out = object(t.rooted(&[out], || {
-                                        t.id.send_named(out, b"add:", &[Operand::object(o)])
-                                    })?)?;
+                                    out = object(t.rooted(&[out], || t.send(out, b"add:", &[o]))?)?;
                                 }
-                                Ok(Operand::object(out))
+                                Ok(out)
                             })
                         })
                     })
                 });
             }
             if (12..=16).contains(&op) {
-                let kind = {
-                    let buffers = t.buffers.borrow();
-                    buffers.get(&r.addr()).map(|b| b.kind).ok_or_else(invalid)?
-                };
-                if !matches!(kind, Kind::Bytes) {
+                if !t.buffers.borrow().contains_key(&r.addr()) {
                     return Err(invalid());
                 }
                 if op == 12 {
@@ -247,7 +223,7 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                         b.get(from as usize..to as usize).map(<[u8]>::to_vec)
                     };
                     return match copied {
-                        Some(b) => t.make(b, Kind::Bytes),
+                        Some(b) => t.make(b),
                         None => Ok(nil),
                     };
                 }
@@ -283,18 +259,15 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
                         crate::binary_hash::wyhash(0, b).to_le_bytes().to_vec()
                     }
                 };
-                return t.make(result, Kind::Bytes);
+                return t.make(result);
             }
             if op == 10 {
-                return n.integer(t.length(r, Kind::Bytes)? as i64);
+                return n.integer(t.length(r)? as i64);
             }
             if op == 11 {
                 let byte = {
                     let buffers = t.buffers.borrow();
-                    let b = buffers
-                        .get(&r.addr())
-                        .filter(|b| b.kind == Kind::Bytes)
-                        .ok_or_else(invalid)?;
+                    let b = buffers.get(&r.addr()).ok_or_else(invalid)?;
                     usize::try_from(indices[0])
                         .ok()
                         .and_then(|i| b.bytes.get(i))
@@ -312,11 +285,12 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
 macro_rules! numeric {
     ($name:ident,$op:expr) => {
         pub(super) unsafe extern "C" fn $name(
-            c: *mut c_void,
+            _id: Oop,
+            c: Oop,
             r: Oop,
-            a: *const Operand,
+            a: *const Oop,
             n: usize,
-        ) -> Outcome {
+        ) -> Oop {
             done((|| unsafe {
                 run(state(c)?, r, borrowed_slice(a, n).ok_or_else(invalid)?, $op)
             })())

@@ -16,24 +16,26 @@ The instance owns its selectors and family identities. Eight raw payload bytes
 hold an i64; only Integer reads that representation. Object Model allocates and
 shallow-clones the storage. In precise payload mode, a GC reference owner declares no object edges,
 including through private behaviors. Recognition preserves the existing exact
-Integer behavior rule: a changed behavior is not an exact Integer. No process
-singleton, service table, foreign layout or cached dependency entry is used.
+Integer behavior rule: a changed behavior is not an exact Integer. The resident
+module state stores its own selectors, identities and optimization Method witnesses;
+it does not inspect foreign layouts or cache dependency executables.
 
 | Receiver / selector | Arguments | Result |
 |---|---|---|
-| Integer `fromWord:` | native Word | Integer interpreting the Word as signed 64-bit bits. |
-| Integer `wordOf:` | Object | Native Word for an exact Integer, Unit otherwise. |
-| Integer instance `word` | none | Native Word containing its signed bits. |
+| Integer `fromWord:` | Word or immediate size Oop | Integer interpreting the Word as signed 64-bit bits. |
+| Integer `wordOf:` | Object | Word or immediate size Oop for an exact Integer, absent reference otherwise. |
+| Integer instance `word` | none | Word or immediate size Oop containing its signed bits. |
 | Integer instance `+`, `-`, `*`, `/`, `mod:` | Object | Checked i64 arithmetic, or Error. Division truncates toward zero; MIN mod -1 is zero. |
 | Integer instance `=` | Object | Exact Integer value equality, false for another family. |
 | Integer instance `<`, `<=`, `>`, `>=` | Object | Comparison, preserving existing f64 comparison rounding. |
 | Integer instance `printString` | none | Decimal String through current `fromBytes:`. |
 | Integer instance `to:do:` | end Integer, callable Object | Inclusive iteration by live `value:` sends; receiver on completion, first Error on failure. MAX is visited without overflowing the loop counter. |
-| Integer `evaluate:receiver:argument:with:` | selected NativeEntry, receiver Object, argument Object, borrowed evaluator NativeEntry | Result Object for an owned arithmetic entry; Unit for an unknown entry. See below. |
-| Integer `canOmitIndexing` | none | Native Word 1 when the current `fromWord:`/`wordOf:` entries and allocation path are ordinary; Word 0 otherwise. Used for omitted compiler-generated PC/index operations. |
-| Integer `installFloat:` | completed Float Object | Unit; install mixed arithmetic/comparisons and `asFloat`. |
+| Integer `evaluate:receiver:argument:with:` | selected Method, receiver, argument, evaluator object | Result object for a recognized arithmetic Method; absent reference for an unknown Method. See below. |
+| Integer `canOmitIndexing` | none | Immediate size 1 when the current `fromWord:`/`wordOf:` Methods and allocation path are ordinary; size 0 otherwise. Used for omitted compiler-generated PC/index operations. |
+| Integer `installFloat:` | completed Float Object | Absent reference; install mixed arithmetic/comparisons and `asFloat`. |
 
-The mixed extension is a complete private context created after Float exists.
+Mixed arithmetic Methods capture the completed Float object as their Oop context.
+There is no leaked native extension record or permanent Roots token.
 It reads Float through `bitsOf:` and constructs through `fromBits:`. It replaces
 only its own original Integer implementations and preserves prior user changes;
 `asFloat` is installed only if absent. It retains Float for its methods' lifetime,
@@ -53,51 +55,49 @@ that equality returns false. Overflow, zeroDivide and typeMismatch retain their
 established meanings. Receivers, arguments and intermediate results are rooted
 across sends; no borrowed native state spans a dependency call.
 
-Run `mise run native-messages`. Production checks cover arithmetic boundaries,
-rounding, mixed operands, replacement, collecting callbacks, iteration and raw
-payload tracing. Descriptor-based construction and numeric declarations v4/v5
-are retired. Execution now uses the owner-local evaluation message below;
-the first discarded-clone consumer also uses `canOmitIndexing`. Broader
-allocation-elision remains pending; deferred materialization is not a prerequisite.
+Run `bash scripts/oop-id-slice-test.sh`. A fresh-process numeric check loads the
+real Integer, Float, String and Bytes owners together. It exercises arithmetic,
+signed limits, parsing, mixed operations, ErrorVt replacement, iteration,
+collecting callbacks and optimization guards. Error is an independent C test
+provider. Execution/compiler, image and worker integration remain pending.
 
 Collections use owner messages `collectionEquals:` (Object → Boolean) and
-`collectionHash` (no arguments → native Word, low 32 bits). Integer preserves
+`collectionHash` (no arguments → immediate size Oop, low 32 bits). Integer preserves
 exact-family signed equality and the existing 64-bit value mix independently of
 public `=`. Private behaviors use identity; see [Map's key contract](../birnam-map/README.md#keys).
 
 ## Execution's scalar evaluator
 
-`evaluate:receiver:argument:with:` recognizes the exact function/context pair of
-this Integer instance's arithmetic entries, including its installed mixed-number
-extension. Unknown entries return Unit before inspecting operands. Recognized
-entries use the same validation, live ErrorVt propagation and mixed-number path as
-ordinary arithmetic. Only a pair of exact Integers sends
-`numericOperation:left:right:` to the supplied evaluator Object.
+`evaluate:receiver:argument:with:` recognizes ordinary Method objects against this
+owner's retained bootstrap Methods, including installed mixed arithmetic. These
+witnesses support optimization checks; ordinary dispatch still uses current Id
+lookup. Their code, context and owner must match. Copied native Methods
+can match without sharing identity. Unknown Methods decline before reading inputs.
 
-The evaluator receives three native Words: operation (1 add, 2 subtract, 3 multiply,
-4 divide, 5 remainder), left signed-i64 bits and right signed-i64 bits. A Word
-answer is boxed through the current `fromWord:`; Unit requests the ordinary
-checked arithmetic/error path. Integer roots the evaluator across this synchronous
-send, which uses fresh lookup and propagates failures. Integer owns operand
-decoding and language semantics; Execution supplies arithmetic through its normal
-receiver. No declaration table or foreign service cache is introduced.
-Production Machine tests cover receiver replacement, precise GC during evaluation,
-Unit fallback, exact failure propagation, old NativeEntry operand rejection,
-overflow/zero division, live ErrorVt and replacement fallback.
+The evaluator receives three Oops: operation (1 add, 2 subtract, 3 multiply,
+4 divide, 5 remainder), left signed-i64 bits and right signed-i64 bits. Sizes or
+Word objects preserve the full width. A result goes through current `fromWord:`;
+an absent reference requests ordinary checked arithmetic. Integer protects a
+new left Word while constructing the right one. Calls use current lookup and
+propagate failure returns separately from ordinary Error objects.
 
+The native Method owner implements a bulk comparison for copied/unknown Methods.
+It reads the selected Method once and checks candidates without per-candidate Id
+messages or a new registry. Comparison checks the selected code, context and owner; it does not consult an
+application selector on the Method.
 
 ## Arithmetic predicates
 
 `evaluatePredicate:then:left:right:limit:in:epoch:with:` takes two Symbol selectors,
-three operand Objects, compilation Namespace Object, expected native Word behavior
+three operand Objects, compilation Namespace Object, expected size Oop behavior
 epoch and result receiver Object. For current owned arithmetic followed by
 comparison on exact Integer inputs, it sends `commitNumericPredicate:` once with
-an existing Boolean Object and returns the send's outcome. Refusal returns Unit
+an existing Boolean Object and returns the send's result. Refusal returns an absent reference
 without sending. The receiver is rooted through delivery and temporary-root
-cleanup. NativeEntry visitor operands are rejected.
+cleanup. Only Oops cross this boundary.
 
 The owner checks current lookup/entries, default index and allocation semantics,
-live ErrorVt and the caller's epoch before its final input reads. The result
+live ErrorVt and the caller's epoch before and after its final input reads. The result
 receiver must have default lookup; customized lookup selects baseline execution
 so lookup effects cannot intervene between the final reads and delivery. Delivery
 still selects the receiver's current method. Execution commits the pending inline

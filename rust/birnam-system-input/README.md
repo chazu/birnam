@@ -1,18 +1,15 @@
-# System input and environment over Id
+# System input over Oop messages
 
-Bootstrap loads `system_input` and `environment` after System construction and
-printing/output. Each initializer takes Namespace and installs the existing System
-method through Id sends. Reload preserves replacements and returns Unit. Both
-modules depend only on the common ABI.
+System input uses the v2 Oop-only module interface and Namespace Method contexts.
+A registered owner Sequence retains completed dependencies and reports scoped
+temporary roots. Id protects incoming call objects. Error construction is a local
+function with an ordinary send to the current Error factory; no private callback
+Method is involved.
 
 - `System readLine` reads binary stdin through the existing buffered reader, removes
   only a final LF, and constructs a String through current `String fromBytes:`.
   CR, NUL and non-UTF-8 bytes remain intact. EOF returns nil. Read failure produces
   `ioError` with `stdin read failed`. Wrong arity returns nil without consuming input.
-- `System getEnv:` requires an exact String name, reads it through `bytes`, validates
-  UTF-8 and performs the existing environment lookup. Missing values return nil;
-  empty values return an empty String. Invalid Unicode in a name/value produces
-  `ioError` with `could not read environment`. It adds no environment mutation API.
 
 String construction, exact-String recognition, Namespace lookup, Error construction,
 root retention and method installation use Id sends. Temporary receivers, arguments,
@@ -26,13 +23,8 @@ A conversion method that recursively reads stdin can block; this migration does 
 change that behavior. Native stdin/environment OS operations remain private to the
 module implementing them.
 
-Run `bash scripts/native-message-test.sh`. The `system_services` integration test
-uses isolated subprocesses and test-only environment names. It covers binary,
-empty, CRLF, long and unterminated input; EOF and directory-stdin failure; missing,
-empty, Unicode and non-Unicode environment values; exact String recognition;
-collecting and replaced methods; native failures; lazy Error publication; and reload
-preservation. Source evaluation also exercises `getEnv:`.
-
-[File I/O](../birnam-file-io/README.md) now uses the same prefix, including an owned
-filename snapshot before contents reads. Installed Host/CLI and Image checks
-exercise startup, loaders and restored OS services.
+Run `bash scripts/oop-id-slice-test.sh`. Its subprocess checks cover binary input,
+empty lines, CRLF preservation, unterminated input, EOF, directory-stdin errors,
+absent Error, a captured Method after removal, GC during construction, current
+String factories, and reload preserving removal. Full Bootstrap/source/image/worker
+qualification remains pending.

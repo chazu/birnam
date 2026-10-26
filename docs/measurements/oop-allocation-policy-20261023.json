@@ -1,0 +1,257 @@
+{
+  "scope": "Common pre-activation calls only; does not measure restored allocation policy or GC.",
+  "runs": [
+    {
+      "variant": "before",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3451833,
+          "ns_per_op": 86.295825
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22458916,
+          "ns_per_op": 74.863053
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2791000,
+          "ns_per_op": 340.698242
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3127083,
+          "ns_per_op": 78.177075
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 20780333,
+          "ns_per_op": 69.267777
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2696750,
+          "ns_per_op": 329.193115
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3154084,
+          "ns_per_op": 78.8521
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 20861167,
+          "ns_per_op": 69.537223
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2621792,
+          "ns_per_op": 320.042969
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3407250,
+          "ns_per_op": 85.18125
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 24684458,
+          "ns_per_op": 82.281527
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2797208,
+          "ns_per_op": 341.456055
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3450000,
+          "ns_per_op": 86.25
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22436833,
+          "ns_per_op": 74.789443
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2813750,
+          "ns_per_op": 343.475342
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3167584,
+          "ns_per_op": 79.1896
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 21144625,
+          "ns_per_op": 70.482083
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2688959,
+          "ns_per_op": 328.242065
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3122541,
+          "ns_per_op": 78.063525
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 21983167,
+          "ns_per_op": 73.277223
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2679083,
+          "ns_per_op": 327.036499
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3424083,
+          "ns_per_op": 85.602075
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 24839792,
+          "ns_per_op": 82.799307
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2821250,
+          "ns_per_op": 344.390869
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "allocate-and-retain-eighth": {
+      "median_ns": {
+        "before": 85.9260375,
+        "after": 78.5145875
+      },
+      "change_percent": -8.625383196566005
+    },
+    "intern-existing-64": {
+      "median_ns": {
+        "before": 78.57229,
+        "after": 70.009653
+      },
+      "change_percent": -10.89778215704289
+    },
+    "produce-and-intern-new-64": {
+      "median_ns": {
+        "before": 342.46569850000003,
+        "after": 327.639282
+      },
+      "change_percent": -4.329314312335441
+    }
+  },
+  "caller_source": "/* Matched caller workload: version 1 raw carriers versus version 2 Oops.\n   Native loading is outside timing. This compares complete primitive paths,\n   including root operations and explicit GC, not equivalent implementation work. */\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n#include <dlfcn.h>\n#include <assert.h>\n#ifdef V2\n#include \"id.h\"\nstatic IdProtocol id;\n#else\n#include \"../../../rust/birnam-abi/tests/fixtures/id-protocol-v1/id_protocol.h\"\ntypedef BirnamObject Oop;\nstatic BirnamProtocol id;\nstatic BirnamOperand object(Oop v){BirnamOperand a={0};a.kind=BIRNAM_OBJECT;a.data.object=v;return a;}\nstatic BirnamOperand word(size_t v){BirnamOperand a={0};a.kind=BIRNAM_WORD;a.data.word=v;return a;}\nstatic BirnamOperand bytes(const char*p,size_t n){BirnamOperand a={0};a.kind=BIRNAM_BYTES;a.data.bytes.pointer=(const unsigned char*)p;a.data.bytes.length=n;return a;}\nstatic BirnamOperand raw(Oop r,Oop s,const BirnamOperand*a,size_t n){BirnamOutcome v=id.message(id.context,r,s,a,n);if(v.status){fprintf(stderr,\"baseline failure %u %zu\\n\",v.status,v.detail);exit(2);}return v.value;}\n#endif\nstatic const char*words[]={\"sequence\",\"objectBehavior\",\"objectPrototype\",\"behaviorOf:\",\"allocate\",\"retain:\",\"release:\",\"activate\",\"automaticCollection:\",\"collectPrecisely\",\"allocationCount\",\"nameWithBytes\",\"identityOf:\"};\nenum{SEQ,BASE,PROTO,BEHAVIOR,ALLOC,RETAIN,RELEASE,ACTIVATE,AUTO,COLLECT,COUNT,NEWNAME,IDENTITY};\nstatic Oop selectors[13],root,path_roots,path_gc;\n#ifdef V2\nstatic Oop checked(Oop v){if(id_fault(v)){fprintf(stderr,\"candidate failure\\n\");exit(2);}return v;}\nstatic Oop send(Oop r,Oop s,const Oop*a,size_t n){return checked(id.message(id.root,r,s,a,n));}\nstatic Oop *name_arguments;\nstatic Oop make_name(const char*b,size_t n){assert(n<=1024);for(size_t i=0;i<n;i++)name_arguments[i]=id_size((unsigned char)b[i]);Oop name=send(root,selectors[NEWNAME],name_arguments,n);return name;}\nstatic Oop load(Oop path,Oop argument,int count){Oop seq=send(root,selectors[SEQ],&argument,count);return send(path,id.load,&seq,1);}\nstatic Oop alloc(Oop behavior){Oop a=id_size(0);return send(behavior,selectors[ALLOC],&a,1);}\nstatic Oop retain(Oop roots,Oop value){return send(roots,selectors[RETAIN],&value,1);}\nstatic void release(Oop roots,Oop token){send(roots,selectors[RELEASE],&token,1);}\nstatic size_t count_objects(void){return id_unbox(send(root,selectors[COUNT],0,0));}\n#else\nstatic Oop intern(const char*b,size_t n){BirnamOperand a=bytes(b,n);return raw(id.receiver,id.intern,&a,1).data.object;}\nstatic Oop load(const char*path,Oop argument,int count){BirnamOperand a[]={bytes(path,strlen(path)),object(argument)};return raw(id.receiver,id.load,a,1+count).data.object;}\nstatic Oop alloc(Oop behavior){BirnamOperand a=word(0);return raw(behavior,selectors[ALLOC],&a,1).data.object;}\nstatic Oop retain(Oop roots,Oop value){BirnamOperand a=object(value);return (Oop)raw(roots,selectors[RETAIN],&a,1).data.word;}\nstatic void release(Oop roots,Oop token){BirnamOperand a=word((size_t)token);raw(roots,selectors[RELEASE],&a,1);}\nstatic size_t count_objects(void){return raw(id.receiver,selectors[COUNT],0,0).data.word;}\n#endif\nstatic uint64_t now(void){return clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);}\nstatic void result(const char*name,size_t n,uint64_t elapsed){printf(\"{\\\"case\\\":\\\"%s\\\",\\\"iterations\\\":%zu,\\\"cpu_ns\\\":%llu,\\\"ns_per_op\\\":%.6f}\\n\",name,n,(unsigned long long)elapsed,(double)elapsed/n);}\nint main(int argc,char**argv){assert(argc==4);void*h=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(h);\n#ifdef V2\n name_arguments=malloc(1024*sizeof(Oop));\n const char *all[15];all[0]=argv[2];all[1]=argv[3];for(size_t i=0;i<13;i++)all[i+2]=words[i];\n IdSeed seeds[15];for(size_t i=0;i<15;i++){seeds[i].bytes=(const unsigned char*)all[i];seeds[i].length=strlen(all[i]);}\n const IdProtocol*(*boot)(const IdSeed*,size_t)=dlsym(h,\"birnam_id_bootstrap_v2\");assert(boot);id=*boot(seeds,15);root=id.root;\n Oop values[15];for(size_t i=0;i<15;i++){Oop at=id_size(i);values[i]=send(id.seeds,id.at,&at,1);}\n path_roots=values[0];path_gc=values[1];for(size_t i=0;i<13;i++)selectors[i]=send(values[i+2],id.intern,0,0);\n Oop roots=load(path_roots,0,0);Oop behavior=send(root,selectors[BASE],0,0);\n#else\n const BirnamModule *m=dlsym(h,\"birnam_native_module_v1\");assert(m);BirnamOutcome initialized=m->initialize(0,0,0);assert(initialized.status==0&&initialized.value.kind==BIRNAM_PROTOCOL);id=*initialized.value.data.protocol;root=id.receiver;\n for(size_t i=0;i<13;i++)selectors[i]=intern(words[i],strlen(words[i]));\n Oop roots=load(argv[2],0,0);Oop prototype=raw(root,selectors[PROTO],0,0).data.object;BirnamOperand p=object(prototype);Oop behavior=raw(root,selectors[BEHAVIOR],&p,1).data.object;\n#endif\n Oop cache[13];for(size_t i=0;i<13;i++)cache[i]=retain(roots,selectors[i]);\n const size_t n=40000;Oop*tokens=malloc(n/8*sizeof(Oop));\n uint64_t start=now();for(size_t i=0;i<n;i++){Oop o=alloc(behavior);if(i%8==0)tokens[i/8]=retain(roots,o);}result(\"allocate-and-retain-eighth\",n,now()-start);\n char stable[65];memset(stable,'s',64);stable[64]=0;\n#ifdef V2\n Oop name=make_name(stable,64);Oop name_token=retain(roots,name);Oop symbol=send(name,id.intern,0,0);\n#else\n Oop symbol=intern(stable,64);\n#endif\n Oop symbol_token=retain(roots,symbol);const size_t hits=300000;start=now();for(size_t i=0;i<hits;i++){\n#ifdef V2\n assert(send(name,id.intern,0,0)==symbol);\n#else\n assert(intern(stable,64)==symbol);\n#endif\n }result(\"intern-existing-64\",hits,now()-start);\n const size_t fresh=8192;start=now();for(size_t i=0;i<fresh;i++){char b[65];memset(b,'x',64);b[64]=0;char prefix[17];snprintf(prefix,sizeof(prefix),\"unique%08zx\",i);memcpy(b,prefix,strlen(prefix));\n#ifdef V2\n Oop name=make_name(b,64);send(name,id.intern,0,0);\n#else\n intern(b,64);\n#endif\n }result(\"produce-and-intern-new-64\",fresh,now()-start);\n return 0; /* common hot-path comparison excludes GC activation */\n for(size_t i=0;i<n/8;i+=2)release(roots,tokens[i]);free(tokens);\n#ifdef V2\n Oop gc=load(path_gc,roots,1);send(gc,selectors[ACTIVATE],0,0);Oop off=id_size(0);send(gc,selectors[AUTO],&off,1);\n#else\n Oop gc=load(argv[3],roots,1);raw(gc,selectors[ACTIVATE],0,0);BirnamOperand off=word(0);raw(gc,selectors[AUTO],&off,1);\n#endif\n size_t before=count_objects();start=now();\n#ifdef V2\n size_t reclaimed=id_unbox(send(gc,selectors[COLLECT],0,0));\n#else\n size_t reclaimed=raw(gc,selectors[COLLECT],0,0).data.word;\n#endif\n result(\"collect-garbage\",1,now()-start);size_t after=count_objects();printf(\"{\\\"heap_before\\\":%zu,\\\"heap_after\\\":%zu,\\\"reclaimed\\\":%zu}\\n\",before,after,reclaimed);\n assert(reclaimed>n/2);(void)cache;(void)symbol_token;\n return 0;\n}\n",
+  "binary_sha256": {
+    "before": {
+      "id": "c8bb9d83a89d154640b7602e4989d6e01b987833a4f45db482efaa5a81353e1a",
+      "root_registry": "791046e01301c0599303cb58dfffe77871ba3b0f5752f00b6e97ffc718c6db48",
+      "collect": "6f26f15d4a37fa081df53292aa3be416bf4a493f85faa580a180c7b1d95c9eff"
+    },
+    "after": {
+      "id": "c7e86044422abf41691e7686678afbc0e470e78d3a0dcb350c493c459044827a",
+      "root_registry": "791046e01301c0599303cb58dfffe77871ba3b0f5752f00b6e97ffc718c6db48",
+      "collect": "0d55268a7486ffcccb5fdcc8b2c0969331ce0f45de42b18b080f29c3b6bcd26c"
+    }
+  },
+  "baseline": "Common kernel before the redundant native-Method checks were removed; saved boolean_nil libraries.",
+  "qualification": {
+    "unit.log": "warning: unnecessary parentheses around assigned value\n  --> rust/birnam-id/src/id/id_dispatch.rs:43:25\n   |\n43 |     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n   |                         ^                             ^\n   |\n   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default\nhelp: remove these parentheses\n   |\n43 -     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n43 +     let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n   |\n\nwarning: unnecessary parentheses around assigned value\n   --> rust/birnam-id/src/id/native_id.rs:341:29\n    |\n341 |         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n    |                             ^                                             ^\n    |\nhelp: remove these parentheses\n    |\n341 -         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n341 +         let Some(applier) = unsafe { id_dispatch::bind(self, m, apply) }? else {\n    |\n\nwarning: method `vtable_of` is never used\n   --> rust/birnam-id/src/id/object_memory.rs:162:19\n    |\n141 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n162 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-id` (lib test) generated 3 warnings (run `cargo fix --lib -p birnam-id --tests` to apply 2 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 17 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::bootstrap_values::tests::payload_meaning_can_be_supplied_after_allocation ... ok\ntest id::bootstrap_values::tests::detached_payloads_keep_their_reference_and_contents ... ok\ntest id::bootstrap_values::tests::malformed_native_method_bytes_are_not_called ... ok\ntest id::object_memory::tests::reference_encoding_does_not_change_extent_identity_or_record_size ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::bootstrap_values::tests::reference_storage_rejects_invalid_lengths_and_non_object_words ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::native_id::lifetime_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::native_id::lifetime_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_namespace-2615a98622bf5575)\n\nrunning 4 tests\ntest state::tests::global_lookup_scaling ... ignored, diagnostic scaling probe; host-gated timing acceptance is separate\ntest state::tests::rebinding_preserves_order_and_reverse_lookup_chooses_first_alias ... ok\ntest state::tests::indexed_imports_track_current_values_without_cross_runtime_state ... ok\ntest state::tests::large_export_churn_preserves_order_and_current_reverse_authority ... ok\n\ntest result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "storage-init-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nSTORAGE_PUBLICATION_FAILURE_CONTAINED\n",
+    "retirement-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nRETIREMENT_FAILURE_CONTAINED\n",
+    "allocation-policy.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\nALLOCATION_POLICY_OK\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":3407000,\"ns_per_op\":85.175000}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":22595291,\"ns_per_op\":75.317637}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":3080583,\"ns_per_op\":376.047729}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":23200709,\"ns_per_op\":23200709.000000}\n{\"heap_before\":56763,\"heap_after\":2875,\"reclaimed\":53888}\n"
+  },
+  "cold_qualification": {
+    "unit.log": "warning: unnecessary parentheses around assigned value\n  --> rust/birnam-id/src/id/id_dispatch.rs:43:25\n   |\n43 |     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n   |                         ^                             ^\n   |\n   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default\nhelp: remove these parentheses\n   |\n43 -     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n43 +     let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n   |\n\nwarning: unnecessary parentheses around assigned value\n   --> rust/birnam-id/src/id/native_id.rs:341:29\n    |\n341 |         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n    |                             ^                                             ^\n    |\nhelp: remove these parentheses\n    |\n341 -         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n341 +         let Some(applier) = unsafe { id_dispatch::bind(self, m, apply) }? else {\n    |\n\nwarning: method `vtable_of` is never used\n   --> rust/birnam-id/src/id/object_memory.rs:162:19\n    |\n141 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n162 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-id` (lib test) generated 3 warnings (run `cargo fix --lib -p birnam-id --tests` to apply 2 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/oop-policy-cold-20261023/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 17 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::object_memory::tests::reference_encoding_does_not_change_extent_identity_or_record_size ... ok\ntest id::bootstrap_values::tests::reference_storage_rejects_invalid_lengths_and_non_object_words ... ok\ntest id::bootstrap_values::tests::detached_payloads_keep_their_reference_and_contents ... ok\ntest id::native_id::lifetime_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::bootstrap_values::tests::payload_meaning_can_be_supplied_after_allocation ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::bootstrap_values::tests::malformed_native_method_bytes_are_not_called ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::native_id::lifetime_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-policy-cold-20261023/debug/deps/birnam_namespace-2615a98622bf5575)\n\nrunning 4 tests\ntest state::tests::global_lookup_scaling ... ignored, diagnostic scaling probe; host-gated timing acceptance is separate\ntest state::tests::rebinding_preserves_order_and_reverse_lookup_chooses_first_alias ... ok\ntest state::tests::indexed_imports_track_current_values_without_cross_runtime_state ... ok\ntest state::tests::large_export_churn_preserves_order_and_current_reverse_authority ... ok\n\ntest result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s\n\n     Running unittests src/lib.rs (.cargo-target/oop-policy-cold-20261023/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "storage-init-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nSTORAGE_PUBLICATION_FAILURE_CONTAINED\n",
+    "retirement-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nRETIREMENT_FAILURE_CONTAINED\n",
+    "allocation-policy.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\nmodule construction follows current factories and survives GC between declarations: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\nGC owner replacement during tracing, inherited behavior and owner removal: passed\nNamespace Oop bindings, live lookup and enumeration mutation with GC: passed\nStorage Oop observation, nested refusal, expired callbacks and reporting-time GC: passed\nBoolean/nil identities, selected branches, live dependencies and captured printing contexts: passed\nretirement owners see live Oops before release and are registered once: passed\nALLOCATION_POLICY_OK\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":3186375,\"ns_per_op\":79.659375}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":21758250,\"ns_per_op\":72.527500}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2661625,\"ns_per_op\":324.905396}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":20849209,\"ns_per_op\":20849209.000000}\n{\"heap_before\":56763,\"heap_after\":2875,\"reclaimed\":53888}\n"
+  },
+  "source_sha256": {
+    "rust/birnam-collect/README.md": "a1cc176d50d421643c2abfbf29c90ff565be72bfa8cdf85e22e20f59ff398501",
+    "rust/birnam-collect/src/collection.rs": "94f9da294d0e1bc8698d58761969e43be6510b51d4824bdc5c34b993ff5901f0",
+    "rust/birnam-collect/src/construction.rs": "4323238b9a20f250e1b8392d93a6016d38f184a36427e55be4b461c65803cbff",
+    "rust/birnam-collect/src/lib.rs": "7841d736f85003ceaac67849d6400c7ba71e54ceb9b4ae39804f9f6b33e64fb4",
+    "rust/birnam-collect/src/native_stack.rs": "b5accd28bf66e1b5c71df6f8535acacb917445a8efb838300e1966f98f5994bd",
+    "rust/birnam-id/src/id/bootstrap_values.rs": "cb2a69c32a077554672169034530254bbd16860fccd3806ddbef3ccee7345fce",
+    "rust/birnam-id/src/id/native_id.rs": "3ddf5d26b157fe6a37d3a492a0776004dfc120e9b37cda96f145126c5287396c",
+    "rust/birnam-siphon/examples/oop_slice.rs": "679899fdc3aba364f3abb476d89307e59a5a9673e10c61bd57540c475db8e249",
+    "scripts/oop-id-slice-test.sh": "acff0cc2c9d39f586aba1453d6bae4a634bcfc45104c2a2372a540be3ab346d8",
+    "tests/fixtures/oop-id-v2/bench.c": "307c4ff0452515756b7c9b7cb57000de1d2ae6cf552cb9a69c4e90c6990d2e31",
+    "tests/fixtures/oop-id-v2/fixture.c": "e12984a9c057cd08bc244439fbeb35c3aecb821bbf065a3b3085c4f1cab96d2e"
+  }
+}

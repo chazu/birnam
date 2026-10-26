@@ -5,10 +5,10 @@ Storage is a production native module using only Id messages. Bootstrap publishe
 Id/Roots roots, core references and references from GC's current registered owners.
 It then sends the visitor:
 
-- `allocation:bytes:identity:` — Object, Word requested bytes, Word allocation identity;
+- `allocation:bytes:identity:` — Oop, immediate size Oop, immediate allocation-identity Oop;
 - `root:` — Object;
-- `edgeFrom:to:` — two Objects;
-- `complete:` — Word coverage gaps; its result becomes the observation result.
+- `edgeFrom:to:` — two Oops;
+- `complete:` — immediate coverage-bit Oop; its result becomes the observation result.
 
 Allocation records are ordered by identity. Every root and edge endpoint must
 belong to the initial inventory. A provider emitting a foreign endpoint fails the
@@ -28,13 +28,15 @@ No GC setting is changed. Root and reference providers must not mutate the
 observed graph; allocations outside the inventory cannot become its endpoints.
 Each observation allocates a private callback receiver, included in its inventory.
 Retained callback receivers fail closed after return and cannot write into a later
-observation. Nested observations fail with native INVALID_REQUEST detail `2`;
-malformed facts use detail `1`. Callback failures retain their original Outcome.
+observation. Nested observations fail with a failure object with detail `2`;
+malformed facts use detail `1`. Callback failures retain their original failure object.
 
-Object arguments are borrowed for the synchronous observation. Retain explicitly
-before keeping an Object afterwards. Allocation identities are scoped to this Id
+Oop arguments are borrowed for the synchronous observation. Retain explicitly
+before keeping an Oop afterwards. Allocation identities are scoped to this Id
 instance and never authorize dereferencing a stale Object or reclaiming storage.
 
 The retired description-offset ABI, observation permit service and deferred
 identity/index bookkeeping are removed. Collection remains in `birnam-collect`.
-Run `bash scripts/native-message-test.sh` for the production `storage_trace` test.
+On the Oop-only branch, run `bash scripts/oop-id-slice-test.sh`; the independent
+native visitor checks reporting-time GC, nested refusal, expired callbacks and
+swallowed trace errors. The wider language migration remains incomplete.

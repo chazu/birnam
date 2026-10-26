@@ -1,36 +1,30 @@
 use super::*;
-struct Numeric {
-    text: *const Text,
+struct Numeric<'a> {
+    text: &'a Text,
     integer: Oop,
     float: Oop,
-    names: HashMap<&'static [u8], Oop>,
 }
-impl Numeric {
-    unsafe fn send(
-        &self,
-        r: Oop,
-        name: &'static [u8],
-        args: &[Operand],
-    ) -> Result<Operand, Outcome> {
-        unsafe { (*self.text).id.send(r, self.names[name], args) }
+impl Numeric<'_> {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.text.send(r, n, a) }
     }
-    unsafe fn integer(&self, value: i64) -> Result<Operand, Outcome> {
-        unsafe { self.send(self.integer, b"fromWord:", &[Operand::word(value as usize)]) }
+    unsafe fn integer(&self, value: i64) -> Result<Oop, Oop> {
+        unsafe { self.send(self.integer, b"fromWord:", &[self.text.word(value as u64)?]) }
     }
-    unsafe fn index(&self, value: Operand) -> Result<Option<i64>, Outcome> {
+    unsafe fn index(&self, value: Oop) -> Result<Option<i64>, Oop> {
         unsafe {
-            let v = self.send(self.integer, b"wordOf:", &[Operand::object(object(value)?)])?;
-            if v.kind() == native::UNIT {
+            let v = self.send(self.integer, b"wordOf:", &[value])?;
+            if v.is_null() || v == self.text.nil {
                 Ok(None)
             } else {
-                Ok(Some(v.as_word().ok_or_else(invalid)? as i64))
+                Ok(Some(self.text.number(v)? as i64))
             }
         }
     }
 }
-unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
+unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, Oop> {
     unsafe {
-        let t = state(n.text.cast_mut().cast())?;
+        let t = n.text;
         let expected = match op {
             1 | 2 | 4 | 9 => 1,
             3 => 2,
@@ -39,17 +33,14 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
         if args.len() != expected {
             return Err(invalid());
         }
-        let mut values = vec![r];
-        for arg in args {
-            values.push(object(*arg)?);
-        }
-        t.rooted(&values, || {
-            let nil = Operand::object(t.nil);
+        // Id already keeps this call's receiver and arguments alive.
+        {
+            let nil = t.nil;
             let indices = if matches!(op, 1 | 2 | 3 | 9) {
                 let mut indices = Vec::new();
                 for arg in args {
                     let Some(v) = n.index(*arg)? else {
-                        return Ok(if op == 9 { Operand::object(r) } else { nil });
+                        return Ok(if op == 9 { r } else { nil });
                     };
                     indices.push(v);
                 }
@@ -64,8 +55,8 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
             }
             if op == 9 {
                 t.length(r, Kind::Builder)?;
-                t.id.send_named(t.storage(r,Kind::Builder)?,b"appendBytes:",&[Operand::bytes(&[indices[0] as u8])])?;
-                return Ok(Operand::object(r));
+                t.append(r, &[indices[0] as u8])?;
+                return Ok(r);
             }
             let bytes = t.copy(r, Kind::String)?;
             match op {
@@ -88,7 +79,7 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
                     t.string(&bytes[from as usize..to as usize])
                 }
                 4 => {
-                    let Ok(needle) = t.copy(values[1], Kind::String) else {
+                    let Ok(needle) = t.copy(args[0], Kind::String) else {
                         return Ok(nil);
                     };
                     let index = if needle.is_empty() {
@@ -123,29 +114,45 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
                         }
                     }
                     match text.parse::<f64>() {
-                        Ok(v) => n.send(
-                            n.float,
-                            b"fromBits:",
-                            &[Operand::word(v.to_bits() as usize)],
-                        ),
+                        Ok(v) => n.send(n.float, b"fromBits:", &[t.word(v.to_bits())?]),
                         Err(_) => Ok(nil),
                     }
                 }
                 _ => Err(invalid()),
             }
-        })
+        }
     }
 }
+
 macro_rules! numeric {
     ($name:ident,$op:expr) => {
-        unsafe extern "C" fn $name(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+        pub(super) unsafe extern "C" fn $name(
+            _: Oop,
+            c: Oop,
+            r: Oop,
+            a: *const Oop,
+            n: usize,
+        ) -> Oop {
             done((|| unsafe {
-                run(
-                    &*c.cast::<Numeric>(),
-                    r,
-                    borrowed_slice(a, n).ok_or_else(invalid)?,
-                    $op,
-                )
+                let t = instance()?;
+                // An ordinary Sequence is the complete dependency context. Its current
+                // at: implementation defines access; no native pointer is a context.
+                let integer = t.send(c, b"at:", &[abi::size(0).unwrap()])?;
+                t.rooted(&[integer], || {
+                    let float = t.send(c, b"at:", &[abi::size(1).unwrap()])?;
+                    t.rooted(&[float], || {
+                        run(
+                            &Numeric {
+                                text: t,
+                                integer,
+                                float,
+                            },
+                            r,
+                            borrowed_slice(a, n).ok_or_else(invalid)?,
+                            $op,
+                        )
+                    })
+                })
             })())
         }
     };
@@ -160,85 +167,45 @@ numeric!(as_integer, 6);
 numeric!(as_number, 7);
 numeric!(builder_size, 8);
 numeric!(add_byte, 9);
-pub(super) unsafe extern "C" fn install(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    count: usize,
-) -> Outcome {
+pub(super) unsafe extern "C" fn install(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
         let t = state(c)?;
-        let Some([integer, float]) = borrowed_slice(a, count) else {
+        let [integer, float] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let (integer, float) = (object(*integer)?, object(*float)?);
-        if r != t.prototype.get() || t.numeric.get() {
+        if r != t.prototype || t.numeric.get() {
             return Err(invalid());
         }
-        t.rooted(&[integer, float], || {
-            let methods = [
-                (t.behavior, b"size".as_slice(), size as Method),
-                (t.behavior, b"at:", at),
-                (t.behavior, b"byteAt:", byte_at),
-                (t.behavior, b"copyFrom:to:", copy),
-                (t.behavior, b"indexOf:", index_of),
-                (t.behavior, b"bracketDepth", depth),
-                (t.behavior, b"asInteger", as_integer),
-                (t.behavior, b"asNumber", as_number),
-                (t.builder_behavior, b"size", builder_size),
-                (t.builder_behavior, b"addByte:", add_byte),
-            ];
-            let mut names = HashMap::new();
-            for name in [
-                b"fromWord:".as_slice(),
-                b"wordOf:",
-                b"fromBits:",
-                b"bitsOf:",
-                b"lookup",
-            ]
-            .into_iter()
-            .chain(methods.iter().map(|(_, name, _)| *name))
-            {
-                let symbol = t.id.intern_name(name)?;
-                t.send(t.roots, b"retain:", &[Operand::object(symbol)])?
-                    .as_word()
-                    .filter(|n| *n != 0)
-                    .ok_or_else(invalid)?;
-                names.insert(name, symbol);
-            }
-            let n = Box::into_raw(Box::new(Numeric {
-                text: t,
-                integer,
-                float,
-                names,
-            }));
-            (*n).send(integer, b"wordOf:", &[Operand::object(integer)])?
-                .as_word()
-                .ok_or_else(invalid)?;
-            (*n).send(float, b"bitsOf:", &[Operand::object(float)])?
-                .as_word()
-                .ok_or_else(invalid)?;
-            // Complete extension dependencies and selectors stay rooted for its methods.
-            t.send(t.roots, b"retain:", &[Operand::object(integer)])?;
-            t.send(t.roots, b"retain:", &[Operand::object(float)])?;
-            for (target, name, method) in methods {
-                if (*n)
-                    .send(target, b"lookup", &[Operand::object((&(*n).names)[name])])?
-                    .kind()
-                    == native::UNIT
-                {
-                    t.send(
-                        target,
-                        b"addMethod",
-                        &[
-                            Operand::object((&(*n).names)[name]),
-                            Operand::entry(NativeEntry::new(method, n.cast())),
-                        ],
-                    )?;
+        let integer = object(*integer)?;
+        let float = object(*float)?;
+        t.number(t.send(integer, b"wordOf:", &[integer])?)?;
+        t.number(t.send(float, b"bitsOf:", &[float])?)?;
+        let context = t.send(t.id.root, b"sequence", &[integer, float])?;
+        t.rooted(&[context], || {
+            for (builder, name, implementation) in [
+                (false, b"size".as_slice(), b"numeric::size".as_slice()),
+                (false, b"at:", b"numeric::at"),
+                (false, b"byteAt:", b"numeric::byte_at"),
+                (false, b"copyFrom:to:", b"numeric::copy"),
+                (false, b"indexOf:", b"numeric::index_of"),
+                (false, b"bracketDepth", b"numeric::depth"),
+                (false, b"asInteger", b"numeric::as_integer"),
+                (false, b"asNumber", b"numeric::as_number"),
+                (true, b"size", b"numeric::builder_size"),
+                (true, b"addByte:", b"numeric::add_byte"),
+            ] {
+                let target = if builder {
+                    t.builder_behavior
+                } else {
+                    t.behavior
+                };
+                if t.send(target, b"lookup", &[t.selector(name)?])?.is_null() {
+                    let method = t.method(implementation, context)?;
+                    t.send(target, b"addMethod", &[t.selector(name)?, method])?;
                 }
             }
             t.numeric.set(true);
-            Ok(Operand::unit())
+            Ok(ptr::null_mut())
         })
     })())
 }

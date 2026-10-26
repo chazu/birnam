@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "2ff26f66",
+  "commands": [
+    {
+      "command": "bash scripts/oop-id-slice-test.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo check --offline --locked -p birnam-codegen-runtime -p birnam-native-backend",
+      "exit_code": 0,
+      "note": "After removing a redundant always-true descriptor helper parameter; emitted data is unchanged."
+    }
+  ],
+  "unit_tests_passed": 188,
+  "task_control_checks": 177,
+  "task_control_failures": 0,
+  "checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "ARTIFACT_COLD_ERROR_OWNER_OK",
+    "ARTIFACT_PARSER_FREE_ACTIVATION_OK",
+    "ARTIFACT_REJECTION_BEFORE_EFFECTS_OK",
+    "ARTIFACT_FROZEN_SNAPSHOT_OK",
+    "ARTIFACT_TASK_CODE_LIFETIME_OK",
+    "SOURCE_TASK_CONTROL_OK checks=177"
+  ],
+  "contract": "Ordinary resumable source compiles to ELF object bytes using Oop module declarations and the retained descriptor/source metadata formats. TCC owns mappings, Execution owns entered code, and the authored SourceRegistry owns publication. Admission uses a frozen snapshot and validates before the source body runs. Activation retains its existing synchronous boundary; task-owned Machines remain independently resumable. No Id contract addition.",
+  "coverage": [
+    "Compilation and inspection do not execute the body.",
+    "Loading works without the source file and with Lang parse: poisoned.",
+    "Initialization works before an Error owner exists, without querying isError.",
+    "Kind, ABI, identity, source digest, capability and metadata corruption reject before body effects; rejected mappings retire.",
+    "Missing module requirements reject before mapping; the same artifact loads after current Module policy marks its requirement loaded.",
+    "Conflicting registered source rejects before body effects.",
+    "A collecting file reader can replace the path on disk; inspection and relocation still consume the returned snapshot.",
+    "A task started by an artifact resumes after artifact deletion and GC."
+  ],
+  "scope": "compile:output:, compile:output:from:, and load: for ordinary resumable module artifacts. Synchronous-body/compiled arity-adapter artifacts and foreign-library packaging remain unconnected and unsupported records/requirements are refused explicitly. Their retained algorithms remain in pending_artifact.rs. Recovery, complete bootstrap/Host, images/workers and installed qualification remain pending.",
+  "logs_sha256": {
+    "unit.log": "cc5b961319ce1de9d50cbe7859f58c558b3ec4b2f8af2e0f1067b76611372500",
+    "numeric-integration.log": "02b74440831666757bf1f82fa5754d38c797201573809db89d757b0fa94cde52",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}

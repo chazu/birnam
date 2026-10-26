@@ -5,7 +5,15 @@
 > migrated. This is a break with extraction-driven modularization, not another
 > installment of it. Implementation progress is recorded below.
 
-**Current priority (2026-09-24):** Pause additional optimization/deoptimization
+**Current priority (2026-10-22):** [Oop-only Id](oop-only-id.md) supersedes the
+tagged native operand/result convention. Every argument and result crossing Id
+must be an Oop. Remove `Operand`, `Outcome`, and their adaptation machinery rather
+than renaming them or adding a second dispatch path. Preserve language behavior,
+malleability, loading, ownership/lifetimes, concurrency and stackless execution.
+The bootstrap representation decision is recorded in that migration document;
+this amendment does not authorize moving upper-language policy into Id.
+
+**Earlier priority (2026-09-24):** Pause additional optimization/deoptimization
 work and reconnect the remaining functional modules through Id messages until the
 system as a whole works again. Keep existing correct optimizations and execution
 fallback/recovery/lifetime behavior; unfinished optimizer families are not
@@ -102,7 +110,11 @@ introduce an empty service slot. An extension installed after its dependencies
 exist is valid: its implementation is complete when installed. Forward-filled
 callbacks, placeholder objects and dependency bundles are not.
 
-Native Words/Bytes carry bounded native data where language values are not yet
+The following carrier allowance is historical and is superseded by the Oop-only
+Id decision above; the prohibitions on dependency descriptors, foreign-layout
+inspection and captured service implementations remain in force.
+
+Native Words/Bytes carried bounded native data where language values were not yet
 available. They never carry a dependency descriptor or foreign layout. Native
 entries support actual method invocation and necessary synchronous callbacks;
 they do not authorize capturing another owner's service implementations. Future

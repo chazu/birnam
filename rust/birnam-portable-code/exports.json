@@ -1,5 +1,5 @@
 {
   "schema_version": 1,
   "scope": "PortableCode ordinary objects through Id messages; Block materialization is separate",
-  "exported_symbols": ["birnam_native_module_v1", "birnam_symbol_borrow_v1", "birnam_portable_code_rust_identity"]
+  "exported_symbols": ["birnam_native_module_v2", "birnam_symbol_borrow_v1", "birnam_portable_code_rust_identity"]
 }

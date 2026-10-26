@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "440380dd",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "exit_code": 0,
+  "unit_tests_passed": 188,
+  "source_checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "COMPILED_EXPLICIT_CONTROL_OK capture=false mode=resume",
+    "COMPILED_EXPLICIT_CONTROL_OK capture=true mode=resume",
+    "COMPILED_EXPLICIT_CONTROL_OK capture=false mode=budget",
+    "COMPILED_CONTROL_DISCARD_OK capture=false",
+    "COMPILED_CONTROL_DISCARD_OK capture=true",
+    "COMPILED_CONTROL_BARRIER_OK capture=false mode=native",
+    "COMPILED_CONTROL_BARRIER_OK capture=true mode=native",
+    "COMPILED_CONTROL_BARRIER_OK capture=false mode=callback",
+    "COMPILED_CONTROL_BARRIER_OK capture=true mode=callback"
+  ],
+  "ownership": "Execution reuses the retained frame transitions and owns continuation storage, tracing, and retirement. Id and compiler formats are unchanged.",
+  "scope": "Suspension, capture, supplied-value resume and one-shot restore through explicit Machine drivers. Delimited exit, handlers, cancellation, recovery and the wider runtime rebuild remain pending.",
+  "logs_sha256": {
+    "unit.log": "710bd190d82d76f150870ac99bc39dbd2482e50decf63e0835dd2a32d64731e4",
+    "numeric-integration.log": "356faa22af9983d1f368680d7309e2780c7b9b2cd14fe5fed1c68080a70766d8",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}

@@ -1,408 +1,201 @@
-//! Map representation and operations. Dependencies are opaque Id receivers.
+//! Persistent Map storage belongs to Map; dependencies are Oop receivers.
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
 use core::{
     cell::{Cell, RefCell},
-    ffi::c_void,
     ptr,
 };
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 struct State {
     id: Protocol,
+    namespace: Oop,
     roots: Oop,
     model: Oop,
     behavior: Oop,
     node: Oop,
-    prototype: Cell<Oop>,
+    prototype: Oop,
     values: HashMap<&'static [u8], Oop>,
     names: HashMap<&'static [u8], Oop>,
-    thread: std::thread::ThreadId,
+    scoped: RefCell<Vec<Oop>>,
+    ready: Cell<bool>,
 }
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
 }
-fn done(v: Result<Operand, Outcome>) -> Outcome {
-    v.map_or_else(|e| e, Outcome::loaded)
+fn done(v: Result<Oop, Oop>) -> Oop {
+    v.unwrap_or_else(abi::fault_reference)
 }
-unsafe fn state<'a>(c: *mut c_void) -> Result<&'a State, Outcome> {
-    let s = unsafe { &*c.cast::<State>() };
-    if s.thread != std::thread::current().id() {
+unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
         return Err(invalid());
     }
-    Ok(s)
+    let s = unsafe { &*p };
+    if c == s.prototype {
+        Ok(s)
+    } else {
+        Err(invalid())
+    }
 }
-// Each synchronous operation owns its roots. No borrow spans a message send.
 struct Scope<'a> {
     s: &'a State,
-    tokens: RefCell<Vec<usize>>,
+    start: usize,
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.s.scoped.borrow_mut().truncate(self.start);
+    }
 }
 impl<'a> Scope<'a> {
     unsafe fn run<T>(
         s: &'a State,
         values: &[Oop],
-        f: impl FnOnce(&Self) -> Result<T, Outcome>,
-    ) -> Result<T, Outcome> {
+        f: impl FnOnce(&Self) -> Result<T, Oop>,
+    ) -> Result<T, Oop> {
         let scope = Self {
             s,
-            tokens: RefCell::new(Vec::new()),
+            start: s.scoped.borrow().len(),
         };
-        let result = (|| unsafe {
-            for &v in values {
-                scope.keep(v)?;
-            }
-            f(&scope)
-        })();
-        unsafe {
-            scope.clear()?;
-        }
-        result
+        s.scoped.borrow_mut().extend_from_slice(values);
+        f(&scope)
     }
-    unsafe fn keep(&self, value: Oop) -> Result<Oop, Outcome> {
-        if !value.is_null() {
-            let token = unsafe {
-                self.s
-                    .send(self.s.roots, b"retain:", &[Operand::object(value)])
-            }?
-            .as_word()
-            .filter(|n| *n != 0)
-            .ok_or_else(invalid)?;
-            self.tokens.borrow_mut().push(token);
-        }
-        Ok(value)
+    fn keep(&self, v: Oop) -> Oop {
+        self.s.scoped.borrow_mut().push(v);
+        v
     }
-    unsafe fn clear(&self) -> Result<(), Outcome> {
-        let tokens = std::mem::take(&mut *self.tokens.borrow_mut());
-        let mut error = None;
-        for token in tokens {
-            match unsafe {
-                self.s
-                    .send(self.s.roots, b"release:", &[Operand::word(token)])
-            } {
-                Ok(v) if v.as_word() == Some(1) => {}
-                Ok(_) => error = Some(invalid()),
-                Err(e) => error = Some(e),
-            }
-        }
-        error.map_or(Ok(()), Err)
-    }
-    // Retain the next persistent result before discarding construction temporaries.
-    unsafe fn reset(&self, value: Oop) -> Result<Oop, Outcome> {
-        unsafe {
-            let old = std::mem::take(&mut *self.tokens.borrow_mut());
-            let result = self.keep(value);
-            let new = std::mem::replace(&mut *self.tokens.borrow_mut(), old);
-            let cleanup = self.clear();
-            *self.tokens.borrow_mut() = new;
-            cleanup?;
-            result
-        }
+    fn reset(&self, v: Oop) -> Oop {
+        let mut values = self.s.scoped.borrow_mut();
+        values.truncate(self.start);
+        values.push(v);
+        v
     }
 }
 impl State {
-    unsafe fn send(
-        &self,
-        r: Oop,
-        name: &'static [u8],
-        args: &[Operand],
-    ) -> Result<Operand, Outcome> {
-        unsafe { self.id.send(r, self.names[name], args) }
+    unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe {
+            self.id
+                .send(r, *self.names.get(name).ok_or_else(invalid)?, a)
+        }
     }
-    fn value(&self, name: &'static [u8]) -> Oop {
+    fn value(&self, name: &[u8]) -> Oop {
         self.values[name]
     }
-    fn nil(&self) -> Operand {
-        Operand::object(self.value(b"nil"))
+    fn nil(&self) -> Oop {
+        self.value(b"nil")
     }
-    fn boolean(&self, yes: bool) -> Operand {
-        Operand::object(self.value(if yes { b"true" } else { b"false" }))
+    fn boolean(&self, yes: bool) -> Oop {
+        self.value(if yes { b"true" } else { b"false" })
     }
-    unsafe fn allocate(
-        &self,
-        scope: &Scope<'_>,
-        behavior: Oop,
-        bytes: usize,
-    ) -> Result<Oop, Outcome> {
+    unsafe fn allocate(&self, scope: &Scope<'_>, behavior: Oop, bytes: usize) -> Result<Oop, Oop> {
         unsafe {
-            let value = scope.keep(object(self.send(
+            let value = scope.keep(self.send(
                 self.model,
                 b"allocate:bytes:",
-                &[Operand::object(behavior), Operand::word(bytes)],
-            )?)?)?;
-            if self
-                .send(
-                    self.id.receiver,
-                    b"allocationSizeOf:",
-                    &[Operand::object(value)],
-                )?
-                .as_word()
-                != Some(bytes)
-                || self
-                    .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-                    .as_object()
-                    != Some(behavior)
+                &[behavior, abi::size(bytes).ok_or_else(invalid)?],
+            )?);
+            if self.send(self.id.root, b"allocationSizeOf:", &[value])? != abi::size(bytes).unwrap()
+                || self.send(self.id.root, b"behaviorOf:", &[value])? != behavior
             {
                 return Err(invalid());
             }
             Ok(value)
         }
     }
-    unsafe fn integer(&self, value: i64) -> Result<Operand, Outcome> {
+    unsafe fn word(&self, bits: u64) -> Result<Oop, Oop> {
+        unsafe {
+            if let Some(v) = abi::size(bits as usize) {
+                return Ok(v);
+            }
+            self.send(
+                self.value(b"Word"),
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size(bits as u32 as usize).unwrap(),
+                    abi::size((bits >> 32) as usize).unwrap(),
+                ],
+            )
+        }
+    }
+    unsafe fn word_bits(&self, v: Oop) -> Result<u64, Oop> {
+        unsafe {
+            if let Some(v) = abi::as_size(v) {
+                return Ok(v as u64);
+            }
+            let lo = abi::as_size(self.send(v, b"low32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            let hi = abi::as_size(self.send(v, b"high32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            Ok((lo as u64) | ((hi as u64) << 32))
+        }
+    }
+    unsafe fn integer(&self, v: i64) -> Result<Oop, Oop> {
         unsafe {
             self.send(
                 self.value(b"Integer"),
                 b"fromWord:",
-                &[Operand::word(value as usize)],
+                &[self.word(v as u64)?],
             )
         }
     }
-    unsafe fn same(&self, a: Oop, b: Oop) -> Result<bool, Outcome> {
-        unsafe {
-            Ok(a == b
-                || self
-                    .send(a, b"collectionEquals:", &[Operand::object(b)])?
-                    .as_object()
-                    == Some(self.value(b"true")))
-        }
-    }
-    unsafe fn printable(&self, value: Oop) -> Result<Vec<u8>, Outcome> {
-        unsafe {
-            let printed = object(self.send(value, b"printString", &[])?)?;
-            Scope::run(self, &[printed], |_| {
-                let raw = self
-                    .send(printed, b"bytes", &[])?
-                    .as_bytes()
-                    .ok_or_else(invalid)?;
-                Ok(borrowed_bytes(raw.pointer, raw.length)
-                    .ok_or_else(invalid)?
-                    .to_vec())
-            })
-        }
+    unsafe fn same(&self, a: Oop, b: Oop) -> Result<bool, Oop> {
+        unsafe { Ok(a == b || self.send(a, b"collectionEquals:", &[b])? == self.value(b"true")) }
     }
 }
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, count: usize) -> Outcome {
+unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, count: usize) -> Oop {
     done((|| unsafe {
         let s = state(c)?;
-        let Some([visitor]) = borrowed_slice(a, count) else {
+        let [visitor] = borrowed_slice(a, count).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let visitor = object(*visitor)?;
-        let mut values = vec![s.roots, s.model, s.behavior, s.node, s.prototype.get()];
+        let mut values = vec![
+            s.namespace,
+            s.roots,
+            s.model,
+            s.behavior,
+            s.node,
+            s.prototype,
+        ];
         values.extend(s.values.values().copied());
         values.extend(s.names.values().copied());
-        for value in values.into_iter().filter(|v| !v.is_null()) {
-            s.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
+        values.extend(s.scoped.borrow().iter().copied());
+        for v in values {
+            s.send(*visitor, b"visit:", &[v])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
 macro_rules! entry {
     ($name:ident,$op:expr) => {
-        unsafe extern "C" fn $name(
-            c: *mut c_void,
-            r: Oop,
-            a: *const Operand,
-            count: usize,
-        ) -> Outcome {
+        unsafe extern "C" fn $name(_: Oop, c: Oop, r: Oop, a: *const Oop, count: usize) -> Oop {
             done((|| unsafe {
                 let s = state(c)?;
-                let args = borrowed_slice(a, count).ok_or_else(invalid)?;
-                let mut values = vec![r];
-                for arg in args {
-                    values.push(object(*arg)?);
+                let a = borrowed_slice(a, count).ok_or_else(invalid)?;
+                if a.iter().any(|v| v.is_null()) {
+                    return Err(invalid());
                 }
-                // The Id caller covers receiver and argument lifetimes. Keep
-                // private node snapshots and construction results in this scope.
-                Scope::run(s, &[], |scope| execute(s, scope, r, &values[1..], $op))
+                Scope::run(s, &[], |scope| execute(s, scope, r, a, $op))
             })())
         }
     };
 }
-const NAMES: &[&[u8]] = &[
-    b"parentOf:",
-    b"prepareAllocation",
-    b"retain:",
-    b"release:",
-    b"allocate:bytes:",
-    b"allocationSizeOf:",
-    b"behaviorOf:",
-    b"fromWord:",
-    b"printString",
-    b"bytes",
-    b"fromBytes:",
-    b"rootsDo:",
-    b"register:",
-    b"ownerOf:put:",
-    b"addMethod",
-    b"at:put:",
-    b"collectionEquals:",
-    b"collectionHash",
-    b"value",
-    b"value:value:",
-    b"new",
-    b"add:",
-    b"do:",
-    b"inject:into:",
-    b"Map",
-    b"MapVt",
-    b"MapNode",
-    b"rehashImage:",
-];
-
-unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| {
-            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
-        };
-        let roots = named(b"Roots")?;
-        let model = named(b"ObjectModel")?;
-        let retain = id.intern_name(b"retain:")?;
-        let release = id.intern_name(b"release:")?;
-        let mut tokens = Vec::new();
-        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
-            tokens.push(
-                id.send(roots, retain, &[Operand::object(v)])?
-                    .as_word()
-                    .filter(|v| *v != 0)
-                    .ok_or_else(invalid)?,
-            );
-            Ok(v)
-        };
-        let mut names = HashMap::new();
-        for name in NAMES
-            .iter()
-            .copied()
-            .chain(METHODS.iter().map(|(name, _)| *name))
-        {
-            names.insert(name, keep(id.intern_name(name)?)?);
-        }
-        let mut values = HashMap::new();
-        for name in DEPENDENCIES {
-            values.insert(*name, named(name)?);
-        }
-        let behavior = keep(object(id.send_named(
-            named(b"CollectionVt")?,
-            b"delegated",
-            &[],
-        )?)?)?;
-        let node = keep(object(id.send_named(
-            named(b"ObjectVt")?,
-            b"delegated",
-            &[],
-        )?)?)?;
-        let p = Box::into_raw(Box::new(State {
-            id,
-            roots,
-            model,
-            behavior,
-            node,
-            prototype: Cell::new(ptr::null_mut()),
-            values,
-            names,
-            thread: std::thread::current().id(),
-        }));
-        let s = &*p;
-        for (name, method) in METHODS
-            .iter()
-            .copied()
-            .chain([(b"rootsDo:".as_slice(), self::roots as Method)])
-        {
-            s.send(
-                behavior,
-                b"addMethod",
-                &[
-                    Operand::object(s.names[name]),
-                    Operand::entry(NativeEntry::new(method, p.cast())),
-                ],
-            )?;
-        }
-        id.send_named(
-            model,
-            b"setLayoutOf:to:rest:",
-            &[
-                Operand::object(behavior),
-                Operand::bytes(&[1, 0]),
-                Operand::word(0),
-            ],
-        )?;
-        id.send_named(
-            model,
-            b"setLayoutOf:to:rest:",
-            &[
-                Operand::object(node),
-                Operand::bytes(&[0, 0]),
-                Operand::word(1),
-            ],
-        )?;
-        Scope::run(s, &[], |scope| {
-            let prototype = empty(s, scope)?;
-            s.prototype.set(prototype);
-            s.send(roots, b"register:", &[Operand::object(prototype)])?;
-            s.send(
-                id.receiver,
-                b"ownerOf:put:",
-                &[Operand::object(behavior), Operand::object(prototype)],
-            )?;
-            for (name, value) in [(b"Map".as_slice(), prototype), (b"MapVt", behavior)] {
-                s.send(
-                    namespace,
-                    b"at:put:",
-                    &[Operand::object(s.names[name]), Operand::object(value)],
-                )?;
-            }
-            s.send(
-                namespace,
-                b"at:put:",
-                &[
-                    Operand::object(s.names[b"MapNode".as_slice()]),
-                    Operand::object(node),
-                ],
-            )?;
-            Ok(())
-        })?;
-        for token in tokens {
-            id.send(roots, release, &[Operand::word(token)])?;
-        }
-        Ok(Operand::object(s.prototype.get()))
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, count: usize) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([namespace]) = borrowed_slice(a, count) else {
-            return Err(invalid());
-        };
-        let namespace = object(*namespace)?;
-        let id = *id;
-        let current = id.send_named(
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Map")?)],
-        )?;
-        if current.kind() == native::OBJECT {
-            return Ok(current);
-        }
-        construct(id, namespace)
-    })())
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
-    initialize: Some(initialize),
-};
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
-    1
-}
 const DEPENDENCIES: &[&[u8]] = &[
-    b"Integer", b"String", b"nil", b"true", b"false", b"Vector", b"GC",
+    b"Integer", b"String", b"Word", b"Bytes", b"Vector", b"GC", b"nil", b"true", b"false",
 ];
 const BITS: usize = 5;
 const MASK: u32 = 31;
@@ -422,31 +215,20 @@ struct Map {
     root: Oop,
     count: usize,
 }
-unsafe fn payload(s: &State, value: Oop) -> Result<Map, Outcome> {
+unsafe fn payload(s: &State, value: Oop) -> Result<Map, Oop> {
     unsafe {
-        if s.send(
-            s.id.receiver,
-            b"allocationSizeOf:",
-            &[Operand::object(value)],
-        )?
-        .as_word()
-            != Some(size_of::<Map>())
+        if s.send(s.id.root, b"allocationSizeOf:", &[value])?
+            != abi::size(size_of::<Map>()).unwrap()
         {
             return Err(invalid());
         }
         Ok(value.cast::<Map>().read())
     }
 }
-unsafe fn header(s: &State, node: Oop) -> Result<Header, Outcome> {
+unsafe fn header(s: &State, node: Oop) -> Result<Header, Oop> {
     unsafe {
-        let bytes = s
-            .send(
-                s.id.receiver,
-                b"allocationSizeOf:",
-                &[Operand::object(node)],
-            )?
-            .as_word()
-            .ok_or_else(invalid)?;
+        let bytes =
+            abi::as_size(s.send(s.id.root, b"allocationSizeOf:", &[node])?).ok_or_else(invalid)?;
         if bytes < size_of::<Header>() {
             return Err(invalid());
         }
@@ -491,19 +273,13 @@ fn bit(hash: u32, shift: usize) -> u32 {
 fn sparse(bitmap: u32, bit: u32) -> usize {
     (bitmap & bit.wrapping_sub(1)).count_ones() as usize
 }
-unsafe fn key_hash(s: &State, key: Oop) -> Result<u32, Outcome> {
-    unsafe { s.send(key, b"collectionHash", &[]) }?
-        .as_word()
-        .map(|v| v as u32)
-        .ok_or_else(invalid)
+unsafe fn key_hash(s: &State, key: Oop) -> Result<u32, Oop> {
+    unsafe {
+        s.word_bits(s.send(key, b"collectionHash", &[])?)
+            .map(|v| v as u32)
+    }
 }
-unsafe fn new_node(
-    s: &State,
-    scope: &Scope<'_>,
-    tag: u32,
-    n: u32,
-    hash: u32,
-) -> Result<Oop, Outcome> {
+unsafe fn new_node(s: &State, scope: &Scope<'_>, tag: u32, n: u32, hash: u32) -> Result<Oop, Oop> {
     unsafe {
         let h = Header {
             tag,
@@ -520,7 +296,7 @@ unsafe fn new_node(
         Ok(node)
     }
 }
-unsafe fn copy_node(s: &State, scope: &Scope<'_>, source: Oop) -> Result<Oop, Outcome> {
+unsafe fn copy_node(s: &State, scope: &Scope<'_>, source: Oop) -> Result<Oop, Oop> {
     unsafe {
         let h = header(s, source)?;
         let node = new_node(s, scope, h.tag, h.n, h.hash)?;
@@ -530,14 +306,14 @@ unsafe fn copy_node(s: &State, scope: &Scope<'_>, source: Oop) -> Result<Oop, Ou
         Ok(node)
     }
 }
-unsafe fn make(s: &State, scope: &Scope<'_>, v: Map) -> Result<Oop, Outcome> {
+unsafe fn make(s: &State, scope: &Scope<'_>, v: Map) -> Result<Oop, Oop> {
     unsafe {
         let value = s.allocate(scope, s.behavior, size_of::<Map>())?;
         value.cast::<Map>().write(v);
         Ok(value)
     }
 }
-unsafe fn empty(s: &State, scope: &Scope<'_>) -> Result<Oop, Outcome> {
+unsafe fn empty(s: &State, scope: &Scope<'_>) -> Result<Oop, Oop> {
     unsafe {
         make(
             s,
@@ -549,7 +325,7 @@ unsafe fn empty(s: &State, scope: &Scope<'_>) -> Result<Oop, Outcome> {
         )
     }
 }
-unsafe fn find(s: &State, node: Oop, shift: usize, hash: u32, key: Oop) -> Result<Oop, Outcome> {
+unsafe fn find(s: &State, node: Oop, shift: usize, hash: u32, key: Oop) -> Result<Oop, Oop> {
     unsafe {
         if node.is_null() {
             return Ok(ptr::null_mut());
@@ -585,10 +361,10 @@ unsafe fn merge(
     shift: usize,
     a: (u32, Oop, Oop),
     b: (u32, Oop, Oop),
-) -> Result<Oop, Outcome> {
+) -> Result<Oop, Oop> {
     unsafe {
         for value in [a.1, a.2, b.1, b.2] {
-            scope.keep(value)?;
+            scope.keep(value);
         }
         if a.0 == b.0 {
             let node = new_node(s, scope, COLLISION, 2, a.0)?;
@@ -626,7 +402,7 @@ unsafe fn assoc(
     key: Oop,
     value: Oop,
     added: &mut bool,
-) -> Result<Oop, Outcome> {
+) -> Result<Oop, Oop> {
     unsafe {
         if node.is_null() {
             *added = true;
@@ -707,7 +483,7 @@ unsafe fn assoc(
         assoc(s, scope, wrapper, shift, hash, key, value, added)
     }
 }
-unsafe fn entries(s: &State, node: Oop, values: &mut Vec<(Oop, Oop)>) -> Result<(), Outcome> {
+unsafe fn entries(s: &State, node: Oop, values: &mut Vec<(Oop, Oop)>) -> Result<(), Oop> {
     unsafe {
         if node.is_null() {
             return Ok(());
@@ -725,16 +501,12 @@ unsafe fn entries(s: &State, node: Oop, values: &mut Vec<(Oop, Oop)>) -> Result<
         Ok(())
     }
 }
-unsafe fn vector(s: &State, values: impl IntoIterator<Item = Oop>) -> Result<Oop, Outcome> {
+unsafe fn vector(s: &State, values: impl IntoIterator<Item = Oop>) -> Result<Oop, Oop> {
     unsafe {
         Scope::run(s, &[], |work| {
-            let mut result = work.keep(object(s.send(s.value(b"Vector"), b"new", &[])?)?)?;
+            let mut result = work.keep(object(s.send(s.value(b"Vector"), b"new", &[])?)?);
             for value in values {
-                result = work.reset(object(s.send(
-                    result,
-                    b"add:",
-                    &[Operand::object(value)],
-                )?)?)?;
+                result = work.reset(object(s.send(result, b"add:", &[value])?)?);
             }
             Ok(result)
         })
@@ -746,7 +518,7 @@ unsafe fn execute(
     r: Oop,
     args: &[Oop],
     op: usize,
-) -> Result<Operand, Outcome> {
+) -> Result<Oop, Oop> {
     unsafe {
         let arity = match op {
             1 | 3 | 8 | 10 | 12 => 1,
@@ -757,29 +529,27 @@ unsafe fn execute(
             return Ok(s.nil());
         }
         if op == 0 {
-            return Ok(Operand::object(empty(s, scope)?));
+            return Ok(empty(s, scope)?);
         }
         if op == 12 {
             s.send(s.values[b"GC".as_slice()], b"prepareAllocation", &[])?;
-            let mut behavior =
-                object(s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(args[0])])?)?;
+            let mut behavior = object(s.send(s.id.root, b"behaviorOf:", &[args[0]])?)?;
             let mut seen = std::collections::HashSet::new();
             while behavior != s.behavior {
                 if !seen.insert(behavior) {
                     return Err(invalid());
                 }
-                scope.keep(behavior)?;
-                behavior = object(s.send(
-                    s.id.receiver, b"parentOf:", &[Operand::object(behavior)],
-                )?)?;
+                scope.keep(behavior);
+                behavior = object(s.send(s.id.root, b"parentOf:", &[behavior])?)?;
             }
             let target = args[0];
             let old = payload(s, target)?;
+            scope.keep(old.root);
             let mut pairs = Vec::new();
             entries(s, old.root, &mut pairs)?;
             for &(key, value) in &pairs {
-                scope.keep(key)?;
-                scope.keep(value)?;
+                scope.keep(key);
+                scope.keep(value);
             }
             let mut root = ptr::null_mut();
             let mut count = 0;
@@ -787,20 +557,20 @@ unsafe fn execute(
                 let hash = key_hash(s, key)?;
                 let mut added = false;
                 root = assoc(s, scope, root, 0, hash, key, value, &mut added)?;
-                scope.keep(root)?;
+                scope.keep(root);
                 count += usize::from(added);
             }
             target.cast::<Map>().write(Map { root, count });
-            return Ok(Operand::object(target));
+            return Ok(target);
         }
         let v = payload(s, r)?;
-        scope.keep(v.root)?;
+        scope.keep(v.root);
         if matches!(op, 1..=4) {
             let hash = key_hash(s, args[0])?;
             if op == 2 {
                 let mut added = false;
                 let root = assoc(s, scope, v.root, 0, hash, args[0], args[1], &mut added)?;
-                return Ok(Operand::object(if root == v.root {
+                return Ok(if root == v.root {
                     r
                 } else {
                     make(
@@ -811,14 +581,14 @@ unsafe fn execute(
                             count: v.count + usize::from(added),
                         },
                     )?
-                }));
+                });
             }
             let found = find(s, v.root, 0, hash, args[0])?;
             if op == 3 {
                 return Ok(s.boolean(!found.is_null()));
             }
             if !found.is_null() {
-                return Ok(Operand::object(found));
+                return Ok(found);
             }
             return if op == 4 {
                 s.send(args[1], b"value", &[])
@@ -832,46 +602,58 @@ unsafe fn execute(
         let mut pairs = Vec::with_capacity(v.count);
         entries(s, v.root, &mut pairs)?;
         for &(key, value) in &pairs {
-            scope.keep(key)?;
-            scope.keep(value)?;
+            scope.keep(key);
+            scope.keep(value);
         }
         match op {
-            6 | 7 => Ok(Operand::object(vector(
+            6 | 7 => Ok(vector(
                 s,
                 pairs.into_iter().map(|(k, v)| if op == 6 { k } else { v }),
-            )?)),
+            )?),
             8 | 9 => {
-                let values = scope.keep(vector(s, pairs.into_iter().map(|(_, v)| v))?)?;
-                let operands: Vec<_> = args.iter().map(|v| Operand::object(*v)).collect();
-                let result = s.send(
-                    values,
-                    if op == 8 { b"do:" } else { b"inject:into:" },
-                    &operands,
-                )?;
-                Ok(if op == 8 { Operand::object(r) } else { result })
+                let values = scope.keep(vector(s, pairs.into_iter().map(|(_, v)| v))?);
+
+                let result =
+                    s.send(values, if op == 8 { b"do:" } else { b"inject:into:" }, args)?;
+                Ok(if op == 8 { r } else { result })
             }
             10 => {
                 for (k, v) in pairs {
-                    s.send(
-                        args[0],
-                        b"value:value:",
-                        &[Operand::object(k), Operand::object(v)],
-                    )?;
+                    s.send(args[0], b"value:value:", &[k, v])?;
                 }
-                Ok(Operand::object(r))
+                Ok(r)
             }
             11 => {
-                let mut bytes = b"{".to_vec();
-                for (i, (k, v)) in pairs.into_iter().enumerate() {
+                let output = scope.keep(s.send(
+                    s.value(b"Bytes"),
+                    b"fromByteValues",
+                    &[abi::size(123).unwrap()],
+                )?);
+                for (i, (key, value)) in pairs.into_iter().enumerate() {
                     if i > 0 {
-                        bytes.extend_from_slice(b", ");
+                        s.send(
+                            output,
+                            b"appendByteValues",
+                            &[abi::size(44).unwrap(), abi::size(32).unwrap()],
+                        )?;
                     }
-                    bytes.extend_from_slice(&s.printable(k)?);
-                    bytes.extend_from_slice(b" -> ");
-                    bytes.extend_from_slice(&s.printable(v)?);
+                    for (j, value) in [key, value].into_iter().enumerate() {
+                        if j > 0 {
+                            s.send(
+                                output,
+                                b"appendByteValues",
+                                &[32, 45, 62, 32].map(|v| abi::size(v).unwrap()),
+                            )?;
+                        }
+                        Scope::run(s, &[], |work| {
+                            let printed = work.keep(s.send(value, b"printString", &[])?);
+                            let bytes = s.send(printed, b"bytes", &[])?;
+                            s.send(output, b"appendBytes:", &[bytes])
+                        })?;
+                    }
                 }
-                bytes.push(b'}');
-                s.send(s.value(b"String"), b"fromBytes:", &[Operand::bytes(&bytes)])
+                s.send(output, b"appendByteValues", &[abi::size(125).unwrap()])?;
+                s.send(s.value(b"String"), b"fromBytes:", &[output])
             }
             _ => Err(invalid()),
         }
@@ -890,19 +672,280 @@ entry!(do_each, 8);
 entry!(inject, 9);
 entry!(pairs, 10);
 entry!(print, 11);
-const METHODS: &[(&[u8], Method)] = &[
-    (b"new", new),
-    (b"clone", new),
-    (b"at:", at),
-    (b"at:put:", put),
-    (b"includesKey:", includes),
-    (b"at:ifAbsent:", absent),
-    (b"size", size),
-    (b"keys", keys),
-    (b"rehashImage:", rehash_image),
-    (b"values", values),
-    (b"do:", do_each),
-    (b"inject:into:", inject),
-    (b"keysAndValuesDo:", pairs),
-    (b"printString", print),
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"Bytes",
+    b"CollectionVt",
+    b"GC",
+    b"Integer",
+    b"Map",
+    b"MapNode",
+    b"MapVt",
+    b"ObjectModel",
+    b"ObjectVt",
+    b"Roots",
+    b"String",
+    b"Vector",
+    b"Word",
+    b"add:",
+    b"addMethod",
+    b"allocate:bytes:",
+    b"allocationSizeOf:",
+    b"appendByteValues",
+    b"appendBytes:",
+    b"at:",
+    b"at:ifAbsent:",
+    b"at:put:",
+    b"behaviorOf:",
+    b"bytes",
+    b"clone",
+    b"collectionEquals:",
+    b"collectionHash",
+    b"delegated",
+    b"do:",
+    b"false",
+    b"fromByteValues",
+    b"fromBytes:",
+    b"fromUnsignedLow:high:",
+    b"fromWord:",
+    b"high32",
+    b"includesKey:",
+    b"inject:into:",
+    b"keys",
+    b"keysAndValuesDo:",
+    b"low32",
+    b"methodAt:",
+    b"new",
+    b"nil",
+    b"ownerOf:put:",
+    b"parentOf:",
+    b"prepareAllocation",
+    b"printString",
+    b"register:",
+    b"rehashImage:",
+    b"release:",
+    b"retain:",
+    b"rootsDo:",
+    b"sequence",
+    b"setLayoutOf:to:rest:",
+    b"size",
+    b"true",
+    b"value",
+    b"value:value:",
+    b"values",
+    b"visit:",
+    b"withContext:",
 ];
+const fn index(n: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        let c = NAMES[i];
+        if c.len() == n.len() {
+            let mut j = 0;
+            while j < n.len() && c[j] == n[j] {
+                j += 1;
+            }
+            if j == n.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"new"),
+        entry: Some(new),
+    },
+    MethodSpec {
+        name: index(b"clone"),
+        entry: Some(new),
+    },
+    MethodSpec {
+        name: index(b"at:"),
+        entry: Some(at),
+    },
+    MethodSpec {
+        name: index(b"at:put:"),
+        entry: Some(put),
+    },
+    MethodSpec {
+        name: index(b"includesKey:"),
+        entry: Some(includes),
+    },
+    MethodSpec {
+        name: index(b"at:ifAbsent:"),
+        entry: Some(absent),
+    },
+    MethodSpec {
+        name: index(b"size"),
+        entry: Some(size),
+    },
+    MethodSpec {
+        name: index(b"keys"),
+        entry: Some(keys),
+    },
+    MethodSpec {
+        name: index(b"rehashImage:"),
+        entry: Some(rehash_image),
+    },
+    MethodSpec {
+        name: index(b"values"),
+        entry: Some(values),
+    },
+    MethodSpec {
+        name: index(b"do:"),
+        entry: Some(do_each),
+    },
+    MethodSpec {
+        name: index(b"inject:into:"),
+        entry: Some(inject),
+    },
+    MethodSpec {
+        name: index(b"keysAndValuesDo:"),
+        entry: Some(pairs),
+    },
+    MethodSpec {
+        name: index(b"printString"),
+        entry: Some(print),
+    },
+    MethodSpec {
+        name: index(b"rootsDo:"),
+        entry: Some(roots),
+    },
+];
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    argc: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([namespace]) = (unsafe { borrowed_slice(a, argc) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if symbols.len() != NAMES.len() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let s = unsafe { &*old };
+        return if s.ready.get() && s.namespace == *namespace {
+            s.prototype
+        } else {
+            id.invalid
+        };
+    }
+    done((|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |n: &[u8]| object(send(*namespace, b"at:", &[names[n]])?);
+        let roots = named(b"Roots")?;
+        let model = named(b"ObjectModel")?;
+        let parent = named(b"CollectionVt")?;
+        let object_parent = named(b"ObjectVt")?;
+        let mut tokens = Vec::new();
+        let result = (|| {
+            let mut keep = |v| -> Result<Oop, Oop> {
+                tokens.push(send(roots, b"retain:", &[v])?);
+                Ok(v)
+            };
+            let mut values = HashMap::new();
+            for &name in DEPENDENCIES {
+                values.insert(name, keep(named(name)?)?);
+            }
+            let behavior = keep(send(parent, b"delegated", &[])?)?;
+            let node = keep(send(object_parent, b"delegated", &[])?)?;
+            let layout = keep(send(
+                id.root,
+                b"sequence",
+                &[1, 0].map(|v| abi::size(v).unwrap()),
+            )?)?;
+            send(
+                model,
+                b"setLayoutOf:to:rest:",
+                &[behavior, layout, abi::size(0).unwrap()],
+            )?;
+            let empty = keep(send(
+                id.root,
+                b"sequence",
+                &[abi::size(0).unwrap(), abi::size(0).unwrap()],
+            )?)?;
+            send(
+                model,
+                b"setLayoutOf:to:rest:",
+                &[node, empty, abi::size(1).unwrap()],
+            )?;
+            let mut allocate = |behavior, bytes| -> Result<Oop, Oop> {
+                let value = keep(send(
+                    model,
+                    b"allocate:bytes:",
+                    &[behavior, abi::size(bytes).ok_or_else(invalid)?],
+                )?)?;
+                if send(id.root, b"allocationSizeOf:", &[value])? != abi::size(bytes).unwrap()
+                    || send(id.root, b"behaviorOf:", &[value])? != behavior
+                {
+                    return Err(invalid());
+                }
+                Ok(value)
+            };
+            let prototype = allocate(behavior, size_of::<Map>())?;
+            prototype.cast::<Map>().write(Map {
+                root: ptr::null_mut(),
+                count: 0,
+            });
+            let s = Box::into_raw(Box::new(State {
+                id,
+                namespace: *namespace,
+                roots,
+                model,
+                behavior,
+                node,
+                prototype,
+                values,
+                names: names.clone(),
+                scoped: RefCell::new(Vec::new()),
+                ready: Cell::new(false),
+            }));
+            INSTANCE.store(s, Ordering::Release);
+            let s = &*s;
+            for spec in METHODS {
+                let method = s.send(image, b"methodAt:", &[symbols[spec.name]])?;
+                let method = s.send(method, b"withContext:", &[prototype])?;
+                s.send(behavior, b"addMethod", &[symbols[spec.name], method])?;
+            }
+            s.send(roots, b"register:", &[prototype])?;
+            s.send(id.root, b"ownerOf:put:", &[behavior, prototype])?;
+            for (name, v) in [
+                (b"Map".as_slice(), prototype),
+                (b"MapVt", behavior),
+                (b"MapNode", node),
+            ] {
+                s.send(*namespace, b"at:put:", &[names[name], v])?;
+            }
+            s.ready.set(true);
+            Ok(prototype)
+        })();
+        for token in tokens {
+            send(roots, b"release:", &[token])?;
+        }
+        result
+    })())
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
+    initialize: Some(initialize),
+};

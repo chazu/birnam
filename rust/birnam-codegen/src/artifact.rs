@@ -22,24 +22,13 @@ fn array(out: &mut String, name: &str, bytes: &[u8]) {
     }
     out.push_str("0};\n");
 }
-pub fn emit(
+fn descriptor(
     tree: &OwnedCst,
     source: &[u8],
-    generated: &[u8],
     path: &[u8],
     metadata: &crate::source_metadata::Metadata,
-    adapters: &[(u32, Vec<u8>)],
-    synchronous_adapters: bool,
+    embedded: &[(Vec<u8>, Vec<u8>)],
 ) -> Option<Vec<u8>> {
-    emit_with_embedded(tree, source, generated, path, metadata, adapters, synchronous_adapters, &[])
-}
-
-pub fn emit_with_embedded(
-    tree: &OwnedCst, source: &[u8], generated: &[u8], path: &[u8],
-    metadata: &crate::source_metadata::Metadata, adapters: &[(u32, Vec<u8>)],
-    synchronous_adapters: bool, embedded: &[(Vec<u8>, Vec<u8>)],
-) -> Option<Vec<u8>> {
-    let encoded_metadata = metadata.encode()?;
     let revision = &metadata.revision;
     let module = &metadata.module;
     let fallback = || {
@@ -80,15 +69,60 @@ pub fn emit_with_embedded(
     );
     list(
         &mut payload,
-        &source_revision::native_requirements(tree, source).into_iter().filter(|name| !embedded.iter().any(|(n, _)| n == name)).collect::<Vec<_>>(),
+        &source_revision::native_requirements(tree, source)
+            .into_iter()
+            .filter(|name| !embedded.iter().any(|(n, _)| n == name))
+            .collect::<Vec<_>>(),
     );
-    let mut capabilities = vec![b"activate".to_vec(), b"source".to_vec(),
-        b"reflection".to_vec(), CAPABILITY.to_vec(), b"prepared-alien-v1".to_vec()];
-    if !embedded.is_empty() { capabilities.push(b"embedded-native-hex-v1".to_vec()); }
+    let mut capabilities = vec![
+        b"activate".to_vec(),
+        b"source".to_vec(),
+        b"reflection".to_vec(),
+        CAPABILITY.to_vec(),
+    ];
+    capabilities.push(b"prepared-alien-v1".to_vec());
+    if !embedded.is_empty() {
+        capabilities.push(b"embedded-native-hex-v1".to_vec());
+    }
     list(&mut payload, &capabilities);
     let mut descriptor = DESCRIPTOR_MAGIC.to_vec();
     descriptor.extend_from_slice(&(payload.len() as u32).to_le_bytes());
     descriptor.extend_from_slice(&payload);
+    Some(descriptor)
+}
+pub fn emit(
+    tree: &OwnedCst,
+    source: &[u8],
+    generated: &[u8],
+    path: &[u8],
+    metadata: &crate::source_metadata::Metadata,
+    adapters: &[(u32, Vec<u8>)],
+    synchronous_adapters: bool,
+) -> Option<Vec<u8>> {
+    emit_with_embedded(
+        tree,
+        source,
+        generated,
+        path,
+        metadata,
+        adapters,
+        synchronous_adapters,
+        &[],
+    )
+}
+
+pub fn emit_with_embedded(
+    tree: &OwnedCst,
+    source: &[u8],
+    generated: &[u8],
+    path: &[u8],
+    metadata: &crate::source_metadata::Metadata,
+    adapters: &[(u32, Vec<u8>)],
+    synchronous_adapters: bool,
+    embedded: &[(Vec<u8>, Vec<u8>)],
+) -> Option<Vec<u8>> {
+    let encoded_metadata = metadata.encode()?;
+    let descriptor = descriptor(tree, source, path, metadata, embedded)?;
     let mut out = "#define birnam_native_module_v1 artifact_code_module\n".to_owned();
     out.push_str(std::str::from_utf8(generated).ok()?);
     out.push_str("\n#undef birnam_native_module_v1\n");
@@ -99,8 +133,20 @@ pub fn emit_with_embedded(
         array(&mut out, &format!("__birnam_native_name_{index}"), name);
         // Native binaries can themselves contain descriptor magic. An inert
         // hex carrier keeps arbitrary payload bytes out of descriptor scanning.
-        let encoded: Vec<u8> = bytes.iter().flat_map(|b| [b"0123456789abcdef"[(b >> 4) as usize], b"0123456789abcdef"[(b & 15) as usize]]).collect();
-        array(&mut out, &format!("__birnam_native_bytes_{index}"), &encoded);
+        let encoded: Vec<u8> = bytes
+            .iter()
+            .flat_map(|b| {
+                [
+                    b"0123456789abcdef"[(b >> 4) as usize],
+                    b"0123456789abcdef"[(b & 15) as usize],
+                ]
+            })
+            .collect();
+        array(
+            &mut out,
+            &format!("__birnam_native_bytes_{index}"),
+            &encoded,
+        );
     }
     for (arity, bytes) in adapters {
         array(
@@ -110,7 +156,9 @@ pub fn emit_with_embedded(
         );
     }
     out.push_str("static R artifact_initialize(const P*p,const A*a,size_t n){\nR r=artifact_code_module.initialize(p,a,n);if(r.status||r.value.kind!=1)return r;Call c={0};O method=keep(&c,r.value.data.object);\n");
-    out.push_str("if(method==named(&c,\"nil\")||is_error(&c,method))return finish(&c,obj(method));\n");
+    out.push_str(
+        "if(method==named(&c,\"nil\")||is_error(&c,method))return finish(&c,obj(method));\n",
+    );
     writeln!(out, "O source=string(&c,__birnam_artifact_source,{});O metadata=string(&c,__birnam_artifact_metadata,{});O adapters=call(&c,named(&c,\"Vector\"),\"new\",0,0);A v;", source.len(), encoded_metadata.len()).unwrap();
     for (arity, bytes) in adapters {
         writeln!(out, "O row_{arity}=call(&c,named(&c,\"Vector\"),\"new\",0,0);v=obj(integer(&c,{arity}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(string(&c,__birnam_artifact_adapter_{arity},{}));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(named(&c,\"{}\"));row_{arity}=call(&c,row_{arity},\"add:\",&v,1);v=obj(row_{arity});adapters=call(&c,adapters,\"add:\",&v,1);", bytes.len(), if synchronous_adapters { "true" } else { "false" }).unwrap();
@@ -124,5 +172,50 @@ pub fn emit_with_embedded(
         out.push_str("v=obj(libraries);result=call(&c,result,\"add:\",&v,1);");
     }
     out.push_str("return finish(&c,obj(result));}\nconst Module birnam_native_module_v1={1,sizeof(Module),artifact_initialize};");
+    Some(out.into_bytes())
+}
+
+/// Oop initializer: the same inert record, with ordinary reflected Methods
+/// supplied by Codegen rather than compiled native arity adapters.
+pub fn emit_oop(
+    tree: &OwnedCst,
+    source: &[u8],
+    generated: &[u8],
+    path: &[u8],
+    metadata: &crate::source_metadata::Metadata,
+    embedded: &[(Vec<u8>, Vec<u8>)],
+) -> Option<Vec<u8>> {
+    let descriptor = descriptor(tree, source, path, metadata, embedded)?;
+    let encoded = metadata.encode()?;
+    let mut out = String::from("#define birnam_native_module_v3 artifact_code_module\n");
+    out.push_str(std::str::from_utf8(generated).ok()?);
+    out.push_str("\n#undef birnam_native_module_v3\n");
+    array(&mut out, "__birnam_artifact_descriptor", &descriptor);
+    array(&mut out, "__birnam_artifact_source", source);
+    array(&mut out, "__birnam_artifact_metadata", &encoded);
+    for (i, (name, bytes)) in embedded.iter().enumerate() {
+        array(&mut out, &format!("__birnam_native_name_{i}"), name);
+        let encoded: Vec<_> = bytes
+            .iter()
+            .flat_map(|b| {
+                [
+                    b"0123456789abcdef"[(b >> 4) as usize],
+                    b"0123456789abcdef"[(b & 15) as usize],
+                ]
+            })
+            .collect();
+        array(&mut out, &format!("__birnam_native_bytes_{i}"), &encoded);
+    }
+    out.push_str("static O artifact_initialize(const CP*p,O unit,const O*names,size_t count,const O*a,size_t n){O method=artifact_code_module.initialize(p,unit,names,count,a,n);if(failed(method))return method;Call c={0};keep(&c,method);O nil=named(&c,S_NIL);if(method==nil)return finish(&c,method);O error_factory=named(&c,S_ERROR);if(error_factory&&error_factory!=nil){O is_error=call(&c,method,S_IS_ERROR,0,0);if(is_error==named(&c,S_TRUE))return finish(&c,method);}O factory=named(&c,S_VECTOR);O result=call(&c,factory,S_NEW,0,0);result=call(&c,result,S_ADD,&method,1);\n");
+    writeln!(out,"O source=string(&c,__birnam_artifact_source,{});result=call(&c,result,S_ADD,&source,1);O metadata=string(&c,__birnam_artifact_metadata,{});result=call(&c,result,S_ADD,&metadata,1);",source.len(),encoded.len()).ok()?;
+    out.push_str("O adapters=call(&c,factory,S_NEW,0,0);result=call(&c,result,S_ADD,&adapters,1);");
+    if !embedded.is_empty() {
+        out.push_str("O libraries=call(&c,factory,S_NEW,0,0);O v;\n");
+        for (i, (name, bytes)) in embedded.iter().enumerate() {
+            writeln!(out,"O lib_{i}=call(&c,factory,S_NEW,0,0);v=string(&c,__birnam_native_name_{i},{});lib_{i}=call(&c,lib_{i},S_ADD,&v,1);v=string(&c,__birnam_native_bytes_{i},{});lib_{i}=call(&c,lib_{i},S_ADD,&v,1);libraries=call(&c,libraries,S_ADD,&lib_{i},1);",name.len(),bytes.len()*2).ok()?;
+        }
+        out.push_str("result=call(&c,result,S_ADD,&libraries,1);");
+    }
+    out.push_str("return finish(&c,result); }\nconst Module birnam_native_module_v3={3,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,artifact_initialize};\n");
     Some(out.into_bytes())
 }

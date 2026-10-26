@@ -1,5 +1,8 @@
 # Runtime simplification implementation and measurements
 
+> **Historical scope:** These are the earlier retained optimization results and their original baselines. They are not measurements of the corrected Oop-only branch. See the
+> [complete work summary and current checkpoint](logue-runtime-work-summary.md).
+
 Approved 2026-10-22. Implement in ascending complexity, measure each retained
 slice against its immediate predecessor, and commit its code, checks and evidence
 together. Logue remains unchanged as an application acceptance workload.

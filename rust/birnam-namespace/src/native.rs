@@ -1,16 +1,8 @@
-//! Namespace takes a Roots object and returns an opaque Namespace object.
-//!
-//! Symbol keys: `at:`, `at:put:`, `nameOf:` and `nameAt:`; missing entries return
-//! Unit. `count` and `nameAt:` use native Words until language Integers exist.
-//! `bindingsDo:` sends `binding:value:` to a visitor Object; `rootsDo:` sends
-//! `visit:` for each root. Both snapshot before sending.
+//! Ordered bindings, nullable lookup and source-global resolution through Oops.
 use super::state::Environment;
-use birnam_abi::id_protocol::{
-    self as native, Method, Module, NativeEntry, Operand, Outcome, Protocol,
-};
-use birnam_abi::{Oop, borrowed_slice};
-use core::{cell::RefCell, ffi::c_void, ptr};
-use std::sync::atomic::{AtomicPtr, Ordering};
+use birnam_abi::{self as abi, Oop, id_protocol::{Literal, MethodSpec, Module, Protocol}};
+use core::{cell::{Cell, RefCell}, ptr};
+use std::{collections::HashMap, sync::atomic::{AtomicPtr, Ordering}};
 
 struct Namespace {
     id: Protocol,
@@ -18,10 +10,9 @@ struct Namespace {
     registry: Oop,
     storage: RefCell<Environment>,
     active: RefCell<Vec<Oop>>,
-    names: std::collections::HashMap<&'static [u8], Oop>,
-    // Same retained Symbol as the inventory entry; never a cached method.
-    symbol_bytes_selector: Oop,
-    at_selector: Oop,
+    names: HashMap<&'static [u8], Oop>,
+    lookup_method: Cell<Oop>,
+    ready: Cell<bool>,
 }
 struct Scope<'a> { namespace: &'a Namespace, start: usize }
 impl Scope<'_> {
@@ -30,361 +21,167 @@ impl Scope<'_> {
 impl Drop for Scope<'_> {
     fn drop(&mut self) { self.namespace.active.borrow_mut().truncate(self.start); }
 }
+impl Namespace {
+    fn invalid(&self) -> Oop { self.id.invalid }
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn key(&self, key: Oop) -> Result<Oop, Oop> {
+        if unsafe { self.send(self.id.root, b"isSymbol:", &[key]) }? == abi::size(1).unwrap() {
+            Ok(key)
+        } else { Err(self.invalid()) }
+    }
+    fn scope(&self) -> Scope<'_> { Scope { namespace: self, start: self.active.borrow().len() } }
+    unsafe fn perform(&self, op: Op, r: Oop, a: &[Oop]) -> Result<Oop, Oop> {
+        let one = || if let [v] = a { Ok(*v) } else { Err(self.invalid()) };
+        let nil = ptr::null_mut();
+        unsafe { match op {
+            Op::Find => { let key = self.key(one()?)?; Ok(self.storage.borrow().import(key)) },
+            Op::Put => {
+                let [key, value] = a else { return Err(self.invalid()); };
+                let key = self.key(*key)?;
+                Ok(self.storage.borrow_mut().export(key, *value))
+            }
+            Op::ValueAt => {
+                let result = self.send(r, b"at:", &[one()?])?;
+                if result.is_null() { self.send(r, b"at:", &[self.names[b"nil".as_slice()]]) }
+                else { Ok(result) }
+            }
+            Op::ResolveGlobal => {
+                let key = one()?;
+                let scope = self.scope();
+                let nil = scope.keep(self.send(r, b"at:", &[self.names[b"nil".as_slice()]])?);
+                let globals = scope.keep(self.send(r, b"at:", &[self.names[b"Globals".as_slice()]])?);
+                if !globals.is_null() {
+                    let found = self.send(globals, b"at:", &[key])?;
+                    if found != nil { return Ok(found); }
+                }
+                let fallback = self.send(r, b"at:", &[key])?;
+                Ok(if fallback.is_null() { nil } else { fallback })
+            }
+            Op::Includes => {
+                let found = self.send(r, b"at:", &[one()?])?;
+                let key = if found.is_null() { b"false".as_slice() } else { b"true".as_slice() };
+                self.send(self.receiver, b"at:", &[self.names[key]])
+            }
+            Op::Count => {
+                if !a.is_empty() { return Err(self.invalid()); }
+                abi::size(self.storage.borrow().count()).ok_or(self.invalid())
+            }
+            Op::NameAt => Ok(self.storage.borrow().name_at(abi::as_size(one()?).ok_or(self.invalid())?)),
+            Op::Reverse => Ok(self.storage.borrow().exported_name_of(one()?)),
+            Op::Canonical => Ok(abi::size(usize::from(one()? == self.lookup_method.get())).unwrap()),
+            Op::Roots => {
+                let visitor = one()?;
+                let mut values = self.storage.borrow().roots();
+                values.extend([self.receiver, self.registry, self.lookup_method.get()]);
+                values.extend(self.names.values().copied());
+                values.extend(self.active.borrow().iter().copied());
+                for value in values { self.send(visitor, b"visit:", &[value])?; }
+                Ok(nil)
+            }
+            Op::Bindings | Op::LiveBindings => {
+                let visitor = one()?;
+                let scope = self.scope();
+                let snapshot = self.storage.borrow().bindings().to_vec();
+                for binding in &snapshot { scope.keep(binding.name); scope.keep(binding.value); }
+                for binding in snapshot {
+                    if matches!(op, Op::LiveBindings) && binding.value.is_null() { continue; }
+                    self.send(visitor, b"binding:value:", &[binding.name, binding.value])?;
+                }
+                Ok(nil)
+            }
+        }}
+    }
+}
 static INSTANCE: AtomicPtr<Namespace> = AtomicPtr::new(ptr::null_mut());
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
-}
-fn object(value: Operand) -> Result<Oop, Outcome> {
-    value
-        .as_object()
-        .filter(|o| !o.is_null())
-        .ok_or_else(invalid)
-}
-fn value(object: Oop) -> Operand {
-    if object.is_null() {
-        Operand::unit()
-    } else {
-        Operand::object(object)
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+unsafe fn state<'a>(c: Oop) -> Result<&'a Namespace, Oop> {
+    let raw = INSTANCE.load(Ordering::Acquire);
+    if raw.is_null() {
+        let api = API.load(Ordering::Acquire);
+        if api.is_null() { std::process::abort(); }
+        return Err(unsafe { (*api).invalid });
     }
+    let s = unsafe { &*raw };
+    if c == s.receiver { Ok(s) } else { Err(s.invalid()) }
 }
-unsafe fn symbol(namespace: &Namespace, key: Operand) -> Result<Oop, Outcome> {
-    let object = object(key)?;
-    if unsafe { namespace.id.send(namespace.id.receiver, namespace.symbol_bytes_selector, &[key]) }?.kind() != native::BYTES {
-        return Err(invalid());
+macro_rules! operations { ($(($name:literal, $op:ident)),* $(,)?) => {
+    #[derive(Clone, Copy)] enum Op { $($op),* }
+    #[allow(non_snake_case)] mod entries {
+        use super::*;
+        $(pub unsafe extern "C" fn $op(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+            let s = match unsafe { state(c) } { Ok(s) => s, Err(e) => return abi::fault_reference(e) };
+            let Some(a) = (unsafe { abi::borrowed_slice(a,n) }) else { return s.invalid(); };
+            unsafe { s.perform(Op::$op,r,a) }.unwrap_or_else(abi::fault_reference)
+        })*
     }
-    Ok(object)
-}
-unsafe extern "C" fn find(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([key]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let namespace = unsafe { &*context.cast::<Namespace>() };
-    match unsafe { symbol(namespace, *key) } {
-        Ok(key) => Outcome::loaded(value(namespace.storage.borrow().import(key))),
-        Err(error) => error,
-    }
-}
-// Language-facing nullable lookup. Keep at:'s native Unit contract intact.
-unsafe extern "C" fn value_at(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let namespace = &*c.cast::<Namespace>();
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        if n != 1 { return Err(invalid()); }
-        let result = namespace.id.send(r, namespace.at_selector, args)?;
-        if result.kind() != native::UNIT { return Ok(result); }
-        namespace.id.send(r, namespace.at_selector, &[Operand::object(namespace.names[b"nil".as_slice()])])
-    })().map_or_else(|e| e, Outcome::loaded)
-}
-// Resolve source globals with the compiler's original precedence and Id calls.
-// Namespace owns the temporary reference inventory, never Store/Globals payloads.
-unsafe extern "C" fn resolve_global(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let namespace = &*c.cast::<Namespace>();
-        let [key] = borrowed_slice(a,n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let key = object(*key)?;
-        let scope = Scope { namespace, start: namespace.active.borrow().len() };
-        scope.keep(r); scope.keep(key);
-        let nil = scope.keep(object(namespace.id.send(r, namespace.at_selector,
-            &[Operand::object(namespace.names[b"nil".as_slice()])])?)?);
-        let globals = namespace.id.send(r, namespace.at_selector,
-            &[Operand::object(namespace.names[b"Globals".as_slice()])])?;
-        // Before the authored binding owner exists, source can still construct
-        // it from namespace exports. A present owner retains the ordinary live
-        // Globals-first protocol; malformed replies are not treated as absence.
-        if globals.kind() != native::UNIT {
-            let globals = scope.keep(object(globals)?);
-            let found = object(namespace.id.send(globals, namespace.at_selector, &[Operand::object(key)])?)?;
-            if found != nil { return Ok(Operand::object(found)); }
+    const METHODS: &[MethodSpec] = &[$(MethodSpec { name: index($name), entry: Some(entries::$op) }),*];
+}; }
+macro_rules! literals { ($($name:literal),* $(,)?) => {
+    const NAMES: &[&[u8]] = &[$($name),*];
+    static LITERALS: &[Literal] = &[$(Literal::new($name)),*];
+}; }
+literals![b"objectBehavior", b"delegated", b"allocate", b"methodAt:", b"withContext:",
+    b"addMethod", b"register:", b"isSymbol:", b"visit:", b"binding:value:",
+    b"at:", b"at:put:", b"valueAt:", b"resolveGlobal:", b"includesKey:", b"count",
+    b"nameAt:", b"nameOf:", b"rootsDo:", b"bindingsDo:", b"liveBindingsDo:",
+    b"isCanonicalLookup:", b"nil", b"true", b"false", b"Globals", b"Namespace", b"Roots",
+    b"retain:", b"release:"];
+const fn index(name: &[u8]) -> usize {
+    let mut i=0;
+    while i<NAMES.len() {
+        if NAMES[i].len()==name.len() {
+            let mut j=0; while j<name.len() && NAMES[i][j]==name[j] { j+=1; }
+            if j==name.len() { return i; }
         }
-        let fallback = namespace.id.send(r, namespace.at_selector, &[Operand::object(key)])?;
-        if fallback.kind() == native::UNIT { Ok(Operand::object(nil)) }
-        else { object(fallback).map(Operand::object) }
-    })().map_or_else(|e|e, Outcome::loaded)
+        i+=1;
+    }
+    panic!("missing literal")
 }
-unsafe extern "C" fn includes_key(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+operations![(b"at:", Find), (b"at:put:", Put), (b"valueAt:", ValueAt),
+    (b"resolveGlobal:", ResolveGlobal), (b"includesKey:", Includes), (b"count", Count),
+    (b"nameAt:", NameAt), (b"nameOf:", Reverse), (b"rootsDo:", Roots),
+    (b"bindingsDo:", Bindings), (b"liveBindingsDo:", LiveBindings),
+    (b"isCanonicalLookup:", Canonical)];
+unsafe extern "C" fn initialize(p: *const Protocol, image: Oop, l: *const Oop, n: usize, a: *const Oop, argc: usize) -> Oop {
+    API.store(p.cast_mut(),Ordering::Release);
+    let id = unsafe { *p };
+    let Some([registry]) = (unsafe { abi::borrowed_slice(a,argc) }) else { return id.invalid; };
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() { return if unsafe { (*old).ready.get() && (*old).registry == *registry } { unsafe { (*old).receiver } } else { id.invalid }; }
+    let Some(symbols) = (unsafe { abi::borrowed_slice(l,n) }) else { return id.invalid; };
+    if symbols.len()!=NAMES.len() { return id.invalid; }
     (|| unsafe {
-        let namespace = &*c.cast::<Namespace>();
-        let [key] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
-        let value = namespace.id.send(r, namespace.at_selector, &[*key])?;
-        namespace.id.send(namespace.receiver, namespace.at_selector, &[Operand::object(namespace.names[if value.kind() == native::UNIT { b"false".as_slice() } else { b"true".as_slice() }])])
-    })().map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn bind(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([key, argument]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let object = match argument.kind() {
-        native::UNIT => ptr::null_mut(),
-        native::OBJECT => match object(*argument) {
-            Ok(o) => o,
-            Err(e) => return e,
-        },
-        _ => return invalid(),
-    };
-    let namespace = unsafe { &*context.cast::<Namespace>() };
-    match unsafe { symbol(namespace, *key) } {
-        Ok(key) => Outcome::loaded(value(namespace.storage.borrow_mut().export(key, object))),
-        Err(error) => error,
-    }
-}
-unsafe extern "C" fn count(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    if count != 0 {
-        return invalid();
-    }
-    Outcome::loaded(Operand::word(
-        unsafe { &*context.cast::<Namespace>() }
-            .storage
-            .borrow()
-            .count(),
-    ))
-}
-unsafe extern "C" fn name_at(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([index]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(index) = index.as_word() else {
-        return invalid();
-    };
-    Outcome::loaded(value(
-        unsafe { &*context.cast::<Namespace>() }
-            .storage
-            .borrow()
-            .name_at(index),
-    ))
-}
-unsafe extern "C" fn reverse(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(object) = argument.as_object() else {
-        return invalid();
-    };
-    Outcome::loaded(value(
-        unsafe { &*context.cast::<Namespace>() }
-            .storage
-            .borrow()
-            .exported_name_of(object),
-    ))
-}
-unsafe extern "C" fn roots(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
-        return invalid();
-    };
-    let snapshot = {
-        let namespace = unsafe { &*context.cast::<Namespace>() };
-        let mut snapshot = namespace.storage.borrow().roots();
-        snapshot.extend([receiver, namespace.registry]);
-        snapshot.extend(namespace.names.values().copied());
-        snapshot.extend(namespace.active.borrow().iter().copied());
-        snapshot
-    };
-    for object in snapshot.into_iter().filter(|o| !o.is_null()) {
-        let result = unsafe {
-            (&*context.cast::<Namespace>()).id.send_named(visitor, b"visit:", &[Operand::object(object)])
-        };
-        if let Err(error) = result {
-            return error;
-        }
-    }
-    Outcome::loaded(Operand::unit())
-}
-unsafe extern "C" fn bindings(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    unsafe { visit_bindings(context, args, count, false) }
-}
-unsafe extern "C" fn live_bindings(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    unsafe { visit_bindings(context, args, count, true) }
-}
-unsafe fn visit_bindings(context: *mut c_void, args: *const Operand, count: usize, live_only: bool) -> Outcome {
-    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
-        return invalid();
-    };
-    let namespace = unsafe { &*context.cast::<Namespace>() };
-    let scope = Scope { namespace, start: namespace.active.borrow().len() };
-    scope.keep(namespace.receiver);
-    scope.keep(visitor);
-    let snapshot = namespace.storage.borrow().bindings().to_vec();
-    // Replacement can remove the original namespace edges and collect in a
-    // visitor. Retain both halves of every copied pair before the first send.
-    for binding in &snapshot {
-        scope.keep(binding.name);
-        if !binding.value.is_null() { scope.keep(binding.value); }
-    }
-    for binding in snapshot {
-        if live_only && binding.value.is_null() { continue; }
-        let arguments = [Operand::object(binding.name), value(binding.value)];
-        let result = unsafe {
-            (&*context.cast::<Namespace>()).id.send_named(visitor, b"binding:value:", &arguments)
-        };
-        if let Err(error) = result {
-            return error;
-        }
-    }
-    Outcome::loaded(Operand::unit())
-}
-/// Compiler admission recognizes only this owner's canonical lookup entry.
-/// A declaration about an entry does not select it or bypass future lookup.
-unsafe extern "C" fn lookup_semantics(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(entry) = argument.as_entry() else {
-        return invalid();
-    };
-    Outcome::loaded(Operand::word(usize::from(
-        entry == NativeEntry::new(find, context),
-    )))
-}
-unsafe fn construct(id: Protocol, registry: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let mut tokens = Vec::new();
+        let names: HashMap<_,_> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r,n:&[u8],a:&[Oop]| id.send(r,names[n],a);
+        let base = send(id.root,b"objectBehavior",&[])?;
+        let behavior = send(base,b"delegated",&[])?;
+        let receiver = send(behavior,b"allocate",&[abi::size(0).unwrap()])?;
+        let token = send(*registry,b"retain:",&[receiver])?;
+        let s = Box::new(Namespace { id,receiver,registry:*registry,storage:RefCell::new(Environment::new()),
+            active:RefCell::new(Vec::new()),names,lookup_method:Cell::new(ptr::null_mut()),ready:Cell::new(false) });
+        let s = Box::into_raw(s);
+        INSTANCE.store(s,Ordering::Release);
+        let s = &*s;
         let result = (|| {
-            let prototype = id.send_named(id.receiver, b"objectPrototype", &[])?;
-            let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
-            let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
-            let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
-            let retain = id.intern_name(b"retain:")?;
-            tokens.push(id.send(registry, retain, &[Operand::object(receiver)])?.as_word().ok_or_else(invalid)?);
-            let mut names = std::collections::HashMap::new();
-            for name in [b"symbolBytesOf:".as_slice(), b"at:", b"nil", b"true", b"false", b"Globals"] {
-                let symbol = id.intern_name(name)?;
-                tokens.push(id.send(registry, retain, &[Operand::object(symbol)])?.as_word().ok_or_else(invalid)?);
-                names.insert(name, symbol);
+            for spec in METHODS {
+                let method = s.send(image,b"methodAt:",&[symbols[spec.name]])?;
+                let method = s.send(method,b"withContext:",&[receiver])?;
+                s.send(behavior,b"addMethod",&[symbols[spec.name],method])?;
+                if spec.name==index(b"at:") { s.lookup_method.set(method); }
             }
-            let namespace = Box::into_raw(Box::new(Namespace {
-                id,
-                receiver,
-                registry,
-                storage: RefCell::new(Environment::new()),
-                active: RefCell::new(Vec::new()),
-                symbol_bytes_selector: names[b"symbolBytesOf:".as_slice()],
-                at_selector: names[b"at:".as_slice()],
-                names,
-            }));
-            for (name, method) in [
-                (b"at:".as_slice(), find as Method),
-                (b"valueAt:", value_at),
-                (b"resolveGlobal:", resolve_global),
-                (b"includesKey:", includes_key),
-                (b"at:put:", bind),
-                (b"count", count),
-                (b"nameAt:", name_at),
-                (b"nameOf:", reverse),
-                (b"rootsDo:", roots),
-                (b"bindingsDo:", bindings),
-                (b"liveBindingsDo:", live_bindings),
-                (b"isCanonicalLookup:", lookup_semantics),
-            ] {
-                id.send_named(
-                    behavior,
-                    b"addMethod",
-                    &[
-                        Operand::object(id.intern_name(name)?),
-                        Operand::entry(NativeEntry::new(method, namespace.cast())),
-                    ],
-                )?;
+            s.send(*registry,b"register:",&[receiver])?;
+            for (name,value) in [(b"Namespace".as_slice(),receiver),(b"Roots",*registry)] {
+                s.send(receiver,b"at:put:",&[s.names[name],value])?;
             }
-            id.send_named(registry, b"register:", &[Operand::object(receiver)])?;
-            for (name, object) in [(b"Namespace".as_slice(), receiver), (b"Roots", registry)] {
-                id.send_named(
-                    receiver,
-                    b"at:put:",
-                    &[
-                        Operand::object(id.intern_name(name)?),
-                        Operand::object(object),
-                    ],
-                )?;
-            }
-            INSTANCE.store(namespace, Ordering::Release);
-            Ok(Operand::object(receiver))
+            s.ready.set(true);
+            Ok(receiver)
         })();
-        for token in tokens.into_iter().rev() {
-            id.send_named(registry, b"release:", &[Operand::word(token)])?;
-        }
+        s.send(*registry,b"release:",&[token])?;
         result
-    }
-}
-unsafe extern "C" fn initialize(
-    id: *const Protocol,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } {
-        return invalid();
-    }
-    let Some([registry]) = (unsafe { borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Ok(registry) = object(*registry) else {
-        return invalid();
-    };
-    let id = unsafe { *id };
-    let existing = INSTANCE.load(Ordering::Acquire);
-    if !existing.is_null() {
-        return if unsafe { (*existing).id.same_contract(&id) && (*existing).registry == registry } {
-            Outcome::loaded(Operand::object(unsafe { (*existing).receiver }))
-        } else {
-            invalid()
-        };
-    }
-    match unsafe { construct(id, registry) } {
-        Ok(value) => Outcome::loaded(value),
-        Err(error) => error,
-    }
+    })().unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: Module = Module {
-    version: native::VERSION,
-    byte_size: size_of::<Module>() as u32,
-    initialize: Some(initialize),
-};
+pub static birnam_native_module_v2: Module = Module { version: 2, byte_size:size_of::<Module>() as u32,
+    literals:LITERALS.as_ptr(),literal_count:LITERALS.len(),methods:METHODS.as_ptr(),method_count:METHODS.len(),initialize:Some(initialize) };

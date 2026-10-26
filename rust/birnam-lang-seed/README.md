@@ -1,5 +1,10 @@
 # Lang build seed
 
+Oop migration: the seed now constructs the unchanged grammar through Oop owner
+messages and immutable module declarations. The connected synchronous compiler
+gate parses real source with this seed. This does not yet qualify the authored
+Lang module or replace the complete grammar-oracle/cold-bootstrap acceptance.
+
 This crate retains the previous Rust grammar as an explicit build seed. It is
 used only while the installer compiles `modules/modules.birnam` and
 `modules/lang.birnam`. A temporary Bootstrap built with `lang-seed` loads

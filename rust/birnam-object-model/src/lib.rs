@@ -1,8 +1,3 @@
-//! Ordinary objects and private behaviors above Id, Roots and GC.
-//! All dependencies are opaque objects reached by fresh messages.
+//! Ordinary object storage and owner-defined slot layouts over Oop-only Id.
 mod layout;
 mod native;
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
-    1
-}

@@ -3,7 +3,6 @@
   "scope": "Vector representation, canonical objects, methods and scoped sorting roots",
   "install_name": "@rpath/libbirnam_vector.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ]
 }

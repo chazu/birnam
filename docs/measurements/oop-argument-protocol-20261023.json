@@ -1,0 +1,321 @@
+{
+  "runs": [
+    {
+      "order": 0,
+      "variant": "opaque",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 4462334,
+          "ns_per_op": 111.55835
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 25396542,
+          "ns_per_op": 84.65514
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 3048667,
+          "ns_per_op": 372.151733
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 22130792,
+          "ns_per_op": 22130792.0
+        },
+        {
+          "heap_before": 56621,
+          "heap_after": 2735,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 1,
+      "variant": "argument_protocol",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3510167,
+          "ns_per_op": 87.754175
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 21944042,
+          "ns_per_op": 73.146807
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2751250,
+          "ns_per_op": 335.845947
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 21485125,
+          "ns_per_op": 21485125.0
+        },
+        {
+          "heap_before": 56627,
+          "heap_after": 2741,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 2,
+      "variant": "argument_protocol",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3455542,
+          "ns_per_op": 86.38855
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22348333,
+          "ns_per_op": 74.494443
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2772167,
+          "ns_per_op": 338.399292
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 21236458,
+          "ns_per_op": 21236458.0
+        },
+        {
+          "heap_before": 56627,
+          "heap_after": 2741,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 3,
+      "variant": "opaque",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3451292,
+          "ns_per_op": 86.2823
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22548333,
+          "ns_per_op": 75.16111
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2954875,
+          "ns_per_op": 360.702515
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 22303500,
+          "ns_per_op": 22303500.0
+        },
+        {
+          "heap_before": 56621,
+          "heap_after": 2735,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 4,
+      "variant": "opaque",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3421042,
+          "ns_per_op": 85.52605
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22803000,
+          "ns_per_op": 76.01
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2830458,
+          "ns_per_op": 345.514893
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 21745209,
+          "ns_per_op": 21745209.0
+        },
+        {
+          "heap_before": 56621,
+          "heap_after": 2735,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 5,
+      "variant": "argument_protocol",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3548041,
+          "ns_per_op": 88.701025
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 21926625,
+          "ns_per_op": 73.08875
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2808333,
+          "ns_per_op": 342.814087
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 21942458,
+          "ns_per_op": 21942458.0
+        },
+        {
+          "heap_before": 56627,
+          "heap_after": 2741,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "variant": "argument_protocol",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3514916,
+          "ns_per_op": 87.8729
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22418125,
+          "ns_per_op": 74.727083
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2784208,
+          "ns_per_op": 339.869141
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 22052417,
+          "ns_per_op": 22052417.0
+        },
+        {
+          "heap_before": 56627,
+          "heap_after": 2741,
+          "reclaimed": 53886
+        }
+      ]
+    },
+    {
+      "order": 7,
+      "variant": "opaque",
+      "rows": [
+        {
+          "case": "allocate-and-retain-eighth",
+          "iterations": 40000,
+          "cpu_ns": 3455750,
+          "ns_per_op": 86.39375
+        },
+        {
+          "case": "intern-existing-64",
+          "iterations": 300000,
+          "cpu_ns": 22690125,
+          "ns_per_op": 75.63375
+        },
+        {
+          "case": "produce-and-intern-new-64",
+          "iterations": 8192,
+          "cpu_ns": 2787917,
+          "ns_per_op": 340.321899
+        },
+        {
+          "case": "collect-garbage",
+          "iterations": 1,
+          "cpu_ns": 21607417,
+          "ns_per_op": 21607417.0
+        },
+        {
+          "heap_before": 56621,
+          "heap_after": 2735,
+          "reclaimed": 53886
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "allocate-and-retain-eighth": {
+      "median_ns": {
+        "opaque": 86.338025,
+        "argument_protocol": 87.8135375
+      },
+      "change_percent": 1.708994964848909
+    },
+    "intern-existing-64": {
+      "median_ns": {
+        "opaque": 75.821875,
+        "argument_protocol": 73.820625
+      },
+      "change_percent": -2.639409800931458
+    },
+    "produce-and-intern-new-64": {
+      "median_ns": {
+        "opaque": 353.108704,
+        "argument_protocol": 339.1342165
+      },
+      "change_percent": -3.957559624471907
+    },
+    "collect-garbage": {
+      "median_ns": {
+        "opaque": 21938000.5,
+        "argument_protocol": 21713791.5
+      },
+      "change_percent": -1.0220120106205655
+    }
+  },
+  "baseline": "f0f965ed",
+  "qualification": {
+    "unit.log": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-id)\nwarning: unnecessary parentheses around assigned value\n  --> rust/birnam-id/src/id/id_dispatch.rs:43:25\n   |\n43 |     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n   |                         ^                             ^\n   |\n   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default\nhelp: remove these parentheses\n   |\n43 -     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n43 +     let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n   |\n\nwarning: unnecessary parentheses around assigned value\n   --> rust/birnam-id/src/id/native_id.rs:326:29\n    |\n326 |         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n    |                             ^                                             ^\n    |\nhelp: remove these parentheses\n    |\n326 -         let Some(applier) = (unsafe { id_dispatch::bind(self, m, apply) }?) else {\n326 +         let Some(applier) = unsafe { id_dispatch::bind(self, m, apply) }? else {\n    |\n\nwarning: method `vtable_of` is never used\n   --> rust/birnam-id/src/id/object_memory.rs:162:19\n    |\n141 | impl ObjectMemory {\n    | ----------------- method in this implementation\n...\n162 |     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {\n    |                   ^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `birnam-id` (lib test) generated 3 warnings (run `cargo fix --lib -p birnam-id --tests` to apply 2 suggestions)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.21s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 17 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::object_memory::tests::reference_encoding_does_not_change_extent_identity_or_record_size ... ok\ntest id::bootstrap_values::tests::detached_payloads_keep_their_reference_and_contents ... ok\ntest id::bootstrap_values::tests::malformed_native_method_bytes_are_not_called ... ok\ntest id::bootstrap_values::tests::payload_meaning_can_be_supplied_after_allocation ... ok\ntest id::native_id::lifetime_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::bootstrap_values::tests::reference_storage_rejects_invalid_lengths_and_non_object_words ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::native_id::lifetime_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\nnon-native callable layout applies through live Id lookup and survives GC: passed\nargument containers use current application behavior and survive GC: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":3508875,\"ns_per_op\":87.721875}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":23564166,\"ns_per_op\":78.547220}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2868667,\"ns_per_op\":350.179077}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":23881958,\"ns_per_op\":23881958.000000}\n{\"heap_before\":56627,\"heap_after\":2741,\"reclaimed\":53886}\n"
+  }
+}

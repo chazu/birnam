@@ -1,9 +1,8 @@
 {
   "schema_version": 1,
-  "scope": "String, Bytes and String Builder byte ownership, text construction and basic text through Id/Roots/GC messages",
+  "scope": "Owned text and StringBuilder through Oop-only Id messages",
   "install_name": "@rpath/libbirnam_string.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ]
 }

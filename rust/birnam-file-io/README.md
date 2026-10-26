@@ -2,7 +2,7 @@
 
 Bootstrap loads `file_io` after System, input and environment. Initialization takes
 Namespace, installs `readFile:`, `writeFile:contents:` and `embedFile:` through Id sends and
-returns Unit. Reload preserves replacements. The module depends only on the common
+returns an absent reference. Reload preserves replacements. The module depends only on the common
 Id ABI; native filesystem operations stay private to this owner.
 
 The read/write methods require exact String arguments and use current `bytes` messages.
@@ -23,20 +23,18 @@ Contents bytes are also copied before any subsequent send. Receivers and argumen
 remain rooted through collecting methods; no foreign payload access, dependency
 table or native callback crosses a module boundary.
 
-`bash scripts/native-message-test.sh` includes the module's export/install-name/
-dependency audit and the `system_services` test. Real temporary-file checks cover
-source calls, all byte values, empty files/truncation, aliases, exact String
-recognition, malformed paths, missing files/directories, collecting methods,
-exact native failures, lazy/replaced Error factories and reload preservation.
+`bash scripts/oop-id-slice-test.sh` covers the isolated v2 native module and export
+audit. Real temporary-file checks cover binary contents, read snapshots, bounded
+embedding, persistent Method lifetime, exact String recognition, malformed paths,
+missing files, current constructors, collecting byte providers and reload.
 A replacement contents-byte method mutates the earlier path buffer and collects;
 the test verifies the original destination is written and the redirected one is
 absent. Failed contents sends create no file.
 
 `cargo test --offline --locked -p birnam-file-io --lib` checks the bounded reader's
 exact-limit, excess-byte and read-error behavior with small inputs; the production
-caller passes the unchanged one-GiB limit. Installed Host/CLI and Image checks
-exercise file access, embedded assets and fresh-process recovery separately; see
-[validation](../../docs/validation.md).
+caller passes the unchanged one-GiB limit. Full Bootstrap, source execution, Host/CLI, image and worker qualification remain
+pending; the isolated native checks do not establish those paths.
 
 `embedFile:` reads a resolved UTF-8 String path, capped at 16 MiB, and sends
 `Bytes fromBytes:` to return an owned Bytes object. Path/content snapshots precede
@@ -50,3 +48,14 @@ that captures bytes into code. See [embedded files](../../docs/design/56-embedde
 `#[pathBytes contentsBytes]`, or nil for a non-String/invalid UTF-8 path or file
 failure. Both byte values own their data before allocating/sending results. The
 read limit is one GiB. It performs no source registration, evaluation or diagnostics.
+
+All Id arguments and results are Oops. Byte copies use ordinary `sizeWord` and
+`atWord:` sends. Filename copying completes before contents are read. File work,
+conversion and descriptor construction are local functions, without callback
+Method objects or argument-forwarding protocols. One registered owner Sequence
+keeps completed dependencies alive and reports scoped temporary roots. Current
+String/Bytes/Vector constructors remain ordinary messages.
+
+`removeFile:ifContents:` removes only a file matching the supplied bytes. Missing
+files already satisfy removal; changed files produce an Error and remain intact.
+The native integration check verifies both outcomes and unchanged read limits.

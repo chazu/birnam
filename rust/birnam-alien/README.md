@@ -8,7 +8,7 @@ Signature parsing, ABI classification and wrapper generation belong to
 `compile:signature:`. The receiver-first C convention remains: the first C argument comes from the Birnam receiver.
 
 Generated wrappers are current native modules compiled by `TCC compile:`.
-Initialization returns an Execution Method retaining its TCC Unit. The current
+Initialization returns a declared Method retaining its TCC Unit. The current
 Method dictionary publishes it. Callbacks retain their Block and Unit until `releaseCallback:`;
 release clears the returned address. Each invocation roots intermediate values,
 copies C strings and retains its Unit, including during nested callbacks and

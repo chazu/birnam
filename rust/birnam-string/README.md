@@ -2,26 +2,22 @@
 
 `libbirnam_string` takes one Namespace Object and returns String. Bootstrap loads
 it after Object Model. It requires completed Roots, GC, ObjectVt, true, false and
-nil bindings. It publishes String, StringVt, StringBuilder, StringBuilderVt,
-Bytes and BytesVt;
+nil bindings. It publishes String, StringVt, StringBuilder, StringBuilderVt;
 there is no separate builder library. Repeat initialization returns the published
 String without reinstalling methods.
 
-Every cross-module operation is a fresh Id message. The instance owns selectors,
-family objects and a weak address map of native byte buffers. String's two raw
-payload words and Builder's three words mirror pointer/length/capacity for native
-diagnostics; consumers must use messages, never these layouts. Native access
-uses the owner's map, so payload mutation and private behavior changes cannot
-redirect borrowing or cleanup. No mutable process/TLS state or service tables
-are introduced. Calls are confined to the owning Id thread.
+String owns native byte arrays in its private storage map. String and Builder
+handles have zero payload; there are no mirrored pointers, lengths, capacities,
+or backing Bytes objects. The map owns data, not dispatch or language type facts.
+Consumers use live messages. Calls run on the owning Id thread.
 
 ## Messages
 
 | Receiver / selector | Arguments | Result |
 |---|---|---|
-| String `fromBytes:` | borrowed native Bytes | New String with copied bytes, including NUL/non-UTF-8. |
-| String instance `bytes` | none | Borrowed native Bytes. Copy before any subsequent send that can collect or invalidate the owner; retaining the object does not authorize retaining this borrow across arbitrary callbacks. |
-| String instance `length` | none | Native Word byte count (existing native protocol). |
+| String `fromBytes:` | Byte-provider object | New String with copied bytes, including NUL/non-UTF-8. |
+| String instance `bytes` | none | Independent Bytes object, through the current Bytes `fromBytes:` method. |
+| String instance `length` | none | Immediate size Oop. |
 | String instance `new`, `clone` | none | New canonical String with an independent copy of the receiver's bytes. |
 | String instance `printString` | none | Receiver. |
 | String instance `,` | Object | New String; non-String input receives `printString`, then `bytes`. |
@@ -35,17 +31,17 @@ are introduced. Calls are confined to the owning Id thread.
 
 Operations producing text send the current `fromBytes:` method. Resource-aware
 String cloning constructs its own buffer and installs its own GC finalizer.
-Printing callbacks and allocating sends hold no byte-map borrow. Native Bytes
-inputs and callback results are copied before further sends; receiver/argument
-objects are retained through Roots for the call. Builder mutation observes GC's
-construction phase before changing its buffer.
+Printing callbacks and allocating sends hold no byte-map borrow. Byte providers are read through
+ordinary `sizeWord` and `atWord:` messages. Internal construction uses a Sequence so embedded zero
+bytes remain valid. Id keeps incoming arguments alive; scoped roots protect
+intermediate results. Builder mutation observes GC allocation policy and charges
+capacity growth through the current collector method.
 
 ## Lifetime
 
 String implements the existing owner messages `rootsDo:`, `referencesOf:do:` and
 `finalize:`. Its root inventory retains family identities and selectors, not all
-buffer keys. Text contains no object references. GC attaches this owner to String, Bytes
-and Builder behaviors, and attaches a finalizer to every constructed buffer.
+buffer keys. Text contains no object references. GC attaches this owner to String and Builder behaviors, and attaches a finalizer to every constructed buffer.
 Finalization removes the owned buffer after Id detaches the object, without
 consulting detached Id metadata or calling another dependency. Private behaviors
 inherit the reference owner. Changing/removing a finalizer carries responsibility
@@ -53,7 +49,8 @@ for the replaced resource cleanup, as with other native finalizers.
 
 Number-independent operations are installed immediately. After Integer and Float
 are complete, Bootstrap sends String `installNumbers:` with both prototype
-Objects. That complete extension installs absent methods while preserving prior
+objects. An ordinary Sequence containing those two dependencies is the installed
+Methods' context, traced by Method ownership. That complete extension installs absent methods while preserving prior
 replacements. It reads numbers through `wordOf:` and constructs through
 `fromWord:`/`fromBits:`, never a foreign layout. Repeat installation is rejected.
 
@@ -71,13 +68,13 @@ replacements. It reads numbers through `wordOf:` and constructs through
 
 Indexing remains byte-oriented. Numeric parsing trims space/tab/CR/LF, preserving
 its historical distinction from `trimmed`'s six whitespace characters. Splitting
-uses the collection extension below. Run `mise run native-messages` for production
-coverage, including replaced constructors and collection during conversions.
+uses the collection extension below. Run `bash scripts/oop-id-slice-test.sh` for
+the isolated Oop migration checks. Full-language acceptance remains pending.
 
 ## Collection extension
 
 After Vector exists, Bootstrap sends String `installCollections:` with the Vector
-prototype Object. It installs `split:` only if no existing method supplies it.
+prototype object, retained as the Method context. It installs `split:` only if no existing method supplies it.
 This is completed String functionality; the old String Collection crate is deleted.
 
 `split:` takes a separator Object and returns a Vector. An exact-family String
@@ -91,62 +88,15 @@ String also owns its `collectionEquals:` and `collectionHash` implementations;
 see [Map's key protocol](../birnam-map/README.md#keys). They preserve exact-family
 byte comparison and hashing independently of public `=`.
 
-Payload enumeration reads GC `precisePayloads` by message before each object.
-In precise mode, raw bits are not references; in conservative mode the owner
-checks its own payload words through Id `allocationAt:` and sends `visit:` for
-matching allocations. Private behaviors keep the same representation ownership.
-For String/Builder, this covers the payload mirror only, never text bytes or Rust
-containers. See [System GC controls](../../docs/design/authored-small-modules.md#system-gc).
+String and Builder byte arrays contain no managed references, so their owner
+reports no payload edges. Finalization drops their arrays. Native Method contexts
+carry extension dependencies through the ordinary GC protocol, without leaked
+native extension records or permanently retained dependency tokens.
 
-## Bytes prototype
+## Bytes conversion
 
-`Bytes` is an ordinary empty prototype with its own delegated `BytesVt`, not an
-ABI pointer wrapper. It shares this module's private buffer storage, tracing and
-finalization. Its contents are arbitrary bytes, with no text decoding or object
-references. String/Builder/Bytes ownership kinds remain distinct even after
-private behavior changes. Bootstrap publishes Bytes when it loads String; no new
-native module, native export or install step is needed.
-
-| Receiver / selector | Arguments | Result |
-|---|---|---|
-| Bytes `fromBytes:` | borrowed native Bytes operand | New Bytes with an independent copy, made before any outgoing send. |
-| Bytes instance `new`, `clone` | none | New canonical Bytes with a copy of the receiver's contents. |
-| Bytes instance `bytes`, `length` | none | Borrowed native Bytes operand or native Word count, following String's borrow rules. |
-| Bytes instance `size` | none | Integer byte count. |
-| Bytes instance `at:` | Integer | Integer 0–255; nil for a negative/out-of-range/non-Integer index. |
-| Bytes instance `asString` | none | Binary-safe String copy through current `String fromBytes:`. |
-| String instance `asBytes` | none | Bytes copy through current `Bytes fromBytes:`. |
-
-`size` and `at:` install with the existing numeric extension. Normal method
-replacement and Reflect publication apply to Bytes and its clones. The native
-ABI's borrowed `Operand::Bytes` remains distinct from this language prototype.
-The `embedding` production test covers all 256 byte values, conversion, cloning,
-MOP publication, collection/reclamation and live collecting replacements.
-
-`Bytes` supplies bounded `copyFrom:to:`, `readU32At:`/`readU64At:`, `sha256`
-and `wyhash64`. The 64-bit reader returns Integer word bits, including the sign
-bit. `readTaggedFieldAt:schema:` and `readTaggedRowsWithSchema:limit:` interpret
-caller-supplied tag payload shapes (`0` empty, `1` fixed eight bytes, `2` u32,
-`3` length-prefixed bytes, `4` nonempty NUL-free name). Unknown tags and malformed
-framing answer nil. Row tables expose ordinary read-only indexed views over an
-owned byte snapshot. These temporary views own no language references and are
-collected with their buffers; callers retain all format and reference rules.
-
-`readTaggedTableWithSchema:limit:` returns one compact table rather than eagerly
-allocating a language object for every row. `emptyTaggedRows` supplies an empty
-table. `readTaggedRecordsAt:count:prefixBytes:fields:schema:` decodes fixed-prefix
-records with caller-selected tagged fields, requiring exact framing through the
-end of the buffer. Prefix bytes are opaque; the caller assigns their meaning.
-
-Table views support `concat:`, `copyFrom:to:`, locator filters, membership scans,
-reference bounds and sparse reference projections. Masks are ASCII `0`/`1`
-strings indexed by byte tag. Rows expose `sourceIndex`; filtering and slicing
-preserve original positions, while concatenation assigns new sequence positions.
-Record scans can report byte offsets for ordered errors. All table metadata is
-native-owned bytes and scalars, with no language references. Integer inputs and
-outputs go through live Id messages to their owner. Format policy belongs to the
-authored caller, including accepted tags, reference families and error ordering.
-
-`Bytes withSymbolName:` appends an Id-owned Symbol name to an owned byte prefix.
-It copies the borrowed name before result allocation, returns nil for a non-Symbol,
-and leaves formatting policy to authored callers such as `printing.birnam`.
+Bytes has its own module, [birnam-bytes](../birnam-bytes/README.md). String `bytes`
+and `asBytes` produce independent copies through its current `fromBytes:` method.
+Names, Symbols, argument Sequences, Strings and Bytes expose the indexed byte
+operations used by conversion.
+There are no borrowed native byte pointers in Id messages.

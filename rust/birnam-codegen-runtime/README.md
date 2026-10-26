@@ -1,5 +1,14 @@
 # Source compiler over Id
 
+Current Oop migration checkpoint: synchronous and resumable source paths are
+connected through explicit `Codegen compileSynchronous:` / `compileResumable:`.
+The resumable path uses the retained Machine engine with `runBlock:budget:`,
+`continueWithBudget:` and `executionState`. See the
+[resumable milestone](../../docs/design/oop-resumable-milestone.md) for acceptance.
+Suspension/control/recovery, default compiler and full-runtime integration remain
+pending. Historical feature descriptions below are preservation requirements,
+not claims that every feature is available. No v1 compatibility path is built.
+
 Codegen consumes Lang CST messages and produces canonical portable programs and
 compiler metadata. [Generation](../birnam-generation/README.md) owns publication,
 explicit candidate rollback and image-application invalidation. The authored

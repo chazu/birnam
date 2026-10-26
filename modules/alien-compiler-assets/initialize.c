@@ -1,6 +1,9 @@
 
-static R initialize(const P*p,const A*a,size_t n){
- if(!p||p->version!=1||p->byte_size!=sizeof(P)||n<2||a[0].kind!=1||a[1].kind!=1)return bad();
- id=*p;ns=a[0].data.object;owner=a[1].data.object;Call c={0};Call*prior=active;active=&c;
- A key=obj(intern(&c,"Roots"));R rr=raw(&c,ns,"at:",&key,1);if(rr.status||rr.value.kind!=1){active=prior;return bad();}roots=rr.value.data.object;
+static O initialize(const P*p,O unit,const O*l,size_t literal_count,const O*a,size_t n){
+ if(!p||p->version!=2||p->byte_size!=sizeof(P))abort();
+ id=*p;if(literal_count!=6||n!=2)return bad();
+ memcpy(keys,l,sizeof(keys));ns=a[0];owner=unit;
+ Call c={0};Call*prior=active;active=&c;
+ roots=raw(&c,ns,"at:",&keys[1],1);
+ if(c.failure){active=prior;return c.failure;}
  keep(&c,owner);

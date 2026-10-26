@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "ffe7fb27",
+  "commands": [
+    {
+      "command": "bash scripts/oop-id-slice-test.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "python3 scripts/id-continuation-test.py",
+      "exit_code": 0
+    }
+  ],
+  "unit_tests_passed": 188,
+  "task_control_checks": 177,
+  "task_control_failures": 0,
+  "source_checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "SOURCE_METHOD_DEFINITION_OK",
+    "#[#timeslicingQuantum 128 #checked]",
+    "#[#timeslicingQuantum 1 #checked]",
+    "SOURCE_TASK_CONTROL_OK checks=177",
+    "SOURCE_HANDLER_CLEANUP_OK"
+  ],
+  "source_modules": [
+    "error",
+    "globals-owner",
+    "cell",
+    "modules",
+    "printing",
+    "boolean",
+    "stdlib",
+    "block-loop-control",
+    "block-loop",
+    "range",
+    "system-gc",
+    "stackless-control"
+  ],
+  "ownership": "Reflect installs ordinary continuation Methods with Sequence contexts retaining their implementation Blocks. Execution owns saved frames. The retained source owns task scheduling, cancellation and cleanup. No Id contract or compiler-format additions.",
+  "cleanup_change": "Execution removes dead return-continuation records with one table scan per dead-object set, replacing a full scan for each dead object. No timing speedup claim; the source suite is acceptance evidence, not a controlled benchmark.",
+  "scope": "Explicit source compilation/loading, unchanged stackless-control.birnam and task-control-smoke.birnam, adapted independent native observers, automatic precise collection, reflected arity 16, and suspended error handlers/ordinary cleanup. Default compiler/artifact orchestration, recovery, complete bootstrap/Host, images/workers and installed qualification remain pending.",
+  "logs_sha256": {
+    "unit.log": "0453efc302db3e994658e77fb9b9160062e99b6375155c3104e9cfc325f7d69c",
+    "numeric-integration.log": "007a7e7d0fb7ad9ad584d359e4564d9e3387402619b98db47d39f96f76750236",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  },
+  "independent_id_receipt_sha256": "3959a63f864f219d7a3d3c89c335179fd0f4437ecba90b9ffbec0a048ddc9f8a"
+}

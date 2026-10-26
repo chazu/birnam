@@ -1,0 +1,1672 @@
+{
+  "base_runtime_commit": "4c8e5937",
+  "source_sha256": {
+    "rust/birnam-abi/src/id_protocol.rs": "1e66e412b96d25b2c5c5adf0b94e0698ebd6c3d127b565463f75edaaa6a430c8",
+    "rust/birnam-collect/src/collection.rs": "e2e475c39d6b13803f1f337f466101edfa585b27171a9b0d6db41bec4b1011a4",
+    "rust/birnam-collect/src/lib.rs": "7cd3c5335bfafab87605ee645f55eb8717d801c5025426f8b6c7851868a9bbfa",
+    "rust/birnam-id/src/id/id_dispatch.rs": "5868049812458693a2861a71a0fecf9a679eba72bebaa8c8ac26d61110182021",
+    "rust/birnam-id/src/id/initial_objects.rs": "420cc793a1ad7f33f00f1d5460450f5c00913b7d8b3e09afc33ea36ec1da6741",
+    "rust/birnam-id/src/id/native_id.rs": "ca9de87ce0c6d14d32702133e65b35b508cc144127ad46e3d6f3a10d6a5a49bd",
+    "rust/birnam-id/src/id/object_memory.rs": "0775bdacba9b5f581412ba350ff5abf2b266c3e94b506acb186bfa6732948f98",
+    "rust/birnam-siphon/examples/oop_slice.rs": "cf65f15e55706385892eae22b4411f44e1462116b4c62d207fbf7e4aca845c90",
+    "tests/fixtures/oop-id-v2/fixture.c": "a0f6218c41df040e87da47bd5325159a86c374994bfa97787acfbe784d1f381a"
+  },
+  "qualification": {
+    "unit.log": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-id)\nwarning: unnecessary parentheses around assigned value\n  --> rust/birnam-id/src/id/id_dispatch.rs:46:25\n   |\n46 |     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n   |                         ^                             ^\n   |\n   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default\nhelp: remove these parentheses\n   |\n46 -     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n46 +     let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n   |\n\nwarning: `birnam-id` (lib test) generated 1 warning (run `cargo fix --lib -p birnam-id --tests` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.71s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 15 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::object_memory::tests::storage_layout_does_not_change_extents_identities_or_record_size ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::native_id::oop_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::native_id::oop_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::native_id::oop_tests::fault_identity_survives_index_retirement_and_detachment ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::native_id::oop_tests::vtable_changes_do_not_forge_or_destroy_storage_layouts ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":2191834,\"ns_per_op\":54.795850}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":13775625,\"ns_per_op\":45.918750}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2434000,\"ns_per_op\":297.119141}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":12777959,\"ns_per_op\":12777959.000000}\n{\"heap_before\":56587,\"heap_after\":2701,\"reclaimed\":53886}\n"
+  },
+  "fresh_target_qualification": {
+    "unit.log": "   Compiling birnam-id v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-id)\nwarning: unnecessary parentheses around assigned value\n  --> rust/birnam-id/src/id/id_dispatch.rs:46:25\n   |\n46 |     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n   |                         ^                             ^\n   |\n   = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default\nhelp: remove these parentheses\n   |\n46 -     let Some(handler) = (unsafe { bind(s, r, s.dnu) }?) else {\n46 +     let Some(handler) = unsafe { bind(s, r, s.dnu) }? else {\n   |\n\nwarning: `birnam-id` (lib test) generated 1 warning (run `cargo fix --lib -p birnam-id --tests` to apply 1 suggestion)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s\n     Running unittests src/lib.rs (.cargo-target/oop-simplified-cold-20261023/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 15 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::native_id::oop_tests::fault_identity_survives_index_retirement_and_detachment ... ok\ntest id::native_id::oop_tests::vtable_changes_do_not_forge_or_destroy_storage_layouts ... ok\ntest id::native_id::oop_tests::contents_survive_index_cleanup_and_detachment ... ok\ntest id::object_memory::tests::storage_layout_does_not_change_extents_identities_or_record_size ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::native_id::oop_tests::detached_object_with_released_vtable_is_not_dispatched ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-simplified-cold-20261023/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nall 64 borrowed object arguments survived collection: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nchanging the source fields preserves the entered call's argument snapshot: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":2163083,\"ns_per_op\":54.077075}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":14211209,\"ns_per_op\":47.370697}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2389000,\"ns_per_op\":291.625977}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":13521750,\"ns_per_op\":13521750.000000}\n{\"heap_before\":56587,\"heap_after\":2701,\"reclaimed\":53886}\n"
+  },
+  "trials": {
+    "object_storage": {
+      "runs": [
+        {
+          "order": 0,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2836000,
+              "ns_per_op": 70.9
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16736791,
+              "ns_per_op": 55.789303
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 3060209,
+              "ns_per_op": 373.560669
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15093084,
+              "ns_per_op": 15093084.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 1,
+          "variant": "object_storage",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2648958,
+              "ns_per_op": 66.22395
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16320667,
+              "ns_per_op": 54.402223
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2641666,
+              "ns_per_op": 322.468994
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14924833,
+              "ns_per_op": 14924833.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 2,
+          "variant": "object_storage",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2477458,
+              "ns_per_op": 61.93645
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16321709,
+              "ns_per_op": 54.405697
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2617208,
+              "ns_per_op": 319.483398
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14569667,
+              "ns_per_op": 14569667.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 3,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2439208,
+              "ns_per_op": 60.9802
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15290958,
+              "ns_per_op": 50.96986
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2612125,
+              "ns_per_op": 318.862915
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14606709,
+              "ns_per_op": 14606709.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 4,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2285417,
+              "ns_per_op": 57.135425
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15359458,
+              "ns_per_op": 51.198193
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2682666,
+              "ns_per_op": 327.473877
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14540334,
+              "ns_per_op": 14540334.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 5,
+          "variant": "object_storage",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2481917,
+              "ns_per_op": 62.047925
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16331667,
+              "ns_per_op": 54.43889
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2541958,
+              "ns_per_op": 310.297607
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14284709,
+              "ns_per_op": 14284709.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 6,
+          "variant": "object_storage",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2562250,
+              "ns_per_op": 64.05625
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16177792,
+              "ns_per_op": 53.925973
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2505250,
+              "ns_per_op": 305.81665
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14367125,
+              "ns_per_op": 14367125.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 7,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2267334,
+              "ns_per_op": 56.68335
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15572750,
+              "ns_per_op": 51.909167
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2666083,
+              "ns_per_op": 325.449585
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14527292,
+              "ns_per_op": 14527292.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "allocate-and-retain-eighth": {
+          "median_ns": {
+            "before": 59.0578125,
+            "object_storage": 63.0520875
+          },
+          "change_percent": 6.763330423049441
+        },
+        "intern-existing-64": {
+          "median_ns": {
+            "before": 51.55368,
+            "object_storage": 54.40396
+          },
+          "change_percent": 5.528761477357191
+        },
+        "produce-and-intern-new-64": {
+          "median_ns": {
+            "before": 326.461731,
+            "object_storage": 314.8905025
+          },
+          "change_percent": -3.5444364227793512
+        },
+        "collect-garbage": {
+          "median_ns": {
+            "before": 14573521.5,
+            "object_storage": 14468396.0
+          },
+          "change_percent": -0.7213459011948475
+        }
+      }
+    },
+    "direct_selection": {
+      "runs": [
+        {
+          "order": 0,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2358875,
+              "ns_per_op": 58.971875
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16134042,
+              "ns_per_op": 53.78014
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2778875,
+              "ns_per_op": 339.21814
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15275583,
+              "ns_per_op": 15275583.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 1,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2212667,
+              "ns_per_op": 55.316675
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14594834,
+              "ns_per_op": 48.649447
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2556000,
+              "ns_per_op": 312.011719
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14910625,
+              "ns_per_op": 14910625.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 2,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2267916,
+              "ns_per_op": 56.6979
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14792708,
+              "ns_per_op": 49.309027
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2726875,
+              "ns_per_op": 332.870483
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14198458,
+              "ns_per_op": 14198458.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 3,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2346625,
+              "ns_per_op": 58.665625
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16370958,
+              "ns_per_op": 54.56986
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2808000,
+              "ns_per_op": 342.773438
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15498750,
+              "ns_per_op": 15498750.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 4,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2335458,
+              "ns_per_op": 58.38645
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16364958,
+              "ns_per_op": 54.54986
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2787208,
+              "ns_per_op": 340.235352
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15827125,
+              "ns_per_op": 15827125.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 5,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2256500,
+              "ns_per_op": 56.4125
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 17103791,
+              "ns_per_op": 57.012637
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2540292,
+              "ns_per_op": 310.094238
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14358000,
+              "ns_per_op": 14358000.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 6,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2245542,
+              "ns_per_op": 56.13855
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14843042,
+              "ns_per_op": 49.476807
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2533167,
+              "ns_per_op": 309.224487
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14386583,
+              "ns_per_op": 14386583.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 7,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2263125,
+              "ns_per_op": 56.578125
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16613708,
+              "ns_per_op": 55.379027
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2852375,
+              "ns_per_op": 348.190308
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15736792,
+              "ns_per_op": 15736792.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "allocate-and-retain-eighth": {
+          "median_ns": {
+            "before": 58.5260375,
+            "direct_selection": 56.275525
+          },
+          "change_percent": -3.8453184191736822
+        },
+        "intern-existing-64": {
+          "median_ns": {
+            "before": 54.55986,
+            "direct_selection": 49.392917
+          },
+          "change_percent": -9.470227746185566
+        },
+        "produce-and-intern-new-64": {
+          "median_ns": {
+            "before": 341.504395,
+            "direct_selection": 311.0529785
+          },
+          "change_percent": -8.916844686581559
+        },
+        "collect-garbage": {
+          "median_ns": {
+            "before": 15617771.0,
+            "direct_selection": 14372291.5
+          },
+          "change_percent": -7.9747583698083435
+        }
+      }
+    },
+    "borrowed_arguments": {
+      "runs": [
+        {
+          "order": 0,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2210209,
+              "ns_per_op": 55.255225
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14891583,
+              "ns_per_op": 49.63861
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2565208,
+              "ns_per_op": 313.135742
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13817958,
+              "ns_per_op": 13817958.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 1,
+          "variant": "borrowed_arguments",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2070292,
+              "ns_per_op": 51.7573
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14788542,
+              "ns_per_op": 49.29514
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2565000,
+              "ns_per_op": 313.110352
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 12850292,
+              "ns_per_op": 12850292.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 2,
+          "variant": "borrowed_arguments",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2155583,
+              "ns_per_op": 53.889575
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14075875,
+              "ns_per_op": 46.919583
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2446292,
+              "ns_per_op": 298.619629
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13503667,
+              "ns_per_op": 13503667.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 3,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2259750,
+              "ns_per_op": 56.49375
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14742500,
+              "ns_per_op": 49.141667
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2529083,
+              "ns_per_op": 308.725952
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14090084,
+              "ns_per_op": 14090084.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 4,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2258250,
+              "ns_per_op": 56.45625
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15031208,
+              "ns_per_op": 50.104027
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2575125,
+              "ns_per_op": 314.346313
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14103000,
+              "ns_per_op": 14103000.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 5,
+          "variant": "borrowed_arguments",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2079125,
+              "ns_per_op": 51.978125
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15231375,
+              "ns_per_op": 50.77125
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2471500,
+              "ns_per_op": 301.696777
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13568709,
+              "ns_per_op": 13568709.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 6,
+          "variant": "borrowed_arguments",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2070750,
+              "ns_per_op": 51.76875
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14440959,
+              "ns_per_op": 48.13653
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2439875,
+              "ns_per_op": 297.836304
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13517958,
+              "ns_per_op": 13517958.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 7,
+          "variant": "direct_selection",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2277417,
+              "ns_per_op": 56.935425
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14810917,
+              "ns_per_op": 49.369723
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2442334,
+              "ns_per_op": 298.136475
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14291750,
+              "ns_per_op": 14291750.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "allocate-and-retain-eighth": {
+          "median_ns": {
+            "direct_selection": 56.474999999999994,
+            "borrowed_arguments": 51.873437499999994
+          },
+          "change_percent": -8.147963700752548
+        },
+        "intern-existing-64": {
+          "median_ns": {
+            "direct_selection": 49.5041665,
+            "borrowed_arguments": 48.715835
+          },
+          "change_percent": -1.5924548492297075
+        },
+        "produce-and-intern-new-64": {
+          "median_ns": {
+            "direct_selection": 310.93084699999997,
+            "borrowed_arguments": 300.15820299999996
+          },
+          "change_percent": -3.4646430561455444
+        },
+        "collect-garbage": {
+          "median_ns": {
+            "direct_selection": 14096542.0,
+            "borrowed_arguments": 13510812.5
+          },
+          "change_percent": -4.155128967089938
+        }
+      }
+    },
+    "final": {
+      "runs": [
+        {
+          "order": 0,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2365917,
+              "ns_per_op": 59.147925
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15921833,
+              "ns_per_op": 53.072777
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2653000,
+              "ns_per_op": 323.852539
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 14816709,
+              "ns_per_op": 14816709.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 1,
+          "variant": "final",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2099542,
+              "ns_per_op": 52.48855
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 13828875,
+              "ns_per_op": 46.09625
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2384083,
+              "ns_per_op": 291.025757
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13110459,
+              "ns_per_op": 13110459.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 2,
+          "variant": "final",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2140625,
+              "ns_per_op": 53.515625
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15013417,
+              "ns_per_op": 50.044723
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2317333,
+              "ns_per_op": 282.877563
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13335917,
+              "ns_per_op": 13335917.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 3,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2382584,
+              "ns_per_op": 59.5646
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 17732458,
+              "ns_per_op": 59.108193
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2613333,
+              "ns_per_op": 319.010376
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15400875,
+              "ns_per_op": 15400875.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 4,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2420000,
+              "ns_per_op": 60.5
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 15738334,
+              "ns_per_op": 52.461113
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2611750,
+              "ns_per_op": 318.817139
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15315416,
+              "ns_per_op": 15315416.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 5,
+          "variant": "final",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2080041,
+              "ns_per_op": 52.001025
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 13932125,
+              "ns_per_op": 46.440417
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2382083,
+              "ns_per_op": 290.781616
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13231125,
+              "ns_per_op": 13231125.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 6,
+          "variant": "final",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2134041,
+              "ns_per_op": 53.351025
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 14424041,
+              "ns_per_op": 48.080137
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2819709,
+              "ns_per_op": 344.202759
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 13638375,
+              "ns_per_op": 13638375.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2701,
+              "reclaimed": 53886
+            }
+          ]
+        },
+        {
+          "order": 7,
+          "variant": "before",
+          "rows": [
+            {
+              "case": "allocate-and-retain-eighth",
+              "iterations": 40000,
+              "cpu_ns": 2264958,
+              "ns_per_op": 56.62395
+            },
+            {
+              "case": "intern-existing-64",
+              "iterations": 300000,
+              "cpu_ns": 16247459,
+              "ns_per_op": 54.158197
+            },
+            {
+              "case": "produce-and-intern-new-64",
+              "iterations": 8192,
+              "cpu_ns": 2563083,
+              "ns_per_op": 312.876343
+            },
+            {
+              "case": "collect-garbage",
+              "iterations": 1,
+              "cpu_ns": 15568458,
+              "ns_per_op": 15568458.0
+            },
+            {
+              "heap_before": 56587,
+              "heap_after": 2702,
+              "reclaimed": 53886
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "allocate-and-retain-eighth": {
+          "median_ns": {
+            "before": 59.3562625,
+            "final": 52.9197875
+          },
+          "change_percent": -10.843801022680633
+        },
+        "intern-existing-64": {
+          "median_ns": {
+            "before": 53.615487,
+            "final": 47.260277
+          },
+          "change_percent": -11.8533102198624
+        },
+        "produce-and-intern-new-64": {
+          "median_ns": {
+            "before": 318.9137575,
+            "final": 290.9036865
+          },
+          "change_percent": -8.78296101729007
+        },
+        "collect-garbage": {
+          "median_ns": {
+            "before": 15358145.5,
+            "final": 13283521.0
+          },
+          "change_percent": -13.508300855725064
+        }
+      }
+    }
+  },
+  "v1_comparison": {
+    "library_sha256": {
+      "v1": {
+        "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib": "5fa284fdcf4d688999111a4facfc694fa5553474efeed66d2e812037a8b66f2c",
+        "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+        "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib": "0a1a1744011751a6b99581b60516b46363cc56254433710b2da326a5224a725b"
+      },
+      "v2": {
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib": "a341554763529de9ad8ed91498e5d1756a3b8368e5c9f3730f724ad2334590b3",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib": "791046e01301c0599303cb58dfffe77871ba3b0f5752f00b6e97ffc718c6db48",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib": "2aa77ca7db852b1a27e25159dce28890d0c52ebaa87b8199081252fc4c332c58"
+      }
+    },
+    "runs": [
+      {
+        "order": 0,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1688375,
+            "ns_per_op": 42.209375
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 10088167,
+            "ns_per_op": 33.627223
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1410334,
+            "ns_per_op": 172.159912
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10878541,
+            "ns_per_op": 10878541.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      },
+      {
+        "order": 1,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2254292,
+            "ns_per_op": 56.3573
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 13887500,
+            "ns_per_op": 46.291667
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2383167,
+            "ns_per_op": 290.91394
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 13528792,
+            "ns_per_op": 13528792.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2701,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2119166,
+            "ns_per_op": 52.97915
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 13932125,
+            "ns_per_op": 46.440417
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2275958,
+            "ns_per_op": 277.826904
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 12790500,
+            "ns_per_op": 12790500.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2701,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1734541,
+            "ns_per_op": 43.363525
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 10473375,
+            "ns_per_op": 34.91125
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1339125,
+            "ns_per_op": 163.467407
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 9899458,
+            "ns_per_op": 9899458.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1742833,
+            "ns_per_op": 43.570825
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 10212916,
+            "ns_per_op": 34.043053
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1559250,
+            "ns_per_op": 190.338135
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10561875,
+            "ns_per_op": 10561875.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2083625,
+            "ns_per_op": 52.090625
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 14262666,
+            "ns_per_op": 47.54222
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2349125,
+            "ns_per_op": 286.758423
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 13256500,
+            "ns_per_op": 13256500.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2701,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2063334,
+            "ns_per_op": 51.58335
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 14058000,
+            "ns_per_op": 46.86
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2436041,
+            "ns_per_op": 297.368286
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 13536209,
+            "ns_per_op": 13536209.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2701,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1731834,
+            "ns_per_op": 43.29585
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 9826708,
+            "ns_per_op": 32.755693
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1322333,
+            "ns_per_op": 161.417603
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10495833,
+            "ns_per_op": 10495833.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "allocate-and-retain-eighth": {
+        "median_ns": {
+          "v1": 43.329687500000006,
+          "v2": 52.534887499999996
+        },
+        "change_percent": 21.24455663337057
+      },
+      "intern-existing-64": {
+        "median_ns": {
+          "v1": 33.835138,
+          "v2": 46.6502085
+        },
+        "change_percent": 37.87503541436714
+      },
+      "produce-and-intern-new-64": {
+        "median_ns": {
+          "v1": 167.8136595,
+          "v2": 288.8361815
+        },
+        "change_percent": 72.11720569147116
+      },
+      "collect-garbage": {
+        "median_ns": {
+          "v1": 10528854.0,
+          "v2": 13392646.0
+        },
+        "change_percent": 27.199465392909804
+      }
+    },
+    "limits": [
+      "Thread CPU clock; four fresh processes per variant; no confidence interval.",
+      "Same C caller workload, different implementation work: candidate includes invocation roots and Method objects.",
+      "Fresh-name candidate constructs a Name object from Oop bytes; baseline consumes a raw byte span.",
+      "GC compares different heap populations; report heap/reclamation counts with timings.",
+      "Automatic collection is not enabled; this is not Logue or full-language acceptance."
+    ]
+  },
+  "comparison_script": "from pathlib import Path\nimport subprocess,json,statistics,sys,shutil\nroot=Path('/Users/chazu/dev/zig/birnam-oop-id');work=Path('/tmp/oop-simplify-20261023');name=sys.argv[1];previous=sys.argv[2] if len(sys.argv)>2 else 'before'\nafter=work/name;after.mkdir(exist_ok=True)\nfor lib in ['id','root_registry','collect']:shutil.copyfile(root/'.cargo-target/oop-slice/release'/f'libbirnam_{lib}.dylib',after/f'libbirnam_{lib}.dylib')\nruns=[]\nfor i,lane in enumerate([previous,name,name,previous,previous,name,name,previous]):\n lib=work/lane;args=[str(root/'.cargo-target/oop-slice/fixtures/bench-v2'),*[str(lib/f'libbirnam_{n}.dylib')for n in ['id','root_registry','collect']]]\n r=subprocess.run(args,check=True,capture_output=True,text=True);runs.append({'order':i,'variant':lane,'rows':[json.loads(l)for l in r.stdout.splitlines()]})\ns={}\nfor case in ['allocate-and-retain-eighth','intern-existing-64','produce-and-intern-new-64','collect-garbage']:\n ns={lane:statistics.median(row['ns_per_op']for run in runs if run['variant']==lane for row in run['rows']if row.get('case')==case)for lane in [previous,name]}\n s[case]={'median_ns':ns,'change_percent':100*(ns[name]/ns[previous]-1)}\noutput={'runs':runs,'summary':s};(work/f'{name}-timings.json').write_text(json.dumps(output,indent=2)+'\\n');print(json.dumps(s,indent=2))\n",
+  "limits": [
+    "Isolated native slice, not installed or merged to main.",
+    "Full language, stackless, image and worker qualification remains pending.",
+    "No unsafe diagnostic bypasses retained.",
+    "Caller arguments are borrowed only for their synchronous native call; logical runtime frames retain ownership across suspension."
+  ]
+}

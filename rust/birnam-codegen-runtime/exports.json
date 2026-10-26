@@ -3,6 +3,6 @@
   "scope": "codegen-runtime through production Id messages",
   "install_name": "@rpath/libbirnam_codegen_runtime.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1"
+    "birnam_native_module_v3"
   ]
 }

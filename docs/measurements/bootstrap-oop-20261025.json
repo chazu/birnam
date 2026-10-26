@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "31b1f1a0",
+  "command": "bash scripts/oop-bootstrap-test.sh",
+  "exit_code": 0,
+  "compiler_seed": "Fresh Id and copied native closure construct Error, Globals and SourceRegistry artifacts, evaluate source, load authored task policy, and hand parsing to compiled Birnam Lang with the seed parser disabled.",
+  "native_loader": "Oop status/value records replace native kind packets. Successful Oops, retained-result release, missing/incompatible libraries, initializer failures and nil results are checked.",
+  "published_startup": "Not complete. The default Bootstrap builds and loads initial artifacts without the grammar seed, then explicitly rejects the missing PortableCode provider. Complete owner closure remains required.",
+  "logs_sha256": {
+    "cold.log": "0b4b9a203076df7fc49380a248698e9577af397d37ff38c74da43574c1698b95",
+    "published-rejection.log": "d9b50972feade7c0ee8ef16624cebc125d52128f5ce9adf29ad44e283ba6e910",
+    "published-build-check.log": "9cda1a2f6a8fb14e4c3e733d90f581025affce8cf149dde41121b1b8dbf9498e"
+  }
+}

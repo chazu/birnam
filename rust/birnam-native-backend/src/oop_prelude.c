@@ -1,0 +1,53 @@
+/* Generated Oop-only module. Native state here belongs to this compiled Unit. */
+#include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
+typedef void *O;
+typedef O (*Entry)(O,O,O,const O*,size_t);
+typedef struct {uint32_t version,byte_size;Entry message;O root,intern,load,at,seeds,invalid;} P;
+typedef struct {const unsigned char *bytes;size_t length;} Literal;
+typedef O (*Control)(O,O,const O*,size_t);
+typedef struct {P common;Control control;} CP;
+typedef struct {size_t name;Entry entry;uint32_t convention;} MethodSpec;
+typedef O (*Initializer)(const CP*,O,const O*,size_t,const O*,size_t);
+typedef struct {uint32_t version,byte_size;const Literal*literals;size_t literal_count;const MethodSpec*methods;size_t method_count;Initializer initialize;} Module;
+static P id;static Control control;static O ns,owner,roots;
+static O symbols[SYMBOL_COUNT],methods[METHOD_COUNT];
+static inline O size_oop(size_t n){return (O)((n<<1)|1);}
+static inline int failed(O v){return ((uintptr_t)v&3)==2;}
+static inline O error_object(O v){return (O)((uintptr_t)v&~(uintptr_t)2);}
+typedef struct {O error;O*tokens;size_t count,capacity;} Call;
+static inline O raw(Call*c,O receiver,size_t selector,const O*a,size_t n){if(c->error)return 0;O result=id.message(id.root,receiver,symbols[selector],a,n);if(failed(result)){c->error=result;return 0;}return result;}
+static inline O keep(Call*c,O result){
+ if(c->error)return 0;
+ if(c->count+1>=c->capacity){size_t cap=c->capacity?c->capacity*2:32;if(cap<=c->capacity||cap>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*p=realloc(c->tokens,cap*sizeof(O));if(!p){c->error=id.invalid;return 0;}c->tokens=p;c->capacity=cap;}
+ O token=raw(c,roots,S_RETAIN,&result,1);if(c->error)return 0;
+ if(!((uintptr_t)token&1)){c->error=id.invalid;return 0;}
+ c->tokens[++c->count]=token;return result;
+}
+static inline O call(Call*c,O receiver,size_t selector,const O*a,size_t n){O result=raw(c,receiver,selector,a,n);return c->error?0:keep(c,result);}
+static inline O named(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_AT,&key,1);}
+static inline O finish(Call*c,O result){
+ O failure=c->error;
+ if(c->count){c->tokens[0]=failure?error_object(failure):result;O cleanup=id.message(id.root,roots,symbols[S_CLEANUP],c->tokens,c->count+1);if(!failure&&failed(cleanup))failure=cleanup;}
+ free(c->tokens);return failure?failure:result;
+}
+static inline O full_word(Call*c,uint64_t bits){O factory=named(c,S_WORD);O a[2]={size_oop((uint32_t)bits),size_oop((uint32_t)(bits>>32))};return call(c,factory,S_FROM_PARTS,a,2);}
+static inline O integer(Call*c,uint64_t bits){O word=full_word(c,bits);O factory=named(c,S_INTEGER);return call(c,factory,S_FROM_WORD,&word,1);}
+static inline O float_bits(Call*c,uint64_t bits){O word=full_word(c,bits);O factory=named(c,S_FLOAT);return call(c,factory,S_FROM_BITS,&word,1);}
+static inline O string(Call*c,const unsigned char*bytes,size_t n){
+ if(n>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*values=n?malloc(n*sizeof(O)):0;if(n&&!values){c->error=id.invalid;return 0;}
+ for(size_t i=0;i<n;i++)values[i]=size_oop(bytes[i]);O sequence=call(c,id.root,S_SEQUENCE,values,n);free(values);O factory=named(c,S_STRING);return call(c,factory,S_FROM_BYTES,&sequence,1);
+}
+static inline O global(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_GLOBAL,&key,1);}
+/* Machine owns logical slots; generated code never reads its payload. */
+static inline O frame_get(Call*c,O machine,size_t slot,size_t selector){O index=integer(c,slot);return call(c,machine,selector,&index,1);}
+static inline void frame_put(Call*c,O machine,size_t slot,O value,size_t selector){O index=integer(c,slot);O args[]={index,value};call(c,machine,selector,args,2);}
+
+static inline size_t integer_index(Call*c,O value){
+ O factory=named(c,S_INTEGER);O word=call(c,factory,S_WORD_OF,&value,1);if(c->error)return 0;
+ if((uintptr_t)word&1)return (uintptr_t)word>>1;
+ O low=call(c,word,S_LOW32,0,0);O high=call(c,word,S_HIGH32,0,0);if(c->error)return 0;
+ if(!((uintptr_t)low&1)||!((uintptr_t)high&1)||((uintptr_t)high>>1)!=0){c->error=id.invalid;return 0;}
+ return (uintptr_t)low>>1;
+}

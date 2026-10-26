@@ -1,5 +1,5 @@
-// Language loading policy. Bootstrap exposes the typed outcome of Id loading.
-[Module named: #nativeLoader requires: #[#nativeValues]];
+// Language loading policy over Bootstrap's Oop status/result record.
+[Module named: #nativeLoader requires: #[]];
 [Globals at: #NativeLoader put: [Object clone]];
 let loaderNamespace := Namespace;
 let loaderStringVt := StringVt;
@@ -8,19 +8,12 @@ let loaderStringVt := StringVt;
   [[factory isNil] ifTrue: [| nil] ifFalse: [| [factory kind: kind message: message]]]
 ]];
 [Reflect defineMethod: #finish:for: on: NativeLoader as: [:self :result :receiver |
-  let bits := [result at: 0]; let status := [bits readU32At: 0];
-  [[status = 0] ifTrue: [|
-    let kind := [bits readU32At: 4];
-    [[kind = 0] ifTrue: [| receiver] ifFalse: [|
-      [[kind = 1] ifTrue: [| [result at: 1]] ifFalse: [|
-        [self error: #typeError message: "native module returned a non-language value"]
+  let status := [result at: 0];
+  [[status == #loaded] ifTrue: [| [result at: 1]] ifFalse: [|
+    [[status == #mappingFailed] ifTrue: [| [self error: #ioError message: "could not load module dylib"]] ifFalse: [|
+      [[status == #incompatibleModule] ifTrue: [| [self error: #notAModule message: "missing or incompatible Oop native module declaration"]] ifFalse: [|
+        [self error: #moduleError message: "native module initialization failed"]
       ]]
-    ]]
-  ] ifFalse: [|
-    [[status = 2] ifTrue: [| [self error: #ioError message: "could not load module dylib"]] ifFalse: [|
-      [[[status = 3] | [status = 4]] ifTrue: [|
-        [self error: #notAModule message: "missing or incompatible birnam_native_module_v1"]
-      ] ifFalse: [| [self error: #moduleError message: "native module initialization failed"]]]
     ]]
   ]]
 ]];
@@ -32,7 +25,7 @@ let loaderStringVt := StringVt;
 ]];
 [Reflect defineMethod: #load:arguments:for: on: NativeLoader as: [:self :path :sequence :receiver |
   [[[[Reflect vtableOf: path] == loaderStringVt] not] ifTrue: [| nil] ifFalse: [|
-    let snapshot := [Bytes fromByteResultOf: path selector: #bytes];
+    let snapshot := [path bytes];
     let length := [Integer integerValue: [sequence size]];
     [[length isNil] ifTrue: [| [self error: #typeError message: "module arguments need an Integer size"]] ifFalse: [|
       [[length < 0] ifTrue: [| [self error: #typeError message: "module argument count must be nonnegative"]] ifFalse: [|

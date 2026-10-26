@@ -1,17 +1,16 @@
+//! Byte buffers and decoded views own their storage; only Oops cross Id.
 pub(crate) use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-pub(crate) use core::{cell::RefCell, ffi::c_void};
-use std::collections::HashMap;
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Kind {
-    Bytes,
-    TaggedView,
-}
+pub(crate) use core::cell::RefCell;
+use core::{cell::Cell, ptr};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 pub(crate) struct Buffer {
     pub(crate) bytes: Vec<u8>,
-    pub(crate) kind: Kind,
 }
 pub(crate) struct Bytes {
     pub(crate) id: Protocol,
@@ -24,165 +23,198 @@ pub(crate) struct Bytes {
     pub(crate) nil: Oop,
     pub(crate) buffers: RefCell<HashMap<usize, Buffer>>,
     pub(crate) views: RefCell<HashMap<usize, crate::tagged_view::View>>,
-    names: Vec<Oop>,
-    thread: std::thread::ThreadId,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
+    ready: Cell<bool>,
 }
-pub(crate) fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+struct Scope<'a> {
+    values: &'a RefCell<Vec<Oop>>,
+    start: usize,
 }
-pub(crate) fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.values.borrow_mut().truncate(self.start);
+    }
 }
-pub(crate) fn done(v: Result<Operand, Outcome>) -> Outcome {
-    v.map_or_else(|e| e, Outcome::loaded)
+static INSTANCE: AtomicPtr<Bytes> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
+pub(crate) fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
 }
-pub(crate) unsafe fn state<'a>(c: *mut c_void) -> Result<&'a Bytes, Outcome> {
-    let t = unsafe { &*c.cast::<Bytes>() };
-    if t.thread != std::thread::current().id() {
+pub(crate) fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
+pub(crate) fn done(v: Result<Oop, Oop>) -> Oop {
+    v.unwrap_or_else(abi::fault_reference)
+}
+pub(crate) unsafe fn state<'a>(c: Oop) -> Result<&'a Bytes, Oop> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
         return Err(invalid());
     }
-    Ok(t)
+    let s = unsafe { &*p };
+    if c == s.prototype {
+        Ok(s)
+    } else {
+        Err(invalid())
+    }
 }
 impl Bytes {
-    pub(crate) unsafe fn binding(&self, name: &[u8]) -> Result<Oop, Outcome> {
-        unsafe {
-            object(self.id.send_named(
-                self.namespace,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name)?)],
-            )?)
-        }
+    pub(crate) fn selector(&self, name: &[u8]) -> Result<Oop, Oop> {
+        self.names.get(name).copied().ok_or_else(invalid)
+    }
+    pub(crate) unsafe fn send(&self, r: Oop, name: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.selector(name)?, a) }
+    }
+    pub(crate) unsafe fn binding(&self, name: &[u8]) -> Result<Oop, Oop> {
+        object(unsafe { self.send(self.namespace, b"at:", &[self.selector(name)?]) }?)
     }
     pub(crate) unsafe fn rooted(
         &self,
         values: &[Oop],
-        f: impl FnOnce() -> Result<Operand, Outcome>,
-    ) -> Result<Operand, Outcome> {
-        let mut tokens = Vec::new();
-        let result = (|| unsafe {
-            for &v in values {
-                tokens.push(
-                    self.id
-                        .send_named(self.roots, b"retain:", &[Operand::object(v)])?
-                        .as_word()
-                        .filter(|v| *v != 0)
-                        .ok_or_else(invalid)?,
-                );
-            }
-            f()
-        })();
-        for token in tokens {
-            if unsafe {
-                self.id
-                    .send_named(self.roots, b"release:", &[Operand::word(token)])
-            }?
-            .as_word()
-                != Some(1)
-            {
-                return Err(invalid());
-            }
-        }
-        result
+        f: impl FnOnce() -> Result<Oop, Oop>,
+    ) -> Result<Oop, Oop> {
+        let start = self.scoped.borrow().len();
+        self.scoped.borrow_mut().extend_from_slice(values);
+        let _scope = Scope {
+            values: &self.scoped,
+            start,
+        };
+        f()
     }
-    pub(crate) fn length(&self, value: Oop, kind: Kind) -> Result<usize, Outcome> {
+    pub(crate) fn length(&self, value: Oop) -> Result<usize, Oop> {
         self.buffers
             .borrow()
             .get(&value.addr())
-            .filter(|b| b.kind == kind)
             .map(|b| b.bytes.len())
             .ok_or_else(invalid)
     }
-    pub(crate) fn copy(&self, value: Oop, kind: Kind) -> Result<Vec<u8>, Outcome> {
+    pub(crate) fn copy(&self, value: Oop) -> Result<Vec<u8>, Oop> {
         self.buffers
             .borrow()
             .get(&value.addr())
-            .filter(|b| b.kind == kind)
             .map(|b| b.bytes.clone())
             .ok_or_else(invalid)
     }
-    pub(crate) unsafe fn input_bytes(&self, value: Oop) -> Result<Vec<u8>, Outcome> {
-        // Foreign providers are opaque. Copy their borrow before another send.
-        let raw = unsafe { self.id.send_named(value, b"bytes", &[]) }?
-            .as_bytes()
-            .ok_or_else(invalid)?;
-        Ok(unsafe { borrowed_bytes(raw.pointer, raw.length) }
-            .ok_or_else(invalid)?
-            .to_vec())
+    pub(crate) unsafe fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
+        unsafe {
+            self.id.read_bytes(
+                value,
+                self.selector(b"sizeWord")?,
+                self.selector(b"atWord:")?,
+            )
+        }
     }
-    // Report only committed storage; no RefCell borrow may cross this send.
-    // The caller roots the fully published object, since a replacement may GC.
-    unsafe fn charge_capacity(&self, bytes: usize) -> Result<(), Outcome> {
+    pub(crate) unsafe fn input_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
+        let buffer = unsafe { self.send(value, b"bytes", &[]) }?;
+        unsafe { self.read_bytes(buffer) }
+    }
+    pub(crate) unsafe fn number(&self, value: Oop) -> Result<usize, Oop> {
+        if let Some(n) = abi::as_size(value) {
+            return Ok(n);
+        }
+        unsafe {
+            let lo = abi::as_size(self.send(value, b"low32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            let hi = abi::as_size(self.send(value, b"high32", &[])?)
+                .filter(|v| *v <= u32::MAX as usize)
+                .ok_or_else(invalid)?;
+            Ok(lo | (hi << 32))
+        }
+    }
+    pub(crate) unsafe fn word(&self, bits: u64) -> Result<Oop, Oop> {
+        if let Some(v) = abi::size(bits as usize) {
+            return Ok(v);
+        }
+        unsafe {
+            self.send(
+                self.binding(b"Word")?,
+                b"fromUnsignedLow:high:",
+                &[
+                    abi::size((bits & u32::MAX as u64) as usize).unwrap(),
+                    abi::size((bits >> 32) as usize).unwrap(),
+                ],
+            )
+        }
+    }
+    unsafe fn charge(&self, bytes: usize) -> Result<(), Oop> {
         if bytes != 0 {
             unsafe {
-                self.id.send_named(
+                self.send(
                     self.gc,
                     b"chargeExternalAllocation:",
-                    &[Operand::word(bytes)],
+                    &[abi::size(bytes).ok_or_else(invalid)?],
                 )
             }?;
         }
         Ok(())
     }
-    pub(crate) unsafe fn make(&self, bytes: Vec<u8>, kind: Kind) -> Result<Operand, Outcome> {
+    unsafe fn allocate_handle(&self, behavior: Oop) -> Result<Oop, Oop> {
+        let value = unsafe { self.send(behavior, b"allocate", &[abi::size(0).unwrap()]) }?;
         unsafe {
-            let behavior = if kind == Kind::Bytes {
-                self.behavior
-            } else {
-                self.view_behavior
-            };
-            let value = object(self.id.send_named(
-                behavior,
-                b"allocate",
-                &[Operand::word(2 * size_of::<usize>())],
-            )?)?;
             self.rooted(&[value], || {
-                if self
-                    .id
-                    .send_named(
-                        self.id.receiver,
-                        b"allocationSizeOf:",
-                        &[Operand::object(value)],
-                    )?
-                    .as_word()
-                    != Some(2 * size_of::<usize>())
-                    || self
-                        .id
-                        .send_named(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-                        .as_object()
-                        != Some(behavior)
+                if self.send(self.id.root, b"allocationSizeOf:", &[value])? != abi::size(0).unwrap()
+                    || self.send(self.id.root, b"behaviorOf:", &[value])? != behavior
                     || self.buffers.borrow().contains_key(&value.addr())
+                    || self.views.borrow().contains_key(&value.addr())
                 {
                     return Err(invalid());
                 }
-                let capacity = bytes.capacity();
-                let b = Buffer { bytes, kind };
-                mirror(value, &b);
-                self.buffers.borrow_mut().insert(value.addr(), b);
-                self.id.send_named(
-                    self.gc,
-                    b"finalize:with:",
-                    &[Operand::object(value), Operand::object(self.prototype)],
-                )?;
-                self.charge_capacity(capacity)?;
-                Ok(Operand::object(value))
+                Ok(value)
             })
         }
     }
-}
-unsafe fn mirror(value: Oop, buffer: &Buffer) {
-    unsafe {
-        value.cast::<usize>().write(buffer.bytes.as_ptr().addr());
-        value.cast::<usize>().add(1).write(buffer.bytes.len());
+    pub(crate) unsafe fn make(&self, bytes: Vec<u8>) -> Result<Oop, Oop> {
+        unsafe {
+            let value = self.allocate_handle(self.behavior)?;
+            self.rooted(&[value], || {
+                let capacity = bytes.capacity();
+                self.buffers
+                    .borrow_mut()
+                    .insert(value.addr(), Buffer { bytes });
+                self.send(self.gc, b"finalize:with:", &[value, self.prototype])?;
+                self.charge(capacity)?;
+                Ok(value)
+            })
+        }
+    }
+    pub(crate) unsafe fn view(&self, view: crate::tagged_view::View) -> Result<Oop, Oop> {
+        unsafe {
+            let value = self.allocate_handle(self.view_behavior)?;
+            self.rooted(&[value], || {
+                self.views.borrow_mut().insert(value.addr(), view);
+                self.send(self.gc, b"finalize:with:", &[value, self.prototype])?;
+                Ok(value)
+            })
+        }
+    }
+    unsafe fn append(&self, r: Oop, bytes: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            self.send(self.gc, b"prepareAllocation", &[])?;
+            let growth = {
+                let mut buffers = self.buffers.borrow_mut();
+                let b = buffers.get_mut(&r.addr()).ok_or_else(invalid)?;
+                let before = b.bytes.capacity();
+                b.bytes.extend_from_slice(bytes);
+                b.bytes.capacity() - before
+            };
+            self.charge(growth)?;
+            Ok(r)
+        }
     }
 }
-unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn roots(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
         let t = state(c)?;
         let [visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let visitor = object(*visitor)?;
-        for value in [
+        let mut values = vec![
             t.namespace,
             t.roots,
             t.gc,
@@ -190,142 +222,120 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             t.view_behavior,
             t.prototype,
             t.nil,
-        ]
-        .into_iter()
-        .chain(t.names.iter().copied())
-        {
-            t.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
+        ];
+        values.extend(t.names.values().copied());
+        values.extend(t.scoped.borrow().iter().copied());
+        for v in values {
+            t.send(*visitor, b"visit:", &[v])?;
         }
-        Ok(Operand::unit())
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn references(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
-        let t = state(c)?;
-        let [value, visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+        state(c)?;
+        let [_, _] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let (value, visitor) = (object(*value)?, object(*visitor)?);
-        t.buffers.borrow().get(&value.addr()).ok_or_else(invalid)?;
-        if t.id
-            .send_named(t.gc, b"precisePayloads", &[])?
-            .as_word()
-            .ok_or_else(invalid)?
-            == 0
-        {
-            for i in 0..2 {
-                let edge = t.id.send_named(
-                    t.id.receiver,
-                    b"allocationAt:",
-                    &[Operand::word(value.cast::<usize>().add(i).read())],
-                )?;
-                if edge.as_object().is_some() {
-                    t.id.send_named(visitor, b"visit:", &[edge])?;
-                }
-            }
-        }
-        Ok(Operand::unit())
+        // Buffers contain bytes; decoded views contain only native offsets and Arc
+        // ownership. Neither format contains managed object references.
+        Ok(ptr::null_mut())
     })())
 }
-unsafe extern "C" fn finalize(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn finalize(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
         let t = state(c)?;
-        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+        let [v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let value = object(*value)?;
-        // Detached allocation: no Id queries or outgoing callbacks here.
-        t.views.borrow_mut().remove(&value.addr());
-        t.buffers
-            .borrow_mut()
-            .remove(&value.addr())
-            .ok_or_else(invalid)?;
-        Ok(Operand::unit())
+        let bytes = t.buffers.borrow_mut().remove(&v.addr());
+        let view = t.views.borrow_mut().remove(&v.addr());
+        if bytes.is_none() && view.is_none() {
+            return Err(invalid());
+        }
+        Ok(ptr::null_mut())
     })())
 }
-unsafe fn run(t: &Bytes, r: Oop, a: &[Operand], op: usize) -> Result<Operand, Outcome> {
+unsafe fn run(t: &Bytes, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
     unsafe {
-        if op == 0 || op == 7 {
-            let [input] = a else {
-                return Err(invalid());
-            };
-            let raw = input.as_bytes().ok_or_else(invalid)?;
-            let copied = borrowed_bytes(raw.pointer, raw.length)
-                .ok_or_else(invalid)?
-                .to_vec();
-            return t.rooted(&[r], || {
-                if op == 0 {
-                    return t.make(copied, Kind::Bytes);
-                }
-                t.id.send_named(t.gc, b"prepareAllocation", &[])?;
-                let growth = {
-                    let mut buffers = t.buffers.borrow_mut();
-                    let b = buffers
-                        .get_mut(&r.addr())
-                        .filter(|b| b.kind == Kind::Bytes)
-                        .ok_or_else(invalid)?;
-                    let before = b.bytes.capacity();
-                    b.bytes.extend_from_slice(&copied);
-                    mirror(r, b);
-                    b.bytes.capacity() - before
+        match op {
+            0 => {
+                let [source] = a else {
+                    return Err(invalid());
                 };
-                t.charge_capacity(growth)?;
-                Ok(Operand::object(r))
-            });
-        }
-        if matches!(op, 1..=3) {
-            if !a.is_empty() {
-                return Err(invalid());
+                t.make(t.read_bytes(*source)?)
             }
-            if op == 1 || op == 2 {
-                let buffers = t.buffers.borrow();
-                let b = buffers
+            1 => {
+                if !a.is_empty() {
+                    return Err(invalid());
+                }
+                t.length(r)?;
+                Ok(r)
+            }
+            2 => {
+                if !a.is_empty() {
+                    return Err(invalid());
+                }
+                Ok(abi::size(t.length(r)?).ok_or_else(invalid)?)
+            }
+            3 => {
+                if !a.is_empty() {
+                    return Err(invalid());
+                }
+                t.make(t.copy(r)?)
+            }
+            5 => {
+                let [index] = a else {
+                    return Err(invalid());
+                };
+                let i = t.number(*index)?;
+                Ok(t.buffers
+                    .borrow()
                     .get(&r.addr())
-                    .filter(|b| b.kind == Kind::Bytes)
-                    .ok_or_else(invalid)?;
-                return Ok(if op == 1 {
-                    Operand::bytes(&b.bytes)
-                } else {
-                    Operand::word(b.bytes.len())
-                });
+                    .ok_or_else(invalid)?
+                    .bytes
+                    .get(i)
+                    .copied()
+                    .and_then(|b| abi::size(b as usize))
+                    .unwrap_or(ptr::null_mut()))
             }
-            return t.rooted(&[r], || {
-                let copied = t.copy(r, Kind::Bytes)?;
-                t.make(copied, Kind::Bytes)
-            });
+            6 => {
+                let [from, to] = a else {
+                    return Err(invalid());
+                };
+                let (from, to) = (t.number(*from)?, t.number(*to)?);
+                let bytes = t.copy(r)?.get(from..to).map(<[u8]>::to_vec);
+                bytes.map_or(Ok(ptr::null_mut()), |bytes| t.make(bytes))
+            }
+            7 => {
+                let [source] = a else {
+                    return Err(invalid());
+                };
+                let bytes = t.read_bytes(*source)?;
+                t.append(r, &bytes)
+            }
+            8 | 9 => {
+                let bytes = a
+                    .iter()
+                    .map(|&v| {
+                        abi::as_size(v)
+                            .and_then(|v| u8::try_from(v).ok())
+                            .ok_or_else(invalid)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                if op == 8 {
+                    t.make(bytes)
+                } else {
+                    t.append(r, &bytes)
+                }
+            }
+            _ => Err(invalid()),
         }
-        // Raw Word indices and byte values avoid depending on language Integer.
-        let count = if op == 6 { 2 } else { 1 };
-        if a.len() != count {
-            return Err(invalid());
-        }
-        let first = a[0].as_word().ok_or_else(invalid)?;
-        if op == 5 {
-            return Ok(t
-                .buffers
-                .borrow()
-                .get(&r.addr())
-                .filter(|b| b.kind == Kind::Bytes)
-                .ok_or_else(invalid)?
-                .bytes
-                .get(first)
-                .copied()
-                .map(|v| Operand::word(v as usize))
-                .unwrap_or_else(Operand::unit));
-        }
-        if op == 6 {
-            let end = a[1].as_word().ok_or_else(invalid)?;
-            let copied = t.copy(r, Kind::Bytes)?.get(first..end).map(<[u8]>::to_vec);
-            return t.rooted(&[r], || {
-                copied.map_or(Ok(Operand::unit()), |b| t.make(b, Kind::Bytes))
-            });
-        }
-        Err(invalid())
     }
 }
 macro_rules! primitive {
     ($name:ident,$op:expr) => {
-        unsafe extern "C" fn $name(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+        unsafe extern "C" fn $name(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
             done((|| unsafe {
                 run(state(c)?, r, borrowed_slice(a, n).ok_or_else(invalid)?, $op)
             })())
@@ -339,210 +349,507 @@ primitive!(clone, 3);
 primitive!(at_word, 5);
 primitive!(slice_words, 6);
 primitive!(append_bytes, 7);
-const METHODS: &[(&[u8], Method)] = &[
-    (b"fromBytes:", from_bytes),
-    (b"bytes", bytes),
-    (b"length", length),
-    (b"clone", clone),
-    (b"new", clone),
-    (b"byteAtWord:", at_word),
-    (b"sliceFromWord:toWord:", slice_words),
-    (b"appendBytes:", append_bytes),
-    (b"size", super::numeric::bytes_size),
-    (b"at:", super::numeric::bytes_at),
-    (b"copyFrom:to:", super::numeric::binary_slice),
-    (b"readU32At:", super::numeric::read_u32),
-    (b"readU64At:", super::numeric::read_u64),
-    (b"sha256", super::numeric::sha256),
-    (b"wyhash64", super::numeric::wyhash64),
-    (b"readTaggedFieldAt:schema:", super::numeric::tagged_field),
+primitive!(from_values, 8);
+primitive!(append_values, 9);
+
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"allocationSizeOf:",
+    b"behaviorOf:",
+    b"Bytes",
+    b"BytesVt",
+    b"GC",
+    b"Integer",
+    b"ObjectVt",
+    b"Roots",
+    b"Vector",
+    b"Word",
+    b"add:",
+    b"addMethod",
+    b"allocate",
+    b"appendByteValues",
+    b"appendBytes:",
+    b"at:",
+    b"at:put:",
+    b"byteAtWord:",
+    b"bytes",
+    b"bytes:appendByteValues",
+    b"bytes:appendBytes:",
+    b"bytes:at:",
+    b"bytes:byteAtWord:",
+    b"bytes:bytes",
+    b"bytes:clone",
+    b"bytes:copyFrom:to:",
+    b"bytes:emptyTaggedRows",
+    b"bytes:fromByteValues",
+    b"bytes:fromBytes:",
+    b"bytes:length",
+    b"bytes:new",
+    b"bytes:readTaggedFieldAt:schema:",
+    b"bytes:readTaggedRecordsAt:count:prefixBytes:fields:schema:",
+    b"bytes:readTaggedRowsWithSchema:limit:",
+    b"bytes:readTaggedTableWithSchema:limit:",
+    b"bytes:readU32At:",
+    b"bytes:readU64At:",
+    b"bytes:sha256",
+    b"bytes:size",
+    b"bytes:sliceFromWord:toWord:",
+    b"bytes:withSymbolName:",
+    b"bytes:wyhash64",
+    b"chargeExternalAllocation:",
+    b"clone",
+    b"concat:",
+    b"copyFrom:to:",
+    b"delegated",
+    b"emptyTaggedRows",
+    b"fieldReferencesWithOffsetsForTags:",
+    b"finalize:",
+    b"finalize:with:",
+    b"firstFieldCountNot:",
+    b"firstFieldOffsetOutside:",
+    b"firstFieldsOutside:",
+    b"firstIndexForTags:atLeast:",
+    b"firstLocatorOutside:",
+    b"firstPrefixOutside:bytes:",
+    b"firstReferenceOffsetForTags:atLeast:",
+    b"fromByteValues",
+    b"fromBytes:",
+    b"fromUnsignedLow:high:",
+    b"fromWord:",
+    b"high32",
+    b"indexedReferencesForTags:",
+    b"isSymbol:",
+    b"length",
+    b"low32",
+    b"methodAt:",
+    b"new",
+    b"nil",
+    b"ownerOf:put:",
+    b"prepareAllocation",
+    b"readTaggedFieldAt:schema:",
+    b"readTaggedRecordsAt:count:prefixBytes:fields:schema:",
+    b"readTaggedRowsWithSchema:limit:",
+    b"readTaggedTableWithSchema:limit:",
+    b"readU32At:",
+    b"readU64At:",
+    b"referencesOf:do:",
+    b"register:",
+    b"release:",
+    b"retain:",
+    b"rootsDo:",
+    b"sha256",
+    b"size",
+    b"sizeWord",
+    b"atWord:",
+    b"sliceFromWord:toWord:",
+    b"sourceIndex",
+    b"trace:with:",
+    b"view:at:",
+    b"view:concat:",
+    b"view:copyFrom:to:",
+    b"view:fieldReferencesWithOffsetsForTags:",
+    b"view:firstFieldCountNot:",
+    b"view:firstFieldOffsetOutside:",
+    b"view:firstFieldsOutside:",
+    b"view:firstIndexForTags:atLeast:",
+    b"view:firstLocatorOutside:",
+    b"view:firstPrefixOutside:bytes:",
+    b"view:firstReferenceOffsetForTags:atLeast:",
+    b"view:indexedReferencesForTags:",
+    b"view:size",
+    b"view:sourceIndex",
+    b"view:whereLocatorData:",
+    b"view:whereLocatorTags:",
+    b"view:withoutLocatorData:",
+    b"visit:",
+    b"whereLocatorData:",
+    b"whereLocatorTags:",
+    b"withContext:",
+    b"withSymbolName:",
+    b"withoutLocatorData:",
+    b"wordOf:",
+    b"wyhash64"
+];
+const fn index(name: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        if NAMES[i].len() == name.len() {
+            let mut j = 0;
+            while j < name.len() && NAMES[i][j] == name[j] {
+                j += 1;
+            }
+            if j == name.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"bytes:fromBytes:"),
+        entry: Some(from_bytes),
+    },
+    MethodSpec {
+        name: index(b"bytes:bytes"),
+        entry: Some(bytes),
+    },
+    MethodSpec {
+        name: index(b"bytes:length"),
+        entry: Some(length),
+    },
+    MethodSpec {
+        name: index(b"bytes:clone"),
+        entry: Some(clone),
+    },
+    MethodSpec {
+        name: index(b"bytes:new"),
+        entry: Some(clone),
+    },
+    MethodSpec {
+        name: index(b"bytes:byteAtWord:"),
+        entry: Some(at_word),
+    },
+    MethodSpec {
+        name: index(b"bytes:sliceFromWord:toWord:"),
+        entry: Some(slice_words),
+    },
+    MethodSpec {
+        name: index(b"bytes:appendBytes:"),
+        entry: Some(append_bytes),
+    },
+    MethodSpec {
+        name: index(b"bytes:size"),
+        entry: Some(crate::numeric::bytes_size),
+    },
+    MethodSpec {
+        name: index(b"bytes:at:"),
+        entry: Some(crate::numeric::bytes_at),
+    },
+    MethodSpec {
+        name: index(b"bytes:copyFrom:to:"),
+        entry: Some(crate::numeric::binary_slice),
+    },
+    MethodSpec {
+        name: index(b"bytes:readU32At:"),
+        entry: Some(crate::numeric::read_u32),
+    },
+    MethodSpec {
+        name: index(b"bytes:readU64At:"),
+        entry: Some(crate::numeric::read_u64),
+    },
+    MethodSpec {
+        name: index(b"bytes:sha256"),
+        entry: Some(crate::numeric::sha256),
+    },
+    MethodSpec {
+        name: index(b"bytes:wyhash64"),
+        entry: Some(crate::numeric::wyhash64),
+    },
+    MethodSpec {
+        name: index(b"bytes:readTaggedFieldAt:schema:"),
+        entry: Some(crate::numeric::tagged_field),
+    },
+    MethodSpec {
+        name: index(b"bytes:readTaggedRowsWithSchema:limit:"),
+        entry: Some(crate::numeric::tagged_rows),
+    },
+    MethodSpec {
+        name: index(b"bytes:withSymbolName:"),
+        entry: Some(crate::numeric::with_symbol_name),
+    },
+    MethodSpec {
+        name: index(b"bytes:readTaggedTableWithSchema:limit:"),
+        entry: Some(crate::numeric::tagged_table),
+    },
+    MethodSpec {
+        name: index(b"bytes:emptyTaggedRows"),
+        entry: Some(crate::numeric::empty_rows),
+    },
+    MethodSpec {
+        name: index(b"bytes:readTaggedRecordsAt:count:prefixBytes:fields:schema:"),
+        entry: Some(crate::numeric::tagged_records),
+    },
+    MethodSpec {
+        name: index(b"bytes:fromByteValues"),
+        entry: Some(from_values),
+    },
+    MethodSpec {
+        name: index(b"bytes:appendByteValues"),
+        entry: Some(append_values),
+    },
+    MethodSpec {
+        name: index(b"view:size"),
+        entry: Some(crate::tagged_view::size),
+    },
+    MethodSpec {
+        name: index(b"view:at:"),
+        entry: Some(crate::tagged_view::at),
+    },
+    MethodSpec {
+        name: index(b"view:sourceIndex"),
+        entry: Some(crate::tagged_rows::source_index),
+    },
+    MethodSpec {
+        name: index(b"view:concat:"),
+        entry: Some(crate::tagged_rows::concat),
+    },
+    MethodSpec {
+        name: index(b"view:copyFrom:to:"),
+        entry: Some(crate::tagged_rows::slice),
+    },
+    MethodSpec {
+        name: index(b"view:whereLocatorTags:"),
+        entry: Some(crate::tagged_rows::where_tags),
+    },
+    MethodSpec {
+        name: index(b"view:whereLocatorData:"),
+        entry: Some(crate::tagged_rows::where_data),
+    },
+    MethodSpec {
+        name: index(b"view:withoutLocatorData:"),
+        entry: Some(crate::tagged_rows::without_data),
+    },
+    MethodSpec {
+        name: index(b"view:firstLocatorOutside:"),
+        entry: Some(crate::tagged_rows::first_locator_outside),
+    },
+    MethodSpec {
+        name: index(b"view:firstFieldsOutside:"),
+        entry: Some(crate::tagged_rows::first_fields_outside),
+    },
+    MethodSpec {
+        name: index(b"view:firstFieldCountNot:"),
+        entry: Some(crate::tagged_rows::first_count_not),
+    },
+    MethodSpec {
+        name: index(b"view:firstIndexForTags:atLeast:"),
+        entry: Some(crate::tagged_rows::first_index_outside),
+    },
+    MethodSpec {
+        name: index(b"view:indexedReferencesForTags:"),
+        entry: Some(crate::tagged_rows::indices),
+    },
+    MethodSpec {
+        name: index(b"view:firstFieldOffsetOutside:"),
+        entry: Some(crate::tagged_rows::first_field_offset),
+    },
+    MethodSpec {
+        name: index(b"view:firstReferenceOffsetForTags:atLeast:"),
+        entry: Some(crate::tagged_rows::first_reference_offset),
+    },
+    MethodSpec {
+        name: index(b"view:fieldReferencesWithOffsetsForTags:"),
+        entry: Some(crate::tagged_rows::field_references),
+    },
+    MethodSpec {
+        name: index(b"view:firstPrefixOutside:bytes:"),
+        entry: Some(crate::tagged_rows::first_prefix),
+    },
+    MethodSpec {
+        name: index(b"rootsDo:"),
+        entry: Some(roots),
+    },
+    MethodSpec {
+        name: index(b"referencesOf:do:"),
+        entry: Some(references),
+    },
+    MethodSpec {
+        name: index(b"finalize:"),
+        entry: Some(finalize),
+    },
+];
+const BINDINGS: &[(bool, &[u8], &[u8])] = &[
+    (false, b"sizeWord", b"bytes:length"),
+    (false, b"atWord:", b"bytes:byteAtWord:"),
+    (false, b"fromBytes:", b"bytes:fromBytes:"),
+    (false, b"bytes", b"bytes:bytes"),
+    (false, b"length", b"bytes:length"),
+    (false, b"clone", b"bytes:clone"),
+    (false, b"new", b"bytes:new"),
+    (false, b"byteAtWord:", b"bytes:byteAtWord:"),
     (
+        false,
+        b"sliceFromWord:toWord:",
+        b"bytes:sliceFromWord:toWord:",
+    ),
+    (false, b"appendBytes:", b"bytes:appendBytes:"),
+    (false, b"size", b"bytes:size"),
+    (false, b"at:", b"bytes:at:"),
+    (false, b"copyFrom:to:", b"bytes:copyFrom:to:"),
+    (false, b"readU32At:", b"bytes:readU32At:"),
+    (false, b"readU64At:", b"bytes:readU64At:"),
+    (false, b"sha256", b"bytes:sha256"),
+    (false, b"wyhash64", b"bytes:wyhash64"),
+    (
+        false,
+        b"readTaggedFieldAt:schema:",
+        b"bytes:readTaggedFieldAt:schema:",
+    ),
+    (
+        false,
         b"readTaggedRowsWithSchema:limit:",
-        super::numeric::tagged_rows,
+        b"bytes:readTaggedRowsWithSchema:limit:",
     ),
-    (b"withSymbolName:", super::numeric::with_symbol_name),
+    (false, b"withSymbolName:", b"bytes:withSymbolName:"),
     (
+        false,
         b"readTaggedTableWithSchema:limit:",
-        super::numeric::tagged_table,
+        b"bytes:readTaggedTableWithSchema:limit:",
     ),
-    (b"emptyTaggedRows", super::numeric::empty_rows),
+    (false, b"emptyTaggedRows", b"bytes:emptyTaggedRows"),
     (
+        false,
         b"readTaggedRecordsAt:count:prefixBytes:fields:schema:",
-        super::numeric::tagged_records,
+        b"bytes:readTaggedRecordsAt:count:prefixBytes:fields:schema:",
     ),
-];
-const VIEW_METHODS: &[(&[u8], Method)] = &[
-    (b"size", crate::tagged_view::size),
-    (b"at:", crate::tagged_view::at),
-    (b"sourceIndex", crate::tagged_rows::source_index),
-    (b"concat:", crate::tagged_rows::concat),
-    (b"copyFrom:to:", crate::tagged_rows::slice),
-    (b"whereLocatorTags:", crate::tagged_rows::where_tags),
-    (b"whereLocatorData:", crate::tagged_rows::where_data),
-    (b"withoutLocatorData:", crate::tagged_rows::without_data),
+    (false, b"fromByteValues", b"bytes:fromByteValues"),
+    (false, b"appendByteValues", b"bytes:appendByteValues"),
+    (true, b"size", b"view:size"),
+    (true, b"at:", b"view:at:"),
+    (true, b"sourceIndex", b"view:sourceIndex"),
+    (true, b"concat:", b"view:concat:"),
+    (true, b"copyFrom:to:", b"view:copyFrom:to:"),
+    (true, b"whereLocatorTags:", b"view:whereLocatorTags:"),
+    (true, b"whereLocatorData:", b"view:whereLocatorData:"),
+    (true, b"withoutLocatorData:", b"view:withoutLocatorData:"),
+    (true, b"firstLocatorOutside:", b"view:firstLocatorOutside:"),
+    (true, b"firstFieldsOutside:", b"view:firstFieldsOutside:"),
+    (true, b"firstFieldCountNot:", b"view:firstFieldCountNot:"),
     (
-        b"firstLocatorOutside:",
-        crate::tagged_rows::first_locator_outside,
-    ),
-    (
-        b"firstFieldsOutside:",
-        crate::tagged_rows::first_fields_outside,
-    ),
-    (b"firstFieldCountNot:", crate::tagged_rows::first_count_not),
-    (
+        true,
         b"firstIndexForTags:atLeast:",
-        crate::tagged_rows::first_index_outside,
+        b"view:firstIndexForTags:atLeast:",
     ),
-    (b"indexedReferencesForTags:", crate::tagged_rows::indices),
     (
+        true,
+        b"indexedReferencesForTags:",
+        b"view:indexedReferencesForTags:",
+    ),
+    (
+        true,
         b"firstFieldOffsetOutside:",
-        crate::tagged_rows::first_field_offset,
+        b"view:firstFieldOffsetOutside:",
     ),
     (
+        true,
         b"firstReferenceOffsetForTags:atLeast:",
-        crate::tagged_rows::first_reference_offset,
+        b"view:firstReferenceOffsetForTags:atLeast:",
     ),
     (
+        true,
         b"fieldReferencesWithOffsetsForTags:",
-        crate::tagged_rows::field_references,
+        b"view:fieldReferencesWithOffsetsForTags:",
     ),
     (
+        true,
         b"firstPrefixOutside:bytes:",
-        crate::tagged_rows::first_prefix,
+        b"view:firstPrefixOutside:bytes:",
     ),
+    (false, b"rootsDo:", b"rootsDo:"),
+    (false, b"referencesOf:do:", b"referencesOf:do:"),
+    (false, b"finalize:", b"finalize:"),
 ];
-unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| {
-            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    argc: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([namespace]) = (unsafe { borrowed_slice(a, argc) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if symbols.len() != NAMES.len() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let t = unsafe { &*old };
+        return if t.ready.get() && t.namespace == *namespace {
+            t.prototype
+        } else {
+            id.invalid
         };
-        let roots_object = named(b"Roots")?;
+    }
+    done((|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |name: &[u8]| object(send(*namespace, b"at:", &[names[name]])?);
+        let roots = named(b"Roots")?;
         let gc = named(b"GC")?;
         let parent = named(b"ObjectVt")?;
+        let nil = named(b"nil")?;
         let mut tokens = Vec::new();
-        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
-            tokens.push(
-                id.send_named(roots_object, b"retain:", &[Operand::object(v)])?
-                    .as_word()
-                    .ok_or_else(invalid)?,
-            );
-            Ok(v)
-        };
-        let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-        let view_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
-        let mut names = Vec::new();
-        for name in METHODS.iter().chain(VIEW_METHODS).map(|(n, _)| *n).chain([
-            b"rootsDo:".as_slice(),
-            b"referencesOf:do:",
-            b"finalize:",
-            b"trace:with:",
-            b"finalize:with:",
-            b"register:",
-            b"ownerOf:put:",
-            b"at:put:",
-            b"Bytes",
-            b"BytesVt",
-        ]) {
-            names.push(keep(id.intern_name(name)?)?);
-        }
-        let prototype = keep(object(id.send_named(
-            behavior,
-            b"allocate",
-            &[Operand::word(2 * size_of::<usize>())],
-        )?)?)?;
-        let pointer = Box::into_raw(Box::new(Bytes {
-            id,
-            namespace,
-            roots: roots_object,
-            gc,
-            behavior,
-            view_behavior,
-            prototype,
-            nil: named(b"nil")?,
-            buffers: RefCell::new(HashMap::new()),
-            views: RefCell::new(HashMap::new()),
-            names,
-            thread: std::thread::current().id(),
-        }));
-        let t = &*pointer;
-        let b = Buffer {
-            bytes: Vec::new(),
-            kind: Kind::Bytes,
-        };
-        mirror(prototype, &b);
-        t.buffers.borrow_mut().insert(prototype.addr(), b);
-        for (target, methods) in [(behavior, METHODS), (view_behavior, VIEW_METHODS)] {
-            for (name, method) in methods.iter().copied().chain([
-                (b"rootsDo:".as_slice(), self::roots as Method),
-                (b"referencesOf:do:", references),
-                (b"finalize:", finalize),
-            ]) {
-                id.send_named(
-                    target,
-                    b"addMethod",
-                    &[
-                        Operand::object(id.intern_name(name)?),
-                        Operand::entry(NativeEntry::new(method, pointer.cast())),
-                    ],
-                )?;
-            }
-            id.send_named(
+        let result = (|| {
+            let mut keep = |v| -> Result<Oop, Oop> {
+                tokens.push(send(roots, b"retain:", &[v])?);
+                Ok(v)
+            };
+            let behavior = keep(send(parent, b"delegated", &[])?)?;
+            let view_behavior = keep(send(parent, b"delegated", &[])?)?;
+            let prototype = keep(send(behavior, b"allocate", &[abi::size(0).unwrap()])?)?;
+            let t = Box::into_raw(Box::new(Bytes {
+                id,
+                namespace: *namespace,
+                roots,
                 gc,
-                b"trace:with:",
-                &[Operand::object(target), Operand::object(prototype)],
-            )?;
-            id.send_named(
-                id.receiver,
-                b"ownerOf:put:",
-                &[Operand::object(target), Operand::object(prototype)],
-            )?;
-        }
-        id.send_named(roots_object, b"register:", &[Operand::object(prototype)])?;
-        id.send_named(
-            gc,
-            b"finalize:with:",
-            &[Operand::object(prototype), Operand::object(prototype)],
-        )?;
-        for (name, value) in [(b"Bytes".as_slice(), prototype), (b"BytesVt", behavior)] {
-            id.send_named(
-                namespace,
-                b"at:put:",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::object(value),
-                ],
-            )?;
-        }
+                behavior,
+                view_behavior,
+                prototype,
+                nil,
+                names: names.clone(),
+                buffers: RefCell::new(HashMap::from([(
+                    prototype.addr(),
+                    Buffer { bytes: Vec::new() },
+                )])),
+                views: RefCell::new(HashMap::new()),
+                scoped: RefCell::new(Vec::new()),
+                ready: Cell::new(false),
+            }));
+            INSTANCE.store(t, Ordering::Release);
+            let t = &*t;
+            for &(view, name, implementation) in BINDINGS {
+                let method = t.send(image, b"methodAt:", &[t.selector(implementation)?])?;
+                let method = t.send(method, b"withContext:", &[prototype])?;
+                let target = if view { view_behavior } else { behavior };
+                t.send(target, b"addMethod", &[t.selector(name)?, method])?;
+                if matches!(name, b"rootsDo:" | b"referencesOf:do:" | b"finalize:") {
+                    t.send(view_behavior, b"addMethod", &[t.selector(name)?, method])?;
+                }
+            }
+            t.send(roots, b"register:", &[prototype])?;
+            for target in [behavior, view_behavior] {
+                t.send(gc, b"trace:with:", &[target, prototype])?;
+                t.send(id.root, b"ownerOf:put:", &[target, prototype])?;
+            }
+            t.send(gc, b"finalize:with:", &[prototype, prototype])?;
+            for (name, value) in [(b"Bytes".as_slice(), prototype), (b"BytesVt", behavior)] {
+                t.send(*namespace, b"at:put:", &[t.selector(name)?, value])?;
+            }
+            t.ready.set(true);
+            Ok(prototype)
+        })();
         for token in tokens {
-            id.send_named(roots_object, b"release:", &[Operand::word(token)])?;
+            send(roots, b"release:", &[token])?;
         }
-        Ok(Operand::object(prototype))
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    done((|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let [namespace] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let namespace = object(*namespace)?;
-        let id = *id;
-        let current = id.send_named(
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Bytes")?)],
-        )?;
-        if current.kind() == native::OBJECT {
-            return Ok(current);
-        }
-        construct(id, namespace)
+        result
     })())
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: native::VERSION,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };

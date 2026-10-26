@@ -1,103 +1,133 @@
-//! System file I/O through Id sends, with owned argument snapshots and lazy errors.
+//! Native I/O uses ordinary Id sends and owner-local temporary roots.
 use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
+    self as abi, Oop, borrowed_slice,
+    id_protocol::{Literal, MethodSpec, Module, Protocol},
 };
-use core::{ffi::c_void, ptr};
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use core::{
+    cell::{Cell, RefCell},
+    ptr,
+};
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
+};
 struct State {
     id: Protocol,
     ns: Oop,
-    roots: Oop,
-    string_vt: Oop,
-    string: Oop,
     nil: Oop,
-    thread: std::thread::ThreadId,
+    names: HashMap<&'static [u8], Oop>,
+    scoped: RefCell<Vec<Oop>>,
+    ready: Cell<bool>,
+    string: Oop,
+    string_vt: Oop,
 }
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
 static BUSY: AtomicBool = AtomicBool::new(false);
-fn invalid() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 0)
+struct Constructing;
+impl Drop for Constructing {
+    fn drop(&mut self) {
+        BUSY.store(false, Ordering::Release);
+    }
 }
-fn object(v: Operand) -> Result<Oop, Outcome> {
-    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+fn invalid() -> Oop {
+    let p = API.load(Ordering::Acquire);
+    if p.is_null() {
+        std::process::abort();
+    }
+    unsafe { abi::object_reference((*p).invalid) }
+}
+fn object(v: Oop) -> Result<Oop, Oop> {
+    if v.is_null() { Err(invalid()) } else { Ok(v) }
+}
+unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
+    let p = INSTANCE.load(Ordering::Acquire);
+    if p.is_null() {
+        return Err(invalid());
+    }
+    let s = unsafe { &*p };
+    if c == s.ns { Ok(s) } else { Err(invalid()) }
+}
+struct Scope<'a> {
+    s: &'a State,
+    start: usize,
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        self.s.scoped.borrow_mut().truncate(self.start);
+    }
 }
 impl State {
-    unsafe fn rooted(
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
+        unsafe { self.id.send(r, self.names[n], a) }
+    }
+    unsafe fn rooted<T>(
         &self,
         values: &[Oop],
-        f: impl FnOnce() -> Result<Operand, Outcome>,
-    ) -> Result<Operand, Outcome> {
-        unsafe {
-            let mut tokens = Vec::new();
-            let result = (|| {
-                for &v in values {
-                    tokens.push(
-                        self.id
-                            .send_named(self.roots, b"retain:", &[Operand::object(v)])?
-                            .as_word()
-                            .ok_or_else(invalid)?,
-                    );
-                }
-                f()
-            })();
-            for t in tokens {
-                self.id
-                    .send_named(self.roots, b"release:", &[Operand::word(t)])?;
-            }
-            result
-        }
+        f: impl FnOnce() -> Result<T, Oop>,
+    ) -> Result<T, Oop> {
+        let scope = Scope {
+            s: self,
+            start: self.scoped.borrow().len(),
+        };
+        self.scoped.borrow_mut().extend_from_slice(values);
+        let result = f();
+        drop(scope);
+        result
     }
-    unsafe fn bytes(&self, value: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+    unsafe fn bytes(&self, value: Oop) -> Result<Option<Vec<u8>>, Oop> {
         unsafe {
-            // File arguments retain their existing exact-String recognition policy.
-            if self
-                .id
-                .send_named(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-                .as_object()
-                != Some(self.string_vt)
-            {
+            if self.send(self.id.root, b"behaviorOf:", &[value])? != self.string_vt {
                 return Ok(None);
             }
-            let raw = self.id.send_named(value, b"bytes", &[])?;
-            Ok(raw
-                .as_bytes()
-                .and_then(|b| borrowed_bytes(b.pointer, b.length))
-                .map(<[u8]>::to_vec))
-        }
-    }
-}
-
-impl State {
-    unsafe fn make_string(&self, bytes: &[u8]) -> Result<Operand, Outcome> {
-        unsafe {
+            let bytes = self.send(value, b"bytes", &[])?;
+            if bytes.is_null() {
+                return Ok(None);
+            }
             self.id
-                .send_named(self.string, b"fromBytes:", &[Operand::bytes(bytes)])
+                .read_bytes(
+                    bytes,
+                    self.names[b"sizeWord".as_slice()],
+                    self.names[b"atWord:".as_slice()],
+                )
+                .map(Some)
         }
     }
-    unsafe fn error(&self, message: &[u8]) -> Result<Operand, Outcome> {
+    unsafe fn make_string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let kind = self.id.intern_name(b"ioError")?;
-            self.rooted(&[kind], || {
-                let message = object(self.make_string(message)?)?;
-                self.rooted(&[message], || {
-                    // Resolve Error after constructing the message, preserving lazy publication.
-                    let factory = self.id.send_named(
-                        self.ns,
-                        b"at:",
-                        &[Operand::object(self.id.intern_name(b"Error")?)],
-                    )?;
-                    let Some(factory) = factory.as_object().filter(|o| !o.is_null()) else {
-                        return Ok(Operand::object(self.nil));
-                    };
-                    self.rooted(&[factory], || {
-                        self.id.send_named(
-                            factory,
-                            b"kind:message:",
-                            &[Operand::object(kind), Operand::object(message)],
-                        )
-                    })
-                })
+            let values: Vec<_> = bytes
+                .iter()
+                .map(|&b| abi::size(b as usize).unwrap())
+                .collect();
+            let source = self.send(self.id.root, b"sequence", &values)?;
+            self.send(self.string, b"fromBytes:", &[source])
+        }
+    }
+    unsafe fn error(&self, message: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            let message = object(self.make_string(message)?)?;
+            self.rooted(&[message], || {
+                let factory = self.send(self.ns, b"at:", &[self.names[b"Error".as_slice()]])?;
+                if factory.is_null() {
+                    return Ok(self.nil);
+                }
+                self.send(
+                    factory,
+                    b"kind:message:",
+                    &[self.names[b"ioError".as_slice()], message],
+                )
+            })
+        }
+    }
+    unsafe fn make_bytes(&self, factory: Oop, bytes: &[u8]) -> Result<Oop, Oop> {
+        unsafe {
+            self.rooted(&[factory], || {
+                let values: Vec<_> = bytes
+                    .iter()
+                    .map(|&b| abi::size(b as usize).unwrap())
+                    .collect();
+                let source = self.send(self.id.root, b"sequence", &values)?;
+                self.send(factory, b"fromBytes:", &[source])
             })
         }
     }
@@ -121,22 +151,19 @@ fn read_bounded(reader: impl Read, limit: u64) -> io::Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-unsafe extern "C" fn read_file(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn read_file(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
-        let s = &*c.cast::<State>();
-        if s.thread != std::thread::current().id() {
-            return Err(invalid());
-        }
+        let s = state(c)?;
         if n != 1 {
-            return Ok(Operand::object(s.nil));
+            return Ok(s.nil);
         }
         let [path] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
         let path = object(*path)?;
-        s.rooted(&[r, path], || {
+        (|| {
             let Some(path_bytes) = s.bytes(path)? else {
-                return Ok(Operand::object(s.nil));
+                return Ok(s.nil);
             };
             let Some(path) = path_from_bytes(&path_bytes) else {
                 return s.error(b"could not read file");
@@ -148,61 +175,65 @@ unsafe extern "C" fn read_file(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 return s.error(b"could not read file");
             };
             s.make_string(&bytes)
-        })
+        })()
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 // Reusable bounded binary I/O: nil on file/encoding failure. The snapshot
 // carries owned path/content Bytes, with no source evaluation or registration.
-unsafe extern "C" fn read_snapshot(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn read_snapshot(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
-        let s = &*c.cast::<State>();
-        if s.thread != std::thread::current().id() { return Err(invalid()); }
-        let Some([path]) = borrowed_slice(a, n) else { return Ok(Operand::object(s.nil)); };
+        let s = state(c)?;
+        let Some([path]) = borrowed_slice(a, n) else {
+            return Ok(s.nil);
+        };
         let path = object(*path)?;
-        s.rooted(&[r, path], || {
-            let Some(path_bytes) = s.bytes(path)? else { return Ok(Operand::object(s.nil)); };
-            let Some(name) = path_from_bytes(&path_bytes) else { return Ok(Operand::object(s.nil)); };
-            let bytes = match fs::File::open(name).and_then(|file| read_bounded(file, MAX_FILE_BYTES)) {
-                Ok(bytes) => bytes,
-                Err(_) => return Ok(Operand::object(s.nil)),
+        (|| {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return Ok(s.nil);
             };
-            let named = |name: &[u8]| -> Result<Oop, Outcome> {
-                object(s.id.send_named(s.ns, b"at:", &[Operand::object(s.id.intern_name(name)?)])?)
+            let Some(name) = path_from_bytes(&path_bytes) else {
+                return Ok(s.nil);
+            };
+            let bytes =
+                match fs::File::open(name).and_then(|file| read_bounded(file, MAX_FILE_BYTES)) {
+                    Ok(bytes) => bytes,
+                    Err(_) => return Ok(s.nil),
+                };
+            let named = |name: &[u8]| -> Result<Oop, Oop> {
+                object(s.send(s.ns, b"at:", &[s.names[name]])?)
             };
             let factory = named(b"Bytes")?;
             s.rooted(&[factory], || {
-                let name = object(s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&path_bytes)])?)?;
+                let name = object(s.make_bytes(factory, &path_bytes)?)?;
                 s.rooted(&[name], || {
-                    let contents = object(s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&bytes)])?)?;
+                    let contents = object(s.make_bytes(factory, &bytes)?)?;
                     s.rooted(&[contents], || {
                         let vector = named(b"Vector")?;
                         s.rooted(&[vector], || {
-                            let out = object(s.id.send_named(vector, b"new", &[])?)?;
+                            let out = object(s.send(vector, b"new", &[])?)?;
                             s.rooted(&[out], || {
-                                let out = object(s.id.send_named(out, b"add:", &[Operand::object(name)])?)?;
-                                s.rooted(&[out], || s.id.send_named(out, b"add:", &[Operand::object(contents)]))
+                                let out = object(s.send(out, b"add:", &[name])?)?;
+                                s.rooted(&[out], || s.send(out, b"add:", &[contents]))
                             })
                         })
                     })
                 })
             })
-        })
-    })().map_or_else(|e| e, Outcome::loaded)
+        })()
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
 // The compiler sends this operation with a resolved filename. Source-relative
 // validation belongs to the compilation form; this owner only performs bounded I/O.
-unsafe extern "C" fn embed_file(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn embed_file(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
-        let s = &*c.cast::<State>();
-        if s.thread != std::thread::current().id() {
-            return Err(invalid());
-        }
+        let s = state(c)?;
         let Some([path]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
         let path = object(*path)?;
-        s.rooted(&[r, path], || {
+        (|| {
             let Some(path_bytes) = s.bytes(path)? else {
                 return s.error(b"embedFile: expected a String path");
             };
@@ -215,40 +246,31 @@ unsafe extern "C" fn embed_file(c: *mut c_void, r: Oop, a: *const Operand, n: us
             let Ok(bytes) = read_bounded(file, 16 * 1024 * 1024) else {
                 return s.error(b"embedFile: could not read the file within the 16 MiB limit");
             };
-            let factory = object(s.id.send_named(
-                s.ns,
-                b"at:",
-                &[Operand::object(s.id.intern_name(b"Bytes")?)],
-            )?)?;
-            s.rooted(&[factory], || {
-                s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&bytes)])
-            })
-        })
+            let factory = object(s.send(s.ns, b"at:", &[s.names[b"Bytes".as_slice()]])?)?;
+            s.rooted(&[factory], || s.make_bytes(factory, &bytes))
+        })()
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn write_file(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn write_file(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
-        let s = &*c.cast::<State>();
-        if s.thread != std::thread::current().id() {
-            return Err(invalid());
-        }
+        let s = state(c)?;
         if n != 2 {
-            return Ok(Operand::object(s.nil));
+            return Ok(s.nil);
         }
         let [path, contents] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
         let path = object(*path)?;
         let contents = object(*contents)?;
-        s.rooted(&[r, path, contents], || {
+        (|| {
             // Copy the filename before the next send. Contents callbacks cannot
             // redirect this write by mutating the earlier borrowed byte view.
             let Some(path_bytes) = s.bytes(path)? else {
-                return Ok(Operand::object(s.nil));
+                return Ok(s.nil);
             };
             let Some(contents) = s.bytes(contents)? else {
-                return Ok(Operand::object(s.nil));
+                return Ok(s.nil);
             };
             // Preserve argument-read/error precedence: validate after both reads.
             let Some(path) = path_from_bytes(&path_bytes) else {
@@ -257,30 +279,22 @@ unsafe extern "C" fn write_file(c: *mut c_void, r: Oop, a: *const Operand, n: us
             if fs::write(path, contents).is_err() {
                 return s.error(b"could not write file");
             }
-            Ok(Operand::object(r))
-        })
+            Ok(r)
+        })()
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 // Candidate cleanup only removes the exact bytes that its caller admitted.
 // A missing path is already removed; a replaced author file is left untouched.
-unsafe extern "C" fn remove_matching(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
+unsafe extern "C" fn remove_matching(_id: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
-        let s = &*c.cast::<State>();
-        if s.thread != std::thread::current().id() {
-            return Err(invalid());
-        }
+        let s = state(c)?;
         let Some([path, contents]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
         let path = object(*path)?;
         let contents = object(*contents)?;
-        s.rooted(&[r, path, contents], || {
+        (|| {
             let Some(path_bytes) = s.bytes(path)? else {
                 return s.error(b"removeFile: expected a String path");
             };
@@ -292,7 +306,7 @@ unsafe extern "C" fn remove_matching(
             };
             let file = match fs::File::open(path) {
                 Ok(file) => file,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Operand::object(r)),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(r),
                 Err(_) => return s.error(b"could not inspect file for removal"),
             };
             match read_bounded(file, MAX_FILE_BYTES) {
@@ -301,99 +315,208 @@ unsafe extern "C" fn remove_matching(
                 Err(_) => return s.error(b"could not inspect file for removal"),
             }
             match fs::remove_file(path) {
-                Ok(()) => Ok(Operand::object(r)),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Operand::object(r)),
+                Ok(()) => Ok(r),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(r),
                 Err(_) => s.error(b"could not remove file"),
             }
-        })
+        })()
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
-unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
-    unsafe {
-        let named = |name: &[u8]| {
-            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+unsafe extern "C" fn roots_do(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
         };
+        let values = s.scoped.borrow().clone();
+        for value in values {
+            s.send(*visitor, b"visit:", &[value])?;
+        }
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
+literals![
+    b"Bytes",
+    b"Error",
+    b"Roots",
+    b"String",
+    b"StringVt",
+    b"System",
+    b"Vector",
+    b"add:",
+    b"addMethod",
+    b"at:",
+    b"at:put:",
+    b"atWord:",
+    b"behaviorOf:",
+    b"bytes",
+    b"delegated",
+    b"embedFile:",
+    b"fromBytes:",
+    b"ioError",
+    b"kind:message:",
+    b"methodAt:",
+    b"new",
+    b"nil",
+    b"printString",
+    b"readFile:",
+    b"readFileSnapshot:",
+    b"reassociateBehaviorOf:with:",
+    b"register:",
+    b"release:",
+    b"removeFile:ifContents:",
+    b"retain:",
+    b"rootsDo:",
+    b"sequence",
+    b"sizeWord",
+    b"visit:",
+    b"withContext:",
+    b"writeFile:contents:"
+];
+const fn index(n: &[u8]) -> usize {
+    let mut i = 0;
+    while i < NAMES.len() {
+        let c = NAMES[i];
+        if c.len() == n.len() {
+            let mut j = 0;
+            while j < n.len() && c[j] == n[j] {
+                j += 1;
+            }
+            if j == n.len() {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    panic!("missing literal")
+}
+static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: index(b"readFile:"),
+        entry: Some(read_file),
+    },
+    MethodSpec {
+        name: index(b"readFileSnapshot:"),
+        entry: Some(read_snapshot),
+    },
+    MethodSpec {
+        name: index(b"embedFile:"),
+        entry: Some(embed_file),
+    },
+    MethodSpec {
+        name: index(b"writeFile:contents:"),
+        entry: Some(write_file),
+    },
+    MethodSpec {
+        name: index(b"removeFile:ifContents:"),
+        entry: Some(remove_matching),
+    },
+    MethodSpec {
+        name: index(b"rootsDo:"),
+        entry: Some(roots_do),
+    },
+];
+unsafe extern "C" fn initialize(
+    p: *const Protocol,
+    image: Oop,
+    l: *const Oop,
+    n: usize,
+    a: *const Oop,
+    count: usize,
+) -> Oop {
+    API.store(p.cast_mut(), Ordering::Release);
+    let id = unsafe { *p };
+    let Some([ns]) = (unsafe { borrowed_slice(a, count) }) else {
+        return id.invalid;
+    };
+    let Some(symbols) = (unsafe { borrowed_slice(l, n) }) else {
+        return id.invalid;
+    };
+    if n != NAMES.len() || ns.is_null() {
+        return id.invalid;
+    }
+    let old = INSTANCE.load(Ordering::Acquire);
+    if !old.is_null() {
+        let s = unsafe { &*old };
+        return if s.ready.get() && s.ns == *ns && s.id.root == id.root {
+            ptr::null_mut()
+        } else {
+            id.invalid
+        };
+    }
+    if BUSY.swap(true, Ordering::AcqRel) {
+        return id.invalid;
+    }
+    let _constructing = Constructing;
+    (|| unsafe {
+        let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
+        let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
+        let named = |n: &[u8]| object(send(*ns, b"at:", &[names[n]])?);
         let roots = named(b"Roots")?;
         let nil = named(b"nil")?;
-        let string_vt = named(b"StringVt")?;
-        let string = named(b"String")?;
         let system = named(b"System")?;
-        for o in [ns, roots, nil, string_vt, string, system] {
-            id.send_named(roots, b"retain:", &[Operand::object(o)])?;
-        }
-        let vt = object(id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(system)])?)?;
-        id.send_named(roots, b"retain:", &[Operand::object(vt)])?;
-        let state = Box::into_raw(Box::new(State {
+        let vt = send(id.root, b"behaviorOf:", &[system])?;
+        let string = named(b"String")?;
+        let string_vt = named(b"StringVt")?;
+        let owner = send(
+            id.root,
+            b"sequence",
+            &[*ns, roots, nil, system, vt, string, string_vt],
+        )?;
+        let token = send(roots, b"retain:", &[owner])?;
+        let s = Box::into_raw(Box::new(State {
             id,
-            ns,
-            roots,
-            string_vt,
-            string,
+            ns: *ns,
             nil,
-            thread: std::thread::current().id(),
+            names: names.clone(),
+            scoped: RefCell::new(Vec::new()),
+            ready: Cell::new(false),
+            string,
+            string_vt,
         }));
-        for (name, method) in [
-            (b"readFile:".as_slice(), read_file as native::Method),
-            (b"readFileSnapshot:", read_snapshot),
-            (b"embedFile:", embed_file),
-            (b"writeFile:contents:", write_file),
-            (b"removeFile:ifContents:", remove_matching),
+        INSTANCE.store(s, Ordering::Release);
+        let s = &*s;
+        let owner_type = send(id.root, b"behaviorOf:", &[owner])?;
+        let private = send(owner_type, b"delegated", &[])?;
+        send(id.root, b"reassociateBehaviorOf:with:", &[owner, private])?;
+        let method = send(image, b"methodAt:", &[names[b"rootsDo:".as_slice()]])?;
+        let method = send(method, b"withContext:", &[*ns])?;
+        send(
+            private,
+            b"addMethod",
+            &[names[b"rootsDo:".as_slice()], method],
+        )?;
+        send(roots, b"register:", &[owner])?;
+        for name in [
+            b"readFile:".as_slice(),
+            b"readFileSnapshot:".as_slice(),
+            b"embedFile:".as_slice(),
+            b"writeFile:contents:".as_slice(),
+            b"removeFile:ifContents:".as_slice(),
         ] {
-            id.send_named(
-                vt,
-                b"addMethod",
-                &[
-                    Operand::object(id.intern_name(name)?),
-                    Operand::entry(NativeEntry::new(method, state.cast())),
-                ],
-            )?;
+            let method = send(image, b"methodAt:", &[names[name]])?;
+            let method = send(method, b"withContext:", &[*ns])?;
+            send(vt, b"addMethod", &[names[name], method])?;
         }
-        INSTANCE.store(state, Ordering::Release);
-        Ok(Operand::unit())
-    }
-}
-unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        if !native::valid_protocol(id) {
-            return Err(invalid());
-        }
-        let Some([ns]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let ns = object(*ns)?;
-        let existing = INSTANCE.load(Ordering::Acquire);
-        if !existing.is_null() {
-            let s = &*existing;
-            return if s.id.receiver == (*id).receiver
-                && s.ns == ns
-                && s.thread == std::thread::current().id()
-            {
-                Ok(Operand::unit())
-            } else {
-                Err(invalid())
-            };
-        }
-        if BUSY.swap(true, Ordering::AcqRel) {
-            return Err(invalid());
-        }
-        let result = construct(*id, ns);
-        BUSY.store(false, Ordering::Release);
-        result
+        send(roots, b"release:", &[token])?;
+        s.ready.set(true);
+        Ok(ptr::null_mut())
     })()
-    .map_or_else(|e| e, Outcome::loaded)
+    .unwrap_or_else(abi::fault_reference)
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: 1,
-    byte_size: size_of::<native::Module>() as u32,
+pub static birnam_native_module_v2: Module = Module {
+    version: 2,
+    byte_size: size_of::<Module>() as u32,
+    literals: LITERALS.as_ptr(),
+    literal_count: LITERALS.len(),
+    methods: METHODS.as_ptr(),
+    method_count: METHODS.len(),
     initialize: Some(initialize),
 };
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
-    1
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

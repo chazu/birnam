@@ -42,6 +42,54 @@ permit the allocator to decide the object's language type.
 Use [the glossary](../../glossary.md) for terminology. These requirements govern
 new work; older migration descriptions below are not permission to contradict them.
 
+### One message dispatch protocol
+
+The ordinary message path is:
+
+```text
+send(receiver, selector, arguments) -> current method lookup -> enter the selected method
+```
+
+An ordinary send must not require another selector lookup on the selected Method
+before entering it. In particular, making Methods Oops does not authorize an
+implicit `apply`, `invoke`, `call`, or renamed equivalent protocol on every send.
+A private implementation helper that enters the selected method's calling
+convention is not a second language-level dispatch protocol. Custom lookup and
+explicit messages remain live under the existing send semantics.
+
+`apply` and the argument/byte-forwarding family introduced with it are not part
+of Id's design. Do not add them, preserve them as an alternative path, or rename
+them. Use `send` and the objects' defined data operations. Payload opacity,
+malleability, GC correctness and the dispatch contract must hold together.
+
+### Architectural changes must preserve the contract
+
+An implementation or optimization task authorizes work within these invariants.
+Changing an invariant requires an explicit user decision about that change; broad
+approval to continue implementation is not approval for a newly invented protocol.
+If a proposed implementation appears to require a conflict, stop that affected
+work, describe the conflict and consider simpler designs before building dependents.
+
+Before changing a core path, state its existing contract and show the proposed
+before/after sequence of operations. Identify any new required message, lookup,
+representation, registry, allocation, or lifetime mechanism. Explain the necessary
+responsibility it serves and whether existing machinery can serve it. This is a
+check on design changes, not an approval requirement for routine private refactors.
+
+Tests must include counterexamples to prohibited designs, not just examples that
+exercise the implementation. The dispatch contract test checks that Id installs
+no `apply` method and makes any lookup on the selected Method fail. An ordinary
+send must still enter that Method successfully. This observes behavior regardless
+of a helper's spelling. Establish expectations from the contract before repairing
+an implementation; never change the contract merely to make existing code pass.
+
+Passing implementation tests is not proof of architectural compliance. Agent-written
+plans, migration logs, benchmark reports and prior code cannot amend these
+invariants. When a violation is found, mark it prominently in the working design
+and acceptance status, preserve historical receipts as evidence of their actual
+scope, and stop extending the affected mechanism until corrected. Do not rewrite
+the contract or its tests to make the current implementation appear compliant.
+
 ### Bootstrap and executable authority
 
 Birnam must cold-bootstrap from a source checkout using its declared non-Birnam

@@ -3,7 +3,6 @@
   "scope": "Instance-owned memory management over Id and Roots messages; depends only on birnam-abi",
   "install_name": "@rpath/libbirnam_collect.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1"
+    "birnam_native_module_v2"
   ]
 }

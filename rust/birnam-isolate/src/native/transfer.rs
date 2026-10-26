@@ -2,11 +2,11 @@
 use super::*;
 #[derive(Debug)]
 pub(super) enum TransferError {
-    Native(Outcome),
+    Native(Oop),
     Codec(CodecError),
 }
-impl From<Outcome> for TransferError {
-    fn from(e: Outcome) -> Self {
+impl From<Oop> for TransferError {
+    fn from(e: Oop) -> Self {
         Self::Native(e)
     }
 }
@@ -43,7 +43,7 @@ impl Capture<'_, '_> {
     unsafe fn at(&self, o: Oop, i: usize) -> Result<Oop, TransferError> {
         unsafe {
             let i = self.q.int(i)?;
-            Ok(self.q.obj(o, b"at:", &[Operand::object(i)])?)
+            Ok(self.q.obj(o, b"at:", &[i])?)
         }
     }
     unsafe fn value(&mut self, o: Oop, depth: usize) -> Result<Value, TransferError> {
@@ -67,7 +67,7 @@ impl Capture<'_, '_> {
                     return Ok(v);
                 }
             }
-            let vt = q.obj(q.s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?;
+            let vt = q.obj(q.s.id.root, b"behaviorOf:", &[o])?;
             if vt == q.named(b"IntegerVt")? {
                 self.reserve(8)?;
                 return Ok(Value::Int(
@@ -76,10 +76,7 @@ impl Capture<'_, '_> {
             }
             if vt == q.named(b"FloatVt")? {
                 self.reserve(8)?;
-                let bits = q
-                    .call(q.named(b"Float")?, b"bitsOf:", &[Operand::object(o)])?
-                    .as_word()
-                    .ok_or(CodecError::NonTransferable)?;
+                let bits = q.bits(q.call(q.named(b"Float")?, b"bitsOf:", &[o])?)?;
                 return Ok(Value::Float(bits as u64));
             }
             if vt == q.named(b"StringVt")? {
@@ -87,11 +84,12 @@ impl Capture<'_, '_> {
                 self.reserve(4 + b.len())?;
                 return Ok(Value::String(b));
             }
-            let name = q.call(q.s.id.receiver, b"symbolBytesOf:", &[Operand::object(o)])?;
-            if let Some(b) = name.as_bytes() {
-                let b = borrowed_bytes(b.pointer, b.length)
-                    .ok_or(CodecError::InvalidRecord)?
-                    .to_vec();
+            if vt == q.named(b"SymbolVt")? {
+                let b = q.s.id.read_bytes(
+                    o,
+                    q.s.names[b"sizeWord".as_slice()],
+                    q.s.names[b"atWord:".as_slice()],
+                )?;
                 self.reserve(4 + b.len())?;
                 return Ok(Value::Symbol(b));
             }
@@ -125,7 +123,7 @@ impl Capture<'_, '_> {
                     if !valid_map_key(&k) {
                         return Err(CodecError::InvalidMapKey.into());
                     }
-                    let value = q.obj(o, b"at:", &[Operand::object(key)])?;
+                    let value = q.obj(o, b"at:", &[key])?;
                     values.push((k, self.value(value, depth + 1)?));
                 }
                 Value::Map(values)
@@ -156,7 +154,7 @@ pub(super) unsafe fn materialize(q: &Scope<'_>, v: &Value) -> Result<Oop, Transf
             Value::Float(b) => q.obj(
                 q.named(b"Float")?,
                 b"fromBits:",
-                &[Operand::word(*b as usize)],
+                &[q.raw_word(*b as usize)?],
             )?,
             Value::String(b) => q.string(b)?,
             Value::Symbol(b) => q.symbol(b)?,
@@ -164,7 +162,7 @@ pub(super) unsafe fn materialize(q: &Scope<'_>, v: &Value) -> Result<Oop, Transf
                 let mut out = q.obj(q.named(b"Vector")?, b"new", &[])?;
                 for v in values {
                     let v = materialize(q, v)?;
-                    out = q.obj(out, b"add:", &[Operand::object(v)])?;
+                    out = q.obj(out, b"add:", &[v])?;
                 }
                 out
             }
@@ -172,14 +170,11 @@ pub(super) unsafe fn materialize(q: &Scope<'_>, v: &Value) -> Result<Oop, Transf
                 let mut out = q.obj(q.named(b"Map")?, b"new", &[])?;
                 for (k, v) in values {
                     let k = materialize(q, k)?;
-                    if q.call(out, b"includesKey:", &[Operand::object(k)])?
-                        .as_object()
-                        == Some(q.named(b"true")?)
-                    {
+                    if q.call(out, b"includesKey:", &[k])? == q.named(b"true")? {
                         return Err(CodecError::DuplicateMapKey.into());
                     }
                     let v = materialize(q, v)?;
-                    out = q.obj(out, b"at:put:", &[Operand::object(k), Operand::object(v)])?;
+                    out = q.obj(out, b"at:put:", &[k, v])?;
                 }
                 out
             }

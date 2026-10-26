@@ -1,0 +1,1085 @@
+{
+  "base_revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+  "branch": "codex/oop-only-id-slice",
+  "worktree": "/Users/chazu/dev/zig/birnam-oop-id",
+  "source_sha256": {
+    "Cargo.lock": "da05dab075f6470030c47103d57e9766869be5c5382f84e08896d0c1534a96fc",
+    "rust/birnam-abi/src/id_protocol.rs": "d0f4779cad9a12754443ff31a872b283e7d8f6cefe553f39bf7578c476c4f330",
+    "rust/birnam-abi/src/lib.rs": "186dd7651a16141a142b7b5f98c883820d198b7af1a483d778da4c4bf018bf08",
+    "rust/birnam-abi/src/native_module.rs": "47a1cf6d7789a2806f0257bfe18a22a73c58f0910b666103647d9b293491f323",
+    "rust/birnam-collect/src/collection.rs": "12faa73d9a17ab6d6a3319613e556281d98329442c08ac87694e973516cd72c2",
+    "rust/birnam-collect/src/lib.rs": "914b5c15ab4a917c0d73acf25769e44f6d1b62d33d162e31545ba219299ba9ca",
+    "rust/birnam-id/src/boundary.rs": "5f3610e8f5a83cf97852fb26dd6014534f75a70771c9c9368b01bac072d62f69",
+    "rust/birnam-id/src/id/id_dispatch.rs": "e184d2d7a43bc8737ac0ca58feba97c73ed469a0d1adc54339e4750c48f1d4ac",
+    "rust/birnam-id/src/id/initial_objects.rs": "a61c98a6b5c813fee409dcea315759f8611871e5576085f2fe9594a99d400f1e",
+    "rust/birnam-id/src/id/mod.rs": "611c0031c1264aca8bf46c73682ca2a13ed8ddd4fcb895ed800a0947ae710ce7",
+    "rust/birnam-id/src/id/native_id.rs": "3105f38a69298be64997b1fc6051b2931f62205f8492bc64e8b24813e28cdc3b",
+    "rust/birnam-id/src/id/object_memory.rs": "6672ac9ef1f1a78d67c0a70112259113ac8e08d276283cb296aee159f36b94f6",
+    "rust/birnam-id/src/id/symbol.rs": "882c6ea3d806157ad4b2602c4530d1ad26f6a442d95c5ee086d6af6a6f2179fc",
+    "rust/birnam-id/src/id/vtable.rs": "f88eb32fc529e6b904c11d8467084b751da97b1510aeafd10b5dd30de954dacf",
+    "rust/birnam-id/src/lib.rs": "5db85a3e1fdb638bb3f792886046bbee5bb75aaeca0535ca2e2eb980eb3fdbaa",
+    "rust/birnam-id/src/raw.rs": "b252cd66fe93305769ec0e8ceee5875e8b8f5aa20645c17891b7269335efa019",
+    "rust/birnam-root-registry/src/lib.rs": "32fbf86c05960968be88f85797af36596e46b7707620a69bb6b7ffc38a581a29",
+    "rust/birnam-root-registry/src/word_index.rs": "694f6d66d290a1de13731725d19f5f893bbfbdfd1d9199828d782391f112b0fd",
+    "rust/birnam-siphon/Cargo.toml": "6efaeee32b071fbbd9fc38bb66f289b88c0bb8eab5c49aaf2e4f4b96c1f3f68b",
+    "rust/birnam-siphon/examples/oop_slice.rs": "cd75da74047a3615e8136ee4f5e8e5753937470e98e8a697ab0383504b743296",
+    "rust/birnam-siphon/src/lib.rs": "caa0b99aa9b06f02afdada1ca4e0bc9f28ea13c51d34d1d38fbdbc68d63ed3f5",
+    "scripts/oop-id-slice-bench.py": "87571ac35ed34b0eb3fafe2bb366977bb4532a38dec573187579b0c95043562d",
+    "scripts/oop-id-slice-test.sh": "61635700fcbd6f3821e2f9b742813923af4c651ae495e840c602e2aefbd1c329",
+    "tests/fixtures/oop-id-v2/bench.c": "75f0b2162386c3b2a5cd7b14443dc01c0b4fc744978160759455c1b46ccac96a",
+    "tests/fixtures/oop-id-v2/failure.c": "f02b35396a00a300121eaa4209e3763759cb8722c84db50e49fd4a407e2c4711",
+    "tests/fixtures/oop-id-v2/fixture.c": "4ada200bab4b7cdfcc6b523dc2c0b3ec06bfe8dd92e9f160948dc196591a8117",
+    "tests/fixtures/oop-id-v2/id.h": "1ac347745ab084ff414ec365b742e50ca4c0c8cc56b2f667c5036476859688ae",
+    "tests/fixtures/oop-id-v2/rejected-null.c": "5a4919393d9c497bbe54ca852ef50955f8fab7543c79bf49730d96660c41ee10",
+    "tests/fixtures/oop-id-v2/rejected.c": "d905a0bab093f6656bd8c78c54fd56aee24034797e3da145a16893d5a77a4b0c",
+    "tests/fixtures/oop-id-v2/tcc-caller.c": "aea55df663f1ee2780e8c48ab0a70f6760d4c33859cabb7b1bb86a432f9015f0"
+  },
+  "qualification": {
+    "unit.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 11 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::native_id::oop_tests::fault_identity_survives_index_retirement_and_detachment ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "build.log": "    Finished `release` profile [optimized] target(s) in 0.01s\n",
+    "caller-build.log": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-siphon)\n    Finished `release` profile [optimized] target(s) in 0.49s\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":2263042,\"ns_per_op\":56.576050}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":15350250,\"ns_per_op\":51.167500}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2708542,\"ns_per_op\":330.632568}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":14752125,\"ns_per_op\":14752125.000000}\n{\"heap_before\":56587,\"heap_after\":2702,\"reclaimed\":53886}\n"
+  },
+  "fresh_target_qualification": {
+    "unit.log": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (.cargo-target/oop-slice-cold-final-20261023/debug/deps/birnam_id-5ba5453e63e6c364)\n\nrunning 11 tests\ntest boundary::tests::successful_boundary_checks_do_not_abort ... ok\ntest id::vtable::core_tests::binding_epoch_detects_aba_but_ignores_dead_behavior_retirement ... ok\ntest id::symbol::tests::query_position_hint_rejects_a_same_digest_wrong_name ... ok\ntest id::symbol::tests::randomized_names_still_use_full_bytes_and_reject_embedded_nul ... ok\ntest id::vtable::core_tests::behavior_graph_and_dictionary_need_only_id_allocation ... ok\ntest id::vtable::core_tests::default_lookup_fact_tracks_context_inheritance_retirement_and_saturation ... ok\ntest id::vtable::core_tests::initialized_behavior_does_not_change_live_bindings_but_later_edits_do ... ok\ntest id::native_id::oop_tests::fault_identity_survives_index_retirement_and_detachment ... ok\ntest id::symbol::tests::digest_collisions_and_retirement_preserve_canonical_names_and_order ... ok\ntest id::symbol::tests::fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning ... ok\ntest id::vtable::core_tests::slot_hints_follow_live_values_shifts_parents_and_reused_records ... ok\n\ntest result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n     Running unittests src/lib.rs (.cargo-target/oop-slice-cold-final-20261023/debug/deps/birnam_root_registry-667a6069238f9f78)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "build.log": "    Finished `release` profile [optimized] target(s) in 0.01s\n",
+    "caller-build.log": "   Compiling birnam-siphon v0.0.0 (/Users/chazu/dev/zig/birnam-oop-id/rust/birnam-siphon)\n    Finished `release` profile [optimized] target(s) in 0.50s\n",
+    "runtime.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nentered receiver/argument survival, 128 finalizers and nested GC: passed\nremoved entered Method and otherwise-unrooted context survived GC: passed\nintern method replacement across collection and captured restoration: passed\ntrace failure/allocation and swallowed visitor failure refused before retirement: passed\nswallowed core-edge and allocation-census failures also refused safely: passed\npartial publication/code residency and incompatible/null initializer rejection: passed\ninvalid core/Roots/GC method contexts return Fault objects: passed\ncustom metacircular lookup and full-arity DNU: passed\ncross-thread Id entry rejected: passed\nvendored TinyCC caller through real Oop Id and GC: passed\nOOP_SLICE_OK\n",
+    "finalizer-failure.log": "cold bootstrap and three native modules: passed\nsize limits and invalid byte values rejected without allocating: passed\nFINALIZER_FAILURE_CONTAINED\n",
+    "independent-c.log": "{\"case\":\"allocate-and-retain-eighth\",\"iterations\":40000,\"cpu_ns\":2351416,\"ns_per_op\":58.785400}\n{\"case\":\"intern-existing-64\",\"iterations\":300000,\"cpu_ns\":15298667,\"ns_per_op\":50.995557}\n{\"case\":\"produce-and-intern-new-64\",\"iterations\":8192,\"cpu_ns\":2614917,\"ns_per_op\":319.203735}\n{\"case\":\"collect-garbage\",\"iterations\":1,\"cpu_ns\":15137000,\"ns_per_op\":15137000.000000}\n{\"heap_before\":56587,\"heap_after\":2702,\"reclaimed\":53886}\n"
+  },
+  "boundary_audit": {
+    "birnam_id": {
+      "reachable_sources": [
+        "rust/birnam-abi/src/id_protocol.rs",
+        "rust/birnam-abi/src/lib.rs",
+        "rust/birnam-abi/src/native_module.rs",
+        "rust/birnam-id/src/boundary.rs",
+        "rust/birnam-id/src/id/id_dispatch.rs",
+        "rust/birnam-id/src/id/initial_objects.rs",
+        "rust/birnam-id/src/id/mod.rs",
+        "rust/birnam-id/src/id/native_id.rs",
+        "rust/birnam-id/src/id/object_memory.rs",
+        "rust/birnam-id/src/id/symbol.rs",
+        "rust/birnam-id/src/id/vtable.rs",
+        "rust/birnam-id/src/lib.rs",
+        "rust/birnam-id/src/raw.rs"
+      ],
+      "carrier_hits": {},
+      "exports": "000000000000c360 T _birnam_id_bootstrap_v2\n",
+      "dependencies": "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib:\n\t@rpath/libbirnam_id.dylib (compatibility version 0.0.0, current version 0.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)\n"
+    },
+    "birnam_root_registry": {
+      "reachable_sources": [
+        "rust/birnam-abi/src/id_protocol.rs",
+        "rust/birnam-abi/src/lib.rs",
+        "rust/birnam-abi/src/native_module.rs",
+        "rust/birnam-root-registry/src/lib.rs",
+        "rust/birnam-root-registry/src/word_index.rs"
+      ],
+      "carrier_hits": {},
+      "exports": "00000000000401e8 S _birnam_native_module_v2\n",
+      "dependencies": "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib:\n\t@rpath/libbirnam_root_registry.dylib (compatibility version 0.0.0, current version 0.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)\n"
+    },
+    "birnam_collect": {
+      "reachable_sources": [
+        "rust/birnam-abi/src/id_protocol.rs",
+        "rust/birnam-abi/src/lib.rs",
+        "rust/birnam-abi/src/native_module.rs",
+        "rust/birnam-collect/src/collection.rs",
+        "rust/birnam-collect/src/lib.rs"
+      ],
+      "carrier_hits": {},
+      "exports": "0000000000044720 S _birnam_native_module_v2\n",
+      "dependencies": "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib:\n\t@rpath/libbirnam_collect.dylib (compatibility version 0.0.0, current version 0.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)\n"
+    }
+  },
+  "timings": {
+    "library_sha256": {
+      "v1": {
+        "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib": "5fa284fdcf4d688999111a4facfc694fa5553474efeed66d2e812037a8b66f2c",
+        "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib": "7030ff03348471e8af9615210be18297ad2831fdb0dd33b7e271432ba9ada46a",
+        "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib": "0a1a1744011751a6b99581b60516b46363cc56254433710b2da326a5224a725b"
+      },
+      "v2": {
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib": "57e960632f82d6f51939ace4c82a4d91b0e086713a0aef078735f4bec7bacd0f",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib": "791046e01301c0599303cb58dfffe77871ba3b0f5752f00b6e97ffc718c6db48",
+        "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib": "a9d43e71460064542ca26997c0359bcd6cb9f42ff75eb1a9b84793fb12e363de"
+      }
+    },
+    "runs": [
+      {
+        "order": 0,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1675667,
+            "ns_per_op": 41.891675
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 10231125,
+            "ns_per_op": 34.10375
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1247917,
+            "ns_per_op": 152.333618
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10051083,
+            "ns_per_op": 10051083.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      },
+      {
+        "order": 1,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2287958,
+            "ns_per_op": 57.19895
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 15689209,
+            "ns_per_op": 52.297363
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2552750,
+            "ns_per_op": 311.61499
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15110917,
+            "ns_per_op": 15110917.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2283958,
+            "ns_per_op": 57.09895
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 15646500,
+            "ns_per_op": 52.155
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2607250,
+            "ns_per_op": 318.267822
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15093416,
+            "ns_per_op": 15093416.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1674333,
+            "ns_per_op": 41.858325
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 10275833,
+            "ns_per_op": 34.252777
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1239416,
+            "ns_per_op": 151.295898
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10205583,
+            "ns_per_op": 10205583.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1678708,
+            "ns_per_op": 41.9677
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 10056292,
+            "ns_per_op": 33.520973
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1277417,
+            "ns_per_op": 155.934692
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10002333,
+            "ns_per_op": 10002333.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2284209,
+            "ns_per_op": 57.105225
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 15374250,
+            "ns_per_op": 51.2475
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2623250,
+            "ns_per_op": 320.220947
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15264125,
+            "ns_per_op": 15264125.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "lane": "v2",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v2",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_id.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_root_registry.dylib",
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/release/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2334166,
+            "ns_per_op": 58.35415
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 15320000,
+            "ns_per_op": 51.066667
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2570000,
+            "ns_per_op": 313.720703
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15166709,
+            "ns_per_op": 15166709.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "lane": "v1",
+        "argv": [
+          "/Users/chazu/dev/zig/birnam-oop-id/.cargo-target/oop-slice/fixtures/bench-v1",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_id.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_root_registry.dylib",
+          "/Users/chazu/.local/opt/birnam/lib/libbirnam_collect.dylib"
+        ],
+        "observations": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 1693125,
+            "ns_per_op": 42.328125
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 9766958,
+            "ns_per_op": 32.556527
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 1232958,
+            "ns_per_op": 150.507568
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 10416917,
+            "ns_per_op": 10416917.0
+          },
+          {
+            "heap_before": 48295,
+            "heap_after": 2602,
+            "reclaimed": 45693
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "allocate-and-retain-eighth": {
+        "median_ns": {
+          "v1": 41.9296875,
+          "v2": 57.1520875
+        },
+        "change_percent": 36.30458729271473
+      },
+      "intern-existing-64": {
+        "median_ns": {
+          "v1": 33.812361499999994,
+          "v2": 51.70125
+        },
+        "change_percent": 52.90635645191482
+      },
+      "produce-and-intern-new-64": {
+        "median_ns": {
+          "v1": 151.81475799999998,
+          "v2": 315.9942625
+        },
+        "change_percent": 108.14462748081448
+      },
+      "collect-garbage": {
+        "median_ns": {
+          "v1": 10128333.0,
+          "v2": 15138813.0
+        },
+        "change_percent": 49.46993745170107
+      }
+    },
+    "limits": [
+      "Thread CPU clock; four fresh processes per variant; no confidence interval.",
+      "Same C caller workload, different implementation work: candidate includes invocation roots and Method objects.",
+      "Fresh-name candidate constructs a Name object from Oop bytes; baseline consumes a raw byte span.",
+      "GC compares different heap populations; report heap/reclamation counts with timings.",
+      "Automatic collection is not enabled; this is not Logue or full-language acceptance."
+    ]
+  },
+  "scope_simplification_trial": {
+    "runs": [
+      {
+        "order": 0,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2862542,
+            "ns_per_op": 71.56355
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 18557458,
+            "ns_per_op": 61.858193
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 3328583,
+            "ns_per_op": 406.321167
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 18115917,
+            "ns_per_op": 18115917.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 1,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2537625,
+            "ns_per_op": 63.440625
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16227458,
+            "ns_per_op": 54.091527
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2710084,
+            "ns_per_op": 330.820801
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16098292,
+            "ns_per_op": 16098292.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2539042,
+            "ns_per_op": 63.47605
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16422542,
+            "ns_per_op": 54.741807
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2751000,
+            "ns_per_op": 335.81543
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16081083,
+            "ns_per_op": 16081083.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2804167,
+            "ns_per_op": 70.104175
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 17784583,
+            "ns_per_op": 59.281943
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 3254125,
+            "ns_per_op": 397.232056
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 18056917,
+            "ns_per_op": 18056917.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2809583,
+            "ns_per_op": 70.239575
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 17639834,
+            "ns_per_op": 58.799447
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 3356709,
+            "ns_per_op": 409.754517
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 18327583,
+            "ns_per_op": 18327583.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2567583,
+            "ns_per_op": 64.189575
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16263334,
+            "ns_per_op": 54.211113
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2711166,
+            "ns_per_op": 330.952881
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 19569750,
+            "ns_per_op": 19569750.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2556916,
+            "ns_per_op": 63.9229
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16487208,
+            "ns_per_op": 54.95736
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2669708,
+            "ns_per_op": 325.89209
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16351125,
+            "ns_per_op": 16351125.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2873666,
+            "ns_per_op": 71.84165
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 18167875,
+            "ns_per_op": 60.559583
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 3335000,
+            "ns_per_op": 407.104492
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 18362667,
+            "ns_per_op": 18362667.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      }
+    ],
+    "median_ns": {
+      "allocate-and-retain-eighth": {
+        "before": 70.90156250000001,
+        "after": 63.699475
+      },
+      "intern-existing-64": {
+        "before": 59.920763,
+        "after": 54.47646
+      },
+      "produce-and-intern-new-64": {
+        "before": 406.7128295,
+        "after": 330.886841
+      },
+      "collect-garbage": {
+        "before": 18221750.0,
+        "after": 16224708.5
+      }
+    }
+  },
+  "context_simplification_trial": {
+    "runs": [
+      {
+        "order": 0,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2828500,
+            "ns_per_op": 70.7125
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 17511584,
+            "ns_per_op": 58.371947
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 3127833,
+            "ns_per_op": 381.815552
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 18078250,
+            "ns_per_op": 18078250.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 1,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2465583,
+            "ns_per_op": 61.639575
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16845667,
+            "ns_per_op": 56.152223
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2940417,
+            "ns_per_op": 358.937622
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16531417,
+            "ns_per_op": 16531417.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2404958,
+            "ns_per_op": 60.12395
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16229542,
+            "ns_per_op": 54.098473
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2769083,
+            "ns_per_op": 338.022827
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15525750,
+            "ns_per_op": 15525750.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2667875,
+            "ns_per_op": 66.696875
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16454959,
+            "ns_per_op": 54.849863
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2908167,
+            "ns_per_op": 355.000854
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16215750,
+            "ns_per_op": 16215750.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2540750,
+            "ns_per_op": 63.51875
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16477416,
+            "ns_per_op": 54.92472
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2828500,
+            "ns_per_op": 345.275879
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16179666,
+            "ns_per_op": 16179666.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2333833,
+            "ns_per_op": 58.345825
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16151084,
+            "ns_per_op": 53.836947
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2690625,
+            "ns_per_op": 328.445435
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15427083,
+            "ns_per_op": 15427083.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "lane": "after",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2309584,
+            "ns_per_op": 57.7396
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16227708,
+            "ns_per_op": 54.09236
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2638584,
+            "ns_per_op": 322.092773
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 15278625,
+            "ns_per_op": 15278625.0
+          },
+          {
+            "heap_before": 56587,
+            "heap_after": 2702,
+            "reclaimed": 53886
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "lane": "before",
+        "rows": [
+          {
+            "case": "allocate-and-retain-eighth",
+            "iterations": 40000,
+            "cpu_ns": 2521042,
+            "ns_per_op": 63.02605
+          },
+          {
+            "case": "intern-existing-64",
+            "iterations": 300000,
+            "cpu_ns": 16383458,
+            "ns_per_op": 54.611527
+          },
+          {
+            "case": "produce-and-intern-new-64",
+            "iterations": 8192,
+            "cpu_ns": 2786917,
+            "ns_per_op": 340.199829
+          },
+          {
+            "case": "collect-garbage",
+            "iterations": 1,
+            "cpu_ns": 16359542,
+            "ns_per_op": 16359542.0
+          },
+          {
+            "heap_before": 56627,
+            "heap_after": 2742,
+            "reclaimed": 53886
+          }
+        ]
+      }
+    ],
+    "median_ns": {
+      "allocate-and-retain-eighth": {
+        "before": 65.1078125,
+        "after": 59.2348875
+      },
+      "intern-existing-64": {
+        "before": 54.8872915,
+        "after": 54.0954165
+      },
+      "produce-and-intern-new-64": {
+        "before": 350.13836649999996,
+        "after": 333.234131
+      },
+      "collect-garbage": {
+        "before": 16287646.0,
+        "after": 15476416.5
+      }
+    }
+  },
+  "status": "Native bootstrap-to-precise-GC slice passes; full-path performance regresses; full language/stackless/image/worker migration outstanding; not installed."
+}

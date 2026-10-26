@@ -2,36 +2,31 @@
 //! Registries and revision snapshots own these values. There is no native table,
 //! String attachment, or new bootstrap object family.
 use super::*;
-pub(super) unsafe fn is_record(s: &State, q: &Scope<'_>, value: Oop) -> Result<bool, Outcome> {
+pub(super) unsafe fn is_record(s: &State, q: &Scope<'_>, value: Oop) -> Result<bool, Oop> {
     unsafe {
-        if !s.exact(q, value, b"VectorVt")? || s.index(q, value, b"size")? != 3 {
+        if !s.exact(q, value, b"VectorVt")? || s.index(q.keep(s.send(value, b"size", &[])?))? != 3 {
             return Ok(false);
         }
-        let zero = q.keep(object(s.send(
+        let zero = q.keep(s.send(
             s.named(b"Integer")?,
             b"fromWord:",
-            &[Operand::word(0)],
-        )?)?)?;
-        let tag = q.keep(object(s.send(value, b"at:", &[Operand::object(zero)])?)?)?;
+            &[abi::size(0).ok_or_else(invalid)?],
+        )?);
+        let tag = q.keep(s.send(value, b"at:", &[zero])?);
         Ok(s.symbol_bytes(q, tag)?.as_deref() == Some(b"compiledSourceV1"))
     }
 }
-pub(super) unsafe fn field(
-    s: &State,
-    q: &Scope<'_>,
-    value: Oop,
-    index: usize,
-) -> Result<Oop, Outcome> {
+pub(super) unsafe fn field(s: &State, q: &Scope<'_>, value: Oop, index: usize) -> Result<Oop, Oop> {
     unsafe {
-        let index = q.keep(object(s.send(
+        let index = q.keep(s.send(
             s.named(b"Integer")?,
             b"fromWord:",
-            &[Operand::word(index)],
-        )?)?)?;
-        q.keep(object(s.send(value, b"at:", &[Operand::object(index)])?)?)
+            &[abi::size(index).ok_or_else(invalid)?],
+        )?);
+        Ok(q.keep(s.send(value, b"at:", &[index])?))
     }
 }
-pub(super) unsafe fn text(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option<Oop>, Outcome> {
+pub(super) unsafe fn text(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option<Oop>, Oop> {
     unsafe {
         if s.exact(q, value, b"StringVt")? {
             return Ok(Some(value));
@@ -43,7 +38,7 @@ pub(super) unsafe fn text(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option
         Ok(s.exact(q, text, b"StringVt")?.then_some(text))
     }
 }
-pub(super) unsafe fn find(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option<Oop>, Outcome> {
+pub(super) unsafe fn find(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option<Oop>, Oop> {
     unsafe {
         if is_record(s, q, value)? {
             return Ok(Some(value));
@@ -51,23 +46,14 @@ pub(super) unsafe fn find(s: &State, q: &Scope<'_>, value: Oop) -> Result<Option
         if !s.exact(q, value, b"StringVt")? {
             return Ok(None);
         }
-        let owner = publication::source_owner(s, q)?;
-        let found = q.keep(object(s.send(
-            owner,
-            b"compilationForSource:",
-            &[Operand::object(value)],
-        )?)?)?;
+        let owner = s.source_owner(q)?;
+        let found = q.keep(s.send(owner, b"compilationForSource:", &[value])?);
         Ok((found != s.named(b"nil")?).then_some(found))
     }
 }
-pub(super) unsafe fn make(
-    s: &State,
-    q: &Scope<'_>,
-    text: Oop,
-    metadata: Oop,
-) -> Result<Oop, Outcome> {
+pub(super) unsafe fn make(s: &State, q: &Scope<'_>, text: Oop, metadata: Oop) -> Result<Oop, Oop> {
     unsafe {
-        let tag = q.keep(s.id.intern_name(b"compiledSourceV1")?)?;
+        let tag = q.keep(s.intern(b"compiledSourceV1")?);
         s.vector(q, &[tag, text, metadata])
     }
 }

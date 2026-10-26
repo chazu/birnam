@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "ec6e64b4",
+  "command": "bash scripts/oop-id-slice-test.sh",
+  "exit_code": 0,
+  "unit_tests_passed": 188,
+  "task_control_checks": 177,
+  "task_control_failures": 0,
+  "source_checks": [
+    "TAIL_CONTRACT custom=false calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=false calls=24 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=8 peak_frames=2",
+    "TAIL_CONTRACT custom=true calls=24 peak_frames=2",
+    "DEFAULT_COMPILER_ENTRYPOINTS_OK",
+    "DEFAULT_EVAL_SUSPEND_GC_OK bounded=false",
+    "DEFAULT_EVAL_SUSPEND_GC_OK bounded=true",
+    "SOURCE_TASK_CONTROL_OK checks=177",
+    "SOURCE_HANDLER_CLEANUP_OK"
+  ],
+  "contract": "Standard compile: and emit: reuse the existing resumable pipeline. eval: sends the current compile: and hands its answer destination to the resulting Block. Errors are data, native failures retain their mark, and no native eval activation waits for the source body. No Id contract or Execution frame changes.",
+  "lifetime": "During suspended evaluation, the runBlock frame retains its input Block and the entered eval frame retains its compiled code. Both Units are collectible after completion. Changed source affects future evaluations without replaying the entered body.",
+  "scope": "Standard source compile/emission/evaluation plus the retained authored control gate through eval:. Source registration, artifact admission, recovery, complete bootstrap/Host, images/workers and installed qualification remain pending. A targeted bootstrap build still fails on removed native value carriers.",
+  "logs_sha256": {
+    "unit.log": "799dcc5146967ae3f97666febfc819629ec3d4a27479d91891d7d6ce04c5516d",
+    "numeric-integration.log": "32ca126b4aef83b0738b86fd5ecaafbed1621eac1b98463c7c9338fba9de7d24",
+    "dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f"
+  }
+}

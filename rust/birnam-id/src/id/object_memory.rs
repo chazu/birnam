@@ -13,13 +13,16 @@ const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
 /// Dropping it releases storage and never invokes a language callback.
 pub(crate) struct Allocation {
     pub(crate) base: NonNull<u8>,
-    pub(crate) total_size: usize,
+    total_size: usize,
     // Preserve the existing identity bound and requested-size geometry. Low
-    // two bits are unused here; collection state belongs to the upper owner.
+    // two bits are unused; GC state belongs to its owner.
     pub(crate) geometry: u64,
 }
 
 impl Allocation {
+    pub(crate) fn object(&self) -> Oop {
+        self.payload().as_ptr().cast()
+    }
     pub(crate) fn identity(&self) -> u64 {
         self.geometry >> 5
     }
@@ -45,6 +48,7 @@ impl Drop for Allocation {
 pub(crate) struct ObjectMemory {
     allocations: AddressMap<Allocation>,
     next_identity: u64,
+    allocated_bytes: usize,
 }
 
 impl ObjectMemory {
@@ -52,12 +56,14 @@ impl ObjectMemory {
         Self {
             allocations: AddressMap::default(),
             next_identity: 0,
+            allocated_bytes: 0,
         }
     }
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
         let alignment = align_of::<Oop>();
-        VTABLE_HEADER_SIZE.checked_add(payload_size)?
+        VTABLE_HEADER_SIZE
+            .checked_add(payload_size)?
             .checked_add(alignment - 1)
             .map(|size| size & !(alignment - 1))
     }
@@ -70,6 +76,8 @@ impl ObjectMemory {
     pub(crate) fn allocate(&mut self, payload_size: usize) -> Oop {
         let total_size = Self::allocation_total_size(payload_size)
             .unwrap_or_else(|| boundary::fatal_invariant("object allocation size overflow"));
+        self.allocated_bytes = self.allocated_bytes.checked_add(total_size)
+            .unwrap_or_else(|| boundary::fatal_invariant("allocation byte counter exhausted"));
         let layout = Layout::from_size_align(total_size, BLOCK_ALIGNMENT)
             .unwrap_or_else(|_| boundary::fatal_invariant("invalid object allocation layout"));
         // SAFETY: header size is nonzero and alignment is valid.
@@ -96,20 +104,23 @@ impl ObjectMemory {
     }
 
     pub(crate) fn get(&self, address: usize) -> Option<&Allocation> {
-        self.allocations.get(&address)
+        self.allocations.get(&(address & !2))
     }
     pub(crate) fn iter(&self) -> impl Iterator<Item = (usize, &Allocation)> {
         self.allocations
             .iter()
             .map(|(address, allocation)| (*address, allocation))
     }
+    pub(crate) fn allocated_bytes(&self) -> usize { self.allocated_bytes }
+    pub(crate) fn allocation_epoch(&self) -> u64 {
+        self.next_identity
+    }
     pub(crate) fn len(&self) -> usize {
         self.allocations.len()
     }
     pub(crate) fn detach(&mut self, address: usize) -> Option<Allocation> {
-        self.allocations.remove(&address)
+        self.allocations.remove(&(address & !2))
     }
-
 }
 
 /// # Safety
@@ -126,11 +137,15 @@ impl ObjectMemory {
         }
         // SAFETY: exact registry membership proves this non-null address is the
         // payload start of the live floor allocation owned by this ObjectMemory.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        let payload =
+            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
         // SAFETY: exact registry membership proves that payload is the start of
         // the live floor allocation owned by this ObjectMemory.
         let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
+        debug_assert_eq!(
+            slot.addr(),
+            crate::abi::heap_address(object) - VTABLE_HEADER_SIZE
+        );
         // SAFETY: slot addresses the live, pointer-aligned header word.
         unsafe { slot.write(vtable) };
         true
@@ -140,11 +155,15 @@ impl ObjectMemory {
         self.get(object.addr())?;
         // SAFETY: exact registry membership proves this non-null address is the
         // payload start of the live floor allocation owned by this ObjectMemory.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        let payload =
+            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
         // SAFETY: exact registry membership proves that payload is the start of
         // the live floor allocation owned by this ObjectMemory.
         let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
+        debug_assert_eq!(
+            slot.addr(),
+            crate::abi::heap_address(object) - VTABLE_HEADER_SIZE
+        );
         // SAFETY: slot addresses the initialized header word. alloc_zeroed
         // makes an unset header null.
         Some(unsafe { slot.read() })
@@ -152,10 +171,40 @@ impl ObjectMemory {
 
     pub(crate) unsafe fn vtable_of_valid_object(object: Oop) -> Oop {
         // SAFETY: the caller provides exact live-object provenance.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
+        let payload =
+            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
         // SAFETY: the same provenance establishes the preceding header word.
         let slot = unsafe { vtable_slot_from_payload(payload) };
         // SAFETY: the live block's header is initialized (possibly to null).
         unsafe { slot.read() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cumulative_bytes_include_headers_and_do_not_decrease_on_release() {
+        let mut memory=ObjectMemory::new();
+        let first=memory.allocate(3);let second=memory.allocate(24);
+        let expected=ObjectMemory::allocation_total_size(3).unwrap()+ObjectMemory::allocation_total_size(24).unwrap();
+        assert_eq!(memory.allocated_bytes(),expected);
+        drop(memory.detach(first.addr()).unwrap());drop(memory.detach(second.addr()).unwrap());
+        assert_eq!(memory.len(),0);assert_eq!(memory.allocated_bytes(),expected);
+        memory.allocate(0);assert_eq!(memory.allocated_bytes(),expected+ObjectMemory::allocation_total_size(0).unwrap());
+    }
+
+    #[test]
+    fn allocation_geometry_preserves_extent_identity_and_record_size() {
+        assert_eq!(size_of::<Allocation>(), 24);
+        let mut h = ObjectMemory::new();
+        for n in 0..128 {
+            let o = h.allocate(n);
+            let id = h.get(o.addr()).unwrap().identity();
+            let a = h.get(o.addr()).unwrap();
+            assert_eq!(a.requested_size(), n);
+            assert_eq!(a.identity(), id);
+            assert_eq!(a.object(), o);
+        }
     }
 }

@@ -1,85 +1,42 @@
-//! The common native Id message and module-loading contract.
-//!
-//! Objects are opaque references. Modules communicate through Id messages;
-//! this crate contains no module-specific APIs, storage layouts or registries.
-
-use core::ffi::c_void;
-use core::mem::align_of;
-
-pub mod id_protocol;
-pub mod binding_guard;
-pub mod native_signature;
-pub mod native_module;
-
+//! Opaque object-only Id boundary. Native descriptor metadata is loader input,
+//! never a second category of message argument or result.
+use core::{ffi::c_void, mem::align_of};
 pub type Oop = *mut c_void;
-
-/// Borrow a foreign read-only buffer while enforcing the ABI's null/count and
-/// alignment rules.
-///
-/// A zero count always returns an empty slice without dereferencing `pointer`;
-/// null with a nonzero count and a misaligned nonempty pointer return `None`.
-///
-/// # Safety
-///
-/// For a nonzero count, `pointer` must address `count` initialized `T` values
-/// that remain readable for `'a`. This helper validates carrier shape, not
-/// foreign allocation provenance or lifetime.
-pub unsafe fn borrowed_slice<'a, T>(pointer: *const T, count: usize) -> Option<&'a [T]> {
-    if count == 0 {
-        return Some(&[]);
-    }
-    if pointer.is_null() || !(pointer as usize).is_multiple_of(align_of::<T>()) {
-        return None;
-    }
-    // SAFETY: the caller supplies the readable extent/lifetime; the checks
-    // above establish the non-null and alignment preconditions.
-    Some(unsafe { core::slice::from_raw_parts(pointer, count) })
+pub mod id_protocol;
+pub mod native_module;
+pub fn size(value: usize) -> Option<Oop> {
+    (value <= usize::MAX >> 1).then(|| core::ptr::without_provenance_mut((value << 1) | 1))
 }
-
-/// Borrow bytes supplied through a length-delimited C ABI field.
-///
-/// # Safety
-///
-/// For a nonzero count, `pointer` must address `count` readable bytes for `'a`.
-pub unsafe fn borrowed_bytes<'a>(pointer: *const u8, count: usize) -> Option<&'a [u8]> {
-    // SAFETY: forwarded caller contract.
-    unsafe { borrowed_slice(pointer, count) }
+pub fn as_size(value: Oop) -> Option<usize> {
+    (value.addr() & 1 != 0).then(|| value.addr() >> 1)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn borrowed_buffers_enforce_null_count_and_alignment_shape() {
-        // SAFETY: zero-count buffers are never dereferenced.
-        assert_eq!(
-            unsafe { borrowed_slice::<id_protocol::Operand>(core::ptr::null(), 0) },
-            Some(&[][..])
-        );
-        // SAFETY: this deliberately violates only the checked null/count shape.
-        assert_eq!(
-            unsafe { borrowed_slice::<id_protocol::Operand>(core::ptr::null(), 1) },
-            None
-        );
-
-        let values = [id_protocol::Operand::unit(), id_protocol::Operand::word(42)];
-        // SAFETY: values supplies two initialized message operands for this scope.
-        assert_eq!(
-            unsafe { borrowed_slice(values.as_ptr(), values.len()) },
-            Some(&values[..])
-        );
-
-        // The deliberately misaligned address is rejected before dereferencing.
-        let misaligned =
-            unsafe { values.as_ptr().cast::<u8>().add(1) }.cast::<id_protocol::Operand>();
-        assert_eq!(unsafe { borrowed_slice(misaligned, 1) }, None);
-
-        let bytes = [1u8, 2, 3];
-        // SAFETY: bytes supplies three initialized bytes for this scope.
-        assert_eq!(
-            unsafe { borrowed_bytes(bytes.as_ptr(), bytes.len()) },
-            Some(&bytes[..])
-        );
+pub fn is_fault(value: Oop) -> bool {
+    value.addr() & 3 == 2
+}
+/// Remove a native return's failure marker when handling its object as data.
+/// Immediate size Oops are unchanged.
+pub fn object_reference(value: Oop) -> Oop {
+    if is_fault(value) { heap_pointer(value) } else { value }
+}
+pub fn heap_address(value: Oop) -> usize {
+    value.addr() & !2
+}
+pub fn heap_pointer(value: Oop) -> Oop {
+    value.map_addr(|p| p & !2)
+}
+pub fn fault_reference(value: Oop) -> Oop {
+    value.map_addr(|p| p | 2)
+}
+/// Caller guarantees readable storage for nonzero count; shape is checked here.
+pub unsafe fn borrowed_slice<'a, T>(p: *const T, n: usize) -> Option<&'a [T]> {
+    if n == 0 {
+        Some(&[])
+    } else if p.is_null() || p.addr() % align_of::<T>() != 0 {
+        None
+    } else {
+        Some(unsafe { core::slice::from_raw_parts(p, n) })
     }
 }
+
+// Descriptive foreign/native signature bytes; these do not add Id value carriers.
+pub mod native_signature;
