@@ -1,0 +1,189 @@
+{
+  "passed": false,
+  "base_revision": "db0e698d",
+  "groups": {
+    "tasks": {
+      "checks": [
+        {
+          "argv": [
+            "python3",
+            "scripts/task-image-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.MS3frn/relocated"
+          ],
+          "exit_code": 0,
+          "label": "tasks:task-image-test.py",
+          "started_unix_ns": 1793016353461204000,
+          "status": "passed",
+          "wall_ns": 269047482375
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/task-fields-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.MS3frn/relocated"
+          ],
+          "exit_code": 0,
+          "label": "tasks:task-fields-test.py",
+          "started_unix_ns": 1793016622563741000,
+          "status": "passed",
+          "wall_ns": 268608948250
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/concurrency-cli-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.MS3frn/relocated"
+          ],
+          "exit_code": 1,
+          "label": "tasks:concurrency-cli-test.py",
+          "started_unix_ns": 1793016891220267000,
+          "status": "failed",
+          "wall_ns": 448459255584
+        }
+      ],
+      "schema": 1
+    },
+    "interaction": {
+      "checks": [
+        {
+          "argv": [
+            "python3",
+            "scripts/socket-owner-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.8EKyCc/relocated"
+          ],
+          "exit_code": 0,
+          "label": "interaction:socket-owner-test.py",
+          "started_unix_ns": 1793016381734105000,
+          "status": "passed",
+          "wall_ns": 266654433167
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/repl-owner-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.8EKyCc/relocated"
+          ],
+          "exit_code": 0,
+          "label": "interaction:repl-owner-test.py",
+          "started_unix_ns": 1793016648424713000,
+          "status": "passed",
+          "wall_ns": 273476239500
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/host_test_binaries.py",
+            "run",
+            "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-acceptance-binaries/manifest.json",
+            "host-lib",
+            "--",
+            "startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+            "--ignored"
+          ],
+          "exit_code": 0,
+          "label": "interaction:host-lib:startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+          "started_unix_ns": 1793016921937314000,
+          "status": "passed",
+          "wall_ns": 32929242125
+        },
+        {
+          "argv": [
+            "python3",
+            "scripts/interaction-cli-test.py",
+            "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.8EKyCc/relocated"
+          ],
+          "exit_code": 1,
+          "label": "interaction:interaction-cli-test.py",
+          "started_unix_ns": 1793016954900243000,
+          "status": "failed",
+          "wall_ns": 778131979125
+        }
+      ],
+      "schema": 1
+    }
+  },
+  "worker_ready": [
+    {
+      "image": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/worker-performance/final-suite/service.image",
+      "bytes": 124658663,
+      "kind": 1,
+      "seconds": 10.486919333000001,
+      "within_original_deadline": false,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "image": "/tmp/birnam-concurrency-stPsbo/workers.image",
+      "bytes": 142772005,
+      "kind": 1,
+      "seconds": 12.227693334000001,
+      "within_original_deadline": false,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "inline_experiment": {
+    "retained": false,
+    "reason": "About 10 percent faster, but still over the ten-second ready limit; no global tuning shipped",
+    "runs": [
+      {
+        "variant": "baseline",
+        "image": "/tmp/birnam-concurrency-stPsbo/workers.image",
+        "bytes": 142772005,
+        "kind": 1,
+        "seconds": 11.620501208,
+        "within_original_deadline": false,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "variant": "inline",
+        "image": "/tmp/birnam-concurrency-stPsbo/workers.image",
+        "bytes": 142772005,
+        "kind": 1,
+        "seconds": 10.66988775,
+        "within_original_deadline": false,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "variant": "inline",
+        "image": "/tmp/birnam-concurrency-stPsbo/workers.image",
+        "bytes": 142772005,
+        "kind": 1,
+        "seconds": 10.746078249999997,
+        "within_original_deadline": false,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "variant": "baseline",
+        "image": "/tmp/birnam-concurrency-stPsbo/workers.image",
+        "bytes": 142772005,
+        "kind": 1,
+        "seconds": 12.227581125,
+        "within_original_deadline": false,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "patch": ".cargo-target/oop-worker-inline.patch"
+  },
+  "worker_image": {
+    "path": "/tmp/birnam-concurrency-stPsbo/workers.image",
+    "bytes": 142772005,
+    "sha256": "4808aa35266c10775f27d5284489a4a56ab17654ea40ee9e6af11507946481d0"
+  },
+  "baked_fix": "f9d701f7",
+  "interaction_retry": "running; .cargo-target/oop-slice/task-qualification/interaction-corrected.json",
+  "remaining": [
+    "Concurrency ready handshake exceeds unchanged ten-second limit",
+    "Interaction retry and later task checks have not completed"
+  ]
+}

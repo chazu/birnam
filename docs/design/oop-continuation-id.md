@@ -682,3 +682,24 @@ seconds; the installed fixture had exceeded its unchanged 120-second limit.
 The workspace library suite passes. The complete interaction retry and the
 separate Concurrency ready-handshake regression remain open.
 [Receipt](../measurements/baked-bytes-oop-20261026.json).
+
+
+## Installed group qualification: remaining failures
+
+**The full installed task and interaction groups are not yet qualified.** Task
+images, task-field aliases, socket owners, console owners and compiler-disabled
+startup pass. Init/wrap preservation, documentation and documentation generation
+also pass. The task group then fails Concurrency worker startup at the original
+ten-second ready handshake. Its saved 136 MiB image starts correctly in a direct
+protocol probe but needs about twelve seconds; the earlier 119 MiB service image
+also needs about 10.5 seconds in this run. The earlier complete worker receipt
+remains evidence for its tested image/run, not proof of adequate startup margin
+for Concurrency's larger image.
+
+A seven-annotation Id inlining experiment reduced the larger image's startup from
+11.6–12.2 seconds to 10.7 seconds in an interleaved comparison. It still missed
+the deadline and was removed; the patch and measurements are retained locally.
+No cache, contract extension, private byte interface or timeout increase was
+introduced. The interaction group separately exposed the baked-startup problem
+fixed in `f9d701f7`; its complete CLI retry is still running.
+[Group results and reproduction evidence](../measurements/installed-oop-groups-20261026.json).
