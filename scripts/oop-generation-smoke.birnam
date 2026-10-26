@@ -1,0 +1,57 @@
+// Source-mode lifecycle acceptance; GenerationTestPath is supplied by the runner.
+[[|
+let results := [Cell with: #[]];
+let check := [:name :answer | [results set: [[results value] add: #[name answer]]]];
+[check value: #vtableApi value: [[Vtable ownerOf: IntegerVt] == Integer]];
+[check value: #vtablePrototype value: [[Execution optionalWordResultOf: Vtable selector: #isBehavior: argument: [Vtable delegated] resultFactory: Word] = [Execution wordResultOf: 1 selector: #word]]];
+let implementation := [:self :argument | [argument + 1]];
+let method := [Reflect methodForArity: 1 implementation: implementation];
+[check value: #implementation value: [[Codegen implementationOf: method] == implementation]];
+[check value: #capturedImplementation value: [[Codegen implementationOf: [method captured]] == implementation]];
+[check value: #portableBlock value: [[implementation codeObject] notNil]];
+[check value: #cloneCode value: [[[implementation clone] codeObject] == [implementation codeObject]]];
+[GC collectPrecisely];
+[check value: #canonicalCode value: [[[CodeObject canonicalBytesOf: [implementation codeObject]] size] > 0]];
+
+let synchronous := [[Codegen methodTemplateForArity: 1 synchronous: true] withImplementation: [:self :task | [task wait]]];
+let refused := [TaskControl start: [:task | [synchronous invokeOn: Integer arguments: #[task]]]];
+[check value: #nativeBoundary value: [[[[refused pollOutcome] at: 1] kind] == #taskContextRequired]];
+let continuing := [[Codegen methodTemplateForArity: 1 synchronous: false] withImplementation: [:self :task | [task wait]; 42]];
+let waiting := [TaskControl start: [:task | [continuing invokeOn: Integer arguments: #[task]]]];
+[check value: #continuingWait value: [[waiting pollOutcome] isNil]];
+[GC collectPrecisely];
+[waiting resolve: [waiting waitToken] with: nil];
+[check value: #continuingReply value: [[waiting pollOutcome] = #[#success 42]]];
+
+let original := "[Module named: #generationSmoke requires: #[]]; [Reflect defineMethod: #generationAnswer on: Integer as: [:self | 10]]; [Module markLoaded: #generationSmoke]";
+let replacement := [original replace: "| 10" with: "| 20"];
+[Codegen recordModuleSource: original named: #generationSmoke];
+[Codegen eval: original];
+let old := [Integer methodFor: #generationAnswer];
+[check value: #adopt value: [[[DispatchGeneration adoptCurrent] isError] not]];
+[check value: #certificate value: [Generation validateImageGeneration]];
+[Reflect defineMethod: #generationAnswer on: Integer as: [:self | 99]];
+[check value: #drift value: [[Generation validateImageGeneration] isError]];
+[[Reflect vtableOf: Integer] addMethod: old as: #generationAnswer];
+[check value: #restoredCertificate value: [Generation validateImageGeneration]];
+[check value: #compile value: [[CompiledUnit compile: replacement named: #generationSmoke output: GenerationTestPath] = GenerationTestPath]];
+[check value: #compileInert value: [[3 generationAnswer] = 10]];
+let unit := [CompiledUnit open: GenerationTestPath];
+[check value: #inspect value: [[unit state] == #candidate]];
+[check value: #map value: [[unit map] == unit]];
+[check value: #mapInert value: [[3 generationAnswer] = 10]];
+[check value: #activate value: [[unit activate] == unit]];
+[GC collectPrecisely];
+[check value: #newBody value: [[3 generationAnswer] = 20]];
+[check value: #capturedOldBody value: [[old invokeOn: 3] = 10]];
+[check value: #rollback value: [[unit rollback] == unit]];
+[check value: #restoredBody value: [[3 generationAnswer] = 10]];
+[check value: #repeatedRollback value: [[unit rollback] == unit]];
+[check value: #removeFiles value: [[unit removeFiles] == unit]];
+[check value: #discard value: [[unit discard] == unit]];
+[GC collectPrecisely];
+[check value: #discardedCannotMap value: [[unit map] isError]];
+// The expected rejection above also updates the compiler diagnostic slot.
+[Codegen clearCompilationError];
+[results value]
+] value]

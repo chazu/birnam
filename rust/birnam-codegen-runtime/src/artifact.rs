@@ -314,8 +314,13 @@ unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop,
         }
         let method = at(s, q, result, 0)?;
         let method_vt = q.keep(s.send(s.id.root, b"methodBehavior", &[])?);
-        if s.send(s.id.root, b"behaviorOf:", &[method])? != method_vt {
-            reject!(b"RustCodegen artifact Method is invalid");
+        let mut behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[method])?);
+        let mut visited = std::collections::HashSet::new();
+        while behavior != method_vt {
+            if behavior.is_null() || !visited.insert(behavior) {
+                reject!(b"RustCodegen artifact Method is invalid");
+            }
+            behavior = q.keep(s.send(s.id.root, b"parentOf:", &[behavior])?);
         }
         let source = at(s, q, result, 1)?;
         let Some(source_bytes) = s.source_bytes(q, source)? else {

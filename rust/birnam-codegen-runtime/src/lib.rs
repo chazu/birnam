@@ -9,9 +9,11 @@ use birnam_abi::{
     },
 };
 mod artifact;
+mod candidate_inventory;
 mod compiled_source;
 mod embedding;
 mod foreign;
+mod generation_projection;
 mod source;
 mod source_evaluation;
 mod source_metadata;
@@ -29,7 +31,9 @@ struct State {
     control: Control,
     reflect: Oop,
     implementation_entry: Oop,
+    synchronous_implementation_entry: Oop,
     binding_entry: Oop,
+    implementation_getter: Oop,
     ns: Oop,
     receiver: Oop,
     names: HashMap<&'static [u8], Oop>,
@@ -156,7 +160,9 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.receiver,
             s.reflect,
             s.implementation_entry,
+            s.synchronous_implementation_entry,
             s.binding_entry,
+            s.implementation_getter,
         ];
         values.extend_from_slice(&s.scoped.borrow());
         for value in values {
@@ -411,7 +417,32 @@ impl State {
                 b"sequence",
                 &[implementation, selector, arity],
             )?);
-            self.send(template, b"withContext:", &[context])
+            let method = q.keep(self.send(template, b"withContext:", &[context])?);
+            let base = q.keep(self.send(self.id.root, b"methodBehavior", &[])?);
+            let behavior = q.keep(self.send(base, b"delegated", &[])?);
+            let getter = q.keep(self.send(
+                self.implementation_getter,
+                b"withContext:",
+                &[implementation],
+            )?);
+            self.send(
+                behavior,
+                b"addMethod",
+                &[self.names[b"implementation".as_slice()], getter],
+            )?;
+            let binding = q.keep(self.send(self.id.root, b"sequence", &[selector, arity])?);
+            let binder = q.keep(self.send(self.binding_entry, b"withContext:", &[binding])?);
+            self.send(
+                behavior,
+                b"addMethod",
+                &[self.names[b"withImplementation:".as_slice()], binder],
+            )?;
+            self.send(
+                self.id.root,
+                b"reassociateBehaviorOf:with:",
+                &[method, behavior],
+            )?;
+            Ok(method)
         }
     }
 }
@@ -436,28 +467,107 @@ unsafe extern "C" fn construct_method(_: Oop, c: Oop, _: Oop, a: *const Oop, n: 
 }
 // Neutral templates share the declared entry. The construction context contains
 // only selector and arity; it never retains the first bound implementation.
-unsafe extern "C" fn method_template(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+unsafe fn template(c: Oop, a: *const Oop, n: usize, selected: bool) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let [arity] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if args.len() != if selected { 2 } else { 1 } {
             return Err(invalid());
+        }
+        let arity = &args[0];
+        let synchronous = if selected {
+            if args[1] == s.named(b"true")? {
+                true
+            } else if args[1] == s.named(b"false")? {
+                false
+            } else {
+                return Err(invalid());
+            }
+        } else {
+            false
         };
         let q = s.scope(&[*arity]);
         let arity = s.index(*arity)?;
         let selector = s.value_selector(&q, arity)?;
         let arity = abi::size(arity).unwrap();
         let nil = q.keep(s.named(b"nil")?);
-        let template =
-            q.keep(s.implementation(&q, s.implementation_entry, nil, selector, arity)?);
-        let behavior = q.keep(s.send(s.id.root, b"ensurePrivateVtableFor:", &[template])?);
-        let context = q.keep(s.send(s.id.root, b"sequence", &[selector, arity])?);
-        let binder = q.keep(s.send(s.binding_entry, b"withContext:", &[context])?);
-        s.send(
-            behavior,
-            b"addMethod",
-            &[s.names[b"withImplementation:".as_slice()], binder],
-        )?;
+        let template = q.keep(s.implementation(
+            &q,
+            if synchronous {
+                s.synchronous_implementation_entry
+            } else {
+                s.implementation_entry
+            },
+            nil,
+            selector,
+            arity,
+        )?);
         Ok(template)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn method_template(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { template(c, a, n, false) }
+}
+unsafe extern "C" fn method_template_selected(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { template(c, a, n, true) }
+}
+unsafe extern "C" fn enter_implementation_sync(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let p = INSTANCE.load(Ordering::Acquire);
+        if p.is_null() {
+            return Err(invalid());
+        }
+        let s = state((*p).ns)?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let q = s.scope(&[c, r]);
+        let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
+        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
+        let arity =
+            abi::as_size(s.send(c, b"at:", &[abi::size(2).unwrap()])?).ok_or_else(invalid)?;
+        if n != arity {
+            return s.named(b"nil");
+        }
+        let mut values = vec![r];
+        values.extend_from_slice(args);
+        s.id.send(implementation, selector, &values)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// This describes the owner's shared continuing entry, not a Machine frame.
+unsafe extern "C" fn method_descriptor(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [name] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*name]);
+        let name = s.bytes(*name)?;
+        let first = *name.first().ok_or_else(invalid)?;
+        let colons = name.iter().filter(|&&b| b == b':').count();
+        let arity = if colons > 0 {
+            colons
+        } else {
+            usize::from(!first.is_ascii_alphabetic() && first != b'_')
+        };
+        if arity > 16 {
+            return s.error(b"unsupported reflected Method arity");
+        }
+        let mut bytes = b"birnam.oop-reflected-method.v1\0".to_vec();
+        bytes.extend_from_slice(&(arity as u32).to_le_bytes());
+        s.source_text(&q, &bytes)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -474,14 +584,25 @@ unsafe extern "C" fn bind_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop, 
         let q = s.scope(&[c, r, *implementation]);
         let selector = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
         let arity = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
-        let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
         let method = q.keep(s.implementation(&q, r, *implementation, selector, arity)?);
-        s.send(
-            s.id.root,
-            b"reassociateBehaviorOf:with:",
-            &[method, behavior],
-        )?;
         Ok(method)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn implementation_value(_: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
+    if n == 0 {
+        c
+    } else {
+        abi::fault_reference(invalid())
+    }
+}
+unsafe extern "C" fn implementation_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [method] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        s.send(*method, b"implementation", &[])
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -685,6 +806,15 @@ const NAMES: &[&[u8]] = &[
     b"withImplementation:",
     b"methodForTemplate:implementation:",
     b"reassociateBehaviorOf:with:",
+    b"implementationValue",
+    b"implementation",
+    b"implementationOf:",
+    b"parentOf:",
+    b"enterImplementationSync",
+    b"methodTemplateForArity:synchronous:",
+    b"methodDescriptorFor:",
+    b"initialGenerationProjection",
+    b"candidateInventory:selection:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -823,6 +953,15 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"withImplementation:"),
     Literal::new(b"methodForTemplate:implementation:"),
     Literal::new(b"reassociateBehaviorOf:with:"),
+    Literal::new(b"implementationValue"),
+    Literal::new(b"implementation"),
+    Literal::new(b"implementationOf:"),
+    Literal::new(b"parentOf:"),
+    Literal::new(b"enterImplementationSync"),
+    Literal::new(b"methodTemplateForArity:synchronous:"),
+    Literal::new(b"methodDescriptorFor:"),
+    Literal::new(b"initialGenerationProjection"),
+    Literal::new(b"candidateInventory:selection:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1015,6 +1154,41 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(method_from_template),
         convention: 0,
     },
+    MethodSpec {
+        name: 136,
+        entry: Some(implementation_value),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 138,
+        entry: Some(implementation_of),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 140,
+        entry: Some(enter_implementation_sync),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 141,
+        entry: Some(method_template_selected),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 142,
+        entry: Some(method_descriptor),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 143,
+        entry: Some(generation_projection::initial),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 144,
+        entry: Some(candidate_inventory::inventory),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1075,10 +1249,20 @@ unsafe extern "C" fn initialize(
             control,
             reflect,
             implementation_entry,
+            synchronous_implementation_entry: send(
+                image,
+                b"methodAt:",
+                &[names[b"enterImplementationSync".as_slice()]],
+            )?,
             binding_entry: send(
                 image,
                 b"methodAt:",
                 &[names[b"bindImplementation".as_slice()]],
+            )?,
+            implementation_getter: send(
+                image,
+                b"methodAt:",
+                &[names[b"implementationValue".as_slice()]],
             )?,
             ns: *ns,
             receiver,
@@ -1091,7 +1275,13 @@ unsafe extern "C" fn initialize(
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
             let name = NAMES[spec.name];
-            if matches!(name, b"enterImplementation" | b"bindImplementation") {
+            if matches!(
+                name,
+                b"enterImplementation"
+                    | b"enterImplementationSync"
+                    | b"bindImplementation"
+                    | b"implementationValue"
+            ) {
                 continue;
             }
             let target = if matches!(
@@ -1109,6 +1299,12 @@ unsafe extern "C" fn initialize(
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[symbols[spec.name], method])?;
         }
+        let nil_getter = send(s.implementation_getter, b"withContext:", &[named(b"nil")?])?;
+        send(
+            send(id.root, b"methodBehavior", &[])?,
+            b"addMethod",
+            &[names[b"implementation".as_slice()], nil_getter],
+        )?;
         send(roots, b"register:", &[receiver])?;
         send(*ns, b"at:put:", &[names[OWNER_NAME], receiver])?;
         send(*ns, b"at:put:", &[names[b"Reflect".as_slice()], reflect])?;

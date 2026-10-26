@@ -304,7 +304,7 @@ unsafe fn forward(c: Oop, a: *const Oop, n: usize, selector: &[u8], prepare: boo
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-unsafe fn reflect_revision(
+pub(super) unsafe fn reflect_revision(
     s: &State,
     q: &Scope<'_>,
     source: Oop,

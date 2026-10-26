@@ -1006,6 +1006,20 @@ unsafe extern "C" fn initialize(
                     symbols[spec.name]
                 };
                 m.send(target, b"addMethod", &[selector, method])?;
+                // The language Vtable prototype and the Id API receiver both
+                // expose these ObjectModel-owned queries through ordinary sends.
+                if matches!(
+                    name,
+                    b"ownerOf:"
+                        | b"ownerOf:put:"
+                        | b"prepareBehaviorMutationOf:"
+                        | b"ensurePrivateVtableFor:"
+                ) {
+                    let facade = m.behavior(meta)?;
+                    if facade != target {
+                        m.send(facade, b"addMethod", &[selector, method])?;
+                    }
+                }
                 if name == b"allocate:bytes:" {
                     m.allocate_method.set(method);
                 }

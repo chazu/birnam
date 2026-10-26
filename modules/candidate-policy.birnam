@@ -207,7 +207,7 @@ let one := [Execution wordResultOf: 1 selector: #word];
             [[[output at: 0] == #global] ifTrue: [|
               [globals set: [[[globals value] reject: [:row | [[row at: 0] == [output at: 1]]]] add: #[[output at: 1] #[value]]]]
             ] ifFalse: [|
-              let method := [[adapters at: [nextAdapter value]] initializeWith: value];
+              let method := [[adapters at: [nextAdapter value]] withImplementation: value];
               [[method isError] ifTrue: [| method] ifFalse: [|
                 [methods set: [[methods value] at: [output at: 1] put: method]]; [nextAdapter inc]
               ]]

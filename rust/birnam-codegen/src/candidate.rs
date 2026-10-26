@@ -11,7 +11,7 @@ pub struct Plan {
     pub metadata: source_revision::RevisionMetadata,
     /// Each output is either a method-operation index or a projected Globals name.
     pub outputs: Vec<Output>,
-    /// Factory first, then one named adapter per installed operation.
+    /// Factory emission followed by named-template arity/disposition specifications.
     pub requests: Vec<crate::backend_request::Request>,
     authority: [u8; 32],
 }
@@ -168,7 +168,7 @@ impl Plan {
                 synchronous: row.disposition == Disposition::Synchronous,
             });
         }
-        let mut identity = b"birnam.candidate.objects.v1\0".to_vec();
+        let mut identity = b"birnam.candidate.objects.v2\0".to_vec();
         for bytes in [source, selected] {
             identity.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
             identity.extend_from_slice(bytes);
@@ -217,7 +217,7 @@ impl Plan {
         {
             return None;
         }
-        let mut identity = b"birnam.candidate.objects.v1\0".to_vec();
+        let mut identity = b"birnam.candidate.objects.v2\0".to_vec();
         for bytes in [source, selected] {
             identity.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
             identity.extend_from_slice(bytes);
@@ -230,10 +230,10 @@ impl Plan {
         })
     }
     pub fn encode(&self, objects: &[Vec<u8>]) -> Option<Vec<u8>> {
-        if objects.len() != self.requests.len() {
+        if objects.len() != 1 {
             return None;
         }
-        let mut out = b"BIRNAMC1".to_vec();
+        let mut out = b"BIRNAMC2".to_vec();
         out.extend_from_slice(&self.authority);
         out.extend_from_slice(&(objects.len() as u32).to_le_bytes());
         for bytes in objects {
@@ -250,13 +250,13 @@ impl Plan {
     }
     pub fn decode(&self, bytes: &[u8]) -> Option<Vec<Vec<u8>>> {
         if bytes.len() > envelope::MAX_CANDIDATE_BYTES
-            || bytes.get(..8)? != b"BIRNAMC1"
+            || bytes.get(..8)? != b"BIRNAMC2"
             || bytes.get(8..40)? != self.authority
         {
             return None;
         }
         let count = u32::from_le_bytes(bytes.get(40..44)?.try_into().ok()?) as usize;
-        if count != self.requests.len() {
+        if count != 1 {
             return None;
         }
         let mut cursor = 44usize;
@@ -371,4 +371,56 @@ pub fn envelope(
     out.extend_from_slice(format!("\nsource={}\n", source.len()).as_bytes());
     out.extend_from_slice(source);
     out
+}
+
+#[cfg(test)]
+mod oop_object_tests {
+    use super::*;
+    #[test]
+    fn current_bundle_has_one_factory_and_rejects_legacy_or_ambiguous_bytes() {
+        let plan = Plan {
+            metadata: source_revision::RevisionMetadata {
+                name: b"fixture".to_vec(),
+                requires: vec![],
+                operations: vec![],
+                projected_globals: vec![],
+                inventory: vec![],
+                initializer_residual_digest: [0; 64],
+                non_method_digest: [0; 64],
+                method_digest: [0; 64],
+                revision_digest: [0; 64],
+            },
+            outputs: vec![],
+            requests: vec![
+                crate::backend_request::Request::Factory {
+                    program: vec![],
+                    source: vec![],
+                    dispositions: vec![false],
+                },
+                crate::backend_request::Request::Named {
+                    arity: 1,
+                    synchronous: false,
+                },
+            ],
+            authority: [7; 32],
+        };
+        let factory = b"native factory object".to_vec();
+        let bytes = plan.encode(&[factory.clone()]).unwrap();
+        assert_eq!(&bytes[..8], b"BIRNAMC2");
+        assert_eq!(plan.decode(&bytes), Some(vec![factory.clone()]));
+        assert!(plan.encode(&[factory.clone(), factory]).is_none());
+        assert!(plan.encode(&[]).is_none());
+        for length in 0..bytes.len() {
+            assert!(plan.decode(&bytes[..length]).is_none());
+        }
+        let mut old = bytes.clone();
+        old[..8].copy_from_slice(b"BIRNAMC1");
+        assert!(plan.decode(&old).is_none());
+        let mut wrong = bytes.clone();
+        wrong[8] ^= 1;
+        assert!(plan.decode(&wrong).is_none());
+        let mut trailing = bytes;
+        trailing.push(0);
+        assert!(plan.decode(&trailing).is_none());
+    }
 }

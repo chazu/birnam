@@ -251,7 +251,7 @@ prior-ABI compiled arity-adapter records are incompatible, not a parallel runtim
 The displaced pending artifact implementation is removed
 ([receipt](../measurements/artifact-variants-20261025.json)).
 Recovery, complete bootstrap/Host and installed qualification remain pending.
-Unconnected Generation projection remains in `pending_source.rs`. Bootstrap still
+At that checkpoint the unconnected Generation projection remained in `pending_source.rs` (replaced by the Oop projection below). Bootstrap still
 imports removed value carriers; these checkpoints do not claim a repaired cold
 bootstrap.
 
@@ -419,3 +419,35 @@ tests. Default startup still requires its compiled bootstrap image; it does not
 silently use source. Image/worker acceptance and the old native integration test
 fixtures remain pending. The workspace build now stops in Generation, Store and
 Relational, rather than Host support. [Receipt](../measurements/host-oop-20261025.json).
+
+## Generation and portable reflection
+
+Generation now uses Oop declarations and owner messages throughout admission,
+inspection, mapping, certification and retirement. CandidatePolicy still owns
+publication and explicit undo in Birnam. Direct binding observations use
+Execution's existing `directMethodFor:in:` protocol over `bindingsDo:`; its fixed
+visitor behavior is installed once, so observation does not itself change the
+binding epoch. The language Vtable remains its metatable prototype, with the same
+ObjectModel owner queries exposed there and on the Id API receiver.
+
+Generated Methods retain CodeObjects through ordinary `codeObject` getters.
+Codegen exposes its reflected implementations in the same way; captured Methods
+preserve that behavior. No Method payload is read by another owner and no metadata
+registry or Id operation was added. PortableCode loads before the first compiled
+artifact, including in the cold build. Compiled artifact admission accepts the
+inherited Method behavior used by these getters.
+
+Candidates now carry one native factory in `BIRNAMC2`; named arity/disposition
+specifications construct Codegen templates through Id instead of compiling
+redundant adapter units. Synchronous named templates retain their native control
+boundary. Generation hashes the Codegen-owned shared-entry description; it does
+not pretend that this entry has a Machine frame descriptor. Old `BIRNAMC1` bundles
+are rejected. The displaced `pending_source.rs` projection is removed.
+
+`scripts/oop-generation-test.sh` runs the core, Bootstrap, Host and 28 lifecycle
+checks, including adoption, drift/restoration, inert compile/map, activation,
+captured calls across GC, exact rollback, idempotent repeated rollback, file
+cleanup and discarded-handle refusal. [Receipt](../measurements/generation-oop-20261025.json).
+This is not image or full-language completion: image compiler connections,
+Store/Relational, remaining native fixtures, installed tooling and restored workers
+still need integration and acceptance.

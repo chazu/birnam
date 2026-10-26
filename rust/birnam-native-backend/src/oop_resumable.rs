@@ -20,6 +20,7 @@ impl Emitter {
         let layout = ir::color_slots(&program).map_err(|_| Error::InvalidProgram)?;
         let index = self.functions.len();
         self.functions.push(String::new());
+        self.programs.push(bytes.to_vec());
         self.descriptors.push(None);
         let revision = Sha256::digest(source).into();
         let path = [index as u32];

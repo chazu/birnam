@@ -8,41 +8,38 @@ use birnam_codegen::{
     source_revision::RevisionMetadata,
 };
 impl State {
-    unsafe fn compiler(&self, q: &Scope<'_>, name: &[u8], a: &[Operand]) -> Result<Oop, Outcome> {
+    unsafe fn compiler(&self, q: &Scope<'_>, name: &[u8], a: &[Oop]) -> Result<Oop, Failure> {
         unsafe {
             let codegen = q.keep(self.named(b"Codegen")?)?;
             candidate::call(self, q, codegen, name, a)
         }
     }
-    pub(super) unsafe fn note(&self, q: &Scope<'_>, message: &[u8]) -> Result<(), Outcome> {
+    pub(super) unsafe fn note(&self, q: &Scope<'_>, message: &[u8]) -> Result<(), Failure> {
         unsafe {
             let text = self.text(q, message)?;
-            self.compiler(q, b"noteCompilationError:", &[Operand::object(text)])?;
+            self.compiler(q, b"noteCompilationError:", &[text])?;
             Ok(())
         }
     }
-    pub(super) unsafe fn clear_error(&self, q: &Scope<'_>) -> Result<(), Outcome> {
+    pub(super) unsafe fn clear_error(&self, q: &Scope<'_>) -> Result<(), Failure> {
         unsafe {
             self.compiler(q, b"clearCompilationError", &[])?;
             Ok(())
         }
     }
-    pub(super) unsafe fn analyze(&self, q: &Scope<'_>, source: Oop) -> Result<Oop, Outcome> {
-        unsafe {
-            self.compiler(q, b"analyzeSourceMetadata:", &[Operand::object(source)])
-        }
+    pub(super) unsafe fn analyze(&self, q: &Scope<'_>, source: Oop) -> Result<Oop, Failure> {
+        unsafe { self.compiler(q, b"analyzeSourceMetadata:", &[source]) }
     }
     pub(super) unsafe fn revision(
         &self,
         q: &Scope<'_>,
         source: Oop,
-    ) -> Result<Option<(Vec<u8>, RevisionMetadata)>, Outcome> {
+    ) -> Result<Option<(Vec<u8>, RevisionMetadata)>, Failure> {
         unsafe {
             let Some(bytes) = self.source_bytes(q, source)? else {
                 return Ok(None);
             };
-            let encoded =
-                self.compiler(q, b"compiledSourceMetadataFor:", &[Operand::object(source)])?;
+            let encoded = self.compiler(q, b"compiledSourceMetadataFor:", &[source])?;
             if encoded == self.named(b"nil")? {
                 self.note(
                     q,
@@ -61,25 +58,21 @@ impl State {
         q: &Scope<'_>,
         source: Oop,
         selection: &[u8],
-    ) -> Result<Option<(Plan,Oop)>, Outcome> {
+    ) -> Result<Option<(Plan, Oop)>, Failure> {
         unsafe {
             let selected = self.text(q, selection)?;
-            let value = self.compiler(
-                q,
-                b"candidateInventory:selection:",
-                &[Operand::object(source), Operand::object(selected)],
-            )?;
+            let value = self.compiler(q, b"candidateInventory:selection:", &[source, selected])?;
             if value == self.named(b"nil")? {
                 return Ok(None);
             }
             if self.is_error(value)? {
-                return Err(Outcome::loaded(Operand::object(value)));
+                return Err(Failure::Value(value));
             }
             let parts = candidate::seq(self, q, value)?;
             let [program, styles, outputs, adapters, compilation] = parts.as_slice() else {
                 return Err(invalid());
             };
-            let boolean = |o| -> Result<bool, Outcome> {
+            let boolean = |o| -> Result<bool, Failure> {
                 if o == self.named(b"true")? {
                     Ok(true)
                 } else if o == self.named(b"false")? {
@@ -92,7 +85,7 @@ impl State {
                 .into_iter()
                 .map(boolean)
                 .collect::<Result<Vec<_>, _>>()?;
-            let bytes = self.source_data(q,source)?;
+            let bytes = self.source_data(q, source)?;
             let mut requests = vec![Request::Factory {
                 program: self.bytes(*program)?,
                 source: bytes.clone(),
@@ -106,13 +99,8 @@ impl State {
                 };
                 projected.push(match self.symbol_bytes(q, *tag)?.as_deref() {
                     Some(b"method") => Output::Method(
-                        self.send(
-                            self.named(b"Integer")?,
-                            b"wordOf:",
-                            &[Operand::object(*value)],
-                        )?
-                        .as_word()
-                        .ok_or_else(invalid)?,
+                        abi::as_size(self.send(self.named(b"Integer")?, b"wordOf:", &[*value])?)
+                            .ok_or_else(invalid)?,
                     ),
                     Some(b"global") => Output::Global(self.bytes(*value)?),
                     _ => return Err(invalid()),
@@ -123,24 +111,20 @@ impl State {
                 let [arity, style] = fields.as_slice() else {
                     return Err(invalid());
                 };
-                let arity = self
-                    .send(
-                        self.named(b"Integer")?,
-                        b"wordOf:",
-                        &[Operand::object(*arity)],
-                    )?
-                    .as_word()
-                    .and_then(|n| u32::try_from(n).ok())
-                    .ok_or_else(invalid)?;
+                let arity =
+                    abi::as_size(self.send(self.named(b"Integer")?, b"wordOf:", &[*arity])?)
+                        .and_then(|n| u32::try_from(n).ok())
+                        .ok_or_else(invalid)?;
                 requests.push(Request::Named {
                     arity,
                     synchronous: boolean(*style)?,
                 });
             }
             let (_, metadata) = self.revision(q, *compilation)?.ok_or_else(invalid)?;
-            Ok(Plan::from_inventory(
-                metadata, projected, requests, &bytes, selection,
-            ).map(|plan|(plan,*compilation)))
+            Ok(
+                Plan::from_inventory(metadata, projected, requests, &bytes, selection)
+                    .map(|plan| (plan, *compilation)),
+            )
         }
     }
 }

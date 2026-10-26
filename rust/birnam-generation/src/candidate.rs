@@ -6,16 +6,16 @@ use birnam_codegen::{
     candidate as code, candidate_envelope as envelope, generation, source_revision,
 };
 use core::cell::Cell;
+#[path = "candidate_image.rs"]
+mod image;
 #[path = "candidate_ledger.rs"]
 mod ledger;
 #[path = "candidate_observation.rs"]
-mod observation;
-#[path = "candidate_image.rs"]
-mod image;
+pub(super) mod observation;
 #[path = "candidate_retirement.rs"]
 mod retirement;
-pub(super) use ledger::{validate_image, prepare_image_snapshot};
 pub(super) use image::{begin_image_application, finish_image_application};
+pub(super) use ledger::{prepare_image_snapshot, validate_image};
 #[derive(Default)]
 pub(super) struct Candidates {
     pub busy: Cell<bool>,
@@ -44,7 +44,13 @@ pub(super) struct Mapped {
 }
 impl Candidate {
     fn roots(&self) -> Vec<Oop> {
-        let mut values = vec![self.unit, self.source, self.name, self.path, self.policy_cell];
+        let mut values = vec![
+            self.unit,
+            self.source,
+            self.name,
+            self.path,
+            self.policy_cell,
+        ];
         if let Some(m) = &self.mapped {
             values.extend([m.factory, m.factory_unit]);
             values.extend(&m.adapters);
@@ -85,7 +91,10 @@ pub(super) enum Op {
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Units | Self::RetainedCount | Self::RetainedBytes | Self::ReleaseCertification => 0,
+            Self::Units
+            | Self::RetainedCount
+            | Self::RetainedBytes
+            | Self::ReleaseCertification => 0,
             Self::Compile => 3,
             Self::CompileSelected => 4,
             Self::Inspect => 2,
@@ -98,11 +107,11 @@ pub(super) unsafe fn call(
     q: &Scope<'_>,
     r: Oop,
     name: &[u8],
-    args: &[Operand],
-) -> Result<Oop, Outcome> {
+    args: &[Oop],
+) -> Result<Oop, Failure> {
     unsafe { q.keep(object(s.send(r, name, args)?)?) }
 }
-pub(super) unsafe fn seq(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, Outcome> {
+pub(super) unsafe fn seq(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, Failure> {
     unsafe {
         let count = s.index(q, v, b"size")?;
         if count > 1_048_576 {
@@ -110,36 +119,43 @@ pub(super) unsafe fn seq(s: &State, q: &Scope<'_>, v: Oop) -> Result<Vec<Oop>, O
         }
         let mut out = Vec::new();
         for i in 0..count {
-            let i = call(
-                s,
-                q,
-                s.named(b"Integer")?,
-                b"fromWord:",
-                &[Operand::word(i)],
-            )?;
-            out.push(call(s, q, v, b"at:", &[Operand::object(i)])?);
+            let i = call(s, q, s.named(b"Integer")?, b"fromWord:", &[word(i)?])?;
+            out.push(call(s, q, v, b"at:", &[i])?);
         }
         Ok(out)
     }
 }
-pub(super) unsafe fn symbol(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Outcome> {
-    unsafe { q.keep(s.id.intern_name(name)?) }
+pub(super) unsafe fn symbol(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Failure> {
+    unsafe { q.keep(s.intern(name)?) }
 }
-pub(super) unsafe fn prototype(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Outcome> {
-    unsafe { call(s, q, s.named(b"Globals")?, b"at:", &[Operand::object(symbol(s, q, name)?)]) }
+pub(super) unsafe fn prototype(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Failure> {
+    unsafe { call(s, q, s.named(b"Globals")?, b"at:", &[symbol(s, q, name)?]) }
 }
-pub(super) unsafe fn record(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Outcome> {
+pub(super) unsafe fn record(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Oop, Failure> {
     unsafe { call(s, q, prototype(s, q, name)?, b"clone", &[]) }
 }
-pub(super) unsafe fn field(s: &State, q: &Scope<'_>, entity: Oop, attribute: &[u8]) -> Result<Oop, Outcome> {
+pub(super) unsafe fn field(
+    s: &State,
+    q: &Scope<'_>,
+    entity: Oop,
+    attribute: &[u8],
+) -> Result<Oop, Failure> {
     unsafe { call(s, q, entity, attribute, &[]) }
 }
-pub(super) unsafe fn set_field(s: &State, q: &Scope<'_>, entity: Oop, attribute: &[u8], value: Oop) -> Result<(), Outcome> {
+pub(super) unsafe fn set_field(
+    s: &State,
+    q: &Scope<'_>,
+    entity: Oop,
+    attribute: &[u8],
+    value: Oop,
+) -> Result<(), Failure> {
     unsafe {
         let mut selector = attribute.to_vec();
         selector.push(b':');
-        let result = call(s, q, entity, &selector, &[Operand::object(value)])?;
-        if s.is_error(result)? { return Err(Outcome::loaded(Operand::object(result))); }
+        let result = call(s, q, entity, &selector, &[value])?;
+        if s.is_error(result)? {
+            return Err(Failure::Value(result));
+        }
         Ok(())
     }
 }
@@ -148,26 +164,24 @@ pub(super) unsafe fn fail(
     q: &Scope<'_>,
     kind: &[u8],
     message: &[u8],
-) -> Result<Operand, Outcome> {
+) -> Result<Oop, Failure> {
     unsafe {
         s.note(q, message)?;
         let kind = symbol(s, q, kind)?;
         let text = s.text(q, message)?;
-        s.send(
-            s.named(b"Error")?,
-            b"kind:message:",
-            &[Operand::object(kind), Operand::object(text)],
-        )
+        s.send(s.named(b"Error")?, b"kind:message:", &[kind, text])
     }
 }
-pub(super) unsafe fn current(s: &State, q: &Scope<'_>) -> Result<Oop, Outcome> {
+pub(super) unsafe fn current(s: &State, q: &Scope<'_>) -> Result<Oop, Failure> {
     unsafe {
         let owner = prototype(s, q, b"DispatchGeneration")?;
-        if owner == s.named(b"nil")? { return Ok(owner); }
+        if owner == s.named(b"nil")? {
+            return Ok(owner);
+        }
         call(s, q, owner, b"current", &[])
     }
 }
-unsafe fn modules(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<generation::Module>, Outcome> {
+unsafe fn modules(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<generation::Module>, Failure> {
     unsafe {
         let mut modules = Vec::new();
         for row in seq(s, q, map)? {
@@ -176,14 +190,25 @@ unsafe fn modules(s: &State, q: &Scope<'_>, map: Oop) -> Result<Vec<generation::
                 return Err(invalid());
             };
             let fields = seq(s, q, *revision)?;
-            let [tag, rname, requires, source, nonmethod, methods, digest, compilation] = fields.as_slice()
+            let [
+                tag,
+                rname,
+                requires,
+                source,
+                nonmethod,
+                methods,
+                digest,
+                compilation,
+            ] = fields.as_slice()
             else {
                 return Err(invalid());
             };
             if *tag != symbol(s, q, b"sourceRevision")? || name != rname {
                 return Err(invalid());
             }
-            if s.source_text(q,*compilation)? != *source {return Err(invalid())}
+            if s.source_text(q, *compilation)? != *source {
+                return Err(invalid());
+            }
             let (bytes, metadata) = s.revision(q, *compilation)?.ok_or_else(invalid)?;
             if s.symbol_bytes(q, *name)?.as_deref() != Some(metadata.name.as_slice())
                 || s.bytes(*nonmethod)? != metadata.non_method_digest
@@ -210,7 +235,7 @@ unsafe fn select(
     q: &Scope<'_>,
     metadata: &source_revision::RevisionMetadata,
     value: Option<Oop>,
-) -> Result<Vec<u8>, Outcome> {
+) -> Result<Vec<u8>, Failure> {
     unsafe {
         let all = generation::artifact_selection(metadata, Disposition::ResumableRequired)
             .ok_or_else(invalid)?;
@@ -248,16 +273,13 @@ unsafe fn select(
             if *tag != symbol(s, q, b"implementationDisposition")? {
                 return Err(invalid());
             }
-            let index = s
-                .send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(*index)])?
-                .as_word()
+            let index = abi::as_size(s.send(s.named(b"Integer")?, b"wordOf:", &[*index])?)
                 .and_then(|i| u32::try_from(i).ok())
                 .ok_or_else(invalid)?;
             let path = seq(s, q, *path)?
                 .into_iter()
                 .map(|i| {
-                    s.send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(i)])?
-                        .as_word()
+                    abi::as_size(s.send(s.named(b"Integer")?, b"wordOf:", &[i])?)
                         .and_then(|i| u32::try_from(i).ok())
                         .ok_or_else(invalid)
                 })
@@ -316,18 +338,10 @@ unsafe fn select(
         .map_err(|_| invalid())
     }
 }
-unsafe fn read(s: &State, q: &Scope<'_>, path: Oop) -> Result<Oop, Outcome> {
-    unsafe {
-        call(
-            s,
-            q,
-            s.named(b"System")?,
-            b"readFile:",
-            &[Operand::object(path)],
-        )
-    }
+unsafe fn read(s: &State, q: &Scope<'_>, path: Oop) -> Result<Oop, Failure> {
+    unsafe { call(s, q, s.named(b"System")?, b"readFile:", &[path]) }
 }
-unsafe fn write(s: &State, q: &Scope<'_>, path: Oop, bytes: &[u8]) -> Result<(), Outcome> {
+unsafe fn write(s: &State, q: &Scope<'_>, path: Oop, bytes: &[u8]) -> Result<(), Failure> {
     unsafe {
         let text = s.text(q, bytes)?;
         let result = call(
@@ -335,10 +349,10 @@ unsafe fn write(s: &State, q: &Scope<'_>, path: Oop, bytes: &[u8]) -> Result<(),
             q,
             s.named(b"System")?,
             b"writeFile:contents:",
-            &[Operand::object(path), Operand::object(text)],
+            &[path, text],
         )?;
         if result == s.named(b"nil")? || s.is_error(result)? {
-            return Err(Outcome::loaded(Operand::object(result)));
+            return Err(Failure::Value(result));
         }
         Ok(())
     }
@@ -347,11 +361,10 @@ pub(super) unsafe fn operation(
     s: &State,
     q: &Scope<'_>,
     op: Op,
-    args: &[Operand],
-) -> Result<Operand, Outcome> {
+    args: &[Oop],
+) -> Result<Oop, Failure> {
     unsafe {
-        if s.candidates.image_application.get()
-        {
+        if s.candidates.image_application.get() {
             return fail(
                 s,
                 q,
@@ -381,7 +394,7 @@ pub(super) unsafe fn operation(
             Op::ReleaseCertification => ledger::release(s, q),
             Op::Reconcile => ledger::reconcile_candidate(s, q, object(args[0])?),
             Op::Compile | Op::CompileSelected => {
-                let source = s.analyze(q,object(args[0])?)?;
+                let source = s.analyze(q, object(args[0])?)?;
                 let name = object(args[1])?;
                 let path = object(args[2])?;
                 let Some((bytes, metadata)) = s.revision(q, source)? else {
@@ -402,16 +415,33 @@ pub(super) unsafe fn operation(
                 }
                 let owner = sources::owner(s, q)?;
                 let Some(prior) = sources::record(s, q, owner, name)? else {
-                    return fail(s, q, b"moduleNotRegistered", b"candidate compilation requires the module's registered source");
+                    return fail(
+                        s,
+                        q,
+                        b"moduleNotRegistered",
+                        b"candidate compilation requires the module's registered source",
+                    );
                 };
                 q.keep(prior)?;
-                let Some((_, previous)) = s.revision(q, prior)? else { return Err(invalid()); };
+                let Some((_, previous)) = s.revision(q, prior)? else {
+                    return Err(invalid());
+                };
                 if !generation::transition_allowed(&previous, &metadata) {
-                    return fail(s, q, b"invalidCandidate", b"candidate changes unsupported initializers or dependencies");
+                    return fail(
+                        s,
+                        q,
+                        b"invalidCandidate",
+                        b"candidate changes unsupported initializers or dependencies",
+                    );
                 }
                 let expected = &previous.revision_digest;
-                let selected = select(s, q, &metadata, args.get(3).copied().map(object).transpose()?)?;
-                let Some((plan,_)) = s.candidate_plan(q, source, &selected)? else {
+                let selected = select(
+                    s,
+                    q,
+                    &metadata,
+                    args.get(3).copied().map(object).transpose()?,
+                )?;
+                let Some((plan, _)) = s.candidate_plan(q, source, &selected)? else {
                     return fail(s, q, b"invalidCandidate", b"candidate cannot be lowered");
                 };
                 let generated = match backend::all(s, q, &plan.requests) {
@@ -429,15 +459,9 @@ pub(super) unsafe fn operation(
                 let mut objects = Vec::new();
                 for c in &generated {
                     let c = s.text(q, c)?;
-                    let object = call(
-                        s,
-                        q,
-                        s.named(b"TCC")?,
-                        b"compileObject:",
-                        &[Operand::object(c)],
-                    )?;
+                    let object = call(s, q, s.named(b"TCC")?, b"compileObject:", &[c])?;
                     if s.is_error(object)? {
-                        return Ok(Operand::object(object));
+                        return Ok(object);
                     }
                     objects.push(s.bytes(object)?);
                 }
@@ -448,43 +472,102 @@ pub(super) unsafe fn operation(
                 let side_path = s.text(q, &side_path)?;
                 write(s, q, path, &artifact)?;
                 write(s, q, side_path, &sidecar)?;
-                Ok(Operand::object(path))
+                Ok(path)
             }
             Op::Units => {
-                let units=s.candidates.entries.borrow().iter().map(|c|c.unit).collect::<Vec<_>>();
-                for &unit in &units {q.keep(unit)?;}
-                s.vector(q,&units).map(Operand::object)
+                let units = s
+                    .candidates
+                    .entries
+                    .borrow()
+                    .iter()
+                    .map(|c| c.unit)
+                    .collect::<Vec<_>>();
+                for &unit in &units {
+                    q.keep(unit)?;
+                }
+                s.vector(q, &units)
             }
             Op::PolicyCell => {
-                let unit=object(args[0])?;
-                let cell=s.candidates.entries.borrow().iter().find(|c|c.unit==unit).map(|c|c.policy_cell);
-                Ok(Operand::object(cell.unwrap_or(s.named(b"nil")?)))
+                let unit = object(args[0])?;
+                let cell = s
+                    .candidates
+                    .entries
+                    .borrow()
+                    .iter()
+                    .find(|c| c.unit == unit)
+                    .map(|c| c.policy_cell);
+                Ok(cell.unwrap_or(s.named(b"nil")?))
             }
             Op::Data => {
-                let unit=object(args[0])?;
-                let snapshot=s.candidates.entries.borrow().iter().find(|c|c.unit==unit)
-                    .map(|c|(c.name,c.source,c.expected,c.plan.metadata.operations.clone(),c.plan.outputs.clone(),
-                        c.mapped.as_ref().map(|m|(m.factory,m.adapters.clone()))));
-                let Some((name,source,expected,operations,outputs,mapped))=snapshot else{return Ok(Operand::object(s.named(b"nil")?));};
-                q.keep(name)?;q.keep(source)?;
-                let nil=s.named(b"nil")?;
-                let mut rows=Vec::new();
-                for op in operations { rows.push(s.vector(q,&[symbol(s,q,&op.target)?,symbol(s,q,&op.selector)?,s.named(if op.install{b"true"}else{b"false"})?])?); }
-                let operations=s.vector(q,&rows)?;
-                let mut rows=Vec::new();
-                for output in outputs {
-                    let (tag,value)=match output {
-                        code::Output::Global(name)=>(b"global".as_slice(),symbol(s,q,&name)?),
-                        code::Output::Method(index)=>(b"method".as_slice(),call(s,q,s.named(b"Integer")?,b"fromWord:",&[Operand::word(index)])?),
-                    };
-                    rows.push(s.vector(q,&[symbol(s,q,tag)?,value])?);
+                let unit = object(args[0])?;
+                let snapshot = s
+                    .candidates
+                    .entries
+                    .borrow()
+                    .iter()
+                    .find(|c| c.unit == unit)
+                    .map(|c| {
+                        (
+                            c.name,
+                            c.source,
+                            c.expected,
+                            c.plan.metadata.operations.clone(),
+                            c.plan.outputs.clone(),
+                            c.mapped.as_ref().map(|m| (m.factory, m.adapters.clone())),
+                        )
+                    });
+                let Some((name, source, expected, operations, outputs, mapped)) = snapshot else {
+                    return Ok(s.named(b"nil")?);
+                };
+                q.keep(name)?;
+                q.keep(source)?;
+                let nil = s.named(b"nil")?;
+                let mut rows = Vec::new();
+                for op in operations {
+                    rows.push(s.vector(
+                        q,
+                        &[
+                            symbol(s, q, &op.target)?,
+                            symbol(s, q, &op.selector)?,
+                            s.named(if op.install { b"true" } else { b"false" })?,
+                        ],
+                    )?);
                 }
-                let outputs=s.vector(q,&rows)?;
-                let (factory,adapters)=if let Some((factory,adapters))=mapped {
-                    q.keep(factory)?;for &adapter in &adapters{q.keep(adapter)?;}
-                    (factory,s.vector(q,&adapters)?)
-                }else{(nil,s.vector(q,&[])?) };
-                s.vector(q,&[symbol(s,q,b"candidatePayloadV1")?,name,source,s.text(q,&expected)?,operations,outputs,factory,adapters]).map(Operand::object)
+                let operations = s.vector(q, &rows)?;
+                let mut rows = Vec::new();
+                for output in outputs {
+                    let (tag, value) = match output {
+                        code::Output::Global(name) => (b"global".as_slice(), symbol(s, q, &name)?),
+                        code::Output::Method(index) => (
+                            b"method".as_slice(),
+                            call(s, q, s.named(b"Integer")?, b"fromWord:", &[word(index)?])?,
+                        ),
+                    };
+                    rows.push(s.vector(q, &[symbol(s, q, tag)?, value])?);
+                }
+                let outputs = s.vector(q, &rows)?;
+                let (factory, adapters) = if let Some((factory, adapters)) = mapped {
+                    q.keep(factory)?;
+                    for &adapter in &adapters {
+                        q.keep(adapter)?;
+                    }
+                    (factory, s.vector(q, &adapters)?)
+                } else {
+                    (nil, s.vector(q, &[])?)
+                };
+                s.vector(
+                    q,
+                    &[
+                        symbol(s, q, b"candidatePayloadV1")?,
+                        name,
+                        source,
+                        s.text(q, &expected)?,
+                        operations,
+                        outputs,
+                        factory,
+                        adapters,
+                    ],
+                )
             }
             Op::Inspect => {
                 let path = object(args[0])?;
@@ -499,7 +582,7 @@ pub(super) unsafe fn operation(
                 }
                 let artifact = read(s, q, path)?;
                 if s.is_error(artifact)? {
-                    return Ok(Operand::object(artifact));
+                    return Ok(artifact);
                 }
                 let artifact = s.bytes(artifact)?;
                 let mut side = s.bytes(path)?;
@@ -507,7 +590,7 @@ pub(super) unsafe fn operation(
                 let side = s.text(q, &side)?;
                 let side = read(s, q, side)?;
                 if s.is_error(side)? {
-                    return Ok(Operand::object(side));
+                    return Ok(side);
                 }
                 let side = s.bytes(side)?;
                 let Ok(env) = envelope::inspect(&side) else {
@@ -522,7 +605,8 @@ pub(super) unsafe fn operation(
                     );
                 }
                 let text = s.text(q, env.source)?;
-                let Some((plan,source)) = s.candidate_plan(q, text, env.artifact_selection)? else {
+                let Some((plan, source)) = s.candidate_plan(q, text, env.artifact_selection)?
+                else {
                     return fail(s, q, b"invalidCandidate", b"candidate inventory is invalid");
                 };
                 if code::manifest(
@@ -547,13 +631,7 @@ pub(super) unsafe fn operation(
                     );
                 };
                 let name = symbol(s, q, &plan.metadata.name)?;
-                let revision = call(
-                    s,
-                    q,
-                    s.named(b"Codegen")?,
-                    b"sourceRevisionOf:",
-                    &[Operand::object(source)],
-                )?;
+                let revision = call(s, q, s.named(b"Codegen")?, b"sourceRevisionOf:", &[source])?;
                 let requires = plan
                     .metadata
                     .requires
@@ -580,7 +658,7 @@ pub(super) unsafe fn operation(
                 let operations = s.vector(q, &operations)?;
                 for (key, value) in [
                     (b"unitName".as_slice(), name),
-                    (b"authoredSource", s.source_text(q,source)?),
+                    (b"authoredSource", s.source_text(q, source)?),
                     (b"sourceRevision", revision),
                     (b"requires", requires),
                     (b"provides", operations),
@@ -599,8 +677,16 @@ pub(super) unsafe fn operation(
                 ] {
                     set_field(s, q, unit, key, value)?;
                 }
-                let policy_cell=call(s,q,prototype(s,q,b"Cell")?,b"with:",&[Operand::object(s.named(b"nil")?)])?;
-                if policy_cell==s.named(b"nil")? || s.is_error(policy_cell)? { return Ok(Operand::object(policy_cell)); }
+                let policy_cell = call(
+                    s,
+                    q,
+                    prototype(s, q, b"Cell")?,
+                    b"with:",
+                    &[s.named(b"nil")?],
+                )?;
+                if policy_cell == s.named(b"nil")? || s.is_error(policy_cell)? {
+                    return Ok(policy_cell);
+                }
                 s.candidates.entries.borrow_mut().push(Candidate {
                     unit,
                     source,
@@ -616,7 +702,7 @@ pub(super) unsafe fn operation(
                     mapped: None,
                     policy_cell,
                 });
-                Ok(Operand::object(unit))
+                Ok(unit)
             }
             Op::Mapped | Op::Path | Op::Map => {
                 let unit = object(args[0])?;
@@ -632,37 +718,27 @@ pub(super) unsafe fn operation(
                             c.mapped.is_some(),
                             c.objects.clone(),
                             c.plan.metadata.requires.clone(),
+                            c.plan.requests.clone(),
                         )
                     });
-                let Some((path, already, objects, requires)) = snapshot else {
+                let Some((path, already, objects, requires, requests)) = snapshot else {
                     return fail(s, q, b"invalidCandidate", b"candidate carrier is unknown");
                 };
                 if matches!(op, Op::Path) {
-                    return Ok(Operand::object(path));
+                    return Ok(path);
                 }
                 if matches!(op, Op::Mapped) {
-                    return Ok(Operand::object(s.named(if already {
-                        b"true"
-                    } else {
-                        b"false"
-                    })?));
+                    return Ok(s.named(if already { b"true" } else { b"false" })?);
                 }
                 if already {
-                    return Ok(Operand::object(unit));
+                    return Ok(unit);
                 }
                 for dependency in requires {
                     let module_name = symbol(s, q, b"Module")?;
-                    let module = call(
-                        s,
-                        q,
-                        s.named(b"Globals")?,
-                        b"at:",
-                        &[Operand::object(module_name)],
-                    )?;
+                    let module = call(s, q, s.named(b"Globals")?, b"at:", &[module_name])?;
                     let dep = symbol(s, q, &dependency)?;
                     if module == s.named(b"nil")?
-                        || call(s, q, module, b"isLoaded:", &[Operand::object(dep)])?
-                            != s.named(b"true")?
+                        || call(s, q, module, b"isLoaded:", &[dep])? != s.named(b"true")?
                     {
                         return fail(
                             s,
@@ -676,25 +752,45 @@ pub(super) unsafe fn operation(
                 for bytes in objects {
                     let bytes = s.text(q, &bytes)?;
                     let blob = call(s, q, bytes, b"asBytes", &[])?;
-                    let unit = call(
-                        s,
-                        q,
-                        s.named(b"TCC")?,
-                        b"loadObject:",
-                        &[Operand::object(blob)],
-                    )?;
+                    let unit = call(s, q, s.named(b"TCC")?, b"loadObject:", &[blob])?;
                     if s.is_error(unit)? {
-                        return Ok(Operand::object(unit));
+                        return Ok(unit);
                     }
                     mapped.push(unit);
                 }
                 let factory_unit = mapped[0];
                 let factory = call(s, q, factory_unit, b"initialize", &[])?;
                 if factory == s.named(b"nil")? || s.is_error(factory)? {
-                    return Ok(Operand::object(factory));
+                    return Ok(factory);
                 }
                 // Publish ownership only after every relocation and registration succeeds.
-                let adapters = mapped.into_iter().skip(1).collect();
+                let mut adapters = Vec::new();
+                for request in &requests[1..] {
+                    let birnam_codegen::backend_request::Request::Named { arity, synchronous } =
+                        request
+                    else {
+                        return Err(invalid());
+                    };
+                    let arity = call(
+                        s,
+                        q,
+                        s.named(b"Integer")?,
+                        b"fromWord:",
+                        &[word(*arity as usize)?],
+                    )?;
+                    let style = s.named(if *synchronous { b"true" } else { b"false" })?;
+                    let template = call(
+                        s,
+                        q,
+                        s.named(b"Codegen")?,
+                        b"methodTemplateForArity:synchronous:",
+                        &[arity, style],
+                    )?;
+                    if s.is_error(template)? {
+                        return Ok(template);
+                    }
+                    adapters.push(template);
+                }
                 s.candidates
                     .entries
                     .borrow_mut()
@@ -706,7 +802,7 @@ pub(super) unsafe fn operation(
                     adapters,
                     factory_unit,
                 });
-                Ok(Operand::object(unit))
+                Ok(unit)
             }
         }
     }

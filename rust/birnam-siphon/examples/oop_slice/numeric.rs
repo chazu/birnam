@@ -4,7 +4,7 @@ pub(super) unsafe fn check(
     id: &Protocol,
     send: &impl Fn(Oop, &[u8], &[Oop]) -> Result<Oop, Oop>,
     sel: &impl Fn(&[u8]) -> Oop,
-    modules: [Oop; 16],
+    modules: [Oop; 17],
     objects: [Oop; 7],
 ) {
     unsafe {
@@ -1380,6 +1380,8 @@ pub(super) unsafe fn check(
             "Artifact descriptors, live list access, byte snapshots, sibling checks, failure reasons and construction-time GC: passed"
         );
         super::tcc::check(id,send,sel,[modules[11],modules[12]],[namespace,roots,gc,string,base,actor]);
+        let args=send(id.root,b"sequence",&[namespace]).unwrap();
+        id.send(modules[16],id.load,&[args]).expect("PortableCode loaded");
         super::compiler::check(id,send,sel,[modules[13],modules[14],modules[15]],[namespace,roots,gc,string,base,actor,integer]);
         println!("NUMERIC_INTEGRATION_OK");
     }

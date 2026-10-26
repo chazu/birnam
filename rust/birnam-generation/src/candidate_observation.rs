@@ -7,7 +7,6 @@ pub(super) struct Binding {
     pub target: Oop,
     pub behavior: Oop,
     pub selector: Oop,
-    pub entry: Option<NativeEntry>,
     pub method: Option<Oop>,
 }
 #[derive(Clone)]
@@ -15,49 +14,43 @@ pub(super) struct Global {
     pub name: Oop,
     pub value: Option<Oop>,
 }
-pub(super) unsafe fn number(s: &State, value: Oop) -> Result<usize, Outcome> {
+pub(super) unsafe fn number(s: &State, value: Oop) -> Result<usize, Failure> {
     unsafe {
-        s.send(s.named(b"Integer")?, b"wordOf:", &[Operand::object(value)])?
-            .as_word()
+        abi::as_size(s.send(s.named(b"Integer")?, b"wordOf:", &[value])?)
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or_else(invalid)
     }
 }
-pub(super) unsafe fn epoch(s: &State) -> Result<usize, Outcome> {
+pub(super) unsafe fn epoch(s: &State) -> Result<usize, Failure> {
     unsafe {
-        s.send(s.id.receiver, b"bindingEpoch", &[])?
-            .as_word()
+        abi::as_size(s.send(s.id.root, b"bindingEpoch", &[])?)
             .filter(|epoch| *epoch < usize::MAX)
             .ok_or_else(invalid)
     }
 }
 pub(super) unsafe fn direct(
     s: &State,
+    q: &Scope<'_>,
     behavior: Oop,
     selector: Oop,
-) -> Result<Option<NativeEntry>, Outcome> {
+) -> Result<Option<Oop>, Failure> {
     unsafe {
-        let value = s.send(
-            s.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(selector), Operand::object(behavior)],
-        )?;
-        if value.kind() == native::UNIT {
-            Ok(None)
-        } else {
-            value.as_entry().map(Some).ok_or_else(invalid)
-        }
-    }
-}
-pub(super) unsafe fn global(s: &State, q: &Scope<'_>, name: Oop) -> Result<Option<Oop>, Outcome> {
-    unsafe {
-        let row = call(
+        let method = call(
             s,
             q,
-            s.named(b"Globals")?,
-            b"bindingAt:",
-            &[Operand::object(name)],
+            s.named(b"Execution")?,
+            b"directMethodFor:in:",
+            &[selector, behavior],
         )?;
+        if s.is_error(method)? {
+            return Err(Failure::Value(method));
+        }
+        Ok((method != s.named(b"nil")?).then_some(method))
+    }
+}
+pub(super) unsafe fn global(s: &State, q: &Scope<'_>, name: Oop) -> Result<Option<Oop>, Failure> {
+    unsafe {
+        let row = call(s, q, s.named(b"Globals")?, b"bindingAt:", &[name])?;
         let values = seq(s, q, row)?;
         match values.as_slice() {
             [] => Ok(None),
@@ -66,40 +59,31 @@ pub(super) unsafe fn global(s: &State, q: &Scope<'_>, name: Oop) -> Result<Optio
         }
     }
 }
-pub(super) unsafe fn global_basis(s: &State, q: &Scope<'_>) -> Result<usize, Outcome> {
+pub(super) unsafe fn global_basis(s: &State, q: &Scope<'_>) -> Result<usize, Failure> {
     unsafe { number(s, call(s, q, s.named(b"Globals")?, b"bindingBasis", &[])?) }
 }
 pub(super) unsafe fn target(
     s: &State,
     q: &Scope<'_>,
     name: Oop,
-) -> Result<Option<(Oop, Oop)>, Outcome> {
+) -> Result<Option<(Oop, Oop)>, Failure> {
     unsafe {
         // Match source GlobalRead: Globals first, then the native namespace.
-        let mut target = call(s, q, s.named(b"Globals")?, b"at:", &[Operand::object(name)])?;
+        let mut target = call(s, q, s.named(b"Globals")?, b"at:", &[name])?;
         if target == s.named(b"nil")? {
-            let fallback = s.send(s.ns, b"at:", &[Operand::object(name)])?;
-            if fallback.kind() == native::UNIT {
+            let fallback = s.send(s.ns, b"at:", &[name])?;
+            if fallback.is_null() {
                 return Ok(None);
             }
             target = q.keep(object(fallback)?)?;
         }
-        if s.send(s.id.receiver, b"isBehavior:", &[Operand::object(target)])?
-            .as_word()
-            == Some(1)
-        {
+        if abi::as_size(s.send(s.id.root, b"isBehavior:", &[target])?) == Some(1) {
             // Exported behavior receivers are themselves stable dictionary targets.
-            let exported = s.send(s.ns, b"nameOf:", &[Operand::object(target)])?;
-            return Ok((exported.kind() != native::UNIT).then_some((target, target)));
+            let exported = s.send(s.ns, b"nameOf:", &[target])?;
+            return Ok((!exported.is_null()).then_some((target, target)));
         }
-        let behavior = call(
-            s,
-            q,
-            s.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(target)],
-        )?;
-        let owner = s.send(s.id.receiver, b"ownerOf:", &[Operand::object(behavior)])?;
-        Ok((owner.as_object() == Some(target)).then_some((target, behavior)))
+        let behavior = call(s, q, s.id.root, b"behaviorOf:", &[target])?;
+        let owner = s.send(s.id.root, b"ownerOf:", &[behavior])?;
+        Ok((optional(owner) == Some(target)).then_some((target, behavior)))
     }
 }

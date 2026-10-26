@@ -27,6 +27,11 @@ static inline O keep(Call*c,O result){
 }
 static inline O call(Call*c,O receiver,size_t selector,const O*a,size_t n){O result=raw(c,receiver,selector,a,n);return c->error?0:keep(c,result);}
 static inline O named(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_AT,&key,1);}
+static inline int is_error(Call*c,O value){
+ /* The first cold artifact defines Error itself. */
+ O factory=named(c,S_ERROR);if(c->error||!factory)return 0;
+ O truth=named(c,S_TRUE);return call(c,value,S_IS_ERROR,0,0)==truth;
+}
 static inline O finish(Call*c,O result){
  O failure=c->error;
  if(c->count){c->tokens[0]=failure?error_object(failure):result;O cleanup=id.message(id.root,roots,symbols[S_CLEANUP],c->tokens,c->count+1);if(!failure&&failed(cleanup))failure=cleanup;}

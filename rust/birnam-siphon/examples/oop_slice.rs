@@ -61,6 +61,7 @@ unsafe fn run() {
             library.join("libbirnam_lang_seed.dylib"),
             library.join("libbirnam_native_backend.dylib"),
             library.join("libbirnam_codegen_runtime.dylib"),
+            library.join("libbirnam_portable_code.dylib"),
         ];
         let words: &[&[u8]] = &[
             b"suspendAt:continueAt:",b"captureAt:continueAt:",b"resumeWith:",b"resumeWith:budget:",b"restoreContinuation:with:",b"suspended",b"captureRegistration",b"controlSite",b"callSite:",b"ContinuationVt",b"continuationConsumed",b"continuationWrongMachine",b"compile:output:root:",b"compile:output:from:synchronousBodies:",b"compile:output:root:embeddedLibraries:",b"Alien",b"LibraryName",b"LibraryPayload",b"LibraryPath",b"LibraryBytes",b"ObjectVt",b"compile:output:",b"compile:output:from:",b"artifactProbe",b"artifactNeeds",b"artifactTask",b"artifactAnswer",b"FrozenArtifact",b"ChangedArtifact",b"waitToken",b"resolve:with:",b"pollOutcome",b"BackendLocal",b"emit:source:filename:persistent:synchronous:",b"FileSnapshot",b"LoaderCompiler",b"LoaderSource",b"OriginalCompiler",b"evalPersisting:",b"evalPersisting:from:",b"load:",b"Module",b"FileLoadPath",b"fileLoadExample",b"testFailure",b"syntaxError",b"ioError",b"message",b"recordedMethodSources",b"size",b"parse:",b"SourceRegistry",b"sourceTextOf:",b"compiledSourceFor:",b"retainedSourceMetadataOf:",b"compiledSource:metadata:",b"sourceRevisionOf:",b"moduleMetadataOf:",b"analyzeSourceMetadata:",b"compiledSourceMetadataFor:",b"recordModuleSource:named:",b"recordCompiledSource:named:",b"moduleSourceFor:",b"replaceCompiledSource:named:",b"lastError",b"noteCompilationError:",b"clearCompilationError",b"revision",b"sourceProbe",b"sourceWrong",b"sourceTransfer",b"RegistrationSource",b"eval:",b"emit:",b"DefaultEvalBody",b"NativeTaskObserver",b"observe:",b"failTask:",b"ensureTask:body:",b"mustNotRecord",b"SymbolVt",b"Vtable",b"Collection",b"Reflect",b"taskSmokeResult",b"TaskCheckFailures",b"TaskChecks",b"value",b"ControlMachine",b"controlEligible",b"protectedBlock:",b"leaveBoundary:",b"park",b"failed",b"exitRunnableBoundary:",b"returnAt:",b"boundarySite",b"exitReturn",b"boundaryCallSite:",b"exitBoundaryAt:",b"boundaryDeliveryPending",b"acknowledgeBoundaryDelivery",b"leaf",
@@ -1006,7 +1007,7 @@ unsafe fn run() {
         send(roots,b"release:",&[bytes_factory_token]).unwrap();
         send(gc_type,b"addMethod",&[sel(b"chargeExternalAllocation:"),original_charge]).unwrap();
         if matches!(std::env::args().nth(2).as_deref(),Some("numeric-integration"|"numeric-input-error")) {
-            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22],names[23],names[24],names[25],names[26],names[27],names[28],names[29]],[namespace,roots,gc,actor,base,word,string]);
+            numeric::check(&id,&send,&sel,[names[15],names[14],names[16],names[17],names[18],names[19],names[20],names[21],names[22],names[23],names[24],names[25],names[26],names[27],names[28],names[29],names[30]],[namespace,roots,gc,actor,base,word,string]);
             return;
         }
         // Numeric and collection adapters are independent C objects for this slice.

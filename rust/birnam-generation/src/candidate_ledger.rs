@@ -10,12 +10,10 @@ unsafe fn projected_program(
     s: &State,
     q: &Scope<'_>,
     value: Oop,
-) -> Result<Option<Vec<u8>>, Outcome> {
+) -> Result<Option<Vec<u8>>, Failure> {
     unsafe {
         let block = s.named(b"BlockVt")?;
-        let mut behavior = s
-            .send(s.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
-            .as_object();
+        let mut behavior = optional(s.send(s.id.root, b"behaviorOf:", &[value])?);
         let mut visited = std::collections::HashSet::new();
         loop {
             let Some(current) = behavior else {
@@ -28,9 +26,7 @@ unsafe fn projected_program(
                 return Ok(None);
             }
             q.keep(current)?;
-            behavior = s
-                .send(s.id.receiver, b"parentOf:", &[Operand::object(current)])?
-                .as_object();
+            behavior = optional(s.send(s.id.root, b"parentOf:", &[current])?);
         }
         let nil = s.named(b"nil")?;
         let code = call(s, q, value, b"codeObject", &[])?;
@@ -41,13 +37,7 @@ unsafe fn projected_program(
         if observation::number(s, captures)? != 0 {
             return Ok(None);
         }
-        let bytes = call(
-            s,
-            q,
-            s.named(b"CodeObject")?,
-            b"canonicalBytesOf:",
-            &[Operand::object(code)],
-        )?;
+        let bytes = call(s, q, s.named(b"CodeObject")?, b"canonicalBytesOf:", &[code])?;
         Ok(Some(s.bytes(bytes)?))
     }
 }
@@ -97,23 +87,28 @@ impl Ledger {
 }
 // Compilation still uses the recorded source/selection lineage. This is not a
 // claim that every live binding equals the source revision's certificate.
-pub(super) unsafe fn matches_lineage(s: &State, q: &Scope<'_>, ledger: &Ledger) -> Result<bool, Outcome> {
+pub(super) unsafe fn matches_lineage(
+    s: &State,
+    q: &Scope<'_>,
+    ledger: &Ledger,
+) -> Result<bool, Failure> {
     unsafe {
-        Ok(sources::owner(s, q)? == ledger.source_owner && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
+        Ok(sources::owner(s, q)? == ledger.source_owner
+            && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
             && current(s, q)? == ledger.generation
             && field(s, q, ledger.generation, b"sourceMap")? == ledger.source_map
             && s.bytes(field(s, q, ledger.generation, b"baseDigest")?)? == ledger.digest
-            && s.bytes(field(s, q, ledger.generation, b"generationSelection")?)? == ledger.selection)
+            && s.bytes(field(s, q, ledger.generation, b"generationSelection")?)?
+                == ledger.selection)
     }
 }
 pub(super) unsafe fn matches(
     s: &State,
     q: &Scope<'_>,
     ledger: &Ledger,
-) -> Result<Option<bool>, Outcome> {
+) -> Result<Option<bool>, Failure> {
     unsafe {
-        if !matches_lineage(s, q, ledger)?
-        {
+        if !matches_lineage(s, q, ledger)? {
             return Ok(Some(false));
         }
         // Observe binding owners coherently across callbacks. Explicit facts are
@@ -122,9 +117,15 @@ pub(super) unsafe fn matches(
         let epoch = observation::epoch(s)?;
         for b in &ledger.bindings {
             let b = &b.binding;
-            if observation::target(s, q, b.name)? != Some((b.target, b.behavior))
-                || observation::direct(s, b.behavior, b.selector)? != b.entry
-            {
+            let actual = observation::direct(s, q, b.behavior, b.selector)?;
+            let same = match (actual, b.method) {
+                (None, None) => true,
+                (Some(a), Some(b)) => {
+                    abi::as_size(s.send(s.id.root, b"sameNativeMethod:as:", &[a, b])?) == Some(1)
+                }
+                _ => false,
+            };
+            if observation::target(s, q, b.name)? != Some((b.target, b.behavior)) || !same {
                 return Ok(Some(false));
             }
         }
@@ -133,7 +134,8 @@ pub(super) unsafe fn matches(
                 return Ok(Some(false));
             }
         }
-        let stable = sources::owner(s, q)? == ledger.source_owner && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
+        let stable = sources::owner(s, q)? == ledger.source_owner
+            && sources::revision(s, q, ledger.source_owner)? == ledger.source_revision
             && current(s, q)? == ledger.generation
             && observation::global_basis(s, q)? == global_basis
             && observation::epoch(s)? == epoch;
@@ -142,26 +144,26 @@ pub(super) unsafe fn matches(
 }
 /// Explicit validation reports current agreement. It neither edits records nor
 /// irreversibly revokes an inverse because a discrepancy was observed.
-pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<bool, Outcome> {
+pub(super) unsafe fn reconcile(s: &State, q: &Scope<'_>) -> Result<bool, Failure> {
     unsafe {
-        let Some(ledger) = s.candidates.ledger.borrow().clone() else { return Ok(false); };
+        let Some(ledger) = s.candidates.ledger.borrow().clone() else {
+            return Ok(false);
+        };
         Ok(matches(s, q, &ledger)? == Some(true))
     }
 }
 /// A saved managed source map must still describe the dispatch it authorizes.
 /// Drift never becomes a second authority merely because its code is portable.
-pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+pub(crate) unsafe fn validate_image(s: &State, q: &Scope<'_>) -> Result<Oop, Failure> {
     unsafe { image_admission(s, q, false) }
 }
 /// Check imageability without reconciling or changing lifecycle descriptions.
-pub(crate) unsafe fn prepare_image_snapshot(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+pub(crate) unsafe fn prepare_image_snapshot(s: &State, q: &Scope<'_>) -> Result<Oop, Failure> {
     unsafe { image_admission(s, q, true) }
 }
-unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Operand, Outcome> {
+unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Oop, Failure> {
     unsafe {
-        if s.candidates.busy.get()
-            || s.candidates.image_application.get()
-        {
+        if s.candidates.busy.get() || s.candidates.image_application.get() {
             return fail(
                 s,
                 q,
@@ -185,10 +187,15 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
             let source_owner = sources::owner(s, q)?;
             let revision = sources::revision(s, q, source_owner)?;
             let entries = sources::entries(s, q, source_owner)?;
-            for &(name, record) in &entries { q.keep(name)?; q.keep(record)?; }
+            for &(name, record) in &entries {
+                q.keep(name)?;
+                q.keep(record)?;
+            }
             let mut keys = std::collections::BTreeSet::new();
             for (_, record) in entries {
-                let Some((_, metadata)) = s.revision(q, record)? else { return Err(invalid()); };
+                let Some((_, metadata)) = s.revision(q, record)? else {
+                    return Err(invalid());
+                };
                 for operation in metadata.operations {
                     keys.insert((operation.target, operation.selector));
                 }
@@ -200,28 +207,47 @@ unsafe fn image_admission(s: &State, q: &Scope<'_>, snapshot: bool) -> Result<Op
                 let name = symbol(s, q, &name)?;
                 let selector = symbol(s, q, &selector)?;
                 if let Some((_, behavior)) = observation::target(s, q, name)? {
-                    if let Some(entry) = observation::direct(s, behavior, selector)? {
-                        let implementation = s.send(s.named(b"Execution")?, b"implementationOfEntry:", &[Operand::entry(entry)])?;
-                        if implementation.as_object().is_none_or(|v| v == nil) {
-                            return fail(s, q, b"nonPortableGeneration", b"authored binding has no imageable implementation");
+                    if let Some(entry) = observation::direct(s, q, behavior, selector)? {
+                        let implementation =
+                            s.send(s.named(b"Codegen")?, b"implementationOf:", &[entry])?;
+                        if optional(implementation).is_none_or(|v| v == nil) {
+                            return fail(
+                                s,
+                                q,
+                                b"nonPortableGeneration",
+                                b"authored binding has no imageable implementation",
+                            );
                         }
                     }
                 }
             }
-            if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != revision || observation::epoch(s)? != epoch
-                || observation::global_basis(s, q)? != globals {
-                return fail(s, q, b"staleGeneration", b"bindings changed during snapshot admission");
+            if sources::owner(s, q)? != source_owner
+                || sources::revision(s, q, source_owner)? != revision
+                || observation::epoch(s)? != epoch
+                || observation::global_basis(s, q)? != globals
+            {
+                return fail(
+                    s,
+                    q,
+                    b"staleGeneration",
+                    b"bindings changed during snapshot admission",
+                );
             }
-            return Ok(Operand::object(s.named(b"true")?));
+            return Ok(s.named(b"true")?);
         }
         if s.candidates.ledger.borrow().is_none() {
             if current(s, q)? == s.named(b"nil")? {
-                return Ok(Operand::object(s.named(b"true")?));
+                return Ok(s.named(b"true")?);
             }
-            return fail(s, q, b"generationNotAdopted", b"generation has no binding ledger");
+            return fail(
+                s,
+                q,
+                b"generationNotAdopted",
+                b"generation has no binding ledger",
+            );
         }
         if reconcile(s, q)? {
-            Ok(Operand::object(s.named(b"true")?))
+            Ok(s.named(b"true")?)
         } else {
             fail(s, q, b"staleGeneration", b"managed generation has drifted")
         }
@@ -232,7 +258,7 @@ pub(super) unsafe fn reconcile_candidate(
     s: &State,
     q: &Scope<'_>,
     unit: Oop,
-) -> Result<Operand, Outcome> {
+) -> Result<Oop, Failure> {
     unsafe {
         let known = s
             .candidates
@@ -249,17 +275,13 @@ pub(super) unsafe fn reconcile_candidate(
             );
         }
         if reconcile(s, q)? {
-            Ok(Operand::object(unit))
+            Ok(unit)
         } else {
             fail(s, q, b"staleGeneration", b"managed generation has drifted")
         }
     }
 }
-pub(super) unsafe fn adopt(
-    s: &State,
-    q: &Scope<'_>,
-    generation: Oop,
-) -> Result<Operand, Outcome> {
+pub(super) unsafe fn adopt(s: &State, q: &Scope<'_>, generation: Oop) -> Result<Oop, Failure> {
     unsafe {
         let nil = s.named(b"nil")?;
         if current(s, q)? != generation
@@ -289,7 +311,10 @@ pub(super) unsafe fn adopt(
         let source_owner = sources::owner(s, q)?;
         let source_revision = sources::revision(s, q, source_owner)?;
         let registered = sources::entries(s, q, source_owner)?;
-        for &(name,record) in &registered {q.keep(name)?;q.keep(record)?;}
+        for &(name, record) in &registered {
+            q.keep(name)?;
+            q.keep(record)?;
+        }
         if registered.len() != modules.len() {
             return fail(
                 s,
@@ -302,7 +327,7 @@ pub(super) unsafe fn adopt(
             let mut found = false;
             for &(name, source) in &registered {
                 if s.symbol_bytes(q, name)?.as_deref() == Some(module.name.as_slice())
-                    && s.source_data(q,source)? == module.source
+                    && s.source_data(q, source)? == module.source
                 {
                     found = true;
                     break;
@@ -382,17 +407,14 @@ pub(super) unsafe fn adopt(
                     );
                 };
                 let selector = symbol(s, q, &operation.selector)?;
-                let entry = observation::direct(s, behavior, selector)?;
+                let entry = observation::direct(s, q, behavior, selector)?;
                 let mut actual_program = None;
                 let method = if let Some(entry) = entry {
                     // Native entries lacking a portable implementation cannot be
                     // adopted into an image-rebuildable rollback baseline.
-                    let implementation = s.send(
-                        s.named(b"Execution")?,
-                        b"implementationOfEntry:",
-                        &[Operand::entry(entry)],
-                    )?;
-                    if implementation.kind() != native::OBJECT {
+                    let implementation =
+                        s.send(s.named(b"Codegen")?, b"implementationOf:", &[entry])?;
+                    if implementation.is_null() || implementation == nil {
                         return fail(
                             s,
                             q,
@@ -410,21 +432,9 @@ pub(super) unsafe fn adopt(
                             b"managed binding has no CodeObject",
                         );
                     }
-                    let bytes = call(
-                        s,
-                        q,
-                        s.named(b"CodeObject")?,
-                        b"canonicalBytesOf:",
-                        &[Operand::object(code)],
-                    )?;
+                    let bytes = call(s, q, s.named(b"CodeObject")?, b"canonicalBytesOf:", &[code])?;
                     actual_program = Some(s.bytes(bytes)?);
-                    Some(call(
-                        s,
-                        q,
-                        s.named(b"Execution")?,
-                        b"methodOfEntry:",
-                        &[Operand::entry(entry)],
-                    )?)
+                    Some(q.keep(entry)?)
                 } else {
                     None
                 };
@@ -445,7 +455,6 @@ pub(super) unsafe fn adopt(
                         target,
                         behavior,
                         selector,
-                        entry,
                         method,
                     },
                 });
@@ -503,7 +512,10 @@ pub(super) unsafe fn adopt(
             Some(b"Globals basis changed during generation adoption".as_slice())
         } else if observation::epoch(s)? != epoch {
             Some(b"behavior epoch changed during generation adoption".as_slice())
-        } else if sources::owner(s, q)? != source_owner || sources::revision(s, q, source_owner)? != source_revision || sources::entries(s, q, source_owner)? != registered {
+        } else if sources::owner(s, q)? != source_owner
+            || sources::revision(s, q, source_owner)? != source_revision
+            || sources::entries(s, q, source_owner)? != registered
+        {
             Some(b"source registry changed during generation adoption".as_slice())
         } else if matches(s, q, &ledger)? != Some(true) {
             Some(b"live bindings changed during generation adoption".as_slice())
@@ -514,17 +526,17 @@ pub(super) unsafe fn adopt(
             return fail(s, q, b"staleGeneration", message);
         }
         *s.candidates.ledger.borrow_mut() = Some(ledger);
-        Ok(Operand::object(generation))
+        Ok(generation)
     }
 }
 
 // Certification owns only its observation roots. Candidate inverses and physical
 // code lifetimes have independent owners. Resolve the result before releasing;
 // no callback or collection is required to drop this optional observation.
-pub(super) unsafe fn release(s: &State, q: &Scope<'_>) -> Result<Operand, Outcome> {
+pub(super) unsafe fn release(s: &State, q: &Scope<'_>) -> Result<Oop, Failure> {
     unsafe {
         let yes = q.keep(s.named(b"true")?)?;
         s.candidates.ledger.take();
-        Ok(Operand::object(yes))
+        Ok(yes)
     }
 }

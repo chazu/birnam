@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-25",
+  "base_commit": "ad71b471",
+  "command": "bash scripts/oop-generation-test.sh",
+  "exit_code": 0,
+  "core_unit_tests": 189,
+  "authored_task_control_checks": 177,
+  "generation_lifecycle_checks": 28,
+  "lifecycle": {
+    "exit_code": 0,
+    "stdout": "#[#[#vtableApi true] #[#vtablePrototype true] #[#implementation true] #[#capturedImplementation true] #[#portableBlock true] #[#cloneCode true] #[#canonicalCode true] #[#nativeBoundary true] #[#continuingWait true] #[#continuingReply true] #[#adopt true] #[#certificate true] #[#drift true] #[#restoredCertificate true] #[#compile true] #[#compileInert true] #[#inspect true] #[#map true] #[#mapInert true] #[#activate true] #[#newBody true] #[#capturedOldBody true] #[#rollback true] #[#restoredBody true] #[#repeatedRollback true] #[#removeFiles true] #[#discard true] #[#discardedCannotMap true]]\n",
+    "stderr": "",
+    "passed": true
+  },
+  "contract": "Owner messages only across runtime modules; no Id API or payload catalog additions. Ordinary send still looks up and directly enters the selected Method. Method metadata is ordinary getter behavior, and candidate publication/undo remain authored.",
+  "format": "BIRNAMC2 carries one compiled factory. Named templates are constructed through Codegen with their admitted arity and synchronous/continuing disposition. BIRNAMC1 is rejected.",
+  "remaining": [
+    "Image compiler and restoration integration",
+    "Store and Relational migration",
+    "Retained native integration fixture migration",
+    "Complete installed tooling/project/REPL and restored worker acceptance",
+    "Full-language performance qualification"
+  ],
+  "logs": {
+    ".cargo-target/oop-slice/generation-qualification/lifecycle-2alo1zja/receipt.json": "854aa19a421bc7dff3e5c7f812918394c3f3c9b649d200a540b8a25369d6b2c5",
+    ".cargo-target/generation-full-gate.log": "a0fba9de2b7c5c06511448c935754886974707b4b112027781ce186f1fe84567",
+    ".cargo-target/oop-slice/qualification/unit.log": "188b92f2055db9a1a1df8e008851d09c7d738e0d75bfcf71bc9baab891965ec0",
+    ".cargo-target/generation-workspace.log": "b57ed44c4a0bf46e215acc6960d2f704c71d50260f35ffcb269c42002c06d98b"
+  }
+}

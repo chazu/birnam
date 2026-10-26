@@ -8,7 +8,7 @@ logs="$CARGO_TARGET_DIR/bootstrap-qualification"
 mkdir -p "$logs"
 # The seed is a build tool. Published Bootstrap is separately checked below;
 # it still requires the complete owner closure and has no fallback to this seed.
-packages=(birnam-id birnam-bootstrap birnam-image birnam-alien birnam-isolate birnam-portable-code birnam-root-registry birnam-namespace birnam-boolean birnam-nil birnam-collect birnam-object-model birnam-word birnam-bytes birnam-execution birnam-string birnam-integer birnam-float birnam-prelude birnam-system-output birnam-system-input birnam-environment birnam-file-io birnam-storage birnam-vector birnam-map birnam-peg birnam-artifact birnam-tcc birnam-native-backend birnam-codegen-runtime birnam-lang-seed)
+packages=(birnam-id birnam-bootstrap birnam-generation birnam-image birnam-alien birnam-isolate birnam-portable-code birnam-root-registry birnam-namespace birnam-boolean birnam-nil birnam-collect birnam-object-model birnam-word birnam-bytes birnam-execution birnam-string birnam-integer birnam-float birnam-prelude birnam-system-output birnam-system-input birnam-environment birnam-file-io birnam-storage birnam-vector birnam-map birnam-peg birnam-artifact birnam-tcc birnam-native-backend birnam-codegen-runtime birnam-lang-seed)
 build_args=()
 for package in "${packages[@]}"; do build_args+=(-p "$package"); done
 mise exec -- cargo build --offline --locked --release --lib "${build_args[@]}" --features birnam-bootstrap/lang-seed > "$logs/build.log" 2>&1
@@ -18,7 +18,7 @@ from pathlib import Path
 import os,shutil,subprocess,sys,tempfile
 build=Path(sys.argv[1]);logs=Path(sys.argv[2]);root=Path.cwd()
 stage=Path(tempfile.mkdtemp(prefix='cold-',dir=logs))
-names='id bootstrap image alien isolate portable_code root_registry namespace boolean nil collect object_model word bytes execution string integer float prelude system_output system_input environment file_io storage vector map peg artifact tcc native_backend codegen_runtime lang_seed'.split()
+names='id bootstrap generation image alien isolate portable_code root_registry namespace boolean nil collect object_model word bytes execution string integer float prelude system_output system_input environment file_io storage vector map peg artifact tcc native_backend codegen_runtime lang_seed'.split()
 for name in names:shutil.copy2(build/'release'/f'libbirnam_{name}.dylib',stage)
 subprocess.run(['clang','-dynamiclib','-O2','tests/fixtures/oop-bootstrap/returns.c','-o',str(stage/'returns.dylib')],check=True)
 subprocess.run(['clang','-dynamiclib','-O2','tests/fixtures/oop-bootstrap/foreign.c','-o',str(stage/'foreign.dylib')],check=True)

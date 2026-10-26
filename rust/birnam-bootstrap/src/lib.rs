@@ -486,6 +486,7 @@ unsafe extern "C" fn initialize(
             s.native(name, &[ns])?;
         }
         s.send(string, b"installCollections:", &[s.named(b"Vector")?])?;
+        s.native("portable_code", &[ns])?;
         for name in [
             "peg",
             "artifact",
@@ -522,7 +523,7 @@ unsafe extern "C" fn initialize(
         {
             // Preserve the complete published startup requirements. Missing or
             // unmigrated owners fail visibly; seed mode does not claim this closure.
-            s.native("portable_code", &[ns])?;
+
             for name in [
                 "cell",
                 "modules",
@@ -546,7 +547,7 @@ unsafe extern "C" fn initialize(
             ] {
                 s.artifact(name, None)?;
             }
-            for name in ["image", "alien", "isolate"] {
+            for name in ["generation", "image", "alien", "isolate"] {
                 s.native(name, &[ns])?;
             }
         }

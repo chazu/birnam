@@ -42,15 +42,7 @@ let owner := [[Globals includes: #AlienRecipes]
 [Reflect defineMethod: #bindingIdentityFor:as: on: owner as: [:self :target :selector |
   let isBehavior := [execution optionalWordResultOf: id selector: #isBehavior: argument: target resultFactory: words];
   let behavior := [[isBehavior = one] ifTrue: [| target] ifFalse: [| [reflection vtableOf: target]]];
-  // Inspect this vtable's own bindings; delegated lookup would misidentify an
-  // inherited wrapper as a registration on this target.
-  let selected := [Cell with: nil];
-  let visitor := [Object clone];
-  [Reflect defineMethod: #binding:value:weak: on: visitor as: [:self :key :value :weak |
-    [[key == selector] ifTrue: [| [selected set: value]]]
-  ]];
-  [behavior bindingsDo: visitor];
-  let method := [selected value];
+  let method := [execution directMethodFor: selector in: behavior];
   [[method isError] ifTrue: [| method] ifFalse: [|
     [[method isNil] ifTrue: [| nil] ifFalse: [| [self identityOf: method]]]
   ]]

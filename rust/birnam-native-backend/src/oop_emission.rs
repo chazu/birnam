@@ -13,6 +13,7 @@ pub enum Error {
 struct Emitter {
     names: Vec<Vec<u8>>,
     functions: Vec<String>,
+    programs: Vec<Vec<u8>>,
     descriptors: Vec<Option<(Vec<u8>, Vec<u8>)>>,
     persistent: bool,
     dispositions: Option<Vec<bool>>,
@@ -61,6 +62,7 @@ impl Emitter {
         let p = portable_program::inspect(bytes).map_err(|_| Error::InvalidProgram)?;
         let index = self.functions.len();
         self.functions.push(String::new());
+        self.programs.push(bytes.to_vec());
         self.descriptors.push(None);
         let nil = self.name(b"nil")?;
         let mut out = format!(
@@ -224,6 +226,7 @@ fn compile_mode(
     let mut e = Emitter {
         names: Vec::new(),
         functions: Vec::new(),
+        programs: Vec::new(),
         descriptors: Vec::new(),
         persistent,
         dispositions,
@@ -268,6 +271,10 @@ fn compile_mode(
     }
     let execution = e.name(b"Execution")?;
     let register = e.name(b"fromStep:descriptor:selection:owner:")?;
+    let code_object = e.name(b"CodeObject")?;
+    let from_canonical = e.name(b"fromCanonicalBytes:")?;
+    let admit_code = e.name(b"admitCodeObject:")?;
+    let bytes_view = e.name(b"bytes")?;
     let method_names = (0..e.functions.len())
         .map(|i| e.name(format!("compiledFunction{i}").as_bytes()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -306,6 +313,18 @@ fn compile_mode(
             }
         }
     }
+    for (i, bytes) in e.programs.iter().enumerate() {
+        writeln!(
+            out,
+            "static const unsigned char program_{i}[]={{{}}};",
+            bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+        .unwrap();
+    }
     out.push_str("static const Literal literals[]={\n");
     for name in &e.names {
         let mut quoted = b"\"".to_vec();
@@ -339,6 +358,7 @@ fn compile_mode(
         if e.descriptors[i].is_some() {
             writeln!(out,"O descriptor=string(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=string(&c,selection_{i},sizeof(selection_{i}));O a[]={{method,descriptor,selection,owner}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,4);").unwrap();
         }
+        writeln!(out,"O encoded=string(&c,program_{i},sizeof(program_{i}));encoded=call(&c,encoded,{bytes_view},0,0);O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(is_error(&c,code))return finish(&c,code);method=call(&c,method,{admit_code},&code,1);if(c.error)return finish(&c,0);").unwrap();
         writeln!(
             out,
             "methods[{i}]=method;raw(&c,owner,S_RETAIN,&method,1);if(c.error)return finish(&c,0);}}"

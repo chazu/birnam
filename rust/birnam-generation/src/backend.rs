@@ -4,20 +4,15 @@ use super::*;
 use birnam_codegen::backend_request::Request;
 #[derive(Debug)]
 pub(super) enum Failure {
-    Native(Outcome),
+    Native(super::Failure),
     Rejected,
 }
-impl From<Outcome> for Failure {
-    fn from(e: Outcome) -> Self {
+impl From<super::Failure> for Failure {
+    fn from(e: super::Failure) -> Self {
         Self::Native(e)
     }
 }
-unsafe fn checked(
-    s: &State,
-    q: &Scope<'_>,
-    name: &[u8],
-    args: &[Operand],
-) -> Result<Vec<u8>, Failure> {
+unsafe fn checked(s: &State, q: &Scope<'_>, name: &[u8], args: &[Oop]) -> Result<Vec<u8>, Failure> {
     unsafe {
         let backend = q.keep(s.named(b"NativeBackend")?)?;
         let value = q.keep(object(s.send(backend, name, args)?)?)?;
@@ -29,11 +24,8 @@ unsafe fn checked(
 }
 pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result<Vec<u8>, Failure> {
     unsafe {
-        let text = |b: &[u8]| s.text(q, b).map(Operand::object);
-        let flag = |v| {
-            s.named(if v { b"true" } else { b"false" })
-                .map(Operand::object)
-        };
+        let text = |b: &[u8]| s.text(q, b);
+        let flag = |v| s.named(if v { b"true" } else { b"false" });
         match request {
             Request::Program {
                 program,
@@ -57,17 +49,20 @@ pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result
                 let a = q.keep(object(s.send(
                     s.named(b"Integer")?,
                     b"fromWord:",
-                    &[Operand::word(*arity as usize)],
+                    &[word(*arity as usize)?],
                 )?)?)?;
-                checked(
-                    s,
-                    q,
-                    b"named:synchronous:",
-                    &[Operand::object(a), flag(*synchronous)?],
-                )
+                checked(s, q, b"named:synchronous:", &[a, flag(*synchronous)?])
             }
-            Request::Factory {program,source,dispositions}
-            | Request::ModuleFactory {program,source,dispositions} => {
+            Request::Factory {
+                program,
+                source,
+                dispositions,
+            }
+            | Request::ModuleFactory {
+                program,
+                source,
+                dispositions,
+            } => {
                 let mut v = q.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?)?;
                 for d in dispositions {
                     v = q.keep(object(s.send(v, b"add:", &[flag(*d)?])?)?)?;
@@ -75,10 +70,12 @@ pub(super) unsafe fn emit(s: &State, q: &Scope<'_>, request: &Request) -> Result
                 checked(
                     s,
                     q,
-                    if matches!(request, Request::ModuleFactory {..}) {
+                    if matches!(request, Request::ModuleFactory { .. }) {
                         b"moduleFactory:source:dispositions:"
-                    } else { b"factory:source:dispositions:" },
-                    &[text(program)?, text(source)?, Operand::object(v)],
+                    } else {
+                        b"factory:source:dispositions:"
+                    },
+                    &[text(program)?, text(source)?, v],
                 )
             }
         }
@@ -92,7 +89,10 @@ pub(super) unsafe fn all(
     unsafe {
         let mut total = 0usize;
         let mut output = vec![];
-        for request in requests {
+        for request in requests
+            .iter()
+            .filter(|r| !matches!(r, Request::Named { .. }))
+        {
             let c = emit(s, q, request)?;
             total = total.checked_add(c.len()).ok_or_else(invalid)?;
             if total > 128 << 20 {
@@ -106,14 +106,23 @@ pub(super) unsafe fn all(
 pub(super) unsafe fn descriptor(s: &State, q: &Scope<'_>, name: &[u8]) -> Result<Vec<u8>, Failure> {
     unsafe {
         let name = s.text(q, name)?;
-        checked(s, q, b"descriptorFor:", &[Operand::object(name)])
+        let codegen = q.keep(s.named(b"Codegen")?)?;
+        let value = q.keep(object(s.send(
+            codegen,
+            b"methodDescriptorFor:",
+            &[name],
+        )?)?)?;
+        if s.is_error(value)? {
+            return Err(Failure::Rejected);
+        }
+        Ok(s.bytes(value)?)
     }
 }
 pub(super) unsafe fn hashes<'a>(
     s: &State,
     q: &Scope<'_>,
     names: impl Iterator<Item = &'a [u8]>,
-) -> Result<std::collections::HashMap<Vec<u8>, Option<[u8; 32]>>, Outcome> {
+) -> Result<std::collections::HashMap<Vec<u8>, Option<[u8; 32]>>, super::Failure> {
     unsafe {
         let mut output = std::collections::HashMap::new();
         for name in names {

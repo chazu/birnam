@@ -7,7 +7,7 @@ use birnam_codegen::{resumable::*, source_metadata::Metadata, source_revision::*
 unsafe fn symbol(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
     unsafe { Ok(q.keep(s.intern(bytes)?)) }
 }
-unsafe fn seq(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<Oop>, Oop> {
+pub(super) unsafe fn seq(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<Oop>, Oop> {
     unsafe {
         if !s.exact(q, value, b"VectorVt")? {
             return Err(invalid());

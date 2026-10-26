@@ -1,6 +1,8 @@
 //! Shared Execution owner, synchronous Blocks, and resumable driver connection.
 #[path = "oop_native.rs"]
 mod native_adapters;
+#[path = "oop_reflection.rs"]
+mod reflection;
 #[path = "resumable_runtime.rs"]
 mod resumable;
 use crate::{execution::ExecutionState, objects::Objects};
@@ -24,6 +26,9 @@ struct State {
     control: Control,
     value_answer: Oop,
     native_value: Oop,
+    capture_seed: Oop,
+    code_getter: Oop,
+    binding_visitor_vt: Oop,
     ns: Oop,
     gc: Oop,
     nil: Oop,
@@ -404,6 +409,9 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.block_vt,
             s.value_answer,
             s.native_value,
+            s.capture_seed,
+            s.code_getter,
+            s.binding_visitor_vt,
         ];
         values.extend_from_slice(&s.scoped.borrow());
         values.extend_from_slice(&s.resume.borrow().roots);
@@ -663,6 +671,19 @@ const NAMES: &[&[u8]] = &[
     b"fromBytes:",
     b"methodBehavior",
     b"invokeOn:",
+    b"codeObject",
+    b"admitCodeObject:",
+    b"codeValue",
+    b"reassociateBehaviorOf:with:",
+    b"binding:value:weak:",
+    b"bindingsDo:",
+    b"directMethodFor:in:",
+    b"bindingMatchesIn:as:",
+    b"sameNativeMethod:as:",
+    b"fromMethod:captures:",
+    b"setLayoutOf:to:rest:",
+    b"slotAt:in:",
+    b"slotAt:in:put:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -850,6 +871,19 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"fromBytes:"),
     Literal::new(b"methodBehavior"),
     Literal::new(b"invokeOn:"),
+    Literal::new(b"codeObject"),
+    Literal::new(b"admitCodeObject:"),
+    Literal::new(b"codeValue"),
+    Literal::new(b"reassociateBehaviorOf:with:"),
+    Literal::new(b"binding:value:weak:"),
+    Literal::new(b"bindingsDo:"),
+    Literal::new(b"directMethodFor:in:"),
+    Literal::new(b"bindingMatchesIn:as:"),
+    Literal::new(b"sameNativeMethod:as:"),
+    Literal::new(b"fromMethod:captures:"),
+    Literal::new(b"setLayoutOf:to:rest:"),
+    Literal::new(b"slotAt:in:"),
+    Literal::new(b"slotAt:in:put:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1247,6 +1281,46 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(invoke_method),
         convention: 1,
     },
+    MethodSpec {
+        name: 185,
+        entry: Some(reflection::code_object),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 186,
+        entry: Some(reflection::admit),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 187,
+        entry: Some(reflection::code_value),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 55,
+        entry: Some(reflection::captured),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 189,
+        entry: Some(reflection::binding),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 191,
+        entry: Some(reflection::direct_method),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 192,
+        entry: Some(reflection::binding_matches),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 194,
+        entry: Some(reflection::from_method),
+        convention: 0,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1312,6 +1386,17 @@ unsafe extern "C" fn initialize(
                 b"methodAt:",
                 &[names[b"nativeSignatureValue".as_slice()]],
             )?)?,
+            capture_seed: keep(send(
+                send(id.root, b"methodBehavior", &[])?,
+                b"lookup",
+                &[names[b"captured".as_slice()]],
+            )?)?,
+            code_getter: keep(send(
+                image,
+                b"methodAt:",
+                &[names[b"codeValue".as_slice()]],
+            )?)?,
+            binding_visitor_vt: keep(send(base, b"delegated", &[])?)?,
             ns: *ns,
             gc: named(b"GC")?,
             nil: named(b"nil")?,
@@ -1332,15 +1417,25 @@ unsafe extern "C" fn initialize(
         INSTANCE.store(s, Ordering::Release);
         for spec in METHODS {
             let name = NAMES[spec.name];
-            if matches!(name, b"valueAnswer" | b"nativeSignatureValue") {
+            if matches!(
+                name,
+                b"valueAnswer" | b"nativeSignatureValue" | b"codeValue" | b"binding:value:weak:"
+            ) {
                 continue;
             }
             let target = match name {
-                b"fromMethod:captureOperands:" | b"captureWordAt:" | b"captureCount" | b"clone" => {
-                    block_vt
-                }
+                b"fromMethod:captureOperands:"
+                | b"fromMethod:captures:"
+                | b"captureWordAt:"
+                | b"captureCount"
+                | b"clone" => block_vt,
                 b"methodFor:" | b"addMethod:as:" => base,
-                b"invokeOn:" | b"invokeOn:arguments:" => send(id.root, b"methodBehavior", &[])?,
+                b"codeObject" => block_vt,
+                b"invokeOn:"
+                | b"invokeOn:arguments:"
+                | b"captured"
+                | b"admitCodeObject:"
+                | b"bindingMatchesIn:as:" => send(id.root, b"methodBehavior", &[])?,
                 n if n.starts_with(b"value") => block_vt,
                 _ if resumable::METHOD_NAMES.contains(&name) => continue,
                 _ => behavior,
@@ -1349,6 +1444,33 @@ unsafe extern "C" fn initialize(
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[names[name], method])?;
         }
+        let layout = keep(send(
+            id.root,
+            b"sequence",
+            &[abi::size(1).unwrap(), abi::size(1).unwrap()],
+        )?)?;
+        send(
+            named(b"ObjectModel")?,
+            b"setLayoutOf:to:rest:",
+            &[s.binding_visitor_vt, layout, abi::size(0).unwrap()],
+        )?;
+        let observer = keep(send(
+            image,
+            b"methodAt:",
+            &[names[b"binding:value:weak:".as_slice()]],
+        )?)?;
+        let observer = keep(send(observer, b"withContext:", &[*ns])?)?;
+        send(
+            s.binding_visitor_vt,
+            b"addMethod",
+            &[names[b"binding:value:weak:".as_slice()], observer],
+        )?;
+        let nil_code = keep(send(s.code_getter, b"withContext:", &[s.nil])?)?;
+        send(
+            send(id.root, b"methodBehavior", &[])?,
+            b"addMethod",
+            &[names[b"codeObject".as_slice()], nil_code],
+        )?;
         send(id.root, b"ownerOf:put:", &[block_vt, block])?;
         // The factory has no Block fields; it is a rooted ordinary object. Only actual
         // constructed Blocks are tracked and traced by this representation owner.

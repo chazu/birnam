@@ -68,7 +68,7 @@ pub(super) unsafe fn check(
     send(ns, b"at:put:", &[sel(b"SymbolVt"), symbol_type]).unwrap();
     let collection = send(ns, b"at:", &[sel(b"CollectionVt")]).unwrap();
     send(ns, b"at:put:", &[sel(b"Collection"), collection]).unwrap();
-    send(ns, b"at:put:", &[sel(b"Vtable"), id.root]).unwrap();
+    assert_eq!(evaluate("[[Vtable ownerOf: IntegerVt] == Integer]"), truth);
     for name in [
         "error",
         "globals-owner",
