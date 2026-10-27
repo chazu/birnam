@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "scope": "ObjectModel construction, layout ownership, private vtables, reentry and retirement through Oops",
+  "base_revision": "81efcdce83779d5fd16e9051c052f5df6139401e",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/activation-wmlwn0vv/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/object_model.rs": "56788fa29c37a4960688e15d48475b0316745add4dafe1867af2a317ad4836f6",
+    "tests/fixtures/oop-host/object-model.c": "30a64edb0f76664b329a152993a9a1df0d4c7152038c59ef87f74ecf7df8e4ef"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/object-model-final.log",
+      "sha256": "adc83afd8154ea02bd13219a402c80307d7203b8b14990add0968e6b284aa03a",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Repeated owner initialization and exactly one retirement notification",
+    "Prototype/private-vtable ownership, inheritance, clone behavior sharing and live owner queries",
+    "A rooted private vtable retains its owner; owner metadata alone retains neither object nor vtable",
+    "Exact copied layout metadata, arbitrary opaque codes, rest codes and non-inherited descriptions",
+    "Shallow clone references and rejection of out-of-bounds or unowned storage",
+    "Nine requested bytes clone to sixteen padded bytes with exact independent raw content",
+    "Clone snapshot keeps the original child identity when allocation reentry clears the source and collects",
+    "Metadata retirement precedes finalization; phase checks reject even no-allocation private-vtable preparation",
+    "Twenty-four private cycles finalize once each; clones do not inherit finalizer ownership",
+    "Construction remains valid with collection before every allocation",
+    "Adjacent owned-slot inventory and scoped-conversion acceptance"
+  ],
+  "representation_adjustments": [
+    "ObjectModel mutation uses its public operations; the raw-byte oracle defines and validates only test-created opaque storage",
+    "Allocation/binding enumeration replaces legacy count/index reflection helpers without new Id operations",
+    "Allocation identities replace post-free object queries"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Remaining native targets and compiler groups",
+    "Pending automatic alias-return decision",
+    "Fresh current-runtime cold qualification"
+  ]
+}

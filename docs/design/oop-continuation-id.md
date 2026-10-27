@@ -2093,3 +2093,22 @@ sticky-failure check; immediate Words are valid Oops and cannot serve as fake po
 
 The memory suite and all 22 Id unit tests pass. No runtime or Id change was needed.
 [Receipt](../measurements/memory-lifecycle-oop-20261027.json).
+
+## ObjectModel construction, layouts and ownership
+
+The general `object_model` harness now runs through Oop messages. It retains
+private-vtable ownership and inheritance, clone sharing, current owner/retirement
+hooks, copied layout descriptions with arbitrary opaque codes, shallow references,
+raw padded cloning, rejection of unowned storage and collection during allocation
+reentry. The snapshot-child check now verifies allocation identity as well as value.
+
+An independent native oracle writes only the test-created opaque allocation after
+checking its requested extent and geometry, then verifies all padded clone bytes.
+Other storage mutation goes through ObjectModel. Census observations use identities;
+metadata retirement is checked while finalizer arguments remain valid. All 24
+private-object cycles finalize once, clones do not inherit finalizers, and one-byte
+collection pressure preserves construction roots. Reflection uses existing allocation
+and binding enumeration instead of adding retired count/index helpers to Id.
+
+The general, slot-inventory and scoped-conversion suites pass. No runtime or Id
+change was needed. [Receipt](../measurements/object-model-oop-20261027.json).
