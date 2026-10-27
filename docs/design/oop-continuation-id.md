@@ -2892,3 +2892,12 @@ A captured permission Method also declines an allocation owner with custom metho
 lookup without entering that lookup. Restoration is observed immediately. The
 owner integration test and adjacent binding-fact test pass without runtime or Id
 changes. [Receipt](../measurements/guard-batch-oop-20261027.json).
+
+## Earlier cold candidate CLI qualification
+
+All 18 CLI checks now pass for the a3eaa227 cold candidate, including standalone
+artifacts, production Lang, Alien compilation, core operation without Store,
+optional providers, image format, documentation, portable execution, workers and
+project queries. Its image group remains running. This candidate predates the
+fixed-adapter null-validation correction; the newer cold candidate is qualified
+separately. [Receipt](../measurements/language-cli-oop-20261027.json).

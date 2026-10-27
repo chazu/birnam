@@ -1,0 +1,266 @@
+{
+  "passed": true,
+  "scope": "Complete Host CLI group for earlier cold a3eaa227; the later fixed-adapter null correction is not qualified here",
+  "candidate_revision": "a3eaa2272e5021f20fbe53cd73c62f8908788b40",
+  "prefix": "/private/tmp/birnam-oop-language-6u04vc65/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/host-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/original"
+      ],
+      "exit_code": 0,
+      "label": "cli:host-cli-test.py",
+      "started_unix_ns": 1793135473908374000,
+      "status": "passed",
+      "wall_ns": 277187879584
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "native-owners",
+        "--",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "cli:native-owners:--ignored",
+      "started_unix_ns": 1793135751148603000,
+      "status": "passed",
+      "wall_ns": 11860716125
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "native-backend",
+        "--",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "cli:native-backend:--ignored",
+      "started_unix_ns": 1793135763041974000,
+      "status": "passed",
+      "wall_ns": 3333612666
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "native-compilers",
+        "--",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "cli:native-compilers:--ignored",
+      "started_unix_ns": 1793135766407535000,
+      "status": "passed",
+      "wall_ns": 4521727334
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/artifact-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:artifact-cli-test.py",
+      "started_unix_ns": 1793135770962047000,
+      "status": "passed",
+      "wall_ns": 241070035792
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/lang-migration-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:lang-migration-test.py",
+      "started_unix_ns": 1793136012074258000,
+      "status": "passed",
+      "wall_ns": 35252750666
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-compiler-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:alien-compiler-test.py",
+      "started_unix_ns": 1793136047360429000,
+      "status": "passed",
+      "wall_ns": 26067673542
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/core-without-store-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated",
+        "--services"
+      ],
+      "exit_code": 0,
+      "label": "cli:core-without-store-test.py",
+      "started_unix_ns": 1793136073460515000,
+      "status": "passed",
+      "wall_ns": 2198131595584
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/optional-store-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:optional-store-test.py",
+      "started_unix_ns": 1793138271651872000,
+      "status": "passed",
+      "wall_ns": 21455210208
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/image-format-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:image-format-test.py",
+      "started_unix_ns": 1793138293140775000,
+      "status": "passed",
+      "wall_ns": 18448531542
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/doc-render-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:doc-render-test.py",
+      "started_unix_ns": 1793138311621724000,
+      "status": "passed",
+      "wall_ns": 21782211083
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/portable-execution-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:portable-execution-test.py",
+      "started_unix_ns": 1793138333436935000,
+      "status": "passed",
+      "wall_ns": 48759727417
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/worker-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated"
+      ],
+      "exit_code": 0,
+      "label": "cli:worker-test.py",
+      "started_unix_ns": 1793138382229293000,
+      "status": "passed",
+      "wall_ns": 485606580958
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/rust-project-check-smoke.sh"
+      ],
+      "exit_code": 0,
+      "label": "cli:rust-project-check-smoke.sh",
+      "started_unix_ns": 1793138867895738000,
+      "status": "passed",
+      "wall_ns": 432622626583
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "project-build",
+        "--",
+        "project_policy_values_survive_collecting_messages",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "cli:project-build:project_policy_values_survive_collecting_messages",
+      "started_unix_ns": 1793139300522835000,
+      "status": "passed",
+      "wall_ns": 12832884042
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "host-project",
+        "--",
+        "project_source_observation_uses_live_messages",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "cli:host-project:project_source_observation_uses_live_messages",
+      "started_unix_ns": 1793139313388134000,
+      "status": "passed",
+      "wall_ns": 12545469542
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "startup::tests::host_roots_survive_collecting_sends",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "cli:host-lib:startup::tests::host_roots_survive_collecting_sends",
+      "started_unix_ns": 1793139325966130000,
+      "status": "passed",
+      "wall_ns": 3727800500
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/project-query-test.py",
+        "--prefix",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/relocated",
+        "--output",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.wIMdu5/project-query.json",
+        "--prepared-binaries",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json"
+      ],
+      "exit_code": 0,
+      "label": "cli:project-query-test.py",
+      "started_unix_ns": 1793139329726344000,
+      "status": "passed",
+      "wall_ns": 12456448417
+    }
+  ],
+  "log": ".cargo-target/oop-language-qualification/cli.log",
+  "log_sha256": "4849eb655d045f21ed918f567e4f6bcc0e5fa5b969330bbc37c0c725ee0566c9",
+  "timings_sha256": "32aedabbd3ddd86b1a79ce1decca644cb247b9a0a9a5bb28447497288d463476",
+  "prepared_test_binaries_manifest": ".cargo-target/oop-language-qualification/test-binaries/manifest.json",
+  "prepared_test_binaries_manifest_sha256": "a9d066b1c25c228848f89a4cf964074dc3e82fc27e0869d322c9f626a6e4a859",
+  "remaining": [
+    "Complete a3eaa227 image group",
+    "Archive and Host qualification of corrected 1fa7e3c2 candidate",
+    "Remaining native/compiler harnesses and contract decisions"
+  ]
+}
