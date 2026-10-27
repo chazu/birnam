@@ -2010,3 +2010,18 @@ frame views, pending recovery, native boundaries, embedding and mapped/rebuilt
 Method-binding acceptance pass. Metadata-capture fixtures now observe the restored
 five-argument factory. Four compiler groups and full latest cold qualification
 remain pending. [Receipt](../measurements/prepared-call-oop-20261027.json).
+
+## Native allocation-accounting witnesses
+
+The `allocation_accounting` harness now uses declared Oop callbacks and cached
+selectors throughout its measurements. Literal geometry expectations, repeated
+16 MiB default thresholds, an explicit smaller budget, non-refunding detachment,
+failed tracing without reset or retirement, and tracing-time charge observation
+all pass. Current geometry replacement can collect or construct another object;
+the outer charge still adds to the post-callback total and restoration is visible.
+
+The fatal-overflow subprocess now uses nested maximum immediate Oop charges rather
+than the removed native Word carrier. It verifies abort and the GC owner's exact
+diagnostic. Oversized representable size queries decline without allocation;
+invalid arguments remain failures. No runtime or Id change was needed.
+[Receipt](../measurements/allocation-accounting-oop-20261027.json).

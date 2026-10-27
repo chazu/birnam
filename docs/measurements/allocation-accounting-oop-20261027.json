@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "scope": "Independent native Oop allocation geometry, fixed collection thresholds, live policy callbacks and fatal overflow",
+  "base_revision": "d9baca125fbcf60bdbe95561415d75cbaf754461",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/prepared-live-shknlun1/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/allocation_accounting.rs": "3d8c896ad8ea59fa472d6b910c60a5fe5671d0b19c3df6401365af16246fc5c0",
+    "tests/fixtures/oop-host/allocation-accounting.c": "b5db199d83612fc555c01302be723483a2c546ee927b7910551819e0a7536518"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/allocation-accounting.log",
+      "sha256": "6e77858a32e2309ab4151cdde7362eb83cb2b2b82123498391961eb8f1d16090",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Two full 16 MiB allocation-threshold rounds; collection waits for the next preparation and the threshold does not scale",
+    "Explicit smaller budgets remain authoritative and assignment itself does not collect",
+    "Independent payload/charge pairs 0/8, 1/16, 7/16, 8/16, 9/24, 15/24 and 16/24 sum to 128",
+    "Oversized size facts and malformed arguments do not allocate or change accumulated charge",
+    "Detachment and release do not refund work; a repeated detached release fails",
+    "Exact tracing failure identity, unchanged allocation count and pressure on failure, and pre-reset charge observed during successful tracing",
+    "Collecting and nested geometry callbacks preserve construction roots and add to the current post-callback total",
+    "Restored geometry takes effect immediately; callback results are not cached",
+    "Subprocess aborts with the exact GC counter-overflow diagnostic under nested maximum immediate charges"
+  ],
+  "representation_adjustments": [
+    "The detachment operation takes the Oop rather than a numeric object address",
+    "Maximum immediate size Oops replace unboxed native Word values; nested charges still force native counter overflow",
+    "Diagnostics name the GC owner rather than the former Id-owned collector"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native targets and compiler groups remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Full latest cold qualification is incomplete"
+  ]
+}
