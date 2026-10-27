@@ -1,0 +1,94 @@
+{
+  "passed": true,
+  "scope": "Complete Host interaction group for the current cold a3eaa227 candidate",
+  "candidate_revision": "a3eaa2272e5021f20fbe53cd73c62f8908788b40",
+  "prefix": "/private/tmp/birnam-oop-language-6u04vc65/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/socket-owner-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.DJF6DE/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:socket-owner-test.py",
+      "started_unix_ns": 1793131368238431000,
+      "status": "passed",
+      "wall_ns": 249874553417
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/repl-owner-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.DJF6DE/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:repl-owner-test.py",
+      "started_unix_ns": 1793131618148138000,
+      "status": "passed",
+      "wall_ns": 274095981166
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-language-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "interaction:host-lib:startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+      "started_unix_ns": 1793131892273482000,
+      "status": "passed",
+      "wall_ns": 31928665166
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/interaction-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.DJF6DE/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:interaction-cli-test.py",
+      "started_unix_ns": 1793131924239067000,
+      "status": "passed",
+      "wall_ns": 948471800666
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/repl-golden.sh"
+      ],
+      "exit_code": 0,
+      "label": "interaction:repl-golden.sh",
+      "started_unix_ns": 1793132872774784000,
+      "status": "passed",
+      "wall_ns": 1091443832334
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/lsp-project-smoke.sh"
+      ],
+      "exit_code": 0,
+      "label": "interaction:lsp-project-smoke.sh",
+      "started_unix_ns": 1793133964314883000,
+      "status": "passed",
+      "wall_ns": 25147250084
+    }
+  ],
+  "log": ".cargo-target/oop-language-qualification/interaction.log",
+  "log_sha256": "9c246b1f4694c17d3998ae11503e9083be3be001437231ecb6b174cb1d9e09d2",
+  "timings_sha256": "a2ea934c3a3d78a5d55d8d4d5f9b200b9be26ce1c8307af2886f3efbd291513e",
+  "prepared_test_binaries_manifest": ".cargo-target/oop-language-qualification/test-binaries/manifest.json",
+  "prepared_test_binaries_manifest_sha256": "a9d066b1c25c228848f89a4cf964074dc3e82fc27e0869d322c9f626a6e4a859",
+  "runtime_changes": false,
+  "remaining": [
+    "Complete tasks, CLI and image Host groups",
+    "Complete native image resave stability checks",
+    "Remaining native/compiler harnesses and contract decisions"
+  ]
+}

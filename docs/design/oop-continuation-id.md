@@ -2732,3 +2732,11 @@ Reflect, Symbol hashing and allocation-permission forwarding retain their live,
 collecting owner checks. Symbol hashing now observes the current `nameHash`
 operation rather than the removed raw byte-carrier query. All checks pass without
 runtime or Id changes. [Receipt](../measurements/collection-inputs-oop-20261027.json).
+
+## Current cold interaction qualification
+
+All six Host interaction checks pass on the current cold a3eaa227 candidate:
+socket and REPL ownership, installed startup without compilation/parsing,
+interactive CLI behavior, REPL golden cases and LSP project behavior. Tasks, CLI
+and image groups remain separate ongoing qualification work.
+[Receipt](../measurements/language-interaction-oop-20261027.json).
