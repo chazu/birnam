@@ -260,11 +260,6 @@ unsafe fn register_descriptor(
     unsafe {
         let q = s.scope(&[step, owner]);
         let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
-        // Implementation-slot adapters have a separate constructor contract;
-        // this registration must not silently discard that binding.
-        if binding.implementation_slot.is_some() {
-            return Err(invalid());
-        }
         let (context_vt, template) = {
             let r = s.resume.borrow();
             (r.context_vt, r.template)
@@ -280,7 +275,13 @@ unsafe fn register_descriptor(
             binding.receiver_slot,
             binding.argument_start,
         );
-        semantic.receiver_capture_offset_words = 1;
+        if binding.implementation_slot.is_some() {
+            // The existing constructor uses its owner as the adapter's initial
+            // implementation. Execution alone interprets the descriptor slot.
+            semantic = semantic.with_implementation_anchor(owner);
+        } else {
+            semantic.receiver_capture_offset_words = 1;
+        }
         let mut engine = s.engine.borrow_mut();
         let capability = checked(engine.register_resumable(OWNER, semantic))?;
         let lease = checked(engine.publish_owned(capability))?;
@@ -1076,17 +1077,16 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                 .ok_or_else(invalid)?;
             let capability = cap(s, site.machine)?;
             q.keep(site.machine);
-            if args.len()
-                != record
+            let exact_arity = args.len()
+                == record
                     .descriptor
                     .v2_entry_binding()
                     .ok_or_else(invalid)?
-                    .argument_count
-            {
-                return Err(invalid());
-            }
+                    .argument_count;
             let acquired = acquire_entry(s, &record)?;
-            if !site.tail {
+            // Ordinary Method entry uses the same argument binding as direct
+            // invocation. Only the optional candidate needs the exact shape.
+            if !site.tail && exact_arity {
                 if let Some(inline) = record.inline {
                     if recovery::try_inline(s, &site, capability, acquired, inline, r, args)? {
                         // Recovery may have installed the child frame already.

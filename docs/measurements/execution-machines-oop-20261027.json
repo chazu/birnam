@@ -1,0 +1,78 @@
+{
+  "passed": true,
+  "scope": "Production Machine registration, normal/tail calls, scheduling, control and frame/code lifetime through Oops",
+  "base_revision": "7293baaa3f1a1b328105b23178fdb88c8aba35b8",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/machine-entry-if04wt_2/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/resumable_runtime.rs": "d2485bfa542cde853a87daa53b9b756dd4e76aacc3870a4c6bd596ea3f6b87cf",
+    "rust/birnam-siphon/tests/execution_machines.rs": "23e55cb1f0ddf7492664b6b29174193e7f8bbbae1f00a9e7291d5b56ef8621cd",
+    "rust/birnam-siphon/tests/execution_candidates.rs": "8852a0a752ecd52a51e04d7113a3cef84a9acaa145d645ba2eea6389f87d4278",
+    "tests/fixtures/oop-host/execution-machines.c": "81f47fa6d252d1fc027093befaa6d1457b0ea4551356101de9050152c9a2d488",
+    "scripts/native-message-test.sh": "f6c4e9c485cbb6d6ac397f6d275a9f19edd554dbdac6497b3c6b4af91a83c148"
+  },
+  "execution_library_sha256": "0279842640aa4d2a069c15919e32a62dd76fb1cd7577d78d32f0489bda33aec5",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/machine-registration-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/machine-registration-unit.log",
+      "sha256": "47d9a282c6aa0ba732ba35abef842c2381ed758559940e9c917878cfedeea95e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/machine-registration-acceptance.log",
+      "sha256": "84169e7892ae6b7f22bf2003b6eadd0546c25be8727736dbeeb2554f372ce6d7",
+      "exit": 0
+    }
+  ],
+  "execution_unit_tests": 26,
+  "native_targets": [
+    "execution_machines",
+    "execution_methods",
+    "block_arity",
+    "frame_views",
+    "pending_call_recovery",
+    "compiler_source",
+    "native_boundaries",
+    "method_binding"
+  ],
+  "regressions": [
+    {
+      "before": "Existing fromStep constructor rejected canonical descriptors containing an implementation slot",
+      "after": "Existing owner initializes the implementation slot through Execution-owned registration metadata"
+    },
+    {
+      "before": "Pending calls rejected argument counts accepted by direct invocation of the same ordinary Method",
+      "after": "Direct, normal and tail calls share existing frame argument binding; optional inline candidates require exact arity before entry"
+    }
+  ],
+  "retained_checks": [
+    "Control replacement survives repeated Execution initialization and new Machines",
+    "Descriptor-driven native steps, Block captures, collecting callbacks and current normal/tail selection",
+    "Independent Machine budgets, live and stale frame views, suspension and single delivery",
+    "Protected runnable boundary exit and native callback control barriers",
+    "Machine construction refuses during GC tracing",
+    "One-shot continuation restoration and wrong-Machine rejection without consuming the continuation",
+    "Shallow Block clone preserves captures and exact implementation",
+    "Only paused Machine or detached continuation retains executable and owner; completion/consumption releases references",
+    "Missing arguments become nil and extra arguments are unused for ordinary Methods; mismatched arity bypasses inline candidates",
+    "Strict Block and explicit native arity, pending recovery, compiler behavior and mapped/rebuilt image bindings remain valid"
+  ],
+  "representation_adjustments": [
+    "Declared Methods and Oop contexts replace native entry carriers and Rust callback pointers",
+    "Execution receives canonical descriptor bytes through String/Bytes messages",
+    "Allocation identities replace queries on freed objects",
+    "Pending native optimization and older recovery groups remain in execution_candidates and remain part of the full native gate"
+  ],
+  "id_changes": false,
+  "new_public_operations": false,
+  "foreign_payload_access": false,
+  "remaining": [
+    "Native optimization/recovery groups and other native targets remain unported",
+    "Compiler optimization producers remain pending, including the unanswered alias-return scope question",
+    "A fresh cold candidate must qualify these and the preceding lifetime fixes"
+  ]
+}

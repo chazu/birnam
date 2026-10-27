@@ -2242,3 +2242,37 @@ advanced to interaction; tasks, CLI and image groups remain queued. This candida
 includes call preparation and the earlier loader/emitter/GC fixes, but predates the
 Method clone and initializer-result lifetime corrections above.
 [Receipt](../measurements/latest-generation-oop-20261027.json).
+
+## Machine registration and ordinary Method argument binding
+
+The production `execution_machines` scheduling/control/lifetime checks now use
+Oops and declared native steps. The older native optimization and recovery groups
+remain in `execution_candidates`, still included by the native gate; moving these
+checks does not qualify or retire those pending consumers.
+
+The migration exposed two missing Execution cases. First, registration rejected
+canonical descriptors with an implementation slot. The existing four-argument
+constructor previously used its supplied owner as that slot's initial value.
+Registration now supplies that value through the existing internal registration
+field. Execution interprets the descriptor and initializes its own frame; no
+foreign payload access or new Id operation is involved.
+
+Second, pending calls rejected argument counts that direct Method invocation
+already accepted. Both paths now use the established frame binding: missing
+ordinary Method arguments become nil and extra arguments are unused. Optional
+inline candidates still require the exact shape before entry. Block value methods
+and explicit native signatures retain their own arity requirements.
+
+The migrated checks cover normal/tail calls after replacement, collecting native
+callbacks, independent Machine budgets and live/stale views, suspension, protected
+exits, native control barriers, construction refusal during GC, one-shot and
+wrong-Machine continuation restoration, shallow Block cloning, and the lifetime
+of paused and detached frames. Allocation identities replace freed-object queries.
+Additional checks compare direct/normal/tail argument binding and verify that an
+arity mismatch uses the ordinary body without entering an inline candidate.
+
+The core Oop gate, 26 Execution unit tests and eight native suites pass, including
+Block/native arity, pending recovery, compiler behavior and mapped/rebuilt Method
+bindings. Id and public operation sets are unchanged. Cold qualification of these
+corrections and the previous lifetime fixes remains outstanding.
+[Receipt](../measurements/execution-machines-oop-20261027.json).

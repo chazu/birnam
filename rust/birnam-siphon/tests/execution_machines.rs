@@ -1,661 +1,475 @@
-//! Production counterpart of retained scheduling/lifetime mechanics probes.
-#[path = "execution_machines/native_tier.rs"]
-mod native_tier;
-#[path = "execution_machines/recovery.rs"]
-mod recovery;
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
+//! Production Machine scheduling, control and lifetime through Oop messages.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 use birnam_artifact_codec::stackless_selection::{
     self as selection, Disposition, ImplementationKind, RootKind, SelectionSpec,
 };
-use core::{ffi::c_void, ptr};
-use std::{cell::Cell, os::unix::ffi::OsStrExt};
-use support::*;
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
+use birnam_host_support::{Context, Scope};
+use std::{cell::RefCell, path::Path, ptr};
+
+struct H<'a> {
+    host: &'a Context,
+    _floor: Scope<'a>,
+    fixture: Oop,
+    monitor: Oop,
     gc: Oop,
-    tokens: Vec<usize>,
+    retain: Oop,
+    release: Oop,
+    tokens: RefCell<Vec<Oop>>,
 }
-impl H {
-    unsafe fn new() -> Self {
-        unsafe {
-            let id = id();
-            let ns = load(
-                id,
-                "bootstrap",
-                &[Operand::bytes(directory().as_os_str().as_bytes())],
-            );
-            let named = |name: &[u8]| {
-                object(send(
-                    id,
-                    ns,
-                    b"at:",
-                    &[Operand::object(id.intern_name(name).unwrap())],
-                ))
-            };
-            Self {
-                id,
-                ns,
-                roots: named(b"Roots"),
-                gc: named(b"GC"),
-                tokens: vec![],
-            }
+impl<'a> H<'a> {
+    fn new(host: &'a Context) -> Self {
+        let q = host.scope();
+        let gc = host.named(b"GC").unwrap();
+        q.call(gc, b"precisePayloads:", &[size(1).unwrap()])
+            .unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "birnam-execution-machines-{}.dylib",
+            std::process::id()
+        ));
+        assert!(
+            std::process::Command::new("clang")
+                .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+                .arg(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../tests/fixtures/oop-host/execution-machines.c")
+                )
+                .arg("-o")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let fixture = host.load_native(&q, &path, &[]).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let monitor = q
+            .call(host.named(b"Object").unwrap(), b"clone", &[])
+            .unwrap();
+        let vt = q
+            .call(host.id.root, b"ensurePrivateVtableFor:", &[monitor])
+            .unwrap();
+        let retain = q.keep(host.intern(b"retain:").unwrap()).unwrap();
+        let release = q.keep(host.intern(b"release:").unwrap()).unwrap();
+        let h = Self {
+            host,
+            _floor: q,
+            fixture,
+            monitor,
+            gc,
+            retain,
+            release,
+            tokens: RefCell::new(vec![]),
+        };
+        for n in [b"present".as_slice(), b"allocation:bytes:identity:"] {
+            h.bind(vt, n, h.native(n, ptr::null_mut()));
         }
+        h
     }
-    unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name).unwrap())],
-            ))
-        }
+    fn named(&self, n: &[u8]) -> Oop {
+        self.host.named(n).unwrap()
     }
-    unsafe fn keep(&mut self, v: Oop) -> Oop {
-        self.tokens.push(unsafe { retain(self.id, self.roots, v) });
+    fn keep(&self, v: Oop) -> Oop {
+        self.tokens
+            .borrow_mut()
+            .push(unsafe { self.host.id.send(self.host.roots, self.retain, &[v]) }.unwrap());
         v
     }
-    unsafe fn integer(&self, i: usize) -> Operand {
-        unsafe {
-            send(
-                self.id,
-                self.named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(i)],
-            )
+    fn key(&self, n: &[u8]) -> Oop {
+        self.keep(self.host.intern(n).unwrap())
+    }
+    fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
+        self.keep(self.host.send(r, n, a).unwrap())
+    }
+    fn context(&self, a: &[Oop]) -> Oop {
+        self.call(self.host.id.root, b"sequence", a)
+    }
+    fn native(&self, n: &[u8], c: Oop) -> Oop {
+        let method = self.call(self.fixture, b"methodAt:", &[self.key(n)]);
+        self.call(method, b"withContext:", &[c])
+    }
+    fn object(&self) -> Oop {
+        self.call(self.named(b"Object"), b"clone", &[])
+    }
+    fn vt(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"behaviorOf:", &[v])
+    }
+    fn private_vt(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"ensurePrivateVtableFor:", &[v])
+    }
+    fn bind(&self, vt: Oop, n: &[u8], m: Oop) {
+        self.call(vt, b"addMethod", &[self.key(n), m]);
+    }
+    fn remove(&self, vt: Oop, n: &[u8]) {
+        self.call(vt, b"removeMethod:", &[self.key(n)]);
+    }
+    fn put(&self, c: Oop, i: usize, v: Oop) {
+        self.call(c, b"at:put:", &[size(i).unwrap(), v]);
+    }
+    fn count(&self, c: Oop, i: usize) -> usize {
+        as_size(self.call(c, b"at:", &[size(i).unwrap()])).unwrap()
+    }
+    fn integer(&self, i: usize) -> Oop {
+        self.call(self.named(b"Integer"), b"fromWord:", &[size(i).unwrap()])
+    }
+    fn number(&self, v: Oop) -> usize {
+        self.host
+            .scope()
+            .word_bits(self.call(self.named(b"Integer"), b"wordOf:", &[v]))
+            .unwrap()
+    }
+    fn vector(&self, values: &[Oop]) -> Oop {
+        let mut v = self.call(self.named(b"Vector"), b"new", &[]);
+        for &value in values {
+            v = self.call(v, b"add:", &[value]);
         }
+        v
     }
-    unsafe fn value(&self, v: Operand) -> usize {
-        unsafe {
-            send(self.id, self.named(b"Integer"), b"wordOf:", &[v])
-                .as_word()
-                .unwrap()
-        }
+    fn method(&self, fixture: &str, mode: usize, owner: Oop) -> Oop {
+        let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../tests/fixtures/stackless-s2/frame-descriptor-{fixture}.bin"
+        )))
+        .unwrap();
+        let directory = 64 + 8 * 32;
+        let offset =
+            u64::from_le_bytes(bytes[directory + 16..directory + 24].try_into().unwrap()) as usize;
+        let revision = bytes[offset..offset + 32].try_into().unwrap();
+        let spec = SelectionSpec {
+            source_revision: revision,
+            root_kind: RootKind::MethodOperation,
+            root_index: 0,
+            path: if fixture == "source-map-block" {
+                &[2, 1]
+            } else {
+                &[]
+            },
+            implementation_kind: if fixture == "source-map-block" {
+                ImplementationKind::BlockBody
+            } else {
+                ImplementationKind::NamedAdapter
+            },
+            disposition: Disposition::ResumableRequired,
+        };
+        let selected = selection::encode_artifact_selection(&[revision], &[spec]).unwrap();
+        let context = self.context(&[self.host.namespace, size(mode).unwrap()]);
+        let step = self.native(b"step", context);
+        let q = self.host.scope();
+        let description = q.string(&bytes).unwrap();
+        let selected = q.string(&selected).unwrap();
+        self.call(
+            self.named(b"Execution"),
+            b"fromStep:descriptor:selection:owner:",
+            &[step, description, selected, owner],
+        )
     }
-    unsafe fn vector(&mut self, values: &[Oop]) -> Oop {
-        unsafe {
-            let mut v = object(send(self.id, self.named(b"Vector"), b"new", &[]));
-            self.keep(v);
-            for &value in values {
-                v = object(send(self.id, v, b"add:", &[Operand::object(value)]));
-                self.keep(v);
-            }
-            v
-        }
+    fn machine(&self) -> Oop {
+        self.call(self.named(b"Machine"), b"new", &[])
     }
-    unsafe fn method(&mut self, fixture: &str, mode: usize, owner: Oop) -> Oop {
-        unsafe {
-            let bytes = std::fs::read(format!(
-                "{}/../../tests/fixtures/stackless-s2/frame-descriptor-{fixture}.bin",
-                env!("CARGO_MANIFEST_DIR")
-            ))
-            .unwrap();
-            let directory = 64 + 8 * 32;
-            let offset =
-                u64::from_le_bytes(bytes[directory + 16..directory + 24].try_into().unwrap())
-                    as usize;
-            let revision = bytes[offset..offset + 32].try_into().unwrap();
-            let spec = SelectionSpec {
-                source_revision: revision,
-                root_kind: RootKind::MethodOperation,
-                root_index: 0,
-                path: if fixture == "source-map-block" {
-                    &[2, 1]
-                } else {
-                    &[]
-                },
-                implementation_kind: if fixture == "source-map-block" {
-                    ImplementationKind::BlockBody
-                } else {
-                    ImplementationKind::NamedAdapter
-                },
-                disposition: Disposition::ResumableRequired,
-            };
-            let selection = selection::encode_artifact_selection(&[revision], &[spec]).unwrap();
-            let method = load(
-                self.id,
-                "execution_machine_fixture",
-                &[
-                    Operand::object(self.ns),
-                    Operand::bytes(&bytes),
-                    Operand::bytes(&selection),
-                    Operand::object(owner),
-                    Operand::word(mode),
-                ],
-            );
-            self.keep(method)
-        }
+    fn block(&self, method: Oop, captures: &[Oop]) -> Oop {
+        self.call(
+            self.named(b"Block"),
+            b"fromMethod:captures:",
+            &[method, self.vector(captures)],
+        )
     }
-    unsafe fn machine(&mut self) -> Oop {
-        unsafe {
-            let m = object(send(self.id, self.named(b"Machine"), b"new", &[]));
-            self.keep(m)
-        }
+    fn invoke(&self, method: Oop, receiver: Oop) -> Oop {
+        self.call(method, b"invokeOn:", &[receiver])
     }
-    unsafe fn block(&mut self, method: Oop, captures: &[Oop]) -> Oop {
-        unsafe {
-            let values = self.vector(captures);
-            let v = object(send(
-                self.id,
-                self.named(b"Block"),
-                b"fromMethod:captures:",
-                &[Operand::object(method), Operand::object(values)],
-            ));
-            self.keep(v)
-        }
+    fn collect(&self) {
+        self.call(self.gc, b"collectPrecisely", &[]);
     }
-    unsafe fn invoke(&self, method: Oop, receiver: Oop) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                method,
-                b"invokeOn:",
-                &[Operand::object(receiver)],
-            ))
-        }
+    fn identity(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"identityOf:", &[v])
     }
-    unsafe fn bind(&self, behavior: Oop, selector: Oop, method: Oop) {
-        unsafe {
-            send(
-                self.id,
-                behavior,
-                b"addMethod:as:",
-                &[Operand::object(method), Operand::object(selector)],
-            );
-        }
+    fn present(&self, id: Oop) -> bool {
+        as_size(self.call(self.monitor, b"present", &[id])).unwrap() == 1
     }
-    unsafe fn release_all(&mut self) {
-        for token in self.tokens.drain(..) {
-            unsafe { release(self.id, self.roots, token) }
-        }
-    }
-}
-struct Callback {
-    id: Protocol,
-    gc: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn callback(c: *mut c_void, _: Oop, args: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Callback>();
-        let args = borrowed_slice(args, n).unwrap();
-        collect(c.id, c.gc);
-        c.calls.set(c.calls.get() + 1);
-        Outcome::loaded(args[0])
-    }
-}
-struct NativeBoundary {
-    id: Protocol,
-    gc: Oop,
-    park: Cell<bool>,
-    rejected: Cell<bool>,
-}
-unsafe extern "C" fn native_boundary(
-    c: *mut c_void,
-    r: Oop,
-    _: *const Operand,
-    _: usize,
-) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<NativeBoundary>();
-        collect(c.id, c.gc);
-        if c.park.get() {
-            let result = c.id.send_named(r, b"park", &[]);
-            c.rejected.set(result.is_err());
-            result.map_or_else(|e| e, Outcome::loaded)
-        } else {
-            Outcome::loaded(send(c.id, r, b"controlEligible", &[]))
+    fn clear(&self) {
+        for token in self.tokens.take().into_iter().rev() {
+            unsafe { self.host.id.send(self.host.roots, self.release, &[token]) }.unwrap();
         }
     }
 }
-struct DuringTrace {
-    id: Protocol,
-    machine: Oop,
-    rejected: Cell<bool>,
-}
-unsafe extern "C" fn during_trace(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<DuringTrace>();
-        c.rejected
-            .set(c.id.send_named(c.machine, b"new", &[]).is_err());
-        Outcome::loaded(Operand::unit())
+impl Drop for H<'_> {
+    fn drop(&mut self) {
+        self.clear();
     }
-}
-unsafe extern "C" fn control_replacement(
-    _: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
-    _: usize,
-) -> Outcome {
-    Outcome::loaded(Operand::object(receiver))
 }
 
-// Repeated Execution loading and new Machines must preserve intentionally
-// replaced adapters. There is no separate preparation phase.
-unsafe fn control_replacements(h: &mut H) {
-    unsafe {
-        let machine = h.machine();
-        let behavior = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(machine)],
-        ));
-        for name in [b"park".as_slice(), b"protectedBlock:"] {
-            let selector = h.id.intern_name(name).unwrap();
-            h.keep(selector);
-            let prior = send(
-                h.id,
-                h.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(selector), Operand::object(behavior)],
-            );
-            // Capture the Method, retaining its registered implementation while
-            // its original dictionary binding is absent.
-            let method = object(send(
-                h.id,
-                machine,
-                b"methodFor:",
-                &[Operand::object(selector)],
-            ));
-            h.keep(method);
-            install(h.id, behavior, name, control_replacement, ptr::null_mut());
-            for _ in 0..2 {
-                load(h.id, "execution", &[Operand::object(h.ns)]);
-                let other = h.machine();
-                collect(h.id, h.gc);
-                let current = send(
-                    h.id,
-                    h.id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(selector), Operand::object(behavior)],
+fn control_replacements(h: &H<'_>) {
+    let machine = h.machine();
+    let vt = h.vt(machine);
+    for name in [b"park".as_slice(), b"protectedBlock:"] {
+        let key = h.key(name);
+        let original = h.call(vt, b"lookup", &[key]);
+        let captured = h.call(machine, b"methodFor:", &[key]);
+        assert_ne!(captured, h.named(b"nil"));
+        let replacement = h.native(b"self", ptr::null_mut());
+        h.bind(vt, name, replacement);
+        for _ in 0..2 {
+            let q = h.host.scope();
+            h.host
+                .load_native(
+                    &q,
+                    &h.host.resources.lib_dir.join("libbirnam_execution.dylib"),
+                    &[h.host.namespace],
                 )
-                .as_entry()
                 .unwrap();
-                assert_eq!(
-                    current.method.unwrap() as usize,
-                    control_replacement as *const () as usize
-                );
-                let arguments = if name == b"park" { vec![] } else {
-                    vec![Operand::object(h.named(b"nil"))]
-                };
-                assert_eq!(object(send(h.id, other, name, &arguments)), other);
-                assert_eq!(h.value(send(h.id, other, b"liveFrameCount", &[])), 0);
-            }
-            send(
-                h.id,
-                behavior,
-                b"addMethod",
-                &[Operand::object(selector), prior],
-            );
+            let other = h.machine();
+            h.collect();
+            assert_eq!(h.call(vt, b"lookup", &[key]), replacement);
+            let args = if name == b"park" {
+                vec![]
+            } else {
+                vec![h.named(b"nil")]
+            };
+            assert_eq!(h.call(other, name, &args), other);
+            assert_eq!(h.number(h.call(other, b"liveFrameCount", &[])), 0);
         }
+        h.bind(vt, name, original);
     }
 }
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production dylibs and executable fixture"]
+#[ignore = "requires production Oop modules"]
 fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
-    unsafe {
-        let mut h = H::new();
-        if std::env::var_os("BIRNAM_EXECUTION_NATIVE_SEED").is_some() {
-            native_tier::numeric(&mut h);
-            return;
-        }
-        let nil = h.named(b"nil");
-        recovery::check(&mut h);
-        control_replacements(&mut h);
-        native_tier::check(&mut h);
-        let owner = allocate(h.id, behavior(h.id), 0);
-        h.keep(owner);
-        let simple = h.method("minimal-return", 1, owner);
-        assert_eq!(h.invoke(simple, nil), owner);
-        let capture = allocate(h.id, behavior(h.id), 0);
-        h.keep(capture);
-        let bm = h.method("source-map-block", 6, owner);
-        let block = h.block(bm, &[capture]);
-        assert_eq!(object(send(h.id, block, b"value", &[])), capture);
-        let machine = h.machine();
-        assert_eq!(
-            object(send(h.id, machine, b"runBlock:", &[Operand::object(block)])),
-            capture
-        );
-        assert_eq!(h.value(send(h.id, machine, b"liveFrameCount", &[])), 0);
+    let host = oop::bootstrap();
+    let h = H::new(&host);
+    control_replacements(&h);
+    let nil = h.named(b"nil");
+    let owner = h.object();
+    let simple = h.method("minimal-return", 1, owner);
+    assert_eq!(h.invoke(simple, nil), owner);
+    let capture = h.object();
+    let bm = h.method("source-map-block", 6, owner);
+    let block = h.block(bm, &[capture]);
+    assert_eq!(h.call(block, b"value", &[]), capture);
+    let machine = h.machine();
+    assert_eq!(h.call(machine, b"runBlock:", &[block]), capture);
+    assert_eq!(h.number(h.call(machine, b"liveFrameCount", &[])), 0);
 
-        // A native callback forces precise collection after call operands have been
-        // copied from the suspended caller. A subsequent send sees replacement.
-        let behavior = behavior(h.id);
-        h.keep(behavior);
-        let receiver = allocate(h.id, behavior, 0);
-        h.keep(receiver);
-        let selector = h.id.intern_name(b"machineAnswer:").unwrap();
-        h.keep(selector);
-        let argument = allocate(h.id, behavior, 0);
-        h.keep(argument);
-        let c = Box::leak(Box::new(Callback {
-            id: h.id,
-            gc: h.gc,
-            calls: Cell::new(0),
-        }));
-        let method = object(send(
-            h.id,
-            h.named(b"Method"),
-            b"fromNative:owner:",
-            &[
-                Operand::entry(NativeEntry::new(callback, ptr::from_mut(c).cast())),
-                Operand::object(owner),
-            ],
-        ));
-        h.keep(method);
-        h.bind(behavior, selector, method);
-        let operands = h.vector(&[receiver, selector, argument]);
-        let caller = h.method("call", 4, operands);
-        assert_eq!(h.invoke(caller, nil), argument);
-        assert_eq!(c.calls.get(), 1);
-        h.bind(behavior, selector, simple);
-        assert_eq!(h.invoke(caller, nil), owner);
-        let tail = h.method("tail-call", 7, operands);
-        assert_eq!(h.invoke(tail, nil), owner);
+    // Collection during a native call preserves copied operands; later calls
+    // observe replacement, including tail calls.
+    let receiver = h.object();
+    let vt = h.private_vt(receiver);
+    let selector = h.key(b"machineAnswer:");
+    let argument = h.object();
+    let callback = h.context(&[h.gc, size(0).unwrap()]);
+    h.bind(vt, b"machineAnswer:", h.native(b"callback", callback));
+    let operands = h.vector(&[receiver, selector, argument]);
+    let caller = h.method("call", 4, operands);
+    assert_eq!(h.invoke(caller, nil), argument);
+    assert_eq!(h.count(callback, 1), 1);
+    assert_eq!(
+        h.call(
+            simple,
+            b"invokeOn:arguments:",
+            &[receiver, h.vector(&[argument])]
+        ),
+        owner
+    );
+    h.bind(vt, b"machineAnswer:", simple);
+    assert_eq!(h.invoke(caller, nil), owner);
+    assert_eq!(h.invoke(h.method("tail-call", 7, operands), nil), owner);
+    let candidate_calls = h.context(&[h.gc, size(0).unwrap()]);
+    let candidate = h.call(
+        simple,
+        b"withInline:at:owner:",
+        &[h.native(b"callback", candidate_calls), h.integer(1), owner],
+    );
+    h.bind(vt, b"machineAnswer:", candidate);
+    assert_eq!(h.invoke(caller, nil), owner);
+    assert_eq!(
+        h.count(candidate_calls, 1),
+        0,
+        "mismatched arity uses ordinary binding before entering a candidate"
+    );
+    // Missing ordinary Method arguments bind nil on direct and pending calls.
+    let q = host.scope();
+    let code = q.string(b"[:a :b | b]").unwrap();
+    let body = h.call(h.named(b"Codegen"), b"eval:", &[code]);
+    q.check_result(body).unwrap();
+    let missing = h.call(body, b"methodFor:", &[h.key(b"value:value:")]);
+    assert_eq!(
+        h.call(
+            missing,
+            b"invokeOn:arguments:",
+            &[body, h.vector(&[argument])]
+        ),
+        nil
+    );
+    h.bind(vt, b"machineAnswer:", missing);
+    assert_eq!(h.invoke(caller, nil), nil);
+    assert_eq!(h.invoke(h.method("tail-call", 7, operands), nil), nil);
+    h.bind(vt, b"machineAnswer:", simple);
+    drop(q);
 
-        // Two independent Machines stop only at committed edges, preserve frame
-        // views while paused, and retain their own exact code owner through GC.
-        let branch = h.method("branch-join", 5, owner);
-        let branch_block = h.block(branch, &[]);
-        let a = h.machine();
-        let b = h.machine();
-        for m in [a, b] {
-            assert_eq!(
-                object(send(
-                    h.id,
-                    m,
-                    b"runBlock:budget:",
-                    &[Operand::object(branch_block), h.integer(2)]
-                )),
-                m
-            );
-        }
-        let view = object(send(h.id, a, b"currentFrameView", &[]));
-        h.keep(view);
-        assert_eq!(h.value(send(h.id, view, b"programCounter", &[])), 1);
-        collect(h.id, h.gc);
+    let branch = h.method("branch-join", 5, owner);
+    let branch_block = h.block(branch, &[]);
+    let a = h.machine();
+    let b = h.machine();
+    for m in [a, b] {
         assert_eq!(
-            object(send(h.id, a, b"continueWithBudget:", &[h.integer(1)])),
-            a
+            h.call(m, b"runBlock:budget:", &[branch_block, h.integer(2)]),
+            m
         );
-        assert_eq!(h.value(send(h.id, view, b"programCounter", &[])), 3);
-        assert_eq!(
-            object(send(h.id, b, b"continueWithBudget:", &[h.integer(20)])),
-            owner
-        );
-        assert_eq!(
-            object(send(h.id, a, b"continueWithBudget:", &[h.integer(20)])),
-            owner
-        );
-        let stale = object(send(h.id, view, b"programCounter", &[]));
-        h.keep(stale);
-        assert_eq!(
-            object(send(h.id, stale, b"kind", &[])),
-            h.id.intern_name(b"staleFrameView").unwrap()
-        );
-        assert_eq!(object(send(h.id, a, b"currentFrameView", &[])), nil);
-
-        let wait = h.method("call", 2, owner);
-        let wait_block = h.block(wait, &[]);
-        let waiting = h.machine();
-        assert_eq!(
-            object(send(
-                h.id,
-                waiting,
-                b"runBlock:",
-                &[Operand::object(wait_block)]
-            )),
-            waiting
-        );
-        assert!(
-            h.id.send_named(waiting, b"continueWithBudget:", &[h.integer(1)])
-                .is_err()
-        );
-        collect(h.id, h.gc);
-        assert_eq!(
-            object(send(
-                h.id,
-                waiting,
-                b"resumeWith:",
-                &[Operand::object(argument)]
-            )),
-            argument
-        );
-        assert!(
-            h.id.send_named(waiting, b"resumeWith:", &[Operand::object(argument)])
-                .is_err()
-        );
-
-        // A protected call leaves a native-independent boundary after its step
-        // returns. Exiting a runnable boundary discards the child and delivers once.
-        let protected_machine = h.machine();
-        let protected_selector = h.id.intern_name(b"protectedBlock:").unwrap();
-        h.keep(protected_selector);
-        let protected_owner = h.vector(&[protected_machine, protected_selector, branch_block]);
-        let protected_method = h.method("call", 4, protected_owner);
-        let protected_block = h.block(protected_method, &[]);
-        assert_eq!(
-            object(send(
-                h.id,
-                protected_machine,
-                b"runBlock:budget:",
-                &[Operand::object(protected_block), h.integer(3)]
-            )),
-            protected_machine
-        );
-        send(
-            h.id,
-            protected_machine,
-            b"exitRunnableBoundary:",
-            &[Operand::object(argument)],
-        );
-        assert_eq!(
-            object(send(
-                h.id,
-                protected_machine,
-                b"boundaryDeliveryPending",
-                &[]
-            )),
-            h.named(b"true")
-        );
-        assert_eq!(
-            object(send(
-                h.id,
-                protected_machine,
-                b"continueWithBudget:",
-                &[h.integer(20)]
-            )),
-            argument
-        );
-
-        // Native callbacks create a control barrier, including a nested registered
-        // call back into Execution. GC during the callback must preserve both frames.
-        let native_machine = h.machine();
-        let machine_behavior = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(native_machine)],
-        ));
-        let boundary = Box::leak(Box::new(NativeBoundary {
-            id: h.id,
-            gc: h.gc,
-            park: Cell::new(false),
-            rejected: Cell::new(false),
-        }));
-        install(
-            h.id,
-            machine_behavior,
-            b"value",
-            native_boundary,
-            ptr::from_mut(boundary).cast(),
-        );
-        assert_eq!(
-            object(send(
-                h.id,
-                native_machine,
-                b"runBlock:",
-                &[Operand::object(native_machine)]
-            )),
-            h.named(b"false")
-        );
-        boundary.park.set(true);
-        let blocked = h.machine();
-        assert!(
-            h.id.send_named(blocked, b"runBlock:", &[Operand::object(blocked)])
-                .is_err()
-        );
-        assert!(boundary.rejected.get());
-        send(h.id, blocked, b"destroy", &[]);
-        send(
-            h.id,
-            machine_behavior,
-            b"removeMethod:",
-            &[Operand::object(h.id.intern_name(b"value").unwrap())],
-        );
-
-        let tracer_behavior = support::behavior(h.id);
-        h.keep(tracer_behavior);
-        let tracer = allocate(h.id, tracer_behavior, 0);
-        h.keep(tracer);
-        let during = Box::leak(Box::new(DuringTrace {
-            id: h.id,
-            machine: h.named(b"Machine"),
-            rejected: Cell::new(false),
-        }));
-        install(
-            h.id,
-            tracer_behavior,
-            b"rootsDo:",
-            during_trace,
-            ptr::from_mut(during).cast(),
-        );
-        send(h.id, h.roots, b"register:", &[Operand::object(tracer)]);
-        collect(h.id, h.gc);
-        assert!(during.rejected.get());
-        send(h.id, h.roots, b"unregister:", &[Operand::object(tracer)]);
-
-        // Capturing transfers frames and their code pins into a one-shot
-        // Continuation. Wrong-machine admission must leave the segment untouched.
-        let capturer = h.method("call", 3, owner);
-        let capturing_block = h.block(capturer, &[]);
-        let source = h.machine();
-        let continuation = object(send(
-            h.id,
-            source,
-            b"runBlock:",
-            &[Operand::object(capturing_block)],
-        ));
-        h.keep(continuation);
-        collect(h.id, h.gc);
-        let destination = h.machine();
-        assert!(
-            h.id.send_named(
-                destination,
-                b"restoreContinuation:with:",
-                &[Operand::object(continuation), Operand::object(argument)]
-            )
-            .is_err()
-        );
-        assert_eq!(
-            object(send(
-                h.id,
-                source,
-                b"restoreContinuation:with:",
-                &[Operand::object(continuation), Operand::object(argument)]
-            )),
-            argument
-        );
-        assert!(
-            h.id.send_named(
-                source,
-                b"restoreContinuation:with:",
-                &[Operand::object(continuation), Operand::object(argument)]
-            )
-            .is_err()
-        );
-        // Shallow Block clone preserves its captures and exact installed entry.
-        let clone = object(send(h.id, block, b"clone", &[]));
-        h.keep(clone);
-        assert_ne!(clone, block);
-        assert_eq!(object(send(h.id, clone, b"value", &[])), capture);
-
-        // Only the paused Machine retains this installed implementation after
-        // replacement. The ordinary receiver has no hidden Method/capture fields.
-        let retained_owner = allocate(h.id, support::behavior(h.id), 0);
-        h.keep(retained_owner);
-        let retained = h.method("branch-join", 5, retained_owner);
-        let retained_behavior = support::behavior(h.id);
-        h.keep(retained_behavior);
-        let ordinary = allocate(h.id, retained_behavior, 0);
-        h.keep(ordinary);
-        let value_selector = h.id.intern_name(b"value").unwrap();
-        h.keep(value_selector);
-        h.bind(retained_behavior, value_selector, retained);
-        let only = h.machine();
-        let paused_root = retain(h.id, h.roots, only);
-        send(
-            h.id,
-            only,
-            b"runBlock:budget:",
-            &[Operand::object(ordinary), h.integer(2)],
-        );
-        h.bind(retained_behavior, value_selector, simple);
-        h.release_all();
-        collect(h.id, h.gc);
-        assert!(present(h.id, retained_owner));
-        assert!(present(h.id, retained));
-        assert_eq!(
-            object(send(h.id, only, b"continueWithBudget:", &[h.integer(10)])),
-            retained_owner
-        );
-        collect(h.id, h.gc);
-        assert!(!present(h.id, retained_owner));
-        assert!(!present(h.id, retained));
-        send(h.id, h.named(b"Execution"), b"checkpoint", &[]);
-        release(h.id, h.roots, paused_root);
-        collect(h.id, h.gc);
-
-        // A detached continuation alone roots its originating Machine, executable
-        // and code owner. Consuming it removes those frame edges.
-        let captured_owner = allocate(h.id, support::behavior(h.id), 0);
-        h.keep(captured_owner);
-        let capturing = h.method("call", 3, captured_owner);
-        let capturing_block = h.block(capturing, &[]);
-        let source = h.machine();
-        let continuation = object(send(
-            h.id,
-            source,
-            b"runBlock:",
-            &[Operand::object(capturing_block)],
-        ));
-        let continuation_root = retain(h.id, h.roots, continuation);
-        h.release_all();
-        collect(h.id, h.gc);
-        assert!(present(h.id, captured_owner));
-        assert!(present(h.id, source));
-        let supplied = h.named(b"true");
-        assert_eq!(
-            object(send(
-                h.id,
-                source,
-                b"restoreContinuation:with:",
-                &[Operand::object(continuation), Operand::object(supplied)]
-            )),
-            supplied
-        );
-        collect(h.id, h.gc);
-        assert!(!present(h.id, captured_owner));
-        release(h.id, h.roots, continuation_root);
-        collect(h.id, h.gc);
-        send(h.id, h.named(b"Execution"), b"checkpoint", &[]);
     }
+    let view = h.call(a, b"currentFrameView", &[]);
+    assert_eq!(h.number(h.call(view, b"programCounter", &[])), 1);
+    h.collect();
+    assert_eq!(h.call(a, b"continueWithBudget:", &[h.integer(1)]), a);
+    assert_eq!(h.number(h.call(view, b"programCounter", &[])), 3);
+    assert_eq!(h.call(b, b"continueWithBudget:", &[h.integer(20)]), owner);
+    assert_eq!(h.call(a, b"continueWithBudget:", &[h.integer(20)]), owner);
+    let stale = h.call(view, b"programCounter", &[]);
+    assert_eq!(h.call(stale, b"kind", &[]), h.key(b"staleFrameView"));
+    assert_eq!(h.call(a, b"currentFrameView", &[]), nil);
+
+    let wait = h.method("call", 2, owner);
+    let wait_block = h.block(wait, &[]);
+    let waiting = h.machine();
+    assert_eq!(h.call(waiting, b"runBlock:", &[wait_block]), waiting);
+    assert!(
+        host.send(waiting, b"continueWithBudget:", &[h.integer(1)])
+            .is_err()
+    );
+    h.collect();
+    assert_eq!(h.call(waiting, b"resumeWith:", &[argument]), argument);
+    assert!(host.send(waiting, b"resumeWith:", &[argument]).is_err());
+
+    let protected = h.machine();
+    let protected_owner = h.vector(&[protected, h.key(b"protectedBlock:"), branch_block]);
+    let protected_method = h.method("call", 4, protected_owner);
+    let protected_block = h.block(protected_method, &[]);
+    assert_eq!(
+        h.call(
+            protected,
+            b"runBlock:budget:",
+            &[protected_block, h.integer(3)]
+        ),
+        protected
+    );
+    h.call(protected, b"exitRunnableBoundary:", &[argument]);
+    assert_eq!(
+        h.call(protected, b"boundaryDeliveryPending", &[]),
+        h.named(b"true")
+    );
+    assert_eq!(
+        h.call(protected, b"continueWithBudget:", &[h.integer(20)]),
+        argument
+    );
+
+    let native = h.machine();
+    let mvt = h.vt(native);
+    let boundary = h.context(&[h.gc, size(0).unwrap(), size(0).unwrap()]);
+    h.bind(mvt, b"value", h.native(b"boundary", boundary));
+    assert_eq!(h.call(native, b"runBlock:", &[native]), h.named(b"false"));
+    h.put(boundary, 1, size(1).unwrap());
+    let blocked = h.machine();
+    assert!(host.send(blocked, b"runBlock:", &[blocked]).is_err());
+    assert_eq!(h.count(boundary, 2), 1);
+    h.call(blocked, b"destroy", &[]);
+    h.remove(mvt, b"value");
+
+    let tracer = h.object();
+    let tvt = h.private_vt(tracer);
+    let during = h.context(&[h.named(b"Machine"), size(0).unwrap()]);
+    h.bind(tvt, b"rootsDo:", h.native(b"rootsDo:", during));
+    h.call(host.roots, b"register:", &[tracer]);
+    h.collect();
+    assert_eq!(h.count(during, 1), 1);
+    h.call(host.roots, b"unregister:", &[tracer]);
+
+    let capturer = h.method("call", 3, owner);
+    let capturing_block = h.block(capturer, &[]);
+    let source = h.machine();
+    let continuation = h.call(source, b"runBlock:", &[capturing_block]);
+    h.collect();
+    let destination = h.machine();
+    assert!(
+        host.send(
+            destination,
+            b"restoreContinuation:with:",
+            &[continuation, argument]
+        )
+        .is_err()
+    );
+    assert_eq!(
+        h.call(
+            source,
+            b"restoreContinuation:with:",
+            &[continuation, argument]
+        ),
+        argument
+    );
+    assert!(
+        host.send(
+            source,
+            b"restoreContinuation:with:",
+            &[continuation, argument]
+        )
+        .is_err()
+    );
+    let clone = h.call(block, b"clone", &[]);
+    assert_ne!(clone, block);
+    assert_eq!(h.call(clone, b"value", &[]), capture);
+
+    // A paused Machine is the sole remaining owner after binding replacement.
+    let retained_owner = h.object();
+    let retained = h.method("branch-join", 5, retained_owner);
+    let ordinary = h.object();
+    let ovt = h.private_vt(ordinary);
+    h.bind(ovt, b"value", retained);
+    let only = h.machine();
+    let pinned = host.scope();
+    pinned.keep(only).unwrap();
+    let owner_id = h.identity(retained_owner);
+    let method_id = h.identity(retained);
+    assert_eq!(
+        h.call(only, b"runBlock:budget:", &[ordinary, h.integer(2)]),
+        only
+    );
+    h.bind(ovt, b"value", simple);
+    h.clear();
+    h.collect();
+    assert!(h.present(owner_id) && h.present(method_id));
+    assert_eq!(
+        h.call(only, b"continueWithBudget:", &[h.integer(10)]),
+        retained_owner
+    );
+    // Release the returned value before checking that completed frames release it.
+    h.clear();
+    h.collect();
+    assert!(!h.present(owner_id) && !h.present(method_id));
+    drop(pinned);
+    h.clear();
+    h.collect();
+
+    // A detached Continuation alone retains the source Machine and its frames.
+    let captured_owner = h.object();
+    let capturing = h.method("call", 3, captured_owner);
+    let block = h.block(capturing, &[]);
+    let source = h.machine();
+    let continuation = h.call(source, b"runBlock:", &[block]);
+    let owner_id = h.identity(captured_owner);
+    let source_id = h.identity(source);
+    let pin = host.scope();
+    pin.keep(continuation).unwrap();
+    h.clear();
+    h.collect();
+    assert!(h.present(owner_id) && h.present(source_id));
+    let supplied = h.named(b"true");
+    assert_eq!(
+        h.call(
+            source,
+            b"restoreContinuation:with:",
+            &[continuation, supplied]
+        ),
+        supplied
+    );
+    h.clear();
+    h.collect();
+    assert!(!h.present(owner_id));
+    drop(pin);
+    h.clear();
+    h.collect();
 }
