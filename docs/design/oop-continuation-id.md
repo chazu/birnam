@@ -2749,3 +2749,13 @@ failure while inspecting the left operand wins before the right operand is
 inspected, including heap, immediate, null and missing inputs. The test passes
 without runtime or Id changes.
 [Receipt](../measurements/word-order-oop-20261027.json).
+
+## Capture access without unrelated name services
+
+The capture-dependency harness now checks an actual compiled closure and its
+captured marker through `captureAt:` and invocation. Both continue to return the
+same marker while Name lookup and interning are replaced with verified failing
+Methods; neither replacement is entered. The old raw capture-carrier query is
+also required to remain absent. No borrowed-pointer adapter or new protocol was
+introduced. The harness passes without runtime or Id changes.
+[Receipt](../measurements/capture-dependencies-oop-20261027.json).

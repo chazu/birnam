@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "scope": "Compiled capture access and invocation are independent of unrelated name services",
+  "base_revision": "92be092ddd8fd525a59f06cd85205cd6d03d1f04",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/capture_dependencies.rs": "cc4b8171a187804007108fd0f704aac960abb5770c1bef3ac3ee416e2a16059e"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/capture-dependencies-oop.log",
+      "sha256": "61fa414870b3c14ea40ac69cc925e8e6440beb223c583c89e9822b7a068df446",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "A real captured marker is returned by both captureAt: and compiled invocation",
+    "Both Name intern and existingSymbol replacements are verified to fail",
+    "Capture access and compiled invocation invoke neither replaced name service",
+    "Removed tryBorrowCaptureOperands: remains absent"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "migration_note": "The raw borrowed-pointer result has no place in the Oop-only interface. The test checks actual compiled capture access/invocation using existing owner messages and guards against restoring the old carrier query."
+}
