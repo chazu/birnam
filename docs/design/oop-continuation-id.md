@@ -1945,3 +1945,12 @@ the automatic compiler optimization versus investigating another implementation.
 Explicit inline candidates and recovery remain supported. The five-group pending
 count is unchanged until that decision is made.
 [Evidence](../measurements/inline-return-rejected-oop-20261027.json).
+
+## Cold candidate interaction acceptance
+
+All six installed Host interaction checks passed on cold revision `9f638b73`:
+Socket and REPL owners, parser/compiler-free published startup, interactive CLI
+and project sessions, REPL goldens including mapped images and Alien wrappers,
+and project LSP behavior. The task, CLI and image groups remain in the serial
+queue. This receipt predates the later native-loader and standalone-emitter fixes.
+[Receipt](../measurements/current-interaction-oop-20261027.json).
