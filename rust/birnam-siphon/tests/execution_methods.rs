@@ -1,648 +1,380 @@
-//! Owned callable behavior over the actual Id/Bootstrap/GC production owners.
-//! These tests intentionally do not claim Machine or compiled-unit acceptance.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-    ptr,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
+//! Declared Method lifetime, explicit invocation and current custom lookup.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use birnam_host_support::{Context, Scope};
+use std::{path::Path, ptr};
 
-struct Harness {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
+struct H<'a> {
+    host: &'a Context,
+    floor: Scope<'a>,
+    fixture: Oop,
+    monitor: Oop,
     gc: Oop,
 }
-impl Harness {
-    unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name).unwrap())],
-            ))
-        }
+impl<'a> H<'a> {
+    fn key(&self, n: &[u8]) -> Oop {
+        self.host.intern(n).unwrap()
     }
-    unsafe fn owned(&self, entry: NativeEntry, owner: Oop) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.named(b"Method"),
-                b"fromNative:owner:",
-                &[Operand::entry(entry), Operand::object(owner)],
-            ))
-        }
+    fn named(&self, n: &[u8]) -> Oop {
+        self.host.named(n).unwrap()
     }
-    unsafe fn bind(&self, behavior: Oop, selector: Oop, method: Oop) {
-        unsafe {
-            send(
-                self.id,
-                behavior,
-                b"addMethod:as:",
-                &[Operand::object(method), Operand::object(selector)],
-            );
-        }
+    // The caller chooses the lifetime of returned objects explicitly.
+    fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
+        self.host.send(r, n, a).unwrap()
     }
-    unsafe fn remove(&self, behavior: Oop, selector: Oop) {
-        unsafe {
-            send(
-                self.id,
-                behavior,
-                b"removeMethod:",
-                &[Operand::object(selector)],
-            );
-        }
+    fn method(&self, q: &Scope<'_>, n: &[u8], c: Oop) -> Oop {
+        let template = q.call(self.fixture, b"methodAt:", &[self.key(n)]).unwrap();
+        q.call(template, b"withContext:", &[c]).unwrap()
     }
-    unsafe fn keep(&self, value: Oop) -> usize {
-        unsafe { retain(self.id, self.roots, value) }
+    fn context(&self, q: &Scope<'_>, a: &[Oop]) -> Oop {
+        q.call(self.host.id.root, b"sequence", a).unwrap()
     }
-    unsafe fn release(&self, token: usize) {
-        unsafe {
-            release(self.id, self.roots, token);
-        }
+    fn object(&self, q: &Scope<'_>) -> Oop {
+        q.call(self.named(b"Object"), b"clone", &[]).unwrap()
     }
-    unsafe fn gc(&self) {
-        unsafe {
-            collect(self.id, self.gc);
-        }
+    fn vt(&self, q: &Scope<'_>, v: Oop) -> Oop {
+        q.call(self.host.id.root, b"ensurePrivateVtableFor:", &[v])
+            .unwrap()
     }
-}
-struct Context {
-    h: *const Harness,
-    owner: Oop,
-    behavior: Oop,
-    selector: Oop,
-    replace: Cell<bool>,
-    calls: Cell<usize>,
-    finalized: Cell<usize>,
-}
-unsafe extern "C" fn finalize(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Context>();
-        let [value] = borrowed_slice(a, n).unwrap() else {
-            panic!("finalizer shape");
-        };
-        assert_eq!(value.as_object(), Some(c.owner));
-        c.finalized.set(c.finalized.get() + 1);
-        Outcome::loaded(Operand::unit())
+    fn bind(&self, vt: Oop, n: &[u8], m: Oop) {
+        self.call(vt, b"addMethod", &[self.key(n), m]);
     }
-}
-unsafe extern "C" fn receiver(_: *mut c_void, r: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(r))
-}
-unsafe extern "C" fn native_result(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    match unsafe { &*c.cast::<Cell<usize>>() }.get() {
-        0 => Outcome::loaded(Operand::unit()),
-        1 => Outcome::loaded(Operand::word(123)),
-        2 => Outcome::failed(native::INVALID_REQUEST, 17),
-        _ => Outcome::failed(native::MAPPING_FAILED, 18),
+    fn remove(&self, vt: Oop, n: &[u8]) {
+        self.call(vt, b"removeMethod:", &[self.key(n)]);
     }
-}
-unsafe extern "C" fn answer(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Context>();
-        let h = &*c.h;
-        if c.replace.replace(false) {
-            // Native replacement bypasses addMethod:as:. The active invocation
-            // must retain the old callable independently of its former binding.
-            send(
-                h.id,
-                c.behavior,
-                b"addMethod",
-                &[
-                    Operand::object(c.selector),
-                    Operand::entry(NativeEntry::new(receiver, ptr::null_mut())),
-                ],
-            );
-        }
-        h.gc();
-        assert!(present(h.id, c.owner));
-        assert_eq!(c.finalized.get(), 0);
-        c.calls.set(c.calls.get() + 1);
-        let args = borrowed_slice(a, n).unwrap();
-        for arg in args {
-            assert!(present(h.id, object(*arg)));
-        }
-        Outcome::loaded(args.last().copied().unwrap_or(Operand::object(c.owner)))
+    fn put(&self, c: Oop, i: usize, v: Oop) {
+        self.call(c, b"at:put:", &[size(i).unwrap(), v]);
     }
-}
-struct Sequence {
-    h: *const Harness,
-    returned: RefCell<Vec<Oop>>,
-    fail: Cell<bool>,
-}
-unsafe extern "C" fn size(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe {
-        let s = &*c.cast::<Sequence>();
-        let h = &*s.h;
-        Outcome::loaded(send(
-            h.id,
-            h.named(b"Integer"),
-            b"fromWord:",
-            &[Operand::word(3)],
-        ))
+    fn field(&self, c: Oop, i: usize) -> Oop {
+        self.call(c, b"at:", &[size(i).unwrap()])
     }
-}
-unsafe extern "C" fn at(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let s = &*c.cast::<Sequence>();
-        let h = &*s.h;
-        h.gc();
-        for &v in s.returned.borrow().iter() {
-            assert!(present(h.id, v), "prior argument lost across at:");
-        }
-        let [index] = borrowed_slice(a, n).unwrap() else {
-            panic!("at shape");
-        };
-        let index = send(h.id, object(*index), b"word", &[]).as_word().unwrap();
-        if s.fail.get() && index == 2 {
-            return Outcome::failed(native::INVALID_REQUEST, 91);
-        }
-        let value = object(send(
-            h.id,
-            h.named(b"Integer"),
-            b"fromWord:",
-            &[Operand::word(100 + index)],
-        ));
-        s.returned.borrow_mut().push(value);
-        Outcome::loaded(Operand::object(value))
+    fn identity(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"identityOf:", &[v])
     }
-}
-struct Lookup {
-    h: *const Harness,
-    selected: Oop,
-    nested: Oop,
-    selector: Oop,
-    mode: Cell<usize>,
-}
-unsafe extern "C" fn choose(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Lookup>();
-        let h = &*c.h;
-        if c.mode.get() == 1 {
-            return Outcome::loaded(Operand::object(h.named(b"nil")));
-        }
-        if c.mode.get() == 2 {
-            return Outcome::loaded(Operand::object(h.named(b"true")));
-        }
-        // The author explicitly owns and reports context references. The fixture
-        // keeps selected/nested rooted while its lookup is installed.
-        let selected = c.selected;
-        let token = h.keep(selected);
-        let nested = send(
-            h.id,
-            c.nested,
-            b"methodFor:",
-            &[Operand::object(c.selector)],
-        );
-        let nested_token = h.keep(object(nested));
-        h.gc();
-        h.release(nested_token);
-        h.release(token);
-        Outcome::loaded(Operand::object(selected))
+    fn present(&self, identity: Oop) -> bool {
+        as_size(self.call(self.monitor, b"present", &[identity])).unwrap() == 1
+    }
+    fn collect(&self) {
+        self.call(self.gc, b"collectPrecisely", &[]);
     }
 }
 
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production dylibs"]
+#[ignore = "requires production Oop modules"]
 fn methods_retain_bindings_active_calls_arguments_and_exact_lookup_contexts() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let h = Box::leak(Box::new(Harness {
-            id,
-            ns,
-            roots: named(b"Roots"),
-            gc: named(b"GC"),
-        }));
-        assert_eq!(
-            load(id, "execution", &[Operand::object(ns)]),
-            h.named(b"Execution")
-        );
-        let behavior = behavior(id);
-        let behavior_root = h.keep(behavior);
-        let instance = allocate(id, behavior, 0);
-        let instance_root = h.keep(instance);
-        let selector = id.intern_name(b"ownedProbe").unwrap();
-        let selector_root = h.keep(selector);
-        let owner = allocate(id, behavior, 0);
-        let owner_root = h.keep(owner);
-        let c = Box::leak(Box::new(Context {
-            h,
-            owner,
-            behavior,
-            selector,
-            replace: Cell::new(false),
-            calls: Cell::new(0),
-            finalized: Cell::new(0),
-        }));
-        let entry = NativeEntry::new(answer, ptr::from_mut(c).cast());
-        let observer_behavior = support::behavior(id);
-        let observer_root = h.keep(observer_behavior);
-        install(
-            id,
-            observer_behavior,
-            b"finalize:",
-            finalize,
-            ptr::from_mut(c).cast(),
-        );
-        let observer = allocate(id, observer_behavior, 0);
-        send(
-            id,
-            h.gc,
-            b"finalize:with:",
-            &[Operand::object(owner), Operand::object(observer)],
-        );
-        h.release(observer_root);
-        let method = h.owned(entry, owner);
-        let method_root = h.keep(method);
-        h.bind(behavior, selector, method);
-        h.release(method_root);
-        h.release(owner_root);
-        h.gc();
-        assert!(present(id, method), "binding must retain Method");
-        assert!(present(id, owner), "binding alone must retain native owner");
-        assert_eq!(
-            id.send(instance, selector, &[]).unwrap().as_object(),
-            Some(owner)
-        );
-        // No captured Method or temporary owner root exists here. Remove the
-        // sole binding inside the call and collect before returning from it.
-        c.replace.set(true);
-        assert_eq!(
-            id.send(instance, selector, &[]).unwrap().as_object(),
-            Some(owner)
-        );
-        // The caller now owns the returned live extent and reinstalls it before
-        // testing a separately held Method's exact-entry behavior.
-        let reinstall_root = h.keep(method);
-        h.bind(behavior, selector, method);
-        h.release(reinstall_root);
-        let captured = object(send(
-            id,
-            instance,
-            b"methodFor:",
-            &[Operand::object(selector)],
-        ));
-        let captured_root = h.keep(captured);
-        assert_eq!(
-            send(id, captured, b"clone", &[]).as_object(),
-            Some(captured)
-        );
-        c.replace.set(true);
-        assert_eq!(
-            id.send(instance, selector, &[]).unwrap().as_object(),
-            Some(owner)
-        );
-        assert_eq!(
-            id.send(instance, selector, &[]).unwrap().as_object(),
-            Some(instance)
-        );
-        assert_eq!(
-            send(id, captured, b"invokeOn:", &[Operand::object(instance)]).as_object(),
-            Some(owner)
-        );
-
-        let seq_behavior = support::behavior(id);
-        let seq_behavior_root = h.keep(seq_behavior);
-        let seq_state = Box::leak(Box::new(Sequence {
-            h,
-            returned: RefCell::new(Vec::new()),
-            fail: Cell::new(false),
-        }));
-        install(
-            id,
-            seq_behavior,
-            b"size",
-            size,
-            ptr::from_mut(seq_state).cast(),
-        );
-        install(
-            id,
-            seq_behavior,
-            b"at:",
-            at,
-            ptr::from_mut(seq_state).cast(),
-        );
-        let seq = allocate(id, seq_behavior, 0);
-        let seq_root = h.keep(seq);
-        let result = object(send(
-            id,
-            captured,
-            b"invokeOn:arguments:",
-            &[Operand::object(instance), Operand::object(seq)],
-        ));
-        let result_root = h.keep(result);
-        assert_eq!(send(id, result, b"word", &[]).as_word(), Some(102));
-        h.gc();
-        for &v in &seq_state.returned.borrow()[..2] {
-            assert!(!present(id, v), "completed argument leaked");
-        }
-        h.release(result_root);
-        h.gc();
-        assert!(!present(id, result));
-        seq_state.returned.borrow_mut().clear();
-        seq_state.fail.set(true);
-        let failure = id
-            .send_named(
-                captured,
-                b"invokeOn:arguments:",
-                &[Operand::object(instance), Operand::object(seq)],
+    let host = oop::bootstrap();
+    let floor = host.scope();
+    let gc = host.named(b"GC").unwrap();
+    floor
+        .call(gc, b"precisePayloads:", &[size(1).unwrap()])
+        .unwrap();
+    let path = std::env::temp_dir().join(format!(
+        "birnam-execution-methods-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/execution-methods.c")
             )
-            .unwrap_err();
-        assert_eq!(failure.detail, 91);
-        h.gc();
-        for &v in seq_state.returned.borrow().iter() {
-            assert!(!present(id, v), "failed argument read leaked");
-        }
-
-        // Same implementation, different native contexts. A nested lookup must
-        // not replace the selected context, and invalid language lookup is rejected.
-        let other_owner = allocate(id, behavior, 0);
-        let other_owner_root = h.keep(other_owner);
-        let c2 = Box::leak(Box::new(Context {
-            h,
-            owner: other_owner,
-            behavior,
-            selector,
-            replace: Cell::new(false),
-            calls: Cell::new(0),
-            finalized: Cell::new(0),
-        }));
-        let other = h.owned(
-            NativeEntry::new(answer, ptr::from_mut(c2).cast()),
-            other_owner,
-        );
-        let other_root = h.keep(other);
-        let nested = support::behavior(id);
-        let nested_root = h.keep(nested);
-        h.bind(nested, selector, other);
-        let meta = support::behavior(id);
-        let meta_root = h.keep(meta);
-        let custom = support::behavior(id);
-        let custom_root = h.keep(custom);
-        let custom_instance = allocate(id, custom, 0);
-        let custom_instance_root = h.keep(custom_instance);
-        let lookup = id.intern_name(b"lookup").unwrap();
-        let lc = Box::leak(Box::new(Lookup {
-            h,
-            selected: captured,
-            nested,
-            selector,
-            mode: Cell::new(0),
-        }));
-        let lookup_method = h.owned(NativeEntry::new(choose, ptr::from_mut(lc).cast()), owner);
-        h.bind(meta, lookup, lookup_method);
-        send(
-            id,
-            id.receiver,
-            b"reassociateBehaviorOf:with:",
-            &[Operand::object(custom), Operand::object(meta)],
-        );
-        assert_eq!(
-            id.send(custom_instance, selector, &[]).unwrap().as_object(),
-            Some(owner)
-        );
-        assert_eq!(c2.calls.get(), 0, "nested lookup changed selected context");
-        lc.mode.set(1);
-        assert_eq!(
-            send(id, custom, b"lookup", &[Operand::object(selector)]).kind(),
-            native::UNIT
-        );
-        lc.mode.set(2);
-        assert_eq!(
-            id.send_named(custom, b"lookup", &[Operand::object(selector)])
-                .unwrap_err()
-                .status,
-            native::INVALID_REQUEST
-        );
-        // Reassign before collection so the intentionally invalid lookup cannot
-        // interfere with GC's own reference protocol.
-        send(
-            id,
-            id.receiver,
-            b"reassociateBehaviorOf:with:",
-            &[Operand::object(custom), Operand::object(id.receiver)],
-        );
-        h.remove(meta, lookup);
-        h.remove(nested, selector);
-        for token in [
-            other_root,
-            other_owner_root,
-            nested_root,
-            meta_root,
-            custom_root,
-            custom_instance_root,
-            seq_root,
-            seq_behavior_root,
-            captured_root,
-        ] {
-            h.release(token);
-        }
-        h.remove(behavior, selector);
-        h.gc();
-        send(id, h.named(b"Execution"), b"checkpoint", &[]);
-        assert!(!present(id, owner), "last reference did not release owner");
-        assert!(!present(id, method));
-        assert!(!present(id, captured));
-        assert_eq!(c.finalized.get(), 1);
-
-        // Exercise an executable produced outside Rust and loaded through the
-        // real retaining Bootstrap loader, then remove the loader's result root.
-        let fixture_owner = allocate(id, behavior, 0);
-        let fixture_owner_root = h.keep(fixture_owner);
-        let fixture_path = directory().join("libbirnam_execution_method_fixture.dylib");
-        let fixture = object(send(
-            id,
-            h.named(b"Bootstrap"),
-            b"loadNative:",
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&floor, &path, &[]).unwrap();
+    let monitor = floor
+        .call(host.named(b"Object").unwrap(), b"clone", &[])
+        .unwrap();
+    let h = H {
+        host: &host,
+        floor,
+        fixture,
+        monitor,
+        gc,
+    };
+    let monitor_vt = h.vt(&h.floor, monitor);
+    for n in [
+        b"present".as_slice(),
+        b"allocation:bytes:identity:",
+        b"argumentIdentities",
+    ] {
+        h.bind(monitor_vt, n, h.method(&h.floor, n, ptr::null_mut()));
+    }
+    assert_eq!(
+        host.load_native(
+            &h.floor,
+            &host.resources.lib_dir.join("libbirnam_execution.dylib"),
+            &[host.namespace]
+        )
+        .unwrap(),
+        h.named(b"Execution")
+    );
+    let instance = h.object(&h.floor);
+    let vt = h.vt(&h.floor, instance);
+    let selector = h.key(b"ownedProbe");
+    let replacement = h.method(&h.floor, b"self", ptr::null_mut());
+    let finalized = h.context(&h.floor, &[size(0).unwrap(), size(0).unwrap()]);
+    let observer = h.object(&h.floor);
+    h.bind(
+        h.vt(&h.floor, observer),
+        b"finalize:",
+        h.method(&h.floor, b"finalize:", finalized),
+    );
+    let (owner, method, state, owner_id, method_id) = {
+        let q = host.scope();
+        let owner = h.object(&q);
+        let identity = h.identity(owner);
+        h.put(finalized, 1, identity);
+        h.call(gc, b"finalize:with:", &[owner, observer]);
+        let state = h.context(
+            &q,
             &[
-                Operand::bytes(fixture_path.as_os_str().as_bytes()),
-                Operand::object(h.named(b"Method")),
-                Operand::object(fixture_owner),
-            ],
-        ));
-        h.bind(behavior, selector, fixture);
-        assert_eq!(
-            send(
-                id,
-                h.named(b"Bootstrap"),
-                b"release:",
-                &[Operand::object(fixture)]
-            )
-            .as_word(),
-            Some(1)
-        );
-        h.release(fixture_owner_root);
-        h.gc();
-        assert_eq!(
-            id.send(instance, selector, &[]).unwrap().as_object(),
-            Some(fixture_owner)
-        );
-        h.remove(behavior, selector);
-        h.gc();
-        assert!(
-            !present(id, fixture_owner),
-            "native fixture mapping must not hide an owner leak"
-        );
-        assert!(!present(id, fixture));
-
-        let cycle_behavior = support::behavior(id);
-        let cycle_root = h.keep(cycle_behavior);
-        let cycle_owner = allocate(id, cycle_behavior, 0);
-        let cycle_owner_root = h.keep(cycle_owner);
-        let cycle_method = object(send(
-            id,
-            h.named(b"Bootstrap"),
-            b"loadNative:",
-            &[
-                Operand::bytes(fixture_path.as_os_str().as_bytes()),
-                Operand::object(h.named(b"Method")),
-                Operand::object(cycle_owner),
-            ],
-        ));
-        h.bind(cycle_behavior, selector, cycle_method);
-        send(
-            id,
-            h.named(b"Bootstrap"),
-            b"release:",
-            &[Operand::object(cycle_method)],
-        );
-        h.release(cycle_owner_root);
-        h.release(cycle_root);
-        h.gc();
-        for value in [cycle_behavior, cycle_owner, cycle_method] {
-            assert!(
-                !present(id, value),
-                "unreachable binding/Method/owner cycle leaked"
-            );
-        }
-
-        // Keep the checked language result convention at Method invocation.
-        let result_mode = Box::leak(Box::new(Cell::new(0usize)));
-        let result_method = h.owned(
-            NativeEntry::new(native_result, ptr::from_mut(result_mode).cast()),
-            h.named(b"nil"),
-        );
-        let result_method_root = h.keep(result_method);
-        assert_eq!(
-            send(
-                id,
-                result_method,
-                b"invokeOn:",
-                &[Operand::object(instance)]
-            )
-            .as_object(),
-            Some(h.named(b"nil"))
-        );
-        for (mode, kind) in [
-            (1, b"nativeResultRequiresWrapper".as_slice()),
-            (2, b"nativeInvalidRequest"),
-            (3, b"nativeFailure"),
-        ] {
-            result_mode.set(mode);
-            let error = object(send(
-                id,
-                result_method,
-                b"invokeOn:",
-                &[Operand::object(instance)],
-            ));
-            let error_root = h.keep(error);
-            assert_eq!(
-                send(id, error, b"kind", &[]).as_object(),
-                Some(id.intern_name(kind).unwrap())
-            );
-            h.release(error_root);
-        }
-        h.release(result_method_root);
-
-        // A Method capturing native Id lookup already returns NativeEntry/Unit.
-        // Installing it as lookup must preserve that typed result convention.
-        let raw_lookup = object(send(
-            id,
-            id.receiver,
-            b"methodFor:",
-            &[Operand::object(lookup)],
-        ));
-        let raw_lookup_root = h.keep(raw_lookup);
-        let native_meta = support::behavior(id);
-        let native_meta_root = h.keep(native_meta);
-        h.bind(native_meta, lookup, raw_lookup);
-        let native_behavior = support::behavior(id);
-        let native_behavior_root = h.keep(native_behavior);
-        install(
-            id,
-            native_behavior,
-            b"rawLookupProbe",
-            receiver,
-            ptr::null_mut(),
-        );
-        send(
-            id,
-            id.receiver,
-            b"reassociateBehaviorOf:with:",
-            &[
-                Operand::object(native_behavior),
-                Operand::object(native_meta),
+                owner,
+                vt,
+                selector,
+                replacement,
+                size(0).unwrap(),
+                gc,
+                size(0).unwrap(),
+                finalized,
             ],
         );
-        let selected = send(
-            id,
-            native_behavior,
-            b"lookup",
-            &[Operand::object(id.intern_name(b"rawLookupProbe").unwrap())],
-        );
-        assert!(selected.as_entry().is_some());
-        let reflected = object(send(
-            id,
-            raw_lookup,
-            b"invokeOn:arguments:",
-            &[
-                Operand::object(native_behavior),
-                Operand::object(object(send(
-                    id,
-                    h.named(b"Vector"),
-                    b"add:",
-                    &[Operand::object(id.intern_name(b"rawLookupProbe").unwrap())],
-                ))),
-            ],
-        ));
-        let reflected_root = h.keep(reflected);
-        assert_eq!(
-            send(id, reflected, b"invokeOn:", &[Operand::object(instance)]).as_object(),
-            Some(instance)
-        );
-        for token in [
-            reflected_root,
-            raw_lookup_root,
-            native_behavior_root,
-            native_meta_root,
-        ] {
-            h.release(token);
+        let method = h.method(&q, b"answer", state);
+        h.bind(vt, b"ownedProbe", method);
+        (owner, method, state, identity, h.identity(method))
+    };
+    h.collect();
+    assert!(
+        h.present(owner_id) && h.present(method_id),
+        "binding retains Method and context owner"
+    );
+    assert_eq!(h.call(instance, b"ownedProbe", &[]), owner);
+    h.put(state, 4, size(1).unwrap());
+    assert_eq!(
+        h.call(instance, b"ownedProbe", &[]),
+        owner,
+        "entered Method retains its context after replacement and GC"
+    );
+    // No collection occurs between return and reinstalling the still-live Method.
+    h.bind(vt, b"ownedProbe", method);
+    let captures = host.scope();
+    let captured = captures.call(instance, b"methodFor:", &[selector]).unwrap();
+    let captured_id = h.identity(captured);
+    assert_eq!(h.call(captured, b"clone", &[]), captured);
+    assert!(host.send(captured, b"clone", &[instance]).is_err());
+    h.put(state, 4, size(1).unwrap());
+    assert_eq!(h.call(instance, b"ownedProbe", &[]), owner);
+    assert_eq!(h.call(instance, b"ownedProbe", &[]), instance);
+    assert_eq!(h.call(captured, b"invokeOn:", &[instance]), owner);
+
+    let fault = oop::hooks::Hooks::new(&host);
+    let read_failure = fault.fault(91);
+    {
+        let q = host.scope();
+        let sequence = h.object(&q);
+        let seq_vt = h.vt(&q, sequence);
+        let seq_state = h.context(&q, &[gc, h.named(b"Integer"), monitor, ptr::null_mut()]);
+        for n in [b"sizeWord".as_slice(), b"atWord:"] {
+            h.bind(seq_vt, n, h.method(&q, n, seq_state));
         }
-        h.gc();
-        send(id, h.named(b"Execution"), b"checkpoint", &[]);
-        for token in [instance_root, behavior_root, selector_root] {
-            h.release(token);
+        let last_id;
+        {
+            let result_scope = host.scope();
+            let result = result_scope
+                .call(captured, b"invokeOn:arguments:", &[instance, sequence])
+                .unwrap();
+            assert_eq!(as_size(h.call(result, b"word", &[])), Some(102));
+            let ids = q.call(monitor, b"argumentIdentities", &[]).unwrap();
+            last_id = h.field(ids, 2);
+            h.collect();
+            for i in 0..2 {
+                assert!(!h.present(h.field(ids, i)), "completed argument leaked");
+            }
+            assert!(h.present(last_id));
+        }
+        h.collect();
+        assert!(!h.present(last_id));
+        h.put(seq_state, 3, read_failure);
+        assert_eq!(
+            unsafe {
+                host.id.send(
+                    captured,
+                    h.key(b"invokeOn:arguments:"),
+                    &[instance, sequence],
+                )
+            }
+            .unwrap_err(),
+            read_failure
+        );
+        let ids = q.call(monitor, b"argumentIdentities", &[]).unwrap();
+        assert_eq!(as_size(h.call(ids, b"sizeWord", &[])), Some(2));
+        h.collect();
+        for i in 0..2 {
+            assert!(!h.present(h.field(ids, i)), "failed argument read leaked");
         }
     }
+    {
+        let q = host.scope();
+        let other_owner = h.object(&q);
+        let other_state = h.context(
+            &q,
+            &[
+                other_owner,
+                vt,
+                selector,
+                replacement,
+                size(0).unwrap(),
+                gc,
+                size(0).unwrap(),
+                finalized,
+            ],
+        );
+        let other = h.method(&q, b"answer", other_state);
+        let nested = h.object(&q);
+        h.bind(h.vt(&q, nested), b"ownedProbe", other);
+        let custom = h.object(&q);
+        let custom_vt = h.vt(&q, custom);
+        let old_meta = q.call(host.id.root, b"behaviorOf:", &[custom_vt]).unwrap();
+        let meta = q.call(old_meta, b"delegated", &[]).unwrap();
+        let lookup_state = h.context(
+            &q,
+            &[
+                captured,
+                nested,
+                selector,
+                size(0).unwrap(),
+                gc,
+                h.named(b"true"),
+            ],
+        );
+        h.bind(meta, b"lookup", h.method(&q, b"choose", lookup_state));
+        h.call(
+            host.id.root,
+            b"reassociateBehaviorOf:with:",
+            &[custom_vt, meta],
+        );
+        assert_eq!(h.call(custom, b"ownedProbe", &[]), owner);
+        assert_eq!(
+            as_size(h.field(other_state, 6)),
+            Some(0),
+            "nested lookup must not enter or replace the selected context"
+        );
+        h.put(lookup_state, 3, size(1).unwrap());
+        assert!(h.call(custom_vt, b"lookup", &[selector]).is_null());
+        h.put(lookup_state, 3, size(2).unwrap());
+        assert!(
+            host.send(custom, b"ownedProbe", &[]).is_err(),
+            "non-Method selection is rejected"
+        );
+        h.call(
+            host.id.root,
+            b"reassociateBehaviorOf:with:",
+            &[custom_vt, old_meta],
+        );
+    }
+    drop(captures);
+    h.remove(vt, b"ownedProbe");
+    h.collect();
+    assert!(!h.present(owner_id));
+    assert!(!h.present(method_id));
+    assert!(!h.present(captured_id));
+    assert_eq!(as_size(h.field(finalized, 0)), Some(1));
+
+    // Real Bootstrap loading retains its result independently of the binding.
+    let path_string = h.floor.string(path.as_os_str().as_encoded_bytes()).unwrap();
+    for cycle in [false, true] {
+        let (owner_id, method_id, behavior_id) = {
+            let q = host.scope();
+            let owner = h.object(&q);
+            let behavior = if cycle { h.vt(&q, owner) } else { vt };
+            let method = q
+                .call(h.named(b"Bootstrap"), b"loadNative:", &[path_string, owner])
+                .unwrap();
+            h.bind(behavior, b"ownedProbe", method);
+            assert_eq!(
+                as_size(h.call(h.named(b"Bootstrap"), b"release:", &[method])),
+                Some(1)
+            );
+            (h.identity(owner), h.identity(method), h.identity(behavior))
+        };
+        h.collect();
+        if !cycle {
+            assert!(h.present(owner_id) && h.present(method_id));
+            let returned = h.call(instance, b"ownedProbe", &[]);
+            assert_eq!(h.identity(returned), owner_id);
+            h.remove(vt, b"ownedProbe");
+            h.collect();
+        } else {
+            assert!(
+                !h.present(behavior_id),
+                "unreachable binding cycle retains its vtable"
+            );
+        }
+        assert!(!h.present(owner_id) && !h.present(method_id));
+    }
+    // Generic captured invocation preserves raw Oop results; explicit native
+    // adapters and Machine execution own conversion to language Errors.
+    {
+        let q = host.scope();
+        let other_failure = fault.fault(18);
+        let mode = h.context(&q, &[size(0).unwrap(), read_failure, other_failure]);
+        let method = h.method(&q, b"result", mode);
+        assert!(h.call(method, b"invokeOn:", &[instance]).is_null());
+        h.put(mode, 0, size(1).unwrap());
+        assert_eq!(
+            h.call(method, b"invokeOn:", &[instance]),
+            size(123).unwrap()
+        );
+        for (i, expected) in [(2, read_failure), (3, other_failure)] {
+            h.put(mode, 0, size(i).unwrap());
+            assert_eq!(
+                unsafe { host.id.send(method, h.key(b"invokeOn:"), &[instance]) }.unwrap_err(),
+                expected
+            );
+        }
+        for compile in [b"compile:".as_slice(), b"compileSynchronous:"] {
+            let source = q.string(b"42").unwrap();
+            let compiled = q.call(h.named(b"Codegen"), compile, &[source]).unwrap();
+            q.check_result(compiled).unwrap();
+            assert_eq!(h.call(compiled, b"clone", &[]), compiled);
+        }
+        // Capturing native lookup preserves its Method-or-absence result.
+        let target = h.object(&q);
+        let behavior = h.vt(&q, target);
+        let old_meta = q.call(host.id.root, b"behaviorOf:", &[behavior]).unwrap();
+        let raw = q
+            .call(old_meta, b"methodFor:", &[h.key(b"lookup")])
+            .unwrap();
+        assert_ne!(raw, h.named(b"nil"));
+        let meta = q.call(old_meta, b"delegated", &[]).unwrap();
+        h.bind(meta, b"lookup", raw);
+        h.bind(behavior, b"rawLookupProbe", replacement);
+        let args = h.context(&q, &[h.key(b"rawLookupProbe")]);
+        assert_eq!(
+            q.call(raw, b"invokeOn:arguments:", &[behavior, args])
+                .unwrap(),
+            replacement,
+            "captured lookup before reassociation"
+        );
+        h.call(
+            host.id.root,
+            b"reassociateBehaviorOf:with:",
+            &[behavior, meta],
+        );
+        assert_eq!(
+            h.call(behavior, b"lookup", &[h.key(b"rawLookupProbe")]),
+            replacement
+        );
+        let reflected = q
+            .call(raw, b"invokeOn:arguments:", &[behavior, args])
+            .unwrap();
+        assert_eq!(h.call(reflected, b"invokeOn:", &[instance]), instance);
+    }
+    h.collect();
+    std::fs::remove_file(path).unwrap();
 }

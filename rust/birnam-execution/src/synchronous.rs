@@ -394,7 +394,7 @@ unsafe extern "C" fn invoke_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usi
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn dnu_identity(_: Oop, _: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
+unsafe extern "C" fn method_identity(_: Oop, _: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
     if n == 0 {
         r
     } else {
@@ -1472,7 +1472,7 @@ static METHODS: &[MethodSpec] = &[
     },
     MethodSpec {
         name: 208,
-        entry: Some(dnu_identity),
+        entry: Some(method_identity),
         convention: 0,
     },
     MethodSpec {
@@ -1689,6 +1689,11 @@ unsafe extern "C" fn initialize(
             let method = send(image, b"methodAt:", &[names[name]])?;
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[names[name], method])?;
+            if name == b"forDoesNotUnderstand" {
+                // Execution's Method cloning preserves callable identity. The
+                // same declared identity body serves both explicit operations.
+                send(target, b"addMethod", &[names[b"clone".as_slice()], method])?;
+            }
         }
         let layout = keep(send(
             id.root,

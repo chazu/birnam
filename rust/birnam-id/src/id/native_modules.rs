@@ -27,7 +27,6 @@ struct ModuleRecord {
     literals: Vec<Oop>,
     symbols: Vec<Oop>,
     methods: Vec<(Oop, Oop)>,
-    result: Oop,
 }
 
 pub(super) struct NativeModules {
@@ -57,7 +56,6 @@ impl NativeModules {
             values.extend(&module.literals);
             values.extend(&module.symbols);
             for (key, value) in &module.methods { values.extend([*key, *value]); }
-            values.push(module.result);
         }
         Some(values)
     }
@@ -111,7 +109,6 @@ impl State {
                 literals: Vec::new(),
                 symbols: Vec::new(),
                 methods: Vec::new(),
-                result: core::ptr::null_mut(),
             },
         );
         // Native images, including partly initialized ones, stay resident. Publication
@@ -188,11 +185,8 @@ impl State {
                 }
             }
         };
-        self.modules.records
-            .borrow_mut()
-            .get_mut(&image.addr())
-            .unwrap()
-            .result = abi::object_reference(result);
+        // The loader's caller owns the initializer result. Keeping code resident
+        // does not retain that result or its object graph after explicit release.
         self.behavior(result)?;
         if abi::is_fault(result) {
             Err(abi::object_reference(result))

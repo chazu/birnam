@@ -1,0 +1,83 @@
+{
+  "passed": true,
+  "scope": "Captured Method identity and lifetime, explicit invocation, initializer-result reclamation and adjacent compiler/loader/image behavior through production Oop modules",
+  "base_revision": "3ee2f1c512b84476fe29fd3e36e012177fbc1116",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/method-lifetime-dpi04z0v/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "83cb6f50fd8dc31c0e93db3fb56097a6f544b06e78eb0c616f2130709130849c",
+    "rust/birnam-id/src/id/native_modules.rs": "6a84806abb381e9154e47309e9bd044e428b828f1e21f264b7de164f08feeead",
+    "rust/birnam-siphon/tests/execution_methods.rs": "555ba5360664e612a5bd2d625da3e1f0bf27d9cb00186517d6beb556c93ef59b",
+    "tests/fixtures/oop-host/execution-methods.c": "98f369780efba53ef24d0b9af85d607e97e06c15d30d08e4b8fa86ab7cc8e17f",
+    "scripts/native-message-test.sh": "854de2f27e86ed08b60055eb037fbe9100fc7eecd972cebdacf1d72c7e3e95b1"
+  },
+  "changed_library_sha256": {
+    "libbirnam_id.dylib": "e7c367c4e9ef04f5c88babedc47416fdffce50cad417b86b1355b9c37ae651b3",
+    "libbirnam_execution.dylib": "7ea430004330d9621ed4b09f81fa87ff6cac4aeeb1394a314728764f898fcca0"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-methods-final.log",
+      "sha256": "44edc43447ee85c8d5043d0f4500fbe608ee415b328e45f5e04ab2130ff177e9",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/method-lifetime-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/method-lifetime-unit.log",
+      "sha256": "ddaf51f3a8e1b78966a400e1805b5f8c16591f0d90b10cf66f77b24eb93bb073",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/method-lifetime-acceptance.log",
+      "sha256": "63af69f7e4853085d7b7722a11e750e41b616cb0914c8dc4e40a0d4a686597c6",
+      "exit": 0
+    }
+  ],
+  "unit_results": {
+    "id": 22,
+    "execution": 26
+  },
+  "native_targets": [
+    "execution_methods",
+    "modules",
+    "native_loader",
+    "block_method_capture",
+    "compiler_source",
+    "materialization",
+    "method_binding",
+    "native_boundaries"
+  ],
+  "regressions": [
+    {
+      "before": "Captured Method clone fails: Execution omitted its existing identity binding",
+      "after": "Execution installs clone using its existing declared identity implementation; native, captured, synchronous and resumable compiled Methods preserve identity"
+    },
+    {
+      "before": "Native image registry permanently retains initializer result; Bootstrap release and binding removal cannot reclaim Method/context",
+      "after": "Native image owner retains declarations and literals; caller and Bootstrap own result references, permitting acyclic and cyclic object reclamation"
+    }
+  ],
+  "retained_checks": [
+    "Binding-only Method/context retention; active self-replacement and collection; finalizer executes once",
+    "Captured entry and context survive later dictionary replacement",
+    "Collecting indexed argument callbacks preserve earlier arguments and reclaim completed or failed argument reads",
+    "Nested custom lookup cannot replace selected context; absence and non-Method results remain distinct",
+    "Bootstrap native loading, explicit result release and unreachable owner/vtable/Method cycles",
+    "Raw Oop absence, immediate Word results and exact native failure identity",
+    "Captured native lookup installed on a metavtable and explicitly invoked",
+    "Core dispatch, collection, independent C caller and module export gate",
+    "Source compilation, materialization, generated bindings and native signatures through mapped and rebuilt images"
+  ],
+  "id_api_changes": false,
+  "generic_dispatch_changes": false,
+  "payload_interpretation_changes": false,
+  "native_mapping_policy_changed": false,
+  "remaining": [
+    "Other native targets and compiler optimization producers remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Running cold revision 83737742 predates these two runtime corrections; a later cold candidate is required"
+  ]
+}

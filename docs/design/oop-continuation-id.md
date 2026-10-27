@@ -2201,3 +2201,34 @@ contract suites pass, as do 21 evaluator unit tests; one manual timing investiga
 remains skipped. This does not complete the remaining native/compiler migrations
 or the running cold Host qualification.
 [Receipt](../measurements/relational-oop-20261027.json).
+
+## Captured Method identity and initializer-result lifetime
+
+Migrating `execution_methods` exposed two omissions. Execution's Oop setup did
+not install the existing identity-preserving `Method clone` operation. It now
+binds that selector to its already-declared identity implementation. Ordinary
+dispatch still enters the selected Method directly; cloning is an explicit send.
+
+The native-image owner also retained every initializer result in its permanent
+registry. Consequently, releasing Bootstrap's result and removing the final
+binding could not reclaim the returned Method or its context. The image owner
+now retains its code declarations and literals, while the caller owns the returned
+object. Bootstrap's explicit retention and release remain unchanged. This removes
+a redundant field and root; it introduces no Id operation, payload interpretation
+or module coupling. Native code mappings retain their existing residency policy.
+
+The migrated test uses declared native Methods and Oop contexts. It preserves
+binding and entered-call lifetime, self-replacement during collection, captured
+entry/context identity, collecting argument reads and failure cleanup, nested
+custom lookup, native initializer results and unreachable owner/binding cycles.
+Reclamation is checked by allocation identity, not by querying a freed Oop.
+Raw absence, immediate Words and native failures follow the Oop calling convention;
+language Error conversion remains with explicit adapters and Machine execution.
+The old combined Id/vtable fixture assumption is replaced by capturing lookup from
+the actual vtable owner. The native gate no longer builds the v1 Method fixture.
+
+The core Oop gate, 48 Id/Execution unit tests and eight native suites pass,
+including compiler, loader, materialization, mapped/rebuilt method bindings and
+native callback image checks. The running cold candidate predates these two
+runtime corrections and does not qualify them.
+[Receipt](../measurements/execution-methods-oop-20261027.json).
