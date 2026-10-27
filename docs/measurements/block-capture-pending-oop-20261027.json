@@ -1,0 +1,22 @@
+{
+  "source": "let receiver := [:argument | 19]; let source := [:argument | argument]; let method := [source methodFor: #value:]; [System println: [method invokeOn: receiver arguments: #[73]]];\n",
+  "results": [
+    {
+      "runtime": "pre_oop",
+      "prefix": "/Users/chazu/.local/opt/birnam",
+      "exit": 0,
+      "stdout": "73\n",
+      "stderr": ""
+    },
+    {
+      "runtime": "oop",
+      "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/materialization-errors-zx7qh81t/prefix",
+      "exit": 0,
+      "stdout": "19\n",
+      "stderr": ""
+    }
+  ],
+  "passed": false,
+  "scope": "Capturing value: from one Block and invoking it on another compatible Block",
+  "expected_stdout": "73\n"
+}

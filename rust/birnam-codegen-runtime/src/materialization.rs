@@ -29,19 +29,40 @@ unsafe fn materialize(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oop {
         let q = s.scope(&[*code, *captures]);
         s.sources.clear_error();
         let nil = s.named(b"nil")?;
+        let fail = |sync: &[u8], resum: &[u8]| {
+            s.sources.note(if resumable { resum } else { sync });
+            Ok(nil)
+        };
+        let compilation_failed = || {
+            fail(
+                b"RustCodegen could not compile PortableProgram materialization",
+                b"RustCodegen could not compile portable resumable materialization",
+            )
+        };
         let bytes = q.keep(s.send(s.named(b"CodeObject")?, b"canonicalBytesOf:", &[*code])?);
-        if bytes == nil || s.is_error(bytes)? {
+        if bytes == nil {
+            return fail(
+                b"RustCodegen materialization needs an admitted CodeObject",
+                b"RustCodegen resumable materialization needs an admitted CodeObject",
+            );
+        }
+        if s.is_error(bytes)? {
             return Ok(bytes);
         }
         let program = s.bytes(bytes)?;
-        let (_, count) =
-            birnam_codegen::portable::program_signature(&program).map_err(|_| invalid())?;
+        let Ok((_, count)) = birnam_codegen::portable::program_signature(&program) else {
+            return fail(
+                b"RustCodegen materialization rejected PortableProgram semantics",
+                b"RustCodegen resumable materialization rejected PortableProgram semantics",
+            );
+        };
         if !s.exact(&q, *captures, b"VectorVt")?
             || s.index(q.keep(s.send(*captures, b"size", &[])?))? != count as usize
         {
-            s.sources
-                .note(b"materialization capture count disagrees with CodeObject");
-            return Ok(nil);
+            return fail(
+                b"RustCodegen materialization capture count disagrees with CodeObject",
+                b"RustCodegen resumable capture count disagrees with CodeObject",
+            );
         }
         let copied = if resumable {
             Some(copy_captures(s, &q, *captures, count as usize)?)
@@ -73,20 +94,19 @@ unsafe fn materialize(c: Oop, a: *const Oop, n: usize, resumable: bool) -> Oop {
             };
             let source = q.keep(image::emit(s, &q, &request)?);
             if s.is_error(source)? {
-                return Ok(source);
+                return compilation_failed();
             }
             generated_bytes = s.bytes(source)?.len();
             if program.len() > MAX_PROGRAM_BYTES || generated_bytes > MAX_GENERATED_BYTES {
-                s.sources.note(b"portable materialization exceeds limits");
-                return Ok(nil);
+                return compilation_failed();
             }
             let unit = q.keep(s.send(s.named(b"TCC")?, b"compile:", &[source])?);
             if s.is_error(unit)? {
-                return Ok(unit);
+                return compilation_failed();
             }
             let method = q.keep(s.send(unit, b"initialize", &[])?);
             if method == nil || s.is_error(method)? {
-                return Ok(method);
+                return compilation_failed();
             }
             method
         };

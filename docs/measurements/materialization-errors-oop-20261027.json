@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "scope": "Portable materialization rejection diagnostics, owner results, retry/cache publication and failed-code retirement",
+  "base_revision": "68800a5a778a12aa55a006ca3139b3b7bbd793ae",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/materialization-errors-zx7qh81t/prefix",
+  "source_sha256": {
+    "rust/birnam-codegen-runtime/src/materialization.rs": "c5c5080912b0fdce8489402d9a745a353e04b8928d7db18841c77937fe19d75e",
+    "rust/birnam-siphon/tests/materialization_errors.rs": "83ac1db20fa8f83548996586faa5c9e0d6b53067a55f74465d50e7b62d140429",
+    "tests/fixtures/oop-host/materialization.c": "53c3cf0e6a205bdccda0519b03d4e43c445e5c52026f089a10db89d1b13f4782",
+    "scripts/native-message-test.sh": "c7d38fc94752202b746f52bd856b9b58ca492d5f1f25dd8d382376e9cd1f9f5a"
+  },
+  "codegen_runtime_sha256": "ea81458e35c83216e3260e0daf8fa544339d4b8434ae08412fdb5668c6c57cc5",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/materialization-errors.log",
+      "sha256": "f719f2244ed25289cca3674ea0225f722ee2d0defb8ddfba7aa94534509d7c5d",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/materialization-errors-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/materialization-errors-regressions.log",
+      "sha256": "dc3437a9c1142673f3fad69fdabd7a9e18192d5045d7ff1b08f984a14e4631e8",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "log": ".cargo-target/oop-corrected-qualification/materialization-errors-before.log",
+    "sha256": "75710c2488cf049e4dcad569a5d08d1466edc0bbc497d950e4be9d326d8186f8",
+    "failure": "Unadmitted code returned nil without the retained lastError diagnostic; source inspection also located changed rejection results and diagnostics for validation/compilation."
+  },
+  "pre_oop_baseline": {
+    "revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+    "prefix": "/Users/chazu/.local/opt/birnam",
+    "log": ".cargo-target/oop-corrected-qualification/materialization-prior.log",
+    "sha256": "9ed228065c2d46f66ec94fe2c888af34d2f48b6fff2ef6847b84045518cabc8c",
+    "exit": 0,
+    "scope": "Full pre-Oop materialization test copied with fixture-path adjustments only."
+  },
+  "id_changes": false,
+  "new_required_mechanisms": [],
+  "scope_limit": "The full old materialization harness is not migrated. A separate captured-Block compatibility gap is recorded; latest full-installation qualification remains pending."
+}

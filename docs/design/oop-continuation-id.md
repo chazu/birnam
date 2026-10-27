@@ -1650,3 +1650,27 @@ repeatable rejection of corrupt object data without source fallback. The copied
 pre-Oop harness passes with only fixture-path adjustments. The complete Oop core
 gate and source/artifact/mapped/rebuilt Method-binding suite pass on the corrected
 staged runtime. [Receipt](../measurements/artifact-templates-oop-20261027.json).
+
+## Portable materialization rejection and retry
+
+A focused Oop harness restores the retained `nil`/`lastError` convention for
+unadmitted code, rejected portable semantics, mismatched captures and compilation
+refusal. Previously some branches omitted or changed the diagnostic, returned
+ordinary Error data, or raised a native failure. Codegen now records the existing
+mode-specific diagnostic and returns `nil` for these cases. Native failures still
+propagate unchanged; the final Block constructor's own Error result retains its
+identity. No Id operation or inter-module implementation access is added.
+
+Both execution modes pass rejection, collecting replacement, exact native failure,
+no-cache-on-failure, successful retry/diagnostic clearing and native-unit retirement
+checks. The new target is included in the native-message gate. The pre-Oop full
+materialization test, complete Oop core gate, artifact suite and Block arity suite
+also pass in their respective runs. This does not mean the old full materialization
+harness has been migrated. [Receipt](../measurements/materialization-errors-oop-20261027.json).
+
+A separate source-level probe reproduces a captured-Block compatibility gap:
+`methodFor: #value:` captures the new shared Block dispatcher rather than the
+original Block body. Invoking that Method on another compatible Block consequently
+runs the other body's code. The same source prints `73` before the refactor and
+`19` on the current staged runtime. This case remains pending.
+[Probe](../measurements/block-capture-pending-oop-20261027.json).
