@@ -266,6 +266,7 @@ fn compile_mode(
     }
     let roots = e.name(b"Roots")?;
     let declared = e.name(b"declaredMethodAt:")?;
+    let native_declared = e.name(b"newMethodAt:")?;
     e.selected_function(bytes, source, filename, 0, !resumable)?;
     if e.dispositions
         .as_ref()
@@ -353,11 +354,13 @@ fn compile_mode(
         .unwrap();
     }
     out.push_str("};\n");
-    writeln!(out,"static O initialize(const CP*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->common.version!=3||p->common.byte_size!=sizeof(CP))return 0;if(n!=1||count!=SYMBOL_COUNT)return p->common.invalid;id=p->common;control=p->control;ns=args[0];owner=unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
+    // TCC supplies its Unit owner. Standalone callers supply their own retention
+    // owner; the native image still supplies declared Methods through Id messages.
+    writeln!(out,"static O initialize(const CP*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->common.version!=3||p->common.byte_size!=sizeof(CP))return 0;if(n<1||n>2||count!=SYMBOL_COUNT)return p->common.invalid;id=p->common;control=p->control;ns=args[0];owner=n==2?args[1]:unit;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
     for i in 0..e.functions.len() {
         writeln!(
             out,
-            "{{O at=size_oop({i});O method=call(&c,owner,{declared},&at,1);"
+            "{{O at=size_oop({i});O method=call(&c,unit,n==2?{native_declared}:{declared},&at,1);"
         )
         .unwrap();
         if e.descriptors[i].is_some() {

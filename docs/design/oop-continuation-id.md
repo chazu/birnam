@@ -1791,3 +1791,28 @@ files plus its receipt, excludes the Lang build seed, and uses Id protocol 2.
 Serial Host acceptance is still running. This checkpoint predates the native-loader
 fixes above and does not qualify those fixes or the remaining explicit compiler
 features. [Receipt](../measurements/current-cold-install-oop-20261027.json).
+
+## Embedded files and standalone generated libraries
+
+The embedded-file harness now uses Oop messages and independent declared C
+callbacks. It preserves binary data, prototype/private-vtable behavior, lexical
+shadowing of System, compile-time-only file access, current Globals and dependency
+replacement, exact native failure identity, path/size diagnostics, and payload
+ownership after generated code retirement. Allocation-identity observations avoid
+querying dead objects. String now owns its bytes directly, so the constructor checks
+observe one String construction, one `asBytes` and one Bytes construction instead
+of counting the removed managed Bytes backing allocation.
+
+Standalone generated-library initialization had assumed that every module object
+provided TCC's `declaredMethodAt:` and `retain:`. The emitter now restores the
+explicit retention-owner argument used by standalone callers. With Namespace and
+that owner, it obtains declarations through the native image's existing
+`newMethodAt:` and retains registered Methods through the supplied owner's
+`retain:`. TCC's Namespace-only form still uses its Unit for both operations.
+There is no added Id operation, owner registry or private cross-module access.
+
+System-compiled libraries pass after their source C and embedded input files are
+removed, for both synchronous and resumable entries and nested Blocks. The core
+gate, materialization rejection/retry and source-loading checks pass as well.
+Full current cold qualification and the remaining native/compiler migrations are
+still pending. [Receipt](../measurements/embedding-oop-20261027.json).

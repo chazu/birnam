@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "scope": "Oop embedded-file feature, standalone generated-library ownership and adjacent compiler checks",
+  "base_revision": "7e7f26ebf837772125c679ed8fc7307fd7c426e0",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-native-backend/src/oop_emission.rs": "2ea97d72425058fe96977292ad7275b667ae1534d29396a300bbde0d742ee2e5",
+    "rust/birnam-codegen-runtime/README.md": "2ccb8442ed9131d9e32707d153ecd4fcd79f67200a6c420760328437dc55090a",
+    "rust/birnam-siphon/tests/embedding.rs": "3ff569ce1e75e9aae4345b68f1ff4887727cf1b61b3964ed911277210786ecec",
+    "tests/fixtures/oop-host/embedding.c": "abd62d4b7b428dea55c5fae7a110fcd5cc53bc7edc3006201b16715c906b0d56"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/embedding-final.log",
+      "sha256": "bc2f752a95aeb8a61f1a25f8f0bc55ad5b9d74cfcfc5ea2da827938db769869f",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/embedding-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "reproduction": {
+    "log": ".cargo-target/oop-current-qualification/embedding-owner-before.log",
+    "sha256": "a872213408ba6ba4d03cf8c8b19d47897e40c6231711157fc10bf7ec7a456409",
+    "result": "The pre-fix emitter rejected the standalone Namespace and retention-owner initializer arguments"
+  },
+  "retained_checks": [
+    "All 256 byte values, independent clones/conversions, indexing bounds and private-vtable behavior",
+    "Opaque binary bits do not retain coincidental object addresses",
+    "Embedded files survive removal before evaluation; lexical System parameters, locals and top-level bindings remain ordinary calls",
+    "Current String construction, asBytes and Bytes construction each observed under GC",
+    "Current Globals System and Bytes reads used during embedding; dependency failure retains exact identity",
+    "Empty/absolute/traversal/nonliteral/missing/indirect path diagnostics and 16 MiB bound",
+    "System-compiled synchronous and resumable libraries load directly through Id with an explicit owner after removal of C and assets",
+    "Nested generated Blocks remain usable after collection",
+    "Embedded Bytes survive native code retirement and are reclaimed after their final root is released"
+  ],
+  "representation_adjustment": "String owns native bytes rather than a managed Bytes backing. The former second Bytes constructor count is replaced by a separate live String constructor check.",
+  "runtime_changes": [
+    "Generated initialization accepts the retained explicit standalone owner form and obtains native declarations using existing newMethodAt: messages; TCC form is unchanged"
+  ],
+  "id_changes": false,
+  "qualification_limit": "This staged prefix is qualified for the listed checks. The running independent cold candidate predates the emitter and native-loader corrections."
+}

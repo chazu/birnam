@@ -18,6 +18,14 @@ an owned resumable Method, `eval:` runs it on a real Machine, and `emit:` return
 the generated C String. TCC compiles and owns each Unit; its initializer consumes
 Namespace and the Unit owner through the existing native module ABI.
 
+Generated Oop modules initialized by TCC receive Namespace as their sole explicit
+argument and use the supplied Unit's `declaredMethodAt:` and `retain:` operations.
+For emitted C compiled by a system compiler and loaded directly through Id, pass
+Namespace and an explicit retention owner. Initialization obtains native Methods
+from the image's existing `newMethodAt:` and sends `retain:` to the supplied owner.
+That owner must keep the Methods alive for as long as the generated code can use
+them. No additional operation is installed on Id or its native image objects.
+
 Ordinary source Reflect construction now sends the receiving facade
 `methodForArity:implementation:`. The native implementation is a cold construction
 seed; host bootstrap replaces it with the authored MethodInvocation policy after
