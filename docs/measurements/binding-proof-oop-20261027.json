@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "scope": "Current native binding proofs through Oop Methods without running custom lookup",
+  "base_revision": "4ffc99573cf6dcc5f8a709cff835ffc6b5b1ea82",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/binding_proof.rs": "8aead519b94a8c5196eaf99e621916ba113fbea4d89462b48dad3997fa146641"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/binding-proof.log",
+      "sha256": "467fc6143526441ab331f6834053649194ddf3c8cb16d92d9da302e38ce9887e",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Direct and inherited selection, changed implementation, changed Method context and captured aliases",
+    "All 32 rows checked, including last-row Method and selector changes",
+    "Incomplete Oop rows decline; valid immediate Oops without the requested binding decline",
+    "Inherited override and removal become visible on subsequent queries",
+    "Custom lookup on a later receiver and on Id itself declines with zero callback invocations",
+    "Captured proof refuses a replacement public proof operation without invoking it",
+    "Restoration uses captured Methods on a separate ordinary receiver and immediately restores successful proofs"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Automatic alias-return producer scope decision remains pending",
+    "Other compiler groups and native targets remain unported",
+    "Full latest cold/Host qualification remains incomplete"
+  ]
+}

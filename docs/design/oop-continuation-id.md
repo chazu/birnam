@@ -1954,3 +1954,19 @@ and project sessions, REPL goldens including mapped images and Alien wrappers,
 and project LSP behavior. The task, CLI and image groups remain in the serial
 queue. This receipt predates the later native-loader and standalone-emitter fixes.
 [Receipt](../measurements/current-interaction-oop-20261027.json).
+
+## Current binding proofs through Oops
+
+The `binding_proof` harness now supplies receiver/selector/Method triples rather
+than byte packets containing native addresses. It checks direct and inherited
+selection, different declared implementations and contexts, captured aliases,
+all 32 batch rows and incomplete-row refusal. Replacing a binding or restoring
+lookup changes the next result.
+
+Custom method lookup on a later row or on Id's receiver makes the proof decline
+without calling that lookup. Captured proof and restoration Methods are installed
+on a separate test receiver so the test can inspect and restore Id through normal
+messages while Id's own lookup differs. Replacing the public proof operation also
+makes a captured proof decline without invoking the replacement. No raw entry call,
+private Method data or runtime change is introduced.
+[Receipt](../measurements/binding-proof-oop-20261027.json).

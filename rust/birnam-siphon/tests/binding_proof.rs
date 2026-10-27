@@ -1,134 +1,117 @@
-//! Id's batched binding facts must never execute foreign lookup callbacks.
-mod support;
-use birnam_abi::{
-    Oop,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use std::{cell::Cell, ffi::c_void};
-use support::*;
-unsafe extern "C" fn answer(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::word(9))
-}
-
-fn batches_recheck_every_row_and_the_current_lookup_between_calls(id: Protocol) {
-    unsafe {
-        let parent = behavior(id);
-        let child = object(send(id, parent, b"delegated", &[]));
-        let first = allocate(id, parent, 0);
-        let last = allocate(id, child, 0);
-        let selector = id.intern_name(b"probe").unwrap();
-        let lookup = id.intern_name(b"lookup").unwrap();
-        let bind = |receiver, selector| {
-            send(id, id.receiver, b"bind:to:", &[
-                Operand::object(selector), Operand::object(receiver),
-            ]).as_entry().unwrap()
-        };
-        let matcher = bind(id.receiver, id.intern_name(b"nativeBindingsMatch:").unwrap());
-        let original_lookup = bind(id.receiver, lookup);
-        let add = bind(id.receiver, id.intern_name(b"addMethod").unwrap());
-        let calls = Cell::new(0usize);
-        let context = (&calls as *const Cell<usize>).cast_mut().cast();
-        install(id, parent, b"probe", answer, context);
-        // Mix direct and inherited selection, with a non-null context witness.
-        let mut rows = Vec::new();
-        for receiver in [first, last].into_iter().cycle().take(32) {
-            rows.extend([receiver.addr(), selector.addr(), answer as *const () as usize, context.addr()]);
-        }
-        let query = |rows: &[usize]| {
-            let bytes = core::slice::from_raw_parts(rows.as_ptr().cast::<u8>(), size_of_val(rows));
-            let args = [Operand::bytes(bytes)];
-            (matcher.method.unwrap())(matcher.context, id.receiver, args.as_ptr(), 1)
-                .into_result().unwrap().as_word().unwrap()
-        };
-        assert_eq!(query(&rows), 1);
-        let mut wrong = rows.clone();
-        wrong[127] = 0;
-        assert_eq!(query(&wrong), 0, "the last row's context must be checked");
-        wrong[127] = context.addr();
-        wrong[125] = 7;
-        assert_eq!(query(&wrong), 0, "the last selector must be a live allocation");
-        install(id, child, b"probe", watched, context);
-        assert_eq!(query(&rows), 0, "an inherited target may be overridden");
-        send(id, child, b"removeMethod:", &[Operand::object(selector)]);
-        assert_eq!(query(&rows), 1);
-        let set_lookup = |entry: NativeEntry| {
-            let args = [Operand::object(lookup), Operand::entry(entry)];
-            (add.method.unwrap())(add.context, id.receiver, args.as_ptr(), args.len())
-                .into_result().unwrap();
-        };
-        // Invoke the saved matcher directly so a custom lookup cannot intercept
-        // the query itself. Its inspection must decline without calling lookup.
-        set_lookup(NativeEntry::new(watched, context));
-        assert_eq!(query(&rows), 0);
-        assert_eq!(calls.get(), 0);
-        set_lookup(original_lookup);
-        assert_eq!(query(&rows), 1, "restoration is visible on the next call");
-        let meta = behavior(id);
-        install(id, meta, b"lookup", watched, context);
-        send(id, id.receiver, b"reassociateBehaviorOf:with:", &[
-            Operand::object(child), Operand::object(meta),
-        ]);
-        assert_eq!(query(&rows), 0, "a later row can have custom metabehavior");
-        assert_eq!(calls.get(), 0);
-    }
-}
-unsafe extern "C" fn watched(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe { &*c.cast::<Cell<usize>>() }.set(1);
-    Outcome::loaded(Operand::unit())
-}
+//! Batched current-Method facts decline custom lookup without executing it.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use std::ptr;
 #[test]
-#[ignore = "requires current native Id"]
+#[ignore = "requires production Oop modules"]
 fn facts_are_exact_and_decline_custom_lookup_without_calling_it() {
-    unsafe {
-        let id = id();
-        let b = behavior(id);
-        let o = allocate(id, b, 0);
-        install(id, b, b"probe", answer, std::ptr::null_mut());
-        let sel = id.intern_name(b"probe").unwrap();
-        let row = [o.addr(), sel.addr(), answer as usize, 0usize];
-        let query = |rows: &[usize]| {
-            let bytes = core::slice::from_raw_parts(rows.as_ptr().cast::<u8>(), size_of_val(rows));
-            send(
-                id,
-                id.receiver,
-                b"nativeBindingsMatch:",
-                &[Operand::bytes(bytes)],
-            )
-            .as_word()
-            .unwrap()
-        };
-        assert_eq!(query(&row), 1);
-        let mut wrong = row;
-        wrong[2] = watched as usize;
-        assert_eq!(query(&wrong), 0);
-        wrong = row;
-        wrong[0] = 7;
-        assert_eq!(query(&wrong), 0);
-        let calls = Cell::new(0usize);
-        let meta = behavior(id);
-        install(
-            id,
-            meta,
-            b"lookup:",
-            watched,
-            (&calls as *const Cell<usize>).cast_mut().cast(),
-        );
-        send(
-            id,
-            id.receiver,
-            b"reassociateBehaviorOf:with:",
-            &[Operand::object(b), Operand::object(meta)],
-        );
-        assert_eq!(query(&row), 0);
-        assert_eq!(calls.get(), 0);
-        assert!(
-            id.send_named(
-                id.receiver,
-                b"nativeBindingsMatch:",
-                &[Operand::bytes(&[0; 1])]
-            )
-            .is_err()
-        );
-        batches_recheck_every_row_and_the_current_lookup_between_calls(id);
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let key = |n: &[u8]| hooks.symbol(n);
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let vt = |r| call(h.id.root, b"behaviorOf:", &[r]);
+    let bind = |v, s, m| {
+        call(v, b"addMethod", &[s, m]);
+    };
+    let parent = call(h.named(b"ObjectVt").unwrap(), b"delegated", &[]);
+    let child = call(parent, b"delegated", &[]);
+    let first = call(parent, b"allocate", &[size(0).unwrap()]);
+    let last = call(child, b"allocate", &[size(0).unwrap()]);
+    let selector = key(b"bindingProofProbe");
+    let lookup = key(b"lookup");
+    let matches = key(b"nativeBindingsMatch:");
+    let answer = hooks.method(b"fixed", size(9).unwrap());
+    let different_context = hooks.method(b"fixed", size(10).unwrap());
+    let different_code = hooks.method(b"fixedCount", size(9).unwrap());
+    bind(parent, selector, answer);
+    let query =
+        |rows: &[Oop]| as_size(unsafe { h.id.send(h.id.root, matches, rows) }.unwrap()).unwrap();
+    let row = [first, selector, answer];
+    assert_eq!(query(&row), 1);
+    assert_eq!(query(&[first, selector, different_code]), 0);
+    assert_eq!(query(&[first, selector, different_context]), 0);
+    assert_eq!(query(&[size(3).unwrap(), selector, answer]), 0);
+    assert_eq!(query(&[first, size(3).unwrap(), answer]), 0);
+    assert_eq!(query(&[first, selector, ptr::null_mut()]), 0);
+    assert_eq!(query(&[first]), 0, "incomplete Oop rows decline the proof");
+    let captured = call(answer, b"captured", &[]);
+    assert_ne!(captured, answer);
+    assert_eq!(
+        query(&[first, selector, captured]),
+        1,
+        "capture preserves the selected implementation and context"
+    );
+    let mut rows = Vec::new();
+    for receiver in [first, last].into_iter().cycle().take(32) {
+        rows.extend([receiver, selector, answer]);
     }
+    assert_eq!(query(&rows), 1);
+    let mut wrong = rows.clone();
+    wrong[95] = different_context;
+    assert_eq!(query(&wrong), 0, "last row's Method context is checked");
+    wrong[95] = answer;
+    wrong[94] = size(3).unwrap();
+    assert_eq!(
+        query(&wrong),
+        0,
+        "last selector must name a current binding"
+    );
+    bind(child, selector, different_code);
+    assert_eq!(
+        query(&rows),
+        0,
+        "inherited selection observes a direct override"
+    );
+    call(child, b"removeMethod:", &[selector]);
+    assert_eq!(query(&rows), 1);
+    let calls = hooks.context(&[ptr::null_mut(), size(0).unwrap()]);
+    let watched = hooks.method(b"fixedCount", calls);
+    let meta = vt(child);
+    let custom = call(meta, b"delegated", &[]);
+    bind(custom, lookup, watched);
+    call(h.id.root, b"reassociateBehaviorOf:with:", &[child, custom]);
+    assert_eq!(
+        query(&rows),
+        0,
+        "a later row with custom method lookup declines"
+    );
+    assert_eq!(hooks.count(calls, 1), 0);
+    call(h.id.root, b"reassociateBehaviorOf:with:", &[child, meta]);
+    assert_eq!(query(&rows), 1);
+
+    // Keep captured operations on a separate receiver. Ordinary sends to it
+    // can inspect/restore the root while the root's own lookup is replaced.
+    let root_vt = vt(h.id.root);
+    let root_meta = vt(root_vt);
+    let matcher = call(root_vt, b"lookup", &[matches]);
+    let reassociate = key(b"reassociateBehaviorOf:with:");
+    let restore = call(root_vt, b"lookup", &[reassociate]);
+    let probe = call(h.named(b"Object").unwrap(), b"clone", &[]);
+    let probe_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[probe]);
+    let saved_query = key(b"bindingProofSavedQuery");
+    let saved_restore = key(b"bindingProofSavedRestore");
+    bind(probe_vt, saved_query, matcher);
+    bind(probe_vt, saved_restore, restore);
+    let direct = |arguments: &[Oop]| unsafe { h.id.send(probe, saved_query, arguments) };
+    assert_eq!(as_size(direct(&rows).unwrap()), Some(1));
+    call(
+        h.id.root,
+        b"reassociateBehaviorOf:with:",
+        &[root_vt, custom],
+    );
+    let result = direct(&rows);
+    // No Host snapshots or Name construction while root lookup is replaced.
+    unsafe { h.id.send(probe, saved_restore, &[root_vt, root_meta]) }.unwrap();
+    assert_eq!(as_size(result.unwrap()), Some(0));
+    assert_eq!(hooks.count(calls, 1), 0);
+    assert_eq!(query(&rows), 1, "restoration is observed by the next query");
+    // A captured query also declines when the public proof operation is replaced.
+    bind(root_vt, matches, watched);
+    let result = direct(&rows);
+    bind(root_vt, matches, matcher);
+    assert_eq!(as_size(result.unwrap()), Some(0));
+    assert_eq!(hooks.count(calls, 1), 0);
+    assert_eq!(query(&rows), 1);
 }
