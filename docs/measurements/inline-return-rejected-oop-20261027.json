@@ -1,0 +1,49 @@
+{
+  "status": "rejected_experiment_pending_scope_decision",
+  "base_revision": "05eb7cb4f9eb2b0158d820dcd6e1f04bda94c425",
+  "scope": "Attempted automatic alias-return producer through existing Oop withInline admission; not enabled in committed runtime",
+  "trials": [
+    {
+      "baseline_ns": 53149000,
+      "candidate_ns": 59134584,
+      "baseline_allocations": 177480,
+      "candidate_allocations": 177480,
+      "elapsed_ratio": 1.1126189392086399,
+      "log": ".cargo-target/oop-current-qualification/inline-return-trial-1.log",
+      "log_sha256": "ad8c8c5cf523880bf87919dbd5d1091a9d923bb654fb02b0561773f6c6805d83"
+    },
+    {
+      "baseline_ns": 53127708,
+      "candidate_ns": 57631083,
+      "baseline_allocations": 177480,
+      "candidate_allocations": 177480,
+      "elapsed_ratio": 1.084765090938988,
+      "log": ".cargo-target/oop-current-qualification/inline-return-trial-2.log",
+      "log_sha256": "161a1c4a8d4c6d16ece962c90baac01aebfb23f03f5a4d29031d0f594db4c2c3"
+    },
+    {
+      "baseline_ns": 53863583,
+      "candidate_ns": 58926208,
+      "baseline_allocations": 177480,
+      "candidate_allocations": 177480,
+      "elapsed_ratio": 1.0939897555645341,
+      "log": ".cargo-target/oop-current-qualification/inline-return-trial-3.log",
+      "log_sha256": "40a35c9cdea0bfd25de33fe27cbd59cac9373a7e605cf81467c7b03ab9bbe28d"
+    }
+  ],
+  "iterations_per_variant": 180,
+  "experiment_patch": ".cargo-target/oop-current-qualification/inline-return-experiment.patch",
+  "experiment_patch_sha256": "408dbc556776337c92c5ec9c7508ce601f9cf090c9150030aa4da26faccc795e",
+  "findings": [
+    "Emitter attached a declared candidate using existing withInline:at:owner:; Id and Execution contracts unchanged",
+    "Diagnostic tracing confirmed candidate entry and non-null return during 180 measured calls",
+    "Semantic identity, literal constructor effects, replaced frame-reader fallback and bounded frame visibility passed",
+    "Id allocations were equal: 177480 per variant across 180 calls",
+    "Candidate elapsed time was 8 to 11 percent higher in three runs without diagnostics"
+  ],
+  "limitations": [
+    "Paired local measurements taken while independent Host qualification was running; not a language-wide or release benchmark",
+    "The retained old allocation-reduction assertion failed; no passing optimization claim is made"
+  ],
+  "action": "Restore the committed emitter and tests. User clarification requested about retiring the automatic optimization versus investigating another implementation; explicit withInline support remains untouched."
+}

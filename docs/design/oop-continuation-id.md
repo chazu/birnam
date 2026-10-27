@@ -1925,3 +1925,23 @@ The complete source target passes. No runtime or Id change was needed. The five
 pending compiler groups are discarded-clone and numeric-predicate producers,
 alias-return production, call-window preparation and authored call preparation.
 [Receipt](../measurements/compiler-dispatch-oop-20261027.json).
+
+## Alias-return producer experiment: not enabled
+
+An attempted Oop producer reused the pure alias-return planner, declared a candidate
+Method and attached it through existing `withInline:at:owner:`. Semantic identity,
+current constructor effects, changed frame-reader fallback and bounded frame views
+passed. Diagnostic tracing confirmed that the candidate was entered and returned
+its input; it was not merely falling back.
+
+Three runs without diagnostics used the same 177,480 Id allocations per variant
+across 180 calls. Candidate elapsed time was 8–11% higher. These are paired local
+observations under concurrent Host qualification, not a language-wide benchmark.
+Immediate Oop indices removed the old source of allocation savings in this case.
+
+The experiment is reverted; neither Id nor Execution was changed. Its patch and
+measurements are retained for review. A user clarification is pending on retiring
+the automatic compiler optimization versus investigating another implementation.
+Explicit inline candidates and recovery remain supported. The five-group pending
+count is unchanged until that decision is made.
+[Evidence](../measurements/inline-return-rejected-oop-20261027.json).
