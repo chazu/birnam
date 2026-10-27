@@ -1320,3 +1320,10 @@ resolve the separate multicore failure or Boolean native-boundary gap. The two
 initial CLI/image timeout failures remain queued for lower-concurrency retries.
 [Generation receipt](../measurements/corrected-generation-oop-20261026.json),
 [interaction receipt](../measurements/corrected-interaction-oop-20261026.json).
+
+The unchanged multicore smoke passes all 27 assertions when rerun after the other
+acceptance groups have stopped. The original 11 failures are retained as evidence;
+one successful rerun does not establish their exclusive cause. The full task group
+is being retried serially with the same assertions, request limits and 15-second
+worker startup deadline. No runtime or performance adjustment was made.
+[Isolated multicore receipt](../measurements/corrected-multicore-isolated-oop-20261026.json).

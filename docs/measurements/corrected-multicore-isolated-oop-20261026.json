@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "scope": "Unchanged standalone multicore smoke on the corrected cold candidate; not complete task-group qualification or a causal performance diagnosis",
+  "candidate_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
+  "prefix": "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+  "checks": 27,
+  "failed": 0,
+  "worker_startup_deadline_ms": 15000,
+  "log": ".cargo-target/oop-corrected-qualification/multicore-isolated.log",
+  "log_sha256": "f7f961980ce83aa9ea1a1ea247048eb153764d77d502fdf17d3a4ef6e76b3efe",
+  "prior_failure_log": ".cargo-target/oop-corrected-qualification/tasks.log",
+  "prior_failure_log_sha256": "01be4b1d5ba6f7b50fdeea552a2ce441c60a43777011db72816818a47cc57a4d",
+  "note": "The prior 11 assertion failures did not reproduce with other acceptance groups stopped. Full task-group retry uses the same code, assertions and limits."
+}
