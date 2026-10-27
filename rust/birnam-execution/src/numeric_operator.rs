@@ -1,7 +1,7 @@
-//! Checked numeric evaluation shared privately with compiler lowering.
-/// Stable operation codes shared with Integer's borrowed evaluator protocol.
+//! Checked signed arithmetic for the explicit numeric evaluator.
+/// Stable operation codes used by Integer's explicit evaluator protocol.
 /// Only successful canonical-integer behavior is computed here. Integer owns
-/// errors and mixed operands; Execution owns observation and dispatch admission.
+/// errors and mixed operands; this evaluator does not select message Methods.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Operator {

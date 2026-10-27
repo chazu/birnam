@@ -1,0 +1,61 @@
+{
+  "passed": true,
+  "scope": "Explicit Execution numericOperation:left:right: over Oop Words; automatic numeric interception is not enabled or qualified",
+  "base_revision": "06b3e81566585e6d278e7201dce5bb0dc03752c4",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/execution-numeric-final-kfgv8c0t/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/lib.rs": "846248fb4063ebe00524471055398ef354e21b5c15d46bd08af7e91cf5809843",
+    "rust/birnam-execution/src/numeric_operator.rs": "498cc93b0fea22c8219f6012100a3b854522193f6c33232b83f78afd6fd4d9b2",
+    "rust/birnam-execution/src/oop_numeric.rs": "46a9a9ed88a2674957b8dd89d019332b823e5b025275b58c4a0bcc7d43e1b1bd",
+    "rust/birnam-execution/src/synchronous.rs": "7c0324ee422fb799ee7927e8ca86efd08a73921e48bc5328260f0b416a50e73e",
+    "rust/birnam-siphon/tests/execution_numeric.rs": "07e4e39357b3a9df6e9e5dcb274630dc8edd69ffa31535ee7eda764769dd4933",
+    "scripts/native-message-test.sh": "ec413e28cc7b5d3fd78a144cb8b1ba556601fc8d2e718586372d6f2da44a618c"
+  },
+  "execution_library_sha256": "9345c5240a0f0ac5b57d48dcbfe6794013343f52b2c59a33d3cb9d6f795ae5d6",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-numeric-final.log",
+      "sha256": "34557637423ffe1fc4cc7549ecaed0e669aac4d4f26cb0e06c5e04a92f600053",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-numeric-core-final.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-numeric-unit-final.log",
+      "sha256": "af062cbd398efbb7ec2498af0041743e5d3a48162dda455871e679fe3dedf3d8",
+      "exit": 0
+    }
+  ],
+  "arithmetic_oracle_cases": 500,
+  "execution_unit_tests": 26,
+  "native_targets": [
+    "execution_numeric",
+    "numbers",
+    "integer_values",
+    "native_values",
+    "execution_machines",
+    "pending_call_recovery",
+    "compiler_source"
+  ],
+  "retained_checks": [
+    "Checked signed addition, subtraction, multiplication, division and remainder across extrema",
+    "Raw absence for arithmetic refusal and exact zero for MIN remainder -1",
+    "Invalid operation codes, arity, receiver and out-of-range Word halves rejected",
+    "Collecting current Word getters and exact native failure identity",
+    "Current Word constructor and Namespace replacement remain observable",
+    "Absent constructor result is a failure, not arithmetic refusal",
+    "Integer owner declines authored arithmetic without entering the native evaluator"
+  ],
+  "id_changes": false,
+  "foreign_payload_access": false,
+  "automatic_numeric_interception": false,
+  "remaining": [
+    "Scope decision on retiring automatic numeric interception or using a compiler producer",
+    "Native numeric automatic-path and older recovery harness remain pending",
+    "Other native/compiler integration and automatic alias-return scope decision",
+    "Cold 642e79e2 qualification predates explicit candidate and numeric support"
+  ]
+}

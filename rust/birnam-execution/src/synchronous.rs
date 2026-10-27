@@ -3,6 +3,8 @@
 mod native_adapters;
 #[path = "oop_reflection.rs"]
 mod reflection;
+#[path = "oop_numeric.rs"]
+mod numeric;
 #[path = "resumable_runtime.rs"]
 mod resumable;
 use crate::{execution::ExecutionState, objects::Objects};
@@ -751,6 +753,7 @@ const NAMES: &[&[u8]] = &[
     b"prepareCall:selector:",
     b"callPlan:field:",
     b"optimizeWith:",
+    b"numericOperation:left:right:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -990,8 +993,14 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"prepareCall:selector:"),
     Literal::new(b"callPlan:field:"),
     Literal::new(b"optimizeWith:"),
+    Literal::new(b"numericOperation:left:right:"),
 ];
 static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 237,
+        entry: Some(numeric::evaluate),
+        convention: 0,
+    },
     MethodSpec {
         name: 236,
         entry: Some(resumable::native_tier::install),

@@ -2317,3 +2317,28 @@ goldens including image/native-wrapper behavior, and project LSP. The serial
 runner has advanced to tasks, followed by CLI and images. This receipt predates
 the later lifetime, Machine-entry and explicit candidate corrections.
 [Receipt](../measurements/latest-interaction-oop-20261027.json).
+
+## Explicit numeric evaluation over Oop Words
+
+Execution again implements the existing `numericOperation:left:right:` query.
+It retains the five checked signed operations and raw-absence refusal on overflow
+or division by zero, including the existing `MIN mod: -1` result of zero. Full-width
+Words are read through current `low32`/`high32` messages, and non-immediate results
+use the current Namespace Word factory. Neither Integer nor Word payloads are read
+by Execution. Integer still owns result construction and language errors.
+
+The query propagates native getter/constructor failures exactly. An absent
+constructor result is rejected rather than being mistaken for arithmetic refusal.
+The test covers 500 independent arithmetic cases, signed bounds, malformed input,
+collecting getters, live constructor/Namespace replacement and the Integer owner's
+refusal to evaluate an authored arithmetic Method through a native visitor.
+
+This does not restore the old automatic interception of selected native Methods.
+That path depended on Execution doing work now owned by Id's direct dispatch. A
+scope clarification is pending between retiring automatic interception while
+retaining this explicit query and investigating compiler-generated use of it.
+No Id hook or second implicit Method-entry protocol has been introduced.
+
+The core Oop gate, 26 Execution unit tests and seven native suites pass, including
+numeric policies, native adapters, Machine candidates, recovery and compiler
+behavior. [Receipt](../measurements/execution-numeric-oop-20261027.json).

@@ -3,6 +3,7 @@
 mod entry;
 mod entry_plan;
 mod word_index;
+mod numeric_operator;
 mod objects;
 mod execution;
 mod synchronous;
