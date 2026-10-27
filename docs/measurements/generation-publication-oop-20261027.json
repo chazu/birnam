@@ -1,0 +1,60 @@
+{
+  "passed": true,
+  "scope": "Canonical generation projection, authored partial candidate application/undo and native failure-channel image acceptance through Oops",
+  "base_revision": "fabcfd05951f9ad0ee5de00aefadaa37a69c002f",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/generation.rs": "3a0a72a9f0a9c1a30026a7224bcd8c70bf8ca7049dbc519f36a7b9f1a82319b0",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "ada50b9c9ef45de80405c9ead5f291e4d53edf166f6a5f49fc2934a966483c6b",
+    "rust/birnam-siphon/tests/publication_failure_image.rs": "b169a0a8d36ed2447b0dce22601895cc2e1519fc37c31884ab7c59f500772f27",
+    "rust/birnam-siphon/tests/support/generation.rs": "a14cab1b1de78f8e2765505593fb086a6083565f900b8c78ed4d2f58fb5d941c",
+    "tests/fixtures/oop-host/generation.c": "6e38c1fff6b72cd065617089ffa9a873c631b86c8438d73bb6e0f2e24345b4b2"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-oop.log",
+      "sha256": "3f721d3509097192ab17d8945d7795b0d12f03df43786e324d8b0187e3e38362",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-transaction-oop.log",
+      "sha256": "ed3613a63fda4453525592e62ea5b83a201aaf2dc39050f1424de30d58869c2d",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/publication-failure-image-oop.log",
+      "sha256": "b10317278efc28bf109186fcf2ea80c8c8029a21b643c861abaa885f368503e6",
+      "exit": 0
+    }
+  ],
+  "native_targets": [
+    "generation",
+    "generation_transaction",
+    "publication_failure_image"
+  ],
+  "retained_checks": [
+    "Canonical source-map, digest and selection rows are inert and stable across repeated projection",
+    "Collecting current String construction preserves projection; source mutation during construction rejects a mixed snapshot",
+    "Both synchronous and resumable candidates preserve stale-token and discard-token rejection",
+    "Setter failure after commit leaves partial edits and unrelated callback effects intact; no automatic inverse",
+    "Explicit undo refuses foreign replacement, restores exact previous Methods/Globals when safe, and preserves explicit Store facts",
+    "Removal failure during undo is not automatically redone; later explicit undo completes",
+    "Discard releases policy authority and constructor failure cannot replay activation",
+    "Native failure identity survives fresh artifact execution and source-free mapped/rebuilt images"
+  ],
+  "representation_adjustments": [
+    "Declared callbacks and captured Method Oops replace raw native entries",
+    "Mutation interception uses the actual vtable owner, distinct from the Id receiver",
+    "Candidate constructor failure targets the current withImplementation: operation",
+    "Lifecycle setup uses compiled standard modules through ordinary messages",
+    "Former image defect characterization now asserts the corrected native failure channel in all modes"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Generation ledger and other native/compiler harnesses remain unported",
+    "Obsolete whole-Id binding-undo harness requires contract audit; its removed operation was not restored",
+    "Automatic alias-return and numeric interception scope decisions",
+    "Complete cold qualification of the latest runtime"
+  ]
+}

@@ -2488,3 +2488,25 @@ deadline remains 15 seconds. CLI and image groups remain in that queue.
 Those results predate explicit candidate/numeric support, recovery ownership and
 language-absence conversion. A fresh clean cold build at `a3eaa227`, including all
 those corrections, is now running without Birnam on PATH or a build cache.
+
+## Generation projection, partial edits and failure-channel images
+
+The generation projection and transaction harnesses now use Oop Methods and
+declared collecting callbacks. Projection remains canonical and inert; repeated
+reads agree, current String construction may collect, and a source edit during
+construction rejects a mixed snapshot. Fixture rows are found by identity among
+the actual compiled core records.
+
+Both synchronous and resumable candidates retain stale/discarded-token rejection,
+partial effects after setter failure, explicit undo conflicts, exact restoration
+and preservation of unrelated callback edits and explicit Store facts. A failed
+undo is not automatically redone. Constructor failure uses the current
+`withImplementation:` operation and cannot replay activation. Mutation interception
+uses the actual vtable owner rather than the old combined Id/vtable receiver.
+
+The former publication-image defect characterization now requires the corrected
+contract: the exact native invalid-request failure survives fresh artifact use
+and both source-free mapped/rebuilt image paths. All three targets pass without
+production changes. The removed whole-Id binding-undo primitive was not reintroduced;
+its old harness remains subject to contract audit.
+[Receipt](../measurements/generation-publication-oop-20261027.json).
