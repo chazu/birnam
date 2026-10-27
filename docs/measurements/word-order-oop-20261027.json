@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "scope": "Word representation fallback order and left-side native failure precedence",
+  "base_revision": "92be092ddd8fd525a59f06cd85205cd6d03d1f04",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/word_representation_order.rs": "1529132edb758804a6fc897471cdda8a98a501db3fe566b7a698f531a2c1e73f",
+    "tests/fixtures/oop-host/word-order.c": "85afdd58b5e38f653f0d45df21a928fa328bc6ccc97122979ed2b5430f11cda0"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/word-order-oop.log",
+      "sha256": "cd3d7dcad839428494dda29cca3f6f8c667f377de686f94512dd3540314c53d4",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Replaced representation query observes left then right input",
+    "Successful wrapping addition returns 16",
+    "Exact left-side failure wins for heap Word, immediate, null and missing right inputs",
+    "Each failure observes only the left input"
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

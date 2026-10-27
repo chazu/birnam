@@ -2740,3 +2740,12 @@ socket and REPL ownership, installed startup without compilation/parsing,
 interactive CLI behavior, REPL golden cases and LSP project behavior. Tasks, CLI
 and image groups remain separate ongoing qualification work.
 [Receipt](../measurements/language-interaction-oop-20261027.json).
+
+## Word fallback query order
+
+The Word ordering harness now uses a declared Oop observer. Replacing the
+representation query forces the ordered public path: left then right. A native
+failure while inspecting the left operand wins before the right operand is
+inspected, including heap, immediate, null and missing inputs. The test passes
+without runtime or Id changes.
+[Receipt](../measurements/word-order-oop-20261027.json).
