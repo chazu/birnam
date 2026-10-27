@@ -29,6 +29,8 @@ receipt = {'passed': run['exit_code'] == 0, 'run': run,
                ROOT / 'modules/isolate.birnam',
                ROOT / 'modules/repl.birnam',
                ROOT / 'rust/birnam-siphon/tests/task_without_store.rs',
+               ROOT / 'rust/birnam-siphon/tests/support/minimal.rs',
+               ROOT / 'tests/fixtures/oop-host/allocation-presence.c',
                Path(__file__).resolve()]},
            'floor_sha256': {p.name: sha(p) for p in floor.iterdir()},
            'scope': 'Actual compiled task initializer and actual Concurrency/REPL source initializers, owned field aliases and message-based buffer retirement, local wait/resolve/cancellation and GC lifetime. Store/Relational/Bootstrap/Image/Alien/Isolate absent. Does not prove full Host, worker or image independence.'}

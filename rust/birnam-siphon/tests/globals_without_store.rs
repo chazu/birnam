@@ -1,5 +1,6 @@
 //! Actual authored Globals initialization on a physically Store-absent floor.
 #[path = "support/minimal.rs"]
+#[allow(dead_code)]
 mod minimal;
 use birnam_abi::{Oop, size};
 use birnam_host_support::Context;

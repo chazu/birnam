@@ -2953,3 +2953,18 @@ global facts, and leaves explicit Store facts independent of Globals mutation.
 The runner hashes the composition helper and allocation observer with its inputs.
 No runtime or Id change was needed.
 [Receipt](../measurements/globals-without-store-oop-20261027.json).
+
+## Actual Task initialization without Store
+
+The Task isolation harness now uses the Oop native-only composition and actual
+compiled initializers. Existing source assertions remain byte-for-byte unchanged:
+Cell identity replacement, Concurrency field aliases, shared REPL resource close,
+local wait/resolve and cancellation cleanup all pass. A retained field view alone
+keeps its owner and payload alive; removing that root reclaims all three, observed
+by allocation identity.
+
+Store, Relational, Bootstrap, Image, Alien and native Isolate remain physically
+absent. Resource methods that require those optional services are not claimed by
+this test. The smaller Globals isolation check also passes after the shared helper
+extension. No runtime or Id change was needed.
+[Receipt](../measurements/task-without-store-oop-20261027.json).

@@ -88,3 +88,132 @@ pub fn native_floor() -> Context {
     }
     host
 }
+
+/// Add the native services required by the actual authored language initializers.
+pub fn service_floor() -> Context {
+    let host = native_floor();
+    {
+        let q = host.scope();
+        let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+        let named = |n: &[u8]| host.named(n).unwrap();
+        for name in [
+            "system_output",
+            "system_input",
+            "environment",
+            "storage",
+            "peg",
+            "generation",
+        ] {
+            host.load_native(
+                &q,
+                &host
+                    .resources
+                    .lib_dir
+                    .join(format!("libbirnam_{name}.dylib")),
+                &[host.namespace],
+            )
+            .unwrap();
+        }
+        let string = named(b"String");
+        let integer = named(b"Integer");
+        let float = named(b"Float");
+        for name in [b"true".as_slice(), b"nil"] {
+            call(named(name), b"installPrinting:", &[string]);
+        }
+        call(integer, b"installFloat:", &[float]);
+        call(string, b"installNumbers:", &[integer, float]);
+        call(
+            host.id.root,
+            b"parentOf:put:",
+            &[named(b"StringVt"), named(b"Collection")],
+        );
+        call(string, b"installCollections:", &[named(b"Vector")]);
+    }
+    host
+}
+
+/// Releasable test roots keep lifetime assertions independent of caller helpers.
+pub struct H<'a> {
+    pub host: &'a Context,
+    tokens: std::cell::RefCell<Vec<Oop>>,
+}
+impl<'a> H<'a> {
+    pub fn new(host: &'a Context) -> Self {
+        Self {
+            host,
+            tokens: std::cell::RefCell::new(vec![]),
+        }
+    }
+    pub fn named(&self, n: &[u8]) -> Oop {
+        self.host.named(n).unwrap()
+    }
+    pub fn keep(&self, o: Oop) -> Oop {
+        self.tokens
+            .borrow_mut()
+            .push(self.host.send(self.host.roots, b"retain:", &[o]).unwrap());
+        o
+    }
+    pub fn key(&self, n: &[u8]) -> Oop {
+        self.keep(self.host.intern(n).unwrap())
+    }
+    pub fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
+        self.keep(self.host.send(r, n, a).unwrap())
+    }
+    pub fn text(&self, b: &[u8]) -> Oop {
+        self.keep(self.host.scope().string(b).unwrap())
+    }
+    pub fn eval(&self, b: &[u8]) -> Oop {
+        let value = self.call(self.named(b"Codegen"), b"evalPersisting:", &[self.text(b)]);
+        self.host.scope().check_result(value).unwrap();
+        value
+    }
+    pub fn artifact(&self, name: &str) -> Oop {
+        eprintln!("loading actual initializer: {name}");
+        let path = self
+            .host
+            .resources
+            .lib_dir
+            .join(format!("libbirnam_{name}.dylib"));
+        let value = self.call(
+            self.named(b"Codegen"),
+            b"load:",
+            &[self.text(path.as_os_str().as_encoded_bytes())],
+        );
+        assert_ne!(value, self.named(b"nil"), "nil initializer: {name}");
+        self.host.scope().check_result(value).unwrap();
+        value
+    }
+    pub fn mount(&self, name: &str) {
+        self.host
+            .load_native(
+                &self.host.scope(),
+                &self
+                    .host
+                    .resources
+                    .lib_dir
+                    .join(format!("libbirnam_{name}.dylib")),
+                &[self.host.namespace],
+            )
+            .unwrap();
+    }
+    pub fn mark(&self) -> usize {
+        self.tokens.borrow().len()
+    }
+    pub fn clear_from(&self, i: usize) {
+        for token in self.tokens.borrow_mut().drain(i..).rev() {
+            self.host
+                .send(self.host.roots, b"release:", &[token])
+                .unwrap();
+        }
+    }
+    pub fn collect(&self) {
+        self.host
+            .send(self.named(b"GC"), b"collectPrecisely", &[])
+            .unwrap();
+    }
+}
+impl Drop for H<'_> {
+    fn drop(&mut self) {
+        self.clear_from(0);
+    }
+}
