@@ -1,0 +1,225 @@
+{
+  "passed": true,
+  "scope": "Complete installed Host image group and all five serial Host groups at the stated cold revision; not qualification of later runtime changes or all native targets",
+  "candidate_revision": "9f638b7366e34a7c7032d7b3ff38a507a1bd5724",
+  "prefix": "/private/tmp/birnam-oop-current-ntrebvab/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/optional-store-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:optional-store-image-test.py",
+      "started_unix_ns": 1793102260060562000,
+      "status": "passed",
+      "wall_ns": 872963050458
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:host-image-test.py",
+      "started_unix_ns": 1793103133087423000,
+      "status": "passed",
+      "wall_ns": 1023748622125
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/native-loader-image-smoke.sh",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:native-loader-image-smoke.sh",
+      "started_unix_ns": 1793104156891259000,
+      "status": "passed",
+      "wall_ns": 284937711042
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/trace-image-smoke.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:trace-image-smoke.py",
+      "started_unix_ns": 1793104441884363000,
+      "status": "passed",
+      "wall_ns": 105019880459
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/frame-call-image-smoke.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:frame-call-image-smoke.py",
+      "started_unix_ns": 1793104546951451000,
+      "status": "passed",
+      "wall_ns": 108521307916
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/collection-search-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/collection search images"
+      ],
+      "exit_code": 0,
+      "label": "image:collection-search-image-test.py",
+      "started_unix_ns": 1793104655520709000,
+      "status": "passed",
+      "wall_ns": 269485856167
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/string-builder-image-smoke.sh",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:string-builder-image-smoke.sh",
+      "started_unix_ns": 1793104925064138000,
+      "status": "passed",
+      "wall_ns": 317660932459
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/system-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:system-image-test.py",
+      "started_unix_ns": 1793105242770970000,
+      "status": "passed",
+      "wall_ns": 533994104708
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:alien-image-test.py",
+      "started_unix_ns": 1793105776872565000,
+      "status": "passed",
+      "wall_ns": 260545356875
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-publication-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:alien-publication-test.py",
+      "started_unix_ns": 1793106037463380000,
+      "status": "passed",
+      "wall_ns": 12569393250
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/image-store-participation-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:image-store-participation-test.py",
+      "started_unix_ns": 1793106050066773000,
+      "status": "passed",
+      "wall_ns": 290699589416
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-recipes-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:alien-recipes-test.py",
+      "started_unix_ns": 1793106340812814000,
+      "status": "passed",
+      "wall_ns": 672566097542
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-recipes-reentry-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:alien-recipes-reentry-test.py",
+      "started_unix_ns": 1793107013410155000,
+      "status": "passed",
+      "wall_ns": 12176420292
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-recipes-hash-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:alien-recipes-hash-test.py",
+      "started_unix_ns": 1793107025619468000,
+      "status": "passed",
+      "wall_ns": 549230089666
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/alien-image-reentry-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.fNROzz/relocated"
+      ],
+      "exit_code": 0,
+      "label": "image:alien-image-reentry-test.py",
+      "started_unix_ns": 1793107574894616000,
+      "status": "passed",
+      "wall_ns": 452822039958
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "startup::tests::image_entry_uses_saved_code_and_roots",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "image:host-lib:startup::tests::image_entry_uses_saved_code_and_roots",
+      "started_unix_ns": 1793108027771185000,
+      "status": "passed",
+      "wall_ns": 9213834042
+    }
+  ],
+  "all_host_groups": [
+    "generation",
+    "interaction",
+    "tasks",
+    "cli",
+    "image"
+  ],
+  "post_qualification_manifest_files": 820,
+  "post_qualification_exact_manifest": true,
+  "receipt_sha256": "f15e46616351e3643bff26fe54e85a399adae0a2da9e4dffebaea85fd35baeab",
+  "log": ".cargo-target/oop-current-qualification/image.log",
+  "log_sha256": "fca9d9422212c4d23776ba798c4613791c76b74b2633747c0f884312a3b35c09",
+  "timings_sha256": "89130485a5224450be6e4afc0d8a419511fa2c67a82fc07e7d15a047a2a6156b",
+  "prepared_test_binaries_manifest": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/test-binaries/manifest.json",
+  "prepared_test_binaries_manifest_sha256": "a9d066b1c25c228848f89a4cf964074dc3e82fc27e0869d322c9f626a6e4a859",
+  "remaining": [
+    "A fresh cold candidate for later native-loader, standalone-emitter, call-preparation and GC-activation fixes",
+    "Remaining compiler and native harness migration"
+  ]
+}

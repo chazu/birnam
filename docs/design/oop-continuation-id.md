@@ -2112,3 +2112,14 @@ and binding enumeration instead of adding retired count/index helpers to Id.
 
 The general, slot-inventory and scoped-conversion suites pass. No runtime or Id
 change was needed. [Receipt](../measurements/object-model-oop-20261027.json).
+
+## Completed cold candidate Host qualification
+
+All 16 image checks passed on cold revision `9f638b73`, completing all five serial
+Host groups: generation 17, interaction 6, tasks 6, CLI 18 and images 16. The
+candidate's exact 820-file manifest remained unchanged after qualification.
+This completes that candidate's cold installation/archive/Host checkpoint, not
+the remaining native migration or qualification of later runtime corrections.
+A fresh cold build must include the native-loader, standalone-emitter,
+call-preparation and failed-activation fixes.
+[Receipt](../measurements/current-image-oop-20261027.json).
