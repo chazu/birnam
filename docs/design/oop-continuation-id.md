@@ -1430,3 +1430,15 @@ object before reading its argument through owner messages; the explicit outbound
 adapter's snapshot remains unchanged. A later copied result also survives further
 mutation and collection. No runtime or Id change was needed.
 [Receipt](../measurements/native-values-oop-20261027.json).
+
+## Numeric values, text conversions and collecting dependencies
+
+The `numbers` harness now exercises its retained integer and IEEE Float matrices
+through Oop messages, including bounds, signed zero, NaNs, mixed arithmetic,
+rounding, exact-family equality and Error propagation. Text indexing/parsing and
+builder checks remain, as do collecting replacements of numeric and String
+constructors, inclusive range callbacks at the i64 limit and collection-pressure
+checks. A declared C observer compares allocation identities to confirm that raw
+numeric bits do not retain an object at that address, even after assigning the
+Integer a private vtable. No runtime or Id change was needed.
+[Receipt](../measurements/numbers-oop-20261027.json).

@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "Retained numeric, text conversion, replacement, range callback and precise-collection acceptance through Oops",
+  "base_revision": "9c17c00c87c5dd15a57de00d5b49ef92c0f7609a",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-incoming-5ta1my25/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/numbers.rs": "a8d7bd262181b9c54ca3d508d2c07cc7baa9375d18017f71249317705365b1d5",
+    "tests/fixtures/oop-host/numbers.c": "b280123a85fbfb833f07143f3c8fa03a61e8b14abeaa9ace545934ea0b58832f"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/numbers.log",
+      "sha256": "5264aa9c272c2da0a0c66b41ee0b59a1a74308cd5def2e43f45b38dfaeda17b7",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}
