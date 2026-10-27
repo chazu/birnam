@@ -1580,3 +1580,18 @@ incoming-adapter, native Block-return or GC-query corrections. Those have staged
 core/focused evidence and still need a fresh cold installation and full Host
 acceptance. The remaining native test harnesses and retained compiler features
 also prevent declaring the overall migration complete.
+
+## Method binding through source, artifacts and images
+
+The `method_binding` harness now uses Oops. The unchanged authored fixture builds
+independent Methods from a template; receiver/argument identities and selected
+bodies survive collection, artifact loading, and source-free mapped/rebuilt images.
+Recovered Methods remain usable templates, and replacing a template's constructor
+is observed by the next binding under collection.
+
+The removed NativeEntry-based Method factory is no longer used as a test receiver.
+Bare native and compiled-root Method Oops do not own `withImplementation:`; their
+unsupported send returns `doesNotUnderstand` Error data. Valid template constructors
+separately reject wrong arity. Neither case manufactures an invalid binding.
+No runtime or Id change was needed.
+[Receipt](../measurements/method-binding-oop-20261027.json).

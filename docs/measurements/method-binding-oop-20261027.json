@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "scope": "Method withImplementation construction through Oops, source/artifacts and source-free mapped/rebuilt images",
+  "base_revision": "be6a609389229f1744f742d591d0eb3747c95dd9",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/system-gc-g2s4ppiz/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/method_binding.rs": "4ffff8bfc0685b574d4940af64d7927ec4d2d147f83fde450373f749db35fe9a",
+    "tests/fixtures/method-binding.birnam": "f68e13bb349b7ed0677124473910f17fd810e5467d79afe8867d4746c45c14ff"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/method-binding.log",
+      "sha256": "87e7dda921d77eb34703ecbeae15ab93f4f770e8b7d18dbe543519197ed934b3",
+      "exit": 0
+    }
+  ],
+  "representation_adjustment": "The removed NativeEntry-based Method factory is no longer a test receiver. Bare native and compiled-root Method Oops lack the template constructor and answer doesNotUnderstand Error data; owned template constructors separately reject wrong arity.",
+  "runtime_changes": false,
+  "id_changes": false
+}
