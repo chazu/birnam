@@ -2181,3 +2181,23 @@ reloading preserves that absence and returns the original module receiver. No
 runtime or Id change was needed. The Store harness, adjacent contract suites and
 13 independent unit oracles pass; two manual scaling investigations remain skipped.
 [Receipt](../measurements/store-oop-20261027.json).
+
+## Relational queries and collecting callbacks
+
+The `relational` harness now uses Oop messages and declared native callbacks.
+It retains query order and deduplication, joins, predicates, negation, disjunction,
+aggregates, historical views, recursive rules, nested pull and source spelling.
+Scalar equality, numeric promotion, overflow and malformed inputs retain their
+existing expectations.
+
+Replacement Store traversal, Integer conversion, Vector and Map methods collect
+and enter nested queries. Ephemeral entities survive callback delivery; expired
+collectors reject later delivery, and failed result construction releases abandoned
+entities. Reclamation checks use allocation identities instead of freed pointers.
+Namespace factory replacement, LogicVar identity and repeated loading also pass.
+
+No runtime or Id change was needed. The migrated harness and three adjacent Store
+contract suites pass, as do 21 evaluator unit tests; one manual timing investigation
+remains skipped. This does not complete the remaining native/compiler migrations
+or the running cold Host qualification.
+[Receipt](../measurements/relational-oop-20261027.json).

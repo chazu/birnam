@@ -1,0 +1,56 @@
+{
+  "passed": true,
+  "scope": "Native Relational queries, rules, history and collecting callbacks through Oop messages, with independent evaluator oracles",
+  "base_revision": "02cb64154a57236e4780f7c7b701942878363a6d",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/activation-wmlwn0vv/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/relational.rs": "07ec923894f457e690d53923b2f907830238fae755cac5ae201c638fb1f87282",
+    "tests/fixtures/oop-host/relational.c": "8285ec69b1b7ebd98268a867ec945b315c872476954a178e8415f02c0f500520"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/relational-final.log",
+      "sha256": "72ee8d48786637daeb966c8f8b1456f92131a18c6ffed24baa7ac43173b43eb9",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/relational-unit.log",
+      "sha256": "af6c6bf5d27079ac3fd11c9015dfca02edf8a499107b3e5f37bba07e7d541cab",
+      "exit": 0
+    }
+  ],
+  "native_results": {
+    "passed": 4,
+    "targets": [
+      "relational",
+      "method_observation",
+      "publication_contract",
+      "store_compensation"
+    ]
+  },
+  "unit_results": {
+    "passed": 21,
+    "ignored_manual_timing": 1
+  },
+  "retained_checks": [
+    "LogicVar identity, cloning and printing; query ordering, deduplication, joins, predicates, negation and disjunction",
+    "Aggregates, empty results, grouping, numeric promotion, scalar equality and overflow",
+    "As-of, since and between history, malformed clauses and timestamps",
+    "Recursive rules as Store facts, rebuilding, retraction, nested pull and source spelling",
+    "Current Store traversal, Integer conversion, Vector and Map methods collect and run nested queries",
+    "Exact native failure identity, callback expiration and abandoned query allocation reclamation",
+    "Namespace factory replacement, LogicVar survival across collection and repeated module loading"
+  ],
+  "representation_adjustments": [
+    "Declared native Methods with Oop contexts replace raw native entries and Rust callback pointers",
+    "Oop Word and String operations replace native carriers",
+    "Allocation identities and allocationsDo: replace queries on freed objects"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native targets and compiler groups remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Latest installed Host qualification is running"
+  ]
+}
