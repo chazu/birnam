@@ -1,323 +1,242 @@
 //! Byte arguments/results are copied before reentrant target/factory callbacks.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{Operand, Outcome, Protocol},
-};
-use std::{cell::Cell, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct Hook {
-    id: Protocol,
-    gc: Oop,
-    roots: Oop,
-    bytes: Oop,
-    input: Oop,
-    token: Cell<usize>,
-    calls: Cell<usize>,
-    mode: Cell<u8>,
-    recorded: Cell<usize>,
-}
-unsafe fn callback_input(h: &Hook) -> Result<(), Outcome> {
-    let token = h.token.replace(0);
-    if token != 0 {
-        unsafe { release(h.id, h.roots, token) }
-    };
-    unsafe {
-        h.id.send_named(
-            h.input,
-            b"appendBytes:",
-            &[Operand::bytes(b"changed-buffer")],
-        )?;
-        collect(h.id, h.gc);
-    }
-    assert!(
-        unsafe { present(h.id, h.input) },
-        "helper must protect the byte owner through callback"
-    );
-    Ok(())
-}
-unsafe extern "C" fn byte_target(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let h = &*c.cast::<Hook>();
-        let [value] = borrowed_slice(a, n).unwrap() else {
-            panic!("one bytes argument")
-        };
-        let raw = value.as_bytes().unwrap();
-        callback_input(h)?;
-        assert_eq!(borrowed_bytes(raw.pointer, raw.length).unwrap(), b"ab");
-        h.calls.set(h.calls.get() + 1);
-        match h.mode.get() {
-            1 => Ok(Operand::object(std::ptr::null_mut())),
-            2 => Ok(Operand::unit()),
-            3 => Err(Outcome::failed(821, 71)),
-            _ => Ok(Operand::object(h.input)),
-        }
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn byte_factory(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let h = &*c.cast::<Hook>();
-        let [value] = borrowed_slice(a, n).unwrap() else {
-            panic!("one bytes result")
-        };
-        let raw = value.as_bytes().unwrap();
-        callback_input(h)?;
-        assert_eq!(borrowed_bytes(raw.pointer, raw.length).unwrap(), b"xy");
-        h.calls.set(h.calls.get() + 1);
-        if h.mode.get() == 3 {
-            return Err(Outcome::failed(822, 73));
-        }
-        h.id.send_named(h.bytes, b"fromBytes:", &[*value])
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn ignored_word(_: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let [value] = unsafe { borrowed_slice(a, n) }.unwrap() else {
-        panic!("one word argument")
-    };
-    assert_eq!(value.as_word(), Some(5));
-    Outcome::loaded(Operand::bytes(b"ignored"))
-}
-unsafe extern "C" fn record_word(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<Hook>() };
-    let [value] = unsafe { borrowed_slice(a, n) }.unwrap() else {
-        panic!("one Word")
-    };
-    h.recorded.set(value.as_word().unwrap());
-    unsafe { collect(h.id, h.gc) };
-    Outcome::loaded(Operand::unit())
-}
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 #[test]
-#[ignore = "requires rebuilt typed outbound call modules"]
+#[ignore = "requires production Oop outbound adapters"]
 fn typed_byte_and_discard_calls_preserve_copies_factories_and_failures() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let gc = named(b"GC");
-        let bytes = named(b"Bytes");
-        let exe = named(b"Execution");
-        let nil = named(b"nil");
-        let mut tokens = Vec::new();
-        let mut keep = |o: Oop| {
-            tokens.push(retain(id, roots, o));
-            o
-        };
-        let behavior = keep(behavior(id));
-        let target = keep(allocate(id, behavior, 0));
-        let factory = keep(allocate(id, behavior, 0));
-        let mut h = Hook {
-            id,
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let key = |n: &[u8]| q.keep(host.intern(n).unwrap()).unwrap();
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let gc = named(b"GC");
+    let roots = host.roots;
+    let bytes = named(b"Bytes");
+    let execution = named(b"Execution");
+    let nil = named(b"nil");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let behavior = call(named(b"ObjectVt"), b"delegated", &[]);
+    let target = call(behavior, b"allocate", &[size(0).unwrap()]);
+    let factory = call(behavior, b"allocate", &[size(0).unwrap()]);
+    let path =
+        std::env::temp_dir().join(format!("birnam-byte-adapters-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/byte-adapters.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let data = |b: &[u8]| call(bytes, b"fromBytes:", &[q.byte_values(b).unwrap()]);
+    let read = |o| q.read_bytes(call(o, b"bytes", &[])).unwrap();
+    let fault = |status, detail| {
+        let f = unsafe {
+            host.id.send(
+                execution,
+                key(b"failNative:detail:"),
+                &[size(status).unwrap(), size(detail).unwrap()],
+            )
+        }
+        .unwrap_err();
+        q.keep(f).unwrap()
+    };
+    let target_failure = fault(821, 71);
+    let factory_failure = fault(822, 73);
+    let monitor = call(named(b"Object"), b"clone", &[]);
+    let monitor_vt = call(host.id.root, b"ensurePrivateVtableFor:", &[monitor]);
+    let z = size(0).unwrap();
+    let context = call(
+        host.id.root,
+        b"sequence",
+        &[
             gc,
             roots,
             bytes,
-            input: nil,
-            token: Cell::new(0),
-            calls: Cell::new(0),
-            mode: Cell::new(0),
-            recorded: Cell::new(usize::MAX),
-        };
-        let c = (&raw mut h).cast();
-        install(id, behavior, b"consume:", byte_target, c);
-        install(id, behavior, b"fromBytes:", byte_factory, c);
-        install(
-            id,
-            behavior,
-            b"discard:",
-            ignored_word,
+            monitor,
+            z,
             std::ptr::null_mut(),
+            z,
+            z,
+            z,
+            data(b"changed-buffer"),
+            target_failure,
+            factory_failure,
+            nil,
+            data(b"ignored"),
+        ],
+    );
+    let method = |n: &[u8]| {
+        call(
+            call(fixture, b"methodAt:", &[key(n)]),
+            b"withContext:",
+            &[context],
+        )
+    };
+    for n in [
+        b"consume:".as_slice(),
+        b"fromBytes:",
+        b"discard:",
+        b"record:",
+    ] {
+        call(behavior, b"addMethod", &[key(n), method(n)]);
+    }
+    call(
+        monitor_vt,
+        b"addMethod",
+        &[
+            key(b"allocation:bytes:identity:"),
+            method(b"allocation:bytes:identity:"),
+        ],
+    );
+    let at = key(b"at:");
+    let put = key(b"at:put:");
+    let retain = key(b"retain:");
+    let identity = key(b"identityOf:");
+    let from_bytes = key(b"fromBytes:");
+    let consume = key(b"consume:");
+    let bytes_selector = key(b"bytes");
+    let discard = key(b"discard:");
+    let record = key(b"record:");
+    let object_adapter = key(b"objectResultOf:selector:byteArgument:");
+    let byte_adapter = key(b"bytesResultOf:selector:resultFactory:");
+    let discard_adapter = key(b"discardResultOf:selector:wordArgument:");
+    let ab = q.byte_values(b"ab").unwrap();
+    let xy = q.byte_values(b"xy").unwrap();
+    let raw = |r, selector, args: &[Oop]| unsafe { host.id.send(r, selector, args) };
+    let set = |i, v| {
+        raw(context, put, &[size(i).unwrap(), v]).unwrap();
+    };
+    let arm = |source, mode| {
+        let input = raw(bytes, from_bytes, &[source]).unwrap();
+        let token = raw(roots, retain, &[input]).unwrap();
+        let id = raw(host.id.root, identity, &[input]).unwrap();
+        set(4, id);
+        set(5, token);
+        set(7, size(mode).unwrap());
+        input
+    };
+    for mode in 0..=4 {
+        let input = arm(ab, mode);
+        let result = raw(execution, object_adapter, &[target, consume, input]);
+        match mode {
+            0 => {
+                let returned = q.keep(result.unwrap()).unwrap();
+                assert_eq!(returned, input);
+                assert_eq!(read(returned), b"abchanged-buffer");
+            }
+            1 | 2 => assert_eq!(result.unwrap(), nil),
+            3 => assert_eq!(result.unwrap_err(), target_failure),
+            _ => assert_eq!(
+                result.unwrap(),
+                size(9).unwrap(),
+                "an immediate result remains an Oop"
+            ),
+        }
+        assert!(
+            raw(context, at, &[size(5).unwrap()]).unwrap().is_null(),
+            "callback releases external input protection"
         );
-        let selector = keep(id.intern_name(b"consume:").unwrap());
-        let from_bytes = keep(id.intern_name(b"bytes").unwrap());
-        let object_name = b"objectResultOf:selector:byteArgument:";
-        let byte_name = b"bytesResultOf:selector:resultFactory:";
-        let discard_name = b"discardResultOf:selector:wordArgument:";
-        for mode in 0..4 {
-            h.mode.set(mode);
-            h.input = object(send(id, bytes, b"fromBytes:", &[Operand::bytes(b"ab")]));
-            h.token.set(retain(id, roots, h.input));
-            let outcome = id.send_named(
-                exe,
-                object_name,
-                &[
-                    Operand::object(target),
-                    Operand::object(selector),
-                    Operand::object(h.input),
-                ],
-            );
-            match mode {
-                0 => {
-                    assert_eq!(outcome.unwrap().as_object(), Some(h.input));
-                    keep(h.input);
-                }
-                1 => assert_eq!(outcome.unwrap().as_object(), Some(nil)),
-                2 => assert_eq!(outcome.unwrap_err().status, 1),
-                _ => {
-                    let e = outcome.unwrap_err();
-                    assert_eq!((e.status, e.detail), (821, 71));
-                }
-            }
+    }
+    for mode in [0, 3] {
+        let input = arm(xy, mode);
+        let result = raw(execution, byte_adapter, &[input, bytes_selector, factory]);
+        if mode == 0 {
+            let result = q.keep(result.unwrap()).unwrap();
+            assert_eq!(read(result), b"xy");
+        } else {
+            assert_eq!(result.unwrap_err(), factory_failure);
         }
-        for mode in [0, 3] {
-            h.mode.set(mode);
-            h.input = object(send(id, bytes, b"fromBytes:", &[Operand::bytes(b"xy")]));
-            h.token.set(retain(id, roots, h.input));
-            let outcome = id.send_named(
-                exe,
-                byte_name,
-                &[
-                    Operand::object(h.input),
-                    Operand::object(from_bytes),
-                    Operand::object(factory),
-                ],
+        assert!(raw(context, at, &[size(5).unwrap()]).unwrap().is_null());
+    }
+    assert_eq!(
+        as_size(raw(context, at, &[size(6).unwrap()]).unwrap()),
+        Some(7),
+        "all mutation callbacks must run"
+    );
+    let value = call(named(b"Word"), b"fromBits:", &[size(5).unwrap()]);
+    assert_eq!(
+        raw(execution, discard_adapter, &[target, discard, value]).unwrap(),
+        nil
+    );
+    for adapter in [object_adapter, byte_adapter, discard_adapter] {
+        let args = [target, consume, value];
+        for count in 0..3 {
+            assert_eq!(
+                raw(execution, adapter, &args[..count]).unwrap_err(),
+                birnam_abi::object_reference(host.id.invalid)
             );
-            if mode == 0 {
-                let result = keep(object(outcome.unwrap()));
-                let raw = send(id, result, b"bytes", &[]).as_bytes().unwrap();
-                assert_eq!(borrowed_bytes(raw.pointer, raw.length).unwrap(), b"xy");
-            } else {
-                let e = outcome.unwrap_err();
-                assert_eq!((e.status, e.detail), (822, 73));
-            }
         }
-        h.mode.set(0);
-        let value = keep(object(send(
-            id,
-            named(b"Word"),
-            b"fromBits:",
-            &[Operand::word(5)],
-        )));
-        let discard = keep(id.intern_name(b"discard:").unwrap());
+        let mut extra = args.to_vec();
+        extra.push(nil);
+        assert!(raw(execution, adapter, &extra).is_err());
+        for index in 0..3 {
+            let mut bad = args;
+            bad[index] = std::ptr::null_mut();
+            assert_eq!(
+                raw(execution, adapter, &bad).unwrap_err(),
+                birnam_abi::object_reference(host.id.invalid)
+            );
+        }
+    }
+    assert!(
+        raw(
+            execution,
+            byte_adapter,
+            &[named(b"Word"), key(b"bits"), factory]
+        )
+        .is_err(),
+        "byte conversion requires the owner's byte protocol"
+    );
+    assert_eq!(
+        raw(context, at, &[size(6).unwrap()]).unwrap(),
+        size(7).unwrap(),
+        "invalid byte results must fail before the factory is entered"
+    );
+    for (boolean, expected) in [(named(b"true"), 1), (named(b"false"), 0)] {
         assert_eq!(
-            send(
-                id,
-                exe,
-                discard_name,
-                &[
-                    Operand::object(target),
-                    Operand::object(discard),
-                    Operand::object(value)
-                ]
-            )
-            .as_object(),
-            Some(nil)
-        );
-        for name in [
-            object_name.as_slice(),
-            byte_name.as_slice(),
-            discard_name.as_slice(),
-        ] {
-            let args = [
-                Operand::object(target),
-                Operand::object(selector),
-                Operand::object(value),
-            ];
-            for count in 0..3 {
-                assert!(id.send_named(exe, name, &args[..count]).is_err());
-            }
-            for index in 0..3 {
-                let mut bad = args;
-                bad[index] = Operand::word(0);
-                assert!(id.send_named(exe, name, &bad).is_err());
-            }
-        }
-        let wrong = id
-            .send_named(
-                exe,
-                byte_name,
-                &[
-                    Operand::object(named(b"Word")),
-                    Operand::object(id.intern_name(b"bits").unwrap()),
-                    Operand::object(factory),
-                ],
-            )
-            .unwrap_err();
-        assert_eq!(wrong.status, 1);
-        install(id, behavior, b"record:", record_word, c);
-        let record = keep(id.intern_name(b"record:").unwrap());
-        for (boolean, expected) in [(named(b"true"), 1), (named(b"false"), 0)] {
-            let returned = send(
-                id,
+            call(
                 named(b"Boolean"),
                 b"sendWordOf:to:selector:",
-                &[
-                    Operand::object(boolean),
-                    Operand::object(target),
-                    Operand::object(record),
-                ],
-            );
-            assert_eq!(returned.as_object(), Some(target));
-            assert_eq!(h.recorded.get(), expected);
-        }
-        let snapshot_source = keep(object(send(
-            id,
-            bytes,
-            b"fromBytes:",
-            &[Operand::bytes(b"policy snapshot")],
-        )));
-        let snapshot = keep(object(send(
-            id,
-            bytes,
-            b"fromByteResultOf:selector:",
-            &[
-                Operand::object(snapshot_source),
-                Operand::object(from_bytes),
-            ],
-        )));
-        let raw = send(id, snapshot, b"bytes", &[]).as_bytes().unwrap();
-        assert_eq!(
-            borrowed_bytes(raw.pointer, raw.length).unwrap(),
-            b"policy snapshot"
+                &[boolean, target, record]
+            ),
+            target
         );
-        let integer = named(b"Integer");
-        let zero = keep(object(send(
-            id,
-            integer,
-            b"fromWordResultOf:selector:",
-            &[
-                Operand::object(integer),
-                Operand::object(id.intern_name(b"word").unwrap()),
-            ],
-        )));
-        assert_eq!(send(id, zero, b"word", &[]).as_word(), Some(0));
-        for old in [
-            b"sendNativeTo:selector:arguments:signature:resultFactory:".as_slice(),
-            b"tryNativeArguments:",
-        ] {
-            assert!(
-                send(
-                    id,
-                    id.receiver,
-                    b"bindingOf:in:",
-                    &[
-                        Operand::object(id.intern_name(old).unwrap()),
-                        Operand::object(object(send(
-                            id,
-                            id.receiver,
-                            b"behaviorOf:",
-                            &[Operand::object(exe)]
-                        )))
-                    ]
-                )
-                .as_entry()
-                .is_none()
-            );
-        }
-        for token in tokens {
-            release(id, roots, token);
-        }
+        assert_eq!(
+            raw(context, at, &[size(8).unwrap()]).unwrap(),
+            size(expected).unwrap()
+        );
+    }
+    let snapshot_source = data(b"policy snapshot");
+    let snapshot = call(
+        bytes,
+        b"fromByteResultOf:selector:",
+        &[snapshot_source, bytes_selector],
+    );
+    call(snapshot_source, b"appendBytes:", &[data(b" changed")]);
+    assert_eq!(read(snapshot), b"policy snapshot");
+    let integer = named(b"Integer");
+    let zero = call(
+        integer,
+        b"fromWordResultOf:selector:",
+        &[integer, key(b"word")],
+    );
+    assert_eq!(q.word_bits(call(zero, b"word", &[])).unwrap(), 0);
+    for old in [
+        b"sendNativeTo:selector:arguments:signature:resultFactory:".as_slice(),
+        b"tryNativeArguments:",
+    ] {
+        assert!(
+            call(host.id.root, b"bind:to:", &[key(old), execution]).is_null(),
+            "retired general adapter must not be reintroduced"
+        );
     }
 }

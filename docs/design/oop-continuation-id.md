@@ -2863,3 +2863,18 @@ The before test fails, the corrected test passes, six native targets pass, all
 contract checks and independent C caller. The running a3eaa227 cold qualification
 predates this correction and does not qualify it.
 [Receipt](../measurements/fixed-adapters-oop-20261027.json).
+
+## Byte snapshots through explicit adapters
+
+The byte-adapter harness now uses Oop byte owners and declared callbacks. Targets
+and result factories mutate the original byte owner, release its external token
+and collect; the copied argument/result remains unchanged. Native failures retain
+their exact identities. Absence and language nil normalize as specified, while
+valid immediate results remain Oops.
+
+The harness retains discard, Boolean/Word helper, malformed-input and retired-API
+checks. It also verifies that invalid byte results never reach the factory and
+that the Bytes facade's snapshot survives later source mutation. The byte and
+fixed-adapter harnesses pass together on the diagnostic prefix containing the
+null-validation correction. No further runtime or Id change was needed.
+[Receipt](../measurements/byte-adapters-oop-20261027.json).

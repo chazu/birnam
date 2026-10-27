@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "scope": "Oop byte and discard adapters preserve snapshots through mutation, collection and owner failures",
+  "base_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "runtime_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/byte_abi.rs": "c0ae3fbff1c5a97e337502111605d828fdf3bcfe7d04fe5d42b0a5fb8de5d08a",
+    "tests/fixtures/oop-host/byte-adapters.c": "09476343f4fc24c170b4a6bb6c37e16bb7fa1a126d7609bc0d7d4920ca91f8fe"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/byte-adapters-oop.log",
+      "sha256": "649b1563745cc53d5589a1438115ad0511e2fecc30aa8e06fc022166efe2ba1f",
+      "exit": 0,
+      "targets": [
+        "byte_abi",
+        "fixed_abi"
+      ]
+    }
+  ],
+  "retained_checks": [
+    "Byte target mutates original owner and collects after releasing its external token; copied argument remains ab",
+    "Result factory mutates original owner and collects; copied result remains xy",
+    "Raw absence and language nil normalize to nil; valid immediate results remain Oops",
+    "Target and factory native failures preserve exact identities",
+    "Discard adapter ignores ordinary result data",
+    "Wrong arity/null arguments reject; unsupported byte result fails before factory entry",
+    "Boolean word sends preserve true/false conversion and return the target",
+    "Bytes facade returns a snapshot independent of later source mutation",
+    "Integer word-query facade returns zero",
+    "Retired general outbound bridge and argument-carrier query remain absent"
+  ],
+  "observation": "The fixture stores an input allocation identity rather than retaining the original byte owner. Public byte-owner operations inspect copies after mutation.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Remaining native/compiler harnesses and pending contract decisions",
+    "Complete cold installation/archive/Host qualification for 1fa7e3c2"
+  ]
+}
