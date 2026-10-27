@@ -2878,3 +2878,17 @@ that the Bytes facade's snapshot survives later source mutation. The byte and
 fixed-adapter harnesses pass together on the diagnostic prefix containing the
 null-validation correction. No further runtime or Id change was needed.
 [Receipt](../measurements/byte-adapters-oop-20261027.json).
+
+## Allocation guard integration through Method facts
+
+The allocation-guard harness now uses current Oop Methods rather than the old
+native-entry discovery helper and byte-packed rows. Exact contexts participate in
+binding facts. Replacing ObjectModel allocation, vtable allocation or GC
+preparation prevents omission without executing the changed operation. Current
+query failures propagate, and forwarding replacements cannot make captured
+canonical queries approve their own replacement.
+
+A captured permission Method also declines an allocation owner with custom method
+lookup without entering that lookup. Restoration is observed immediately. The
+owner integration test and adjacent binding-fact test pass without runtime or Id
+changes. [Receipt](../measurements/guard-batch-oop-20261027.json).

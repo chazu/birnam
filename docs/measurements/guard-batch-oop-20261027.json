@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "scope": "Allocation omission uses current Method facts and current permission operations without running allocation effects",
+  "base_revision": "7ce701c5f2e1f5e90fc556f42d33037f1330167b",
+  "runtime_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/guard_batch.rs": "2ff6c2c08c654daa458700c9ec247a32e4dd81888a9b562b511842110ef602b9"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/guard-batch-oop.log",
+      "sha256": "c4d6529a0e0809123928e74886aaaeec0c7ca418fa6c30fd46fd9d52b856116e",
+      "exit": 0,
+      "targets": [
+        "guard_batch",
+        "binding_proof"
+      ]
+    }
+  ],
+  "retained_checks": [
+    "Method context participates in exact binding facts",
+    "Replacing ObjectModel allocation, vtable allocation or GC preparation prevents omission without entering the replacement",
+    "Current binding-query and allocation-policy failures preserve exact native failure identity",
+    "Forwarding replacements cannot make captured canonical queries approve their own replacement",
+    "Custom method lookup on the allocation owner is declined without being invoked",
+    "Restoration is observed immediately and ordinary Word construction still succeeds"
+  ],
+  "migration_note": "The unexported legacy BindingGuard byte/native-entry helper is not recreated. Tests use the existing Oop Method-fact operation and the permission owners actual dependencies. Vtable allocation is intercepted on the vtable owner, not the Word instance vtable.",
+  "runtime_changes": false,
+  "id_changes": false
+}
