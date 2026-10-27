@@ -1970,3 +1970,13 @@ messages while Id's own lookup differs. Replacing the public proof operation als
 makes a captured proof decline without invoking the replacement. No raw entry call,
 private Method data or runtime change is introduced.
 [Receipt](../measurements/binding-proof-oop-20261027.json).
+
+## Cold candidate task acceptance
+
+All six installed Host task checks passed on cold revision `9f638b73`, including
+mapped/rebuilt task images, fields, source-free workers, concurrency service and
+cleanup behavior, closure observations under both collection modes, all 27
+multicore checks and all 177 task-control checks. The worker-ready deadline remains
+15 seconds. CLI and image groups remain in the serial queue. This receipt does not
+cover the subsequent native-loader and standalone-emitter corrections.
+[Receipt](../measurements/current-tasks-oop-20261027.json).
