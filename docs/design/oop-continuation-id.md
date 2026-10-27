@@ -2144,3 +2144,16 @@ observes the existing `isSymbol:` operation and native loading observes the Name
 owner's loader. Out-of-range index checks use representable size Oops instead of
 the removed native Word carrier. No runtime or Id change was needed.
 [Receipt](../measurements/modules-oop-20261027.json).
+
+## Fresh cold installation with current runtime corrections
+
+Revision `83737742` passed a new cold build from a clean detached checkout, with
+no Birnam executable on PATH and no build cache. Its exact 821-file installation
+excludes the Lang build seed. Archive qualification passed with the original
+source and prefix hidden, including signatures, relocation, source/GC/image
+behavior and startup without parsing or compilation. The hidden paths were restored.
+
+This candidate includes the native-loader, standalone-emitter, call-preparation
+and failed-activation corrections. Its full serial Host qualification is now
+running. Remaining native/compiler migration and the alias-return scope decision
+are still open. [Receipt](../measurements/latest-cold-install-oop-20261027.json).

@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "scope": "Fresh cold installation and archive relocation including recent runtime corrections; full installed Host and remaining native acceptance pending",
+  "source_revision": "8373774275d7d5e28ad771293123cbad35f49342",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "8373774275d7d5e28ad771293123cbad35f49342"
+  },
+  "source_manifest_sha256": "1564307ba04393c0c161721c321b9da9c92f32b0d5343cd44040b924f90e7c6a",
+  "prefix": "/private/tmp/birnam-oop-latest-lfpv5n99/prefix",
+  "receipt_sha256": "216c1e748014788f5699d78bd2a7c1d686d43b875e0518de427d5f1dcafd3d02",
+  "staged_manifest_files": 821,
+  "staged_manifest_sha256": "0ba9a482e48aa2540633a9f4fef736bafb2809e03e8b8e8c268bcfa51fffb112",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-latest-lfpv5n99/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-latest-lfpv5n99/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_log": "/private/tmp/birnam-oop-latest-lfpv5n99/install.log",
+  "install_log_sha256": "8edcd6298f1eb60e1e8bb035a885e7e0d092aaa0466bdb67d84e15c200b1f191",
+  "archive": "/private/tmp/birnam-oop-latest-lfpv5n99/candidate.tar.gz",
+  "archive_sha256": "61d155578f4b3592ea9097f502cfa7b91ae22844b15d0cf5f291c2929717c5c5",
+  "archive_smoke_log": "/private/tmp/birnam-oop-latest-lfpv5n99/archive-smoke.log",
+  "archive_smoke_log_sha256": "5255e164befec457e9e7732947edc01da18b750cbbd476901c8eddc9ed022044",
+  "archive_smoke_build_paths_hidden": true,
+  "build_paths_restored": true,
+  "install_seconds": 753.748278,
+  "archive_smoke_seconds": 314.102382,
+  "remaining": [
+    "Complete serial Host qualification of this candidate",
+    "Remaining native harness and compiler groups",
+    "Pending automatic alias-return scope decision"
+  ]
+}
