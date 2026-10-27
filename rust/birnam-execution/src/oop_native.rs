@@ -66,7 +66,9 @@ unsafe fn outbound(c: Oop, a: *const Oop, n: usize, kind: u8) -> Oop {
             1 | 2 | 3 | 4 => 3,
             _ => 2,
         };
-        if n != count {
+        // These explicit adapters require their target, selector, input and
+        // factory arguments before any effectful conversion or target send.
+        if n != count || a.iter().any(|value| value.is_null()) {
             return Err(invalid());
         }
         let q = s.scope(a);

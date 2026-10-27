@@ -2839,3 +2839,27 @@ Collection runs before the fixture reads the constructor's observations into the
 caller scope, so those reads cannot accidentally supply the tested roots. All
 checks pass without runtime or Id changes.
 [Receipt](../measurements/integer-box-oop-20261027.json).
+
+## Fixed native-adapter null validation
+
+Porting the fixed-adapter harness exposed an input-validation regression: a null
+result factory reached dispatch and returned an ordinary Error rather than the
+native invalid-request failure required by the existing fixed-call contract.
+Execution now checks required arguments for null together with arity, before any
+conversion, target or factory send. The subsequent operation sequence is unchanged.
+This adds no message, lookup, representation, registry or lifetime mechanism and
+changes no Id operation. Execution owns the argument-shape check; Word/Bytes
+owners still interpret their values.
+
+The migrated harness covers all seven forms and every null argument position,
+using distinct failing dependencies to reject validation that occurs too late.
+It also preserves full-width values, optional absence versus zero, collecting
+input lifetime, late factory/target replacement and exact native failures. Valid
+immediate and boxed Oops remain accepted where their owner protocols apply; the
+old carrier categories are not restored.
+
+The before test fails, the corrected test passes, six native targets pass, all
+26 Execution unit tests pass, and the core Oop gate passes including its dispatch
+contract checks and independent C caller. The running a3eaa227 cold qualification
+predates this correction and does not qualify it.
+[Receipt](../measurements/fixed-adapters-oop-20261027.json).

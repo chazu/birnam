@@ -1,0 +1,80 @@
+{
+  "passed": true,
+  "scope": "Restore required non-null fixed-adapter arguments and migrate full fixed native-call acceptance to Oops",
+  "base_revision": "ce0ef1b87e6d68ad2472fe0a56a1e097364635c5",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "prefix_kind": "Fresh diagnostic copy with rebuilt Execution; not a cold-installation receipt",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "d26afcc486d9921baec95b0a45399105b8d08603210b22bc5cb428b07fb5eef3",
+    "rust/birnam-siphon/tests/fixed_abi.rs": "66db949bea6d3f9952ecab363434b491087c93d16b41a3fa842c23843ae03c54",
+    "tests/fixtures/oop-host/fixed-adapters.c": "3f7c39b6fc1bc9ac40e991053a40677bdd7c286fa6f969950057de77f98726c3"
+  },
+  "execution_dylib_sha256": "46f4e30ac761998253a509e8b45f00d95ae066bacb42eefc8e099aa8db8d5428",
+  "reproduction": {
+    "log": ".cargo-target/oop-current-qualification/fixed-adapters-null-before.log",
+    "sha256": "5f86abc1f804c826c5917f74c2614d669e66cb44aeef6a7f8704e98226fe5224",
+    "exit": 101,
+    "finding": "Absent result factory returned an ordinary Error through dispatch instead of the required native invalid-request failure"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/fixed-adapters-build.log",
+      "sha256": "dae43a73b938e05436c8bd553f8bc844f9f581ef05ee15a1ceebb04d971736f1",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/fixed-adapters-after.log",
+      "sha256": "c0993e547a4e9bea18317d157e8080603cb76439af32f15499bb0338d57dfb19",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/fixed-adapters-final.log",
+      "sha256": "8ec84e51d014921358758c5a5d22da676e58480e68a93ad4fab38dbf8ab6f616",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/fixed-adapters-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/fixed-adapters-units.log",
+      "sha256": "becc94b6044a4f2fa0827639f3bac544da8ed6c36a9da16cc669b86c655de268",
+      "exit": 0
+    }
+  ],
+  "contract_review": {
+    "authority": [
+      "docs/design/fixed-abi-simplification.md: required arguments reject null",
+      "docs/misc/DESIGN.md: Oop values, minimal Id, live dispatch and owner-local validation"
+    ],
+    "before": "arity check -> owner scope -> conversion/target/factory sends",
+    "after": "arity and non-null check -> same owner scope -> same sends",
+    "new_mechanisms": [],
+    "representation_owner": "Execution validates the shape of its explicit adapter operations; Word/Bytes owners interpret their values. Null rejection inspects no object payload.",
+    "id_changes": false
+  },
+  "retained_checks": [
+    "All seven fixed forms reject null at every required argument position before any failing dependency can be entered",
+    "Arity and selector rejection; explicit helper replacement remains live",
+    "Optional raw absence/language nil differs from numeric zero; full-width Word bits are preserved",
+    "Valid boxed/immediate Oops remain supported; Word owner rejects a non-word result",
+    "Target can replace result factory; getter can replace target before selection",
+    "Inputs survive collecting callbacks after external leases are removed",
+    "Target/getter/factory failures preserve identity; getter failure prevents target call"
+  ],
+  "runtime_change": "One existing Execution argument-validation condition extended to reject null",
+  "unit_tests": 26,
+  "adjacent_native_targets": [
+    "fixed_abi",
+    "integer_values",
+    "native_boundaries",
+    "native_incoming",
+    "native_values",
+    "numbers"
+  ],
+  "remaining": [
+    "Cold qualification of this correction; ongoing a3eaa227 candidate predates it",
+    "Remaining native/compiler harnesses and pending contract decisions"
+  ]
+}
