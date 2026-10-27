@@ -124,26 +124,23 @@ pub(in crate::synchronous) unsafe extern "C" fn with_inline(
             return Err(invalid());
         }
         let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[receiver])?);
-        let descriptor = selected
-            .descriptor
-            .for_binding(selected.descriptor.identity().generation);
-        let copy = q.keep(register_descriptor(
-            s,
-            descriptor,
-            selected.step,
-            selected.owner,
-        )?);
-        s.resume
-            .borrow_mut()
-            .records
-            .values_mut()
-            .find(|r| r.method == copy)
-            .unwrap()
-            .inline = Some(Inline {
+        let (context_vt, template) = {
+            let runtime = s.resume.borrow();
+            (runtime.context_vt, runtime.template)
+        };
+        let context = q.keep(allocate(s, context_vt, 0)?);
+        let copy = q.keep(s.send(template, b"withContext:", &[context])?);
+        // This Method annotates the existing baseline; it does not create a
+        // second registration or a frame owner containing the candidate recipe.
+        let mut annotated = selected;
+        annotated.method = copy;
+        annotated.candidate = None;
+        annotated.inline = Some(Inline {
             method: *method,
             owner: *owner,
             return_slot,
         });
+        s.resume.borrow_mut().records.insert(context.addr(), annotated);
         s.send(s.id.root, b"reassociateBehaviorOf:with:", &[copy, behavior])?;
         let admitted = s.admitted.borrow().get(&receiver.addr()).cloned();
         if let Some(admitted) = admitted {

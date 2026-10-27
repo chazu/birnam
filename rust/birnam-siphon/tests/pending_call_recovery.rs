@@ -61,7 +61,7 @@ fn candidates_return_decline_and_recover_without_replaying_effects() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/oop-host/recovery.c");
     assert!(
         std::process::Command::new("clang")
-            .args(["-dynamiclib", "-O2"])
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
             .arg(source)
             .arg("-o")
             .arg(&path)
@@ -213,6 +213,10 @@ fn candidates_return_decline_and_recover_without_replaying_effects() {
         &[machine_vt, custom],
     )
     .unwrap();
+    assert_eq!(
+        as_size(q.call(h.id.root, b"usesDefaultLookup:", &[idle]).unwrap()),
+        Some(0)
+    );
     let before = count(&q, context, 3);
     assert_eq!(run(&h, &q, direct).unwrap(), nil);
     assert_eq!(count(&q, context, 3), before);
@@ -223,6 +227,11 @@ fn candidates_return_decline_and_recover_without_replaying_effects() {
         &[machine_vt, meta],
     )
     .unwrap();
+    assert_eq!(
+        as_size(q.call(h.id.root, b"usesDefaultLookup:", &[idle]).unwrap()),
+        Some(1)
+    );
+    assert_eq!(run(&h, &q, direct).unwrap(), answer);
 
     // Only the returned Method keeps the candidate and its private data alive.
     let retained = h.scope();
@@ -347,6 +356,158 @@ fn candidates_return_decline_and_recover_without_replaying_effects() {
         .unwrap(),
         bits
     );
+    {
+        let send = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+        let key = |n: &[u8]| h.intern(n).unwrap();
+        let check_error =
+            |value| assert_eq!(send(value, b"kind", &[]), key(b"nativeInvalidRequest"));
+        // A constructor may collect and then change the admitted storage layout.
+        let alias = key(b"recoveryOriginalInteger:");
+        send(factory_vt, b"addMethod", &[alias, original_factory]);
+        let state = send(
+            h.id.root,
+            b"sequence",
+            &[
+                alias,
+                h.roots,
+                gc,
+                model,
+                vt,
+                empty,
+                size(0).unwrap(),
+                size(0).unwrap(),
+                size(0).unwrap(),
+            ],
+        );
+        send(
+            factory_vt,
+            b"addMethod",
+            &[from_word, method(&h, &q, module, b"factory", state)],
+        );
+        q.check_result(run(&h, &q, candidate).unwrap()).unwrap();
+        assert_eq!(count(&q, state, 7), 2);
+        send(state, b"at:put:", &[size(6).unwrap(), size(1).unwrap()]);
+        send(state, b"at:put:", &[size(7).unwrap(), size(0).unwrap()]);
+        check_error(run(&h, &q, candidate).unwrap());
+        assert_eq!(count(&q, state, 7), 1);
+        let abandoned = send(state, b"at:", &[size(8).unwrap()]);
+        send(factory_vt, b"addMethod", &[from_word, original_factory]);
+        send(factory_vt, b"removeMethod:", &[alias]);
+        send(
+            model,
+            b"setLayoutOf:to:rest:",
+            &[vt, empty, size(1).unwrap()],
+        );
+        let monitor = send(h.named(b"Object").unwrap(), b"clone", &[]);
+        let monitor_vt = send(h.id.root, b"ensurePrivateVtableFor:", &[monitor]);
+        for name in [b"allocation:bytes:identity:".as_slice(), b"present"] {
+            send(
+                monitor_vt,
+                b"addMethod",
+                &[
+                    key(name),
+                    method(&h, &q, module, name, std::ptr::null_mut()),
+                ],
+            );
+        }
+        send(gc, b"collectPrecisely", &[]);
+        assert_eq!(as_size(send(monitor, b"present", &[abandoned])), Some(0));
+
+        // Exactly forwarding tracing still does not grant ObjectModel ownership.
+        let tracing = send(h.named(b"Object").unwrap(), b"clone", &[]);
+        let tracing_vt = send(h.id.root, b"ensurePrivateVtableFor:", &[tracing]);
+        send(
+            tracing_vt,
+            b"addMethod",
+            &[
+                key(b"referencesOf:do:"),
+                method(&h, &q, module, b"traceForward", model),
+            ],
+        );
+        send(gc, b"trace:with:", &[vt, tracing]);
+        assert_eq!(send(gc, b"referenceOwnerOf:", &[vt]), tracing);
+        check_error(run(&h, &q, candidate).unwrap());
+        send(gc, b"trace:with:", &[vt, std::ptr::null_mut()]);
+        assert_eq!(send(gc, b"referenceOwnerOf:", &[vt]), model);
+        q.check_result(run(&h, &q, candidate).unwrap()).unwrap();
+
+        // Recipe reads may collect or consume the same request recursively.
+        let recipe_vt = send(h.named(b"ObjectVt").unwrap(), b"delegated", &[]);
+        send(
+            model,
+            b"setLayoutOf:to:rest:",
+            &[recipe_vt, empty, size(1).unwrap()],
+        );
+        let dynamic = send(model, b"allocate:bytes:", &[recipe_vt, size(16).unwrap()]);
+        for (i, value) in [nil, answer].into_iter().enumerate() {
+            send(
+                model,
+                b"slotAt:in:put:",
+                &[size(i).unwrap(), dynamic, value],
+            );
+        }
+        let machine = send(h.named(b"Machine").unwrap(), b"new", &[]);
+        let state = send(
+            h.id.root,
+            b"sequence",
+            &[
+                gc,
+                factory,
+                model,
+                recipe,
+                machine,
+                size(0).unwrap(),
+                size(0).unwrap(),
+            ],
+        );
+        for (selector, name) in [
+            (b"size".as_slice(), b"recipeSize".as_slice()),
+            (b"at:", b"recipeAt"),
+        ] {
+            send(
+                recipe_vt,
+                b"addMethod",
+                &[key(selector), method(&h, &q, module, name, state)],
+            );
+        }
+        let (dynamic_method, _) = make(2, dynamic);
+        assert_eq!(run(&h, &q, dynamic_method).unwrap(), answer);
+        send(state, b"at:put:", &[size(5).unwrap(), size(1).unwrap()]);
+        let block = send(
+            h.named(b"Block").unwrap(),
+            b"fromMethod:captures:",
+            &[dynamic_method, vector(&h, &q, &[nil])],
+        );
+        assert!(q.call(machine, b"runBlock:", &[block]).is_err());
+        assert_eq!(count(&q, state, 6), 1);
+        let frames = send(machine, b"liveFrameCount", &[]);
+        assert_eq!(
+            q.word_bits(send(factory, b"wordOf:", &[frames])).unwrap(),
+            2
+        );
+        send(machine, b"destroy", &[]);
+
+        // Empty aggregate fields cannot forge a native numeric representation.
+        let scalar_graph = vector(
+            &h,
+            &q,
+            &[
+                vector(&h, &q, &[h.named(b"IntegerVt").unwrap()]),
+                vector(
+                    &h,
+                    &q,
+                    &[vector(
+                        &h,
+                        &q,
+                        &[integer(&h, &q, 2), integer(&h, &q, 0), vector(&h, &q, &[])],
+                    )],
+                ),
+                integers(&h, &q, &[-1, -1]),
+            ],
+        );
+        let (bad, _) = make(3, scalar_graph);
+        check_error(run(&h, &q, bad).unwrap());
+    }
     let invalid = vector(&h, &q, &[inputs, nodes, integers(&h, &q, &[-6, -6])]);
     let (bad, _) = make(3, invalid);
     let before = count(&q, steps, 0);

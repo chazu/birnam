@@ -1,0 +1,79 @@
+{
+  "passed": true,
+  "scope": "Recovery baseline ownership, completed-candidate reclamation and full migration of the older recovery acceptance matrix to Oops",
+  "base_revision": "6b8c9f6075c9f8c4d99a72b59e0bfae26887c79e",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-lifetime-wqe01zuu/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native_tier.rs": "08b7e4a6b4a92ffee5b0ef8f5ebdb67cd4ad835094ed3503e9fe86cbe3e9de75",
+    "rust/birnam-execution/src/oop_recovery.rs": "3048a85190e0ed616cc242b4db669af11ad485f6e1b99f497d1d0af9b18301b2",
+    "rust/birnam-execution/src/resumable_runtime.rs": "145f9386f18bd52048d334d522e6536fff6af87e8c38eccc9367bb5b2b456dc5",
+    "rust/birnam-siphon/tests/execution_candidates.rs": "a65bef6f0f00d1654885e80fc001bb0fbbb59be5df0ab7f0a9d475e3dfe97988",
+    "rust/birnam-siphon/tests/execution_machines.rs": "52aefea8ec97aa00b6352c675ed7149ce10030b1b02e8f97d183698e13a6dc3b",
+    "rust/birnam-siphon/tests/execution_machines/recovery_lifetime.rs": "57168c63dce12d687b4923b0b391390b6f7755c1b45875758491bbae2e1a0a3b",
+    "rust/birnam-siphon/tests/pending_call_recovery.rs": "2fb0197c7cbb6d08ffe47972b7742f3536a3a870cf2614940596442f508c3b53",
+    "tests/fixtures/oop-host/execution-machines.c": "28f9c3e5981b8772c14bf733cec503f81dd8ef046c2bc32bdd5357157e99b734",
+    "tests/fixtures/oop-host/recovery.c": "b1e5614ee25f3d147d31d0c6fc21fcc0f47e357c70e4277e759f2cb050425736"
+  },
+  "execution_library_sha256": "6d722a38a71013e5b373867fe9c31a155fe0df7d068f79f1ab799a37f8dced1a",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/recovery-complete-final.log",
+      "sha256": "e2ebce68281cb17b1db56fa34f482732392b91534f14fc4f8d20856508280a76",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/recovery-owner-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/recovery-owner-unit.log",
+      "sha256": "c1edc8a9c7acecd55596c3d4fc665b4b8e0f4c2f2d07587eb2a694e69c8000ce",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/recovery-owner-acceptance.log",
+      "sha256": "2f40870a7fe65be67a5f5c825f0a7c631eb85a95d7aa7d9b7a5568b0cbef8d2e",
+      "exit": 0
+    }
+  ],
+  "before": {
+    "log": ".cargo-target/oop-current-qualification/recovery-lifetime-before.log",
+    "sha256": "90da8e6c8c25e954c3f0b063573ddb311e8dc7cb35c3a3ef9bcf0c79cbeb9bc4",
+    "exit": 101,
+    "failure": "recovered frame must retain its baseline Method"
+  },
+  "execution_unit_tests": 26,
+  "native_targets": [
+    "execution_machines",
+    "pending_call_recovery",
+    "frame_views",
+    "execution_methods",
+    "compiler_source",
+    "materialization",
+    "native_boundaries",
+    "method_binding",
+    "block_arity"
+  ],
+  "retained_checks": [
+    "A paused recovered frame retains the original baseline Method/code owner and releases the finished candidate/recipe",
+    "Completion, abandonment and failed admission release registrations and temporary objects",
+    "Reannotation drops the superseded recipe; PC candidates installed/withdrawn through annotations belong to the baseline",
+    "Graph aliases, distinct equal Integer boxes, exact NaN bits and nested ObjectModel storage",
+    "Collecting constructors can invalidate layout; temporary node identity is absent after failure cleanup",
+    "Even exactly forwarding trace owners are not admitted as ObjectModel storage",
+    "Collecting recipe reads and reentrant consumption publish only one frame; outer read rejects without replay",
+    "Changed Machine operations and forwarding custom lookup refuse inline entry; restoration re-enables it",
+    "Malformed graphs, invalid slot counts and empty native numeric aggregate forgery are rejected",
+    "Compiler, materialization and mapped/rebuilt Method/native callback image behavior"
+  ],
+  "removed_legacy_test": "rust/birnam-siphon/tests/execution_machines/recovery.rs",
+  "id_changes": false,
+  "new_public_operations": false,
+  "duplicate_registration_removed": true,
+  "remaining": [
+    "Automatic numeric interception and alias-return scope decisions",
+    "Other native targets and compiler optimization producer integration",
+    "Cold candidates 642e79e2 and 83737742 predate this correction"
+  ]
+}

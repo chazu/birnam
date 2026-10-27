@@ -4,7 +4,7 @@ static IdProtocol id;
 enum { AT, PUT, AT_WORD, COLLECT, WORD_OF, INTEGER, RETURN, CONTINUE, READ, WRITE,
        SUSPEND, CAPTURE, CALL, TAIL, PARK, ELIGIBLE, NEW, IDENTITY, ALLOCATIONS,
        STEP, CALLBACK, BOUNDARY, TRACE, SELF, ALLOCATION, PRESENT,
-       CANDIDATE, WITHDRAW, OPTIMIZE, FROM, PROOF, ADD, COUNT };
+       CANDIDATE, WITHDRAW, OPTIMIZE, FROM, PROOF, ADD, RECOVER, RECOVERY, COUNT };
 static Oop names[COUNT];
 #define CHECK(v) do { Oop checked=(v); if(id_fault(checked))return checked; } while(0)
 static Oop send(Oop r,size_t s,const Oop *a,size_t n) { return id.message(id.root,r,names[s],a,n); }
@@ -93,6 +93,13 @@ static Oop proof(Oop root,Oop c,Oop r,const Oop*a,size_t n) {
     Oop binding[]={get(c,3),get(c,4)};CHECK(send(get(c,2),ADD,binding,2));
     return id.message(id.root,r,get(c,5),a,n);
 }
+/* [recipe,GC,calls]. The completed candidate contributes no frame roots. */
+static Oop recovery(Oop root,Oop c,Oop machine,const Oop*a,size_t n) {
+    (void)root;(void)a;if(n!=1)return id.invalid;
+    CHECK(put(c,2,id_size(id_unbox(get(c,2))+1)));
+    CHECK(send(get(c,1),COLLECT,0,0));
+    Oop values[]={id_size(0),get(c,0)};CHECK(send(machine,RECOVER,values,2));return 0;
+}
 static size_t wanted,found;
 static Oop allocation(Oop root,Oop c,Oop r,const Oop *a,size_t n) {
     (void)root;(void)c;(void)r;if(n!=3)return id.invalid;
@@ -115,10 +122,10 @@ static const IdLiteral literals[]={
     LIT("allocationsDo:"),LIT("step"),LIT("callback"),LIT("boundary"),
     LIT("rootsDo:"),LIT("self"),LIT("allocation:bytes:identity:"),LIT("present"),
     LIT("candidate"),LIT("withdraw"),LIT("optimizeWith:"),LIT("fromWord:"),
-    LIT("proof"),LIT("addMethod")
+    LIT("proof"),LIT("addMethod"),LIT("recoverAt:with:"),LIT("recovery")
 };
 static const IdMethodSpec methods[]={
     {STEP,step},{CALLBACK,callback},{BOUNDARY,boundary},{TRACE,trace},
-    {SELF,self},{ALLOCATION,allocation},{PRESENT,present},{CANDIDATE,candidate},{WITHDRAW,withdraw},{PROOF,proof}
+    {SELF,self},{ALLOCATION,allocation},{PRESENT,present},{CANDIDATE,candidate},{WITHDRAW,withdraw},{PROOF,proof},{RECOVERY,recovery}
 };
-const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,COUNT,methods,10,initialize};
+const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,COUNT,methods,11,initialize};

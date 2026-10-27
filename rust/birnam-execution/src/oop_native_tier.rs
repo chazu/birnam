@@ -23,8 +23,8 @@ unsafe fn registration(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<u
             .resume
             .borrow()
             .records
-            .iter()
-            .map(|(&context, r)| (context, q.keep(r.method)))
+            .values()
+            .map(|r| (r.descriptor.executable_owner.get().addr(), q.keep(r.method)))
             .collect();
         for (context, original) in records {
             if s.send(s.id.root, b"sameNativeMethod:as:", &[method, original])?

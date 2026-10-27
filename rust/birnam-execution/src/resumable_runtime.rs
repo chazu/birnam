@@ -1688,7 +1688,8 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
         return Ok(Some(vec![site.machine]));
     }
     if let Some(record) = s.resume.borrow().records.get(&object.addr()) {
-        let mut values = vec![record.method, record.step, record.owner];
+        let mut values = vec![record.method, record.step, record.owner,
+            record.descriptor.executable_owner.get()];
         if let Some(inline) = record.inline {
             values.extend([inline.method, inline.owner]);
         }
@@ -1764,6 +1765,9 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
         }
         let record = s.resume.borrow_mut().records.remove(&value.addr());
         if let Some(record) = record {
+            // Inline annotations retain the original context. Only that context
+            // owns the registration lease, even if aliases retire in this batch.
+            if record.descriptor.executable_owner.get() != *value { continue; }
             checked(
                 s.engine
                     .borrow_mut()

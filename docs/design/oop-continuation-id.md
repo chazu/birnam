@@ -2369,3 +2369,31 @@ workers, concurrency services and cleanup, closure collection behavior, multicor
 and task control. The worker-ready deadline remains 15 seconds. CLI and image
 groups remain in that serial queue; this receipt does not qualify the later runtime
 corrections. [Receipt](../measurements/latest-tasks-oop-20261027.json).
+
+## Recovery retains the baseline and releases finished candidates
+
+The remaining recovery lifetime test reproduced an ownership regression: after
+recovery published a paused frame and the dictionary binding was replaced, the
+original baseline Method was reclaimed. `withInline:` had created another
+registration, so the recovered frame retained that copy and its candidate data.
+
+Inline Methods now annotate the existing baseline registration. Their contexts
+trace the original registration context; the recovered frame retains that original
+context, and only its retirement releases the registration lease. This removes
+duplicate descriptor/registration construction. PC candidates installed through an
+inline annotation belong to the same baseline, and reannotation does not retain
+the superseded candidate. Id and its dispatch interface are unchanged.
+
+The migrated tests check the paused-frame transition directly: the baseline and
+code owner remain live, while the finished candidate and recipe are reclaimed.
+Completion and abandonment release the baseline; failed admission releases its
+temporary references. The rest of the older recovery matrix now uses Oops too:
+constructor-time layout changes, temporary-node cleanup, exactly forwarding trace
+owners, collecting/reentrant recipe reads, one-shot publication, custom lookup,
+invalid graphs and native numeric storage refusal. The old carrier-based recovery
+test is removed. Automatic numeric interception remains separately pending.
+
+The core Oop gate, 26 Execution unit tests and nine native suites pass, including
+compiler/materialization, frame inspection, strict Block/native boundaries and
+mapped/rebuilt image checks. Both running cold candidates predate this correction.
+[Receipt](../measurements/recovery-owner-oop-20261027.json).

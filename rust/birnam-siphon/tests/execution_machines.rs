@@ -3,6 +3,8 @@
 mod candidates;
 #[path = "support/oop.rs"]
 mod oop;
+#[path = "execution_machines/recovery_lifetime.rs"]
+mod recovery_lifetime;
 use birnam_abi::{Oop, as_size, size};
 use birnam_artifact_codec::stackless_selection::{
     self as selection, Disposition, ImplementationKind, RootKind, SelectionSpec,
@@ -475,4 +477,5 @@ fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
     h.clear();
     h.collect();
     candidates::check(&h);
+    recovery_lifetime::check(&h);
 }

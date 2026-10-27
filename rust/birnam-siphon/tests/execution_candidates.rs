@@ -1,8 +1,6 @@
-//! Pending native optimization and recovery groups; scheduling uses Oops in execution_machines.rs.
+//! Pending automatic numeric interception; explicit candidates and recovery use Oops.
 #[path = "execution_machines/native_tier.rs"]
 mod native_tier;
-#[path = "execution_machines/recovery.rs"]
-mod recovery;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -185,7 +183,6 @@ fn production_execution_candidates_preserve_semantics_and_lifetimes() {
             native_tier::numeric(&mut h);
             return;
         }
-        recovery::check(&mut h);
         native_tier::numeric(&mut h);
         h.release_all();
     }
