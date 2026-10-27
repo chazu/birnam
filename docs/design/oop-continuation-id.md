@@ -2795,3 +2795,17 @@ Supported immediate owners dispatch through their current `at:` method, and
 immediate results remain Oops; the old carrier distinction is not recreated.
 Ordinary source-global owners still reject non-Symbol keys. No runtime or Id
 change was needed. [Receipt](../measurements/global-resolution-oop-20261027.json).
+
+## Current cold task qualification and completed older Host candidate
+
+All six task-group checks pass on the current cold a3eaa227 candidate, including
+mapped/rebuilt task images, task fields, concurrency CLI, multicore workers,
+closure observation and 177 task-control assertions at both tested quanta. Current
+CLI and image groups remain ongoing.
+[Receipt](../measurements/language-tasks-oop-20261027.json).
+
+The older 642e79e2 candidate has now completed all 63 Host checks. Its final image
+group passes, and the exact 822-file installation manifest and receipt remain
+unchanged. This closes that older candidate's qualification; it does not qualify
+production corrections added afterward.
+[Receipt](../measurements/machine-image-oop-20261027.json).
