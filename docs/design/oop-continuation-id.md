@@ -1259,3 +1259,20 @@ the check. The five complete installed Host groups are now running against this
 candidate; the cold/archive result does not substitute for those groups or the
 remaining native migration work.
 [Receipt](../measurements/corrected-cold-install-oop-20261026.json).
+
+## Globals ownership and partial image loads through Oops
+
+The `owned_globals` harness now uses Oop callbacks and explicit optional Store
+loading. It preserves conditional slot updates across a reentrant edit and GC,
+exact failure propagation after a dictionary removal, retained callback changes
+after partial image application, mapped/rebuilt recovery, alias and key identity,
+nil bindings and independent Store descriptions. Allocation identities confirm
+that Globals keeps binding keys/values alive and releases them after removal.
+
+The old fixture assumed that the Id API receiver was the vtable metatable. Its
+replacement removal Method therefore never intercepted the actual image edits.
+The migrated hook selects the System vtable's real metatable and asserts that the
+original Method exists. The obsolete Id `bindingOf:in:` assertion now uses the
+existing Execution `directMethodFor:in:` query. The exact failure and partial-load
+assertions remain intact; no runtime or Id operation was added or changed.
+[Receipt](../measurements/owned-globals-oop-20261026.json).

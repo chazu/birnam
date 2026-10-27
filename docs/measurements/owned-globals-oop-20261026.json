@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "scope": "Owned Globals, reentrant conditional slot updates, exact partial-image failure, mapped/rebuilt images and binding lifetime through Oops",
+  "base_revision": "29506fb388bda5158ae66a9903faa016fd51c3ec",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-rv1m_85i/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/owned_globals.rs": "8ea2cba3511341cb624f0e9b9183557b555349478d4006373a0d22564fa11150",
+    "tests/fixtures/oop-host/owned-globals.c": "b3dc1320e79200c694856d189beddaf7335276a739703317ff6f9e34cddc40fa"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-cold-qualification/owned-globals.log",
+      "sha256": "1e6f0b5ba4141ccdb1b79cf9675fb8a5eab4c66f59424e3c63cc6ec7f0066b02",
+      "exit": 0
+    }
+  ],
+  "diagnosis": {
+    "log": ".cargo-target/oop-cold-qualification/owned-globals-diagnosis.log",
+    "sha256": "eb26bb705d96d74433f1819884f2629a7fac533b41f6f753b4f34f43bdc8b3cd",
+    "finding": "The old fixture edited the Id API object rather than the actual vtable metatable; the callback never ran. Existing Execution direct-method reflection replaces the obsolete Id binding query."
+  },
+  "runtime_changes": false,
+  "id_changes": false
+}

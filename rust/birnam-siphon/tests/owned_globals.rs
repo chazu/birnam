@@ -1,115 +1,291 @@
-//! Owned binding roots, conditional slot publication and partial image application.
-mod support;
-use birnam_abi::{Oop, borrowed_slice, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
-use std::{cell::{Cell, RefCell}, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct H { id: Protocol, ns: Oop, roots: Oop, tokens: RefCell<Vec<usize>> }
-impl H {
-    unsafe fn named(&self, name: &[u8]) -> Oop { unsafe { object(send(self.id,self.ns,b"at:",&[Operand::object(self.key(name))])) } }
-    unsafe fn key(&self, name: &[u8]) -> Oop { unsafe { self.id.intern_name(name).unwrap() } }
-    unsafe fn keep(&self, value: Oop) -> Oop { self.tokens.borrow_mut().push(unsafe { retain(self.id,self.roots,value) }); value }
-    unsafe fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Oop { unsafe { self.keep(object(send(self.id,r,name,&args.iter().copied().map(Operand::object).collect::<Vec<_>>()))) } }
-    unsafe fn int(&self, n: usize) -> Oop { unsafe { self.keep(object(send(self.id,self.named(b"Integer"),b"fromWord:",&[Operand::word(n)]))) } }
-    unsafe fn number(&self, n: Oop) -> usize { unsafe { send(self.id,self.named(b"Integer"),b"wordOf:",&[Operand::object(n)]).as_word().unwrap() } }
-    unsafe fn text(&self, bytes: &[u8]) -> Oop { unsafe { self.keep(object(send(self.id,self.named(b"String"),b"fromBytes:",&[Operand::bytes(bytes)]))) } }
-    unsafe fn eval(&self, source: &[u8]) -> Oop { unsafe { let result=self.call(self.named(b"Codegen"),b"eval:",&[self.text(source)]); assert_eq!(self.call(result,b"isError",&[]),self.named(b"false")); result } }
-    unsafe fn vector(&self, values: &[Oop]) -> Oop { unsafe { let mut result=self.call(self.named(b"Vector"),b"new",&[]); for &v in values {result=self.call(result,b"add:",&[v]);} result } }
-    unsafe fn binding(&self, name: &[u8]) -> Oop { unsafe { self.call(self.named(b"Globals"),b"at:",&[self.key(name)]) } }
-    unsafe fn put(&self, name: &[u8], value: Oop) { unsafe { assert_eq!(self.call(self.named(b"Globals"),b"at:put:",&[self.key(name),value]),value); } }
-    unsafe fn entry(&self, receiver: Oop, selector: &[u8]) -> NativeEntry { unsafe { send(self.id,self.id.receiver,b"bind:to:",&[Operand::object(self.key(selector)),Operand::object(receiver)]).as_entry().unwrap() } }
-    unsafe fn restore(&self, receiver: Oop, selector: &[u8], entry: NativeEntry) { unsafe { let vt=object(send(self.id,self.id.receiver,b"behaviorOf:",&[Operand::object(receiver)])); send(self.id,vt,b"addMethod",&[Operand::object(self.key(selector)),Operand::entry(entry)]); } }
-}
-struct CasProbe { id: Protocol, gc: Oop, model: Oop, target: Oop, foreign: Oop, original: NativeEntry, armed: Cell<bool> }
-unsafe extern "C" fn reenter_cas(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome { unsafe {
-    let p=&*c.cast::<CasProbe>();
-    if p.armed.replace(false) {
-        send(p.id,p.model,b"slotAt:in:put:",&[Operand::word(0),Operand::object(p.target),Operand::object(p.foreign)]);
-        collect(p.id,p.gc);
-    }
-    p.original.method.unwrap()(p.original.context,r,a,n)
-} }
-struct ImageProbe { id:Protocol, globals:Oop, key:Oop, value:Oop, selector:Oop, original:NativeEntry, fired:Cell<bool> }
-unsafe extern "C" fn fail_removal(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome { unsafe {
-    let p=&*c.cast::<ImageProbe>(); let args=borrowed_slice(a,n).unwrap();
-    let result=p.original.method.unwrap()(p.original.context,r,a,n);
-    if args[0].as_object()==Some(p.selector) && !p.fired.replace(true) {
-        send(p.id,p.globals,b"at:put:",&[Operand::object(p.key),Operand::object(p.value)]);
-        return Outcome::failed(882,73);
-    }
-    result
-} }
-#[test]
-#[ignore="production owned Globals prefix required"]
-fn conditional_slots_and_image_failure_preserve_binding_owners() { unsafe {
-    let id=id(); let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
-        optional_modules(id, ns, &["store"]);
-    let roots=object(send(id,ns,b"at:",&[Operand::object(id.intern_name(b"Roots").unwrap())]));
-    let h=H{id,ns,roots,tokens:RefCell::new(Vec::new())};
-    let model=h.named(b"ObjectModel"); let gc=h.named(b"GC"); let globals=h.named(b"Globals");
-    let old=h.call(h.named(b"Object"),b"clone",&[]); let replacement=h.call(old,b"clone",&[]); let foreign=h.call(old,b"clone",&[]);
-    let target=h.call(model,b"newSlots:parent:",&[h.vector(&[old]),h.named(b"ObjectVt")]);
-    assert_eq!(h.call(model,b"replaceSlot:in:expected:with:",&[h.int(0),target,old,replacement]),h.named(b"true"));
-    assert_eq!(h.call(model,b"replaceSlot:in:expected:with:",&[h.int(0),target,old,foreign]),h.named(b"false"));
-    let index=h.int(0);
-    let original=h.entry(gc,b"prepareAllocation");
-    let mut p=CasProbe{id,gc,model,target,foreign,original,armed:Cell::new(true)};
-    let vt=h.call(id.receiver,b"behaviorOf:",&[gc]);
-    install(id,vt,b"prepareAllocation",reenter_cas,core::ptr::from_mut(&mut p).cast());
-    assert_eq!(h.call(model,b"replaceSlot:in:expected:with:",&[index,target,replacement,old]),h.named(b"false"));
-    h.restore(gc,b"prepareAllocation",original);
-    assert_eq!(h.call(model,b"slot:in:",&[h.int(0),target]),foreign);
-    // These interfaces touch only owned ordinary payloads, never foreign bytes.
-    assert!(id.send_named(model,b"replaceSlot:in:expected:with:",&[Operand::object(h.int(0)),Operand::object(h.text(b"foreign")),Operand::object(old),Operand::object(replacement)]).is_err());
-    assert!(id.send_named(model,b"replaceSlot:in:expected:with:",&[Operand::object(h.int(2)),Operand::object(target),Operand::object(old),Operand::object(replacement)]).is_err());
+//! Owned binding roots, conditional slots and partial image application via Oops.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use std::{os::unix::ffi::OsStrExt, path::Path};
 
-    let name_a=h.text(b"same name"); let name_b=h.text(b"same name"); assert_ne!(name_a,name_b);
-    h.call(globals,b"at:put:",&[name_a,h.key(b"left")]); h.call(globals,b"at:put:",&[name_b,h.key(b"right")]);
-    h.put(b"ImageNameA",name_a); h.put(b"ImageNameB",name_b);
-    h.put(b"ImageOwnedMarker",h.key(b"saved")); h.put(b"ImageNil",h.named(b"nil"));
-    h.put(b"ImageAliasA",old); h.put(b"ImageAliasB",old);
-    h.put(b"ImageStorageAlias",h.call(globals,b"bindingOwner",&[]));
-    for selector in [b"reserveBindingCompensationFor:count:".as_slice(), b"restoreBinding:expected:previous:reservation:", b"imageBindingCheckpoint", b"restoreImageBindings:", b"releaseImageReservations"] {
-        assert_eq!(send(id,id.receiver,b"bind:to:",&[Operand::object(h.key(selector)),Operand::object(globals)]).kind(),birnam_abi::id_protocol::UNIT,"obsolete Globals API");
+#[test]
+#[ignore = "requires production Oop modules"]
+fn conditional_slots_and_image_failure_preserve_binding_owners() {
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let named = |n: &[u8]| h.named(n).unwrap();
+    let key = |n: &[u8]| hooks.symbol(n);
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let int = |n| call(named(b"Integer"), b"fromWord:", &[size(n).unwrap()]);
+    let text = |b: &[u8]| q.string(b).unwrap();
+    let vector = |values: &[Oop]| {
+        let mut v = call(named(b"Vector"), b"new", &[]);
+        for &value in values {
+            v = call(v, b"add:", &[value]);
+        }
+        v
+    };
+    let module = h.global(&q, b"Module").unwrap();
+    call(
+        module,
+        b"libDir:",
+        &[text(h.resources.lib_dir.as_os_str().as_bytes())],
+    );
+    let store_path = text(
+        h.resources
+            .lib_dir
+            .join("libbirnam_store.dylib")
+            .as_os_str()
+            .as_bytes(),
+    );
+    q.check_result(call(named(b"Codegen"), b"load:", &[store_path]))
+        .unwrap();
+    call(module, b"markLoaded:", &[key(b"store")]);
+    let model = named(b"ObjectModel");
+    let gc = named(b"GC");
+    let globals = named(b"Globals");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let old = call(named(b"Object"), b"clone", &[]);
+    let replacement = call(old, b"clone", &[]);
+    let foreign = call(old, b"clone", &[]);
+    let target = call(
+        model,
+        b"newSlots:parent:",
+        &[vector(&[old]), named(b"ObjectVt")],
+    );
+    assert_eq!(
+        call(
+            model,
+            b"replaceSlot:in:expected:with:",
+            &[int(0), target, old, replacement]
+        ),
+        named(b"true")
+    );
+    assert_eq!(
+        call(
+            model,
+            b"replaceSlot:in:expected:with:",
+            &[int(0), target, old, foreign]
+        ),
+        named(b"false")
+    );
+    let library =
+        std::env::temp_dir().join(format!("birnam-owned-globals-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/owned-globals.c")
+            )
+            .arg("-o")
+            .arg(&library)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = h.load_native(&q, &library, &[]).unwrap();
+    let declared = |n: &[u8]| call(fixture, b"methodAt:", &[key(n)]);
+    let method = |n: &[u8], c| call(declared(n), b"withContext:", &[c]);
+    let entry = |r, n: &[u8]| call(h.id.root, b"bind:to:", &[key(n), r]);
+    let restore = |r, n: &[u8], m| {
+        let vt = call(h.id.root, b"behaviorOf:", &[r]);
+        call(vt, b"addMethod", &[key(n), m]);
+    };
+    let index = int(0);
+    let original = entry(gc, b"prepareAllocation");
+    let state = hooks.context(&[original, gc, model, target, foreign, size(1).unwrap()]);
+    restore(gc, b"prepareAllocation", method(b"cas", state));
+    assert_eq!(
+        call(
+            model,
+            b"replaceSlot:in:expected:with:",
+            &[index, target, replacement, old]
+        ),
+        named(b"false")
+    );
+    restore(gc, b"prepareAllocation", original);
+    assert_eq!(call(model, b"slot:in:", &[int(0), target]), foreign);
+    assert!(
+        q.call(
+            model,
+            b"replaceSlot:in:expected:with:",
+            &[int(0), text(b"foreign"), old, replacement]
+        )
+        .is_err()
+    );
+    assert!(
+        q.call(
+            model,
+            b"replaceSlot:in:expected:with:",
+            &[int(2), target, old, replacement]
+        )
+        .is_err()
+    );
+
+    let binding = |n: &[u8]| call(globals, b"at:", &[key(n)]);
+    let put = |n: &[u8], v| assert_eq!(call(globals, b"at:put:", &[key(n), v]), v);
+    let name_a = text(b"same name");
+    let name_b = text(b"same name");
+    assert_ne!(name_a, name_b);
+    call(globals, b"at:put:", &[name_a, key(b"left")]);
+    call(globals, b"at:put:", &[name_b, key(b"right")]);
+    put(b"ImageNameA", name_a);
+    put(b"ImageNameB", name_b);
+    put(b"ImageOwnedMarker", key(b"saved"));
+    put(b"ImageNil", named(b"nil"));
+    put(b"ImageAliasA", old);
+    put(b"ImageAliasB", old);
+    put(b"ImageStorageAlias", call(globals, b"bindingOwner", &[]));
+    for selector in [
+        b"reserveBindingCompensationFor:count:".as_slice(),
+        b"restoreBinding:expected:previous:reservation:",
+        b"imageBindingCheckpoint",
+        b"restoreImageBindings:",
+        b"releaseImageReservations",
+    ] {
+        assert!(entry(globals, selector).is_null(), "obsolete Globals API");
     }
-    let store=h.named(b"Store");
-    h.call(store,b"assert:attr:value:",&[h.key(b"__globals__"),h.key(b"ImageOwnedMarker"),h.key(b"described")]);
-    let path=std::env::temp_dir().join(format!("birnam-owned-globals-{}.image",std::process::id()));
-    let filename=h.text(path.as_os_str().as_bytes()); let system=h.named(b"System");
-    assert_eq!(h.call(system,b"saveImage:",&[filename]),h.named(b"true"));
-    h.put(b"ImageOwnedMarker",h.key(b"resident"));
-    h.eval(b"[Reflect defineMethod: #ownedImageTransient on: System as: [:self | #transient]]");
-    let before=h.call(globals,b"bindingState",&[]);
-    let original=h.entry(id.receiver,b"removeMethod:");
-    let mut failure=ImageProbe{id,globals,key:h.key(b"ImageOwnedMarker"),value:h.key(b"callback"),selector:h.key(b"ownedImageTransient"),original,fired:Cell::new(false)};
-    let vt=h.call(id.receiver,b"behaviorOf:",&[id.receiver]);
-    install(id,vt,b"removeMethod:",fail_removal,core::ptr::from_mut(&mut failure).cast());
-    let error=id.send_named(system,b"loadImage:",&[Operand::object(filename)]).unwrap_err();
-    assert_eq!((error.status,error.detail),(882,73)); assert!(failure.fired.get());
-    h.restore(id.receiver,b"removeMethod:",original);
-    assert_eq!(h.binding(b"ImageOwnedMarker"),h.key(b"callback"));
-    assert_ne!(h.call(globals,b"bindingState",&[]),before,"failed live load must retain the callback's state");
-    let system_behavior=h.call(id.receiver,b"behaviorOf:",&[system]);
-    assert_eq!(send(id,id.receiver,b"bindingOf:in:",&[Operand::object(h.key(b"ownedImageTransient")),Operand::object(system_behavior)]).kind(),birnam_abi::id_protocol::UNIT);
-    assert_eq!(h.call(h.call(system,b"imageSaveReport",&[]),b"status",&[]),h.key(b"partialLoad"));
-    for rebuild in [false,true] {
-        h.call(system,b"loadImage:rebuild:",&[filename,h.named(if rebuild {b"true"} else {b"false"})]);
-        assert_eq!(h.binding(b"ImageOwnedMarker"),h.key(b"saved"));
-        assert_eq!(h.binding(b"ImageAliasA"),h.binding(b"ImageAliasB"));
-        assert_eq!(h.binding(b"ImageStorageAlias"),h.call(globals,b"bindingOwner",&[]),"projection preserves storage aliases");
-        assert_eq!(h.call(globals,b"includes:",&[h.key(b"ImageNil")]),h.named(b"true"));
-        assert_eq!(h.call(globals,b"at:",&[h.binding(b"ImageNameA")]),h.key(b"left"));
-        assert_eq!(h.call(globals,b"at:",&[h.binding(b"ImageNameB")]),h.key(b"right"));
-        assert_eq!(h.number(h.call(h.call(globals,b"bindingState",&[]),b"size",&[])),4);
-        assert_eq!(h.call(store,b"currentValue:attr:",&[h.key(b"__globals__"),h.key(b"ImageOwnedMarker")]),h.key(b"described"));
+    let store = named(b"Store");
+    call(
+        store,
+        b"assert:attr:value:",
+        &[
+            key(b"__globals__"),
+            key(b"ImageOwnedMarker"),
+            key(b"described"),
+        ],
+    );
+    let path =
+        std::env::temp_dir().join(format!("birnam-owned-globals-{}.image", std::process::id()));
+    let filename = text(path.as_os_str().as_bytes());
+    let system = named(b"System");
+    assert_eq!(call(system, b"saveImage:", &[filename]), named(b"true"));
+    put(b"ImageOwnedMarker", key(b"resident"));
+    q.check_result(call(
+        named(b"Codegen"),
+        b"eval:",
+        &[text(
+            b"[Reflect defineMethod: #ownedImageTransient on: System as: [:self | #transient]]",
+        )],
+    ))
+    .unwrap();
+    let before = call(globals, b"bindingState", &[]);
+    // The Id API receiver is not the vtable metatable. Intercept the actual
+    // dictionary operation used for System's current vtable.
+    let system_behavior = call(h.id.root, b"behaviorOf:", &[system]);
+    let original = entry(system_behavior, b"removeMethod:");
+    assert!(!original.is_null());
+    let fault = hooks.fault(73);
+    let failure = hooks.context(&[
+        original,
+        globals,
+        key(b"ImageOwnedMarker"),
+        key(b"callback"),
+        key(b"ownedImageTransient"),
+        size(1).unwrap(),
+        fault,
+    ]);
+    restore(
+        system_behavior,
+        b"removeMethod:",
+        method(b"removal", failure),
+    );
+    let error = unsafe { h.id.send(system, key(b"loadImage:"), &[filename]) }.unwrap_err();
+    assert_eq!(error, fault);
+    assert_eq!(hooks.count(failure, 5), 0);
+    restore(system_behavior, b"removeMethod:", original);
+    assert_eq!(binding(b"ImageOwnedMarker"), key(b"callback"));
+    assert_ne!(
+        call(globals, b"bindingState", &[]),
+        before,
+        "failed live load retains the callback's state"
+    );
+    let system_behavior = call(h.id.root, b"behaviorOf:", &[system]);
+    assert_eq!(
+        call(
+            named(b"Execution"),
+            b"directMethodFor:in:",
+            &[key(b"ownedImageTransient"), system_behavior]
+        ),
+        named(b"nil")
+    );
+    assert_eq!(
+        call(call(system, b"imageSaveReport", &[]), b"status", &[]),
+        key(b"partialLoad")
+    );
+    for rebuild in [false, true] {
+        q.check_result(call(
+            system,
+            b"loadImage:rebuild:",
+            &[filename, named(if rebuild { b"true" } else { b"false" })],
+        ))
+        .unwrap();
+        assert_eq!(binding(b"ImageOwnedMarker"), key(b"saved"));
+        assert_eq!(binding(b"ImageAliasA"), binding(b"ImageAliasB"));
+        assert_eq!(
+            binding(b"ImageStorageAlias"),
+            call(globals, b"bindingOwner", &[])
+        );
+        assert_eq!(
+            call(globals, b"includes:", &[key(b"ImageNil")]),
+            named(b"true")
+        );
+        assert_eq!(
+            call(globals, b"at:", &[binding(b"ImageNameA")]),
+            key(b"left")
+        );
+        assert_eq!(
+            call(globals, b"at:", &[binding(b"ImageNameB")]),
+            key(b"right")
+        );
+        assert_eq!(
+            q.vector_size(call(globals, b"bindingState", &[])).unwrap(),
+            4
+        );
+        assert_eq!(
+            call(
+                store,
+                b"currentValue:attr:",
+                &[key(b"__globals__"), key(b"ImageOwnedMarker")]
+            ),
+            key(b"described")
+        );
     }
-    let mark=h.tokens.borrow().len();
-    let key=h.call(h.named(b"Object"),b"clone",&[]);
-    let value=h.call(h.named(b"Object"),b"clone",&[]);
-    h.call(globals,b"at:put:",&[key,value]);
-    for token in h.tokens.borrow_mut().drain(mark..).rev() { release(id,roots,token); }
-    collect(id,gc);assert!(present(id,key)&&present(id,value));
-    h.call(globals,b"remove:",&[key]);
-    for token in h.tokens.borrow_mut().drain(mark..).rev() { release(id,roots,token); }
-    collect(id,gc);assert!(!present(id,key)&&!present(id,value),"owned bindings must release removed identities");
+    let visitor_type = call(named(b"ObjectVt"), b"delegated", &[]);
+    call(
+        visitor_type,
+        b"addMethod",
+        &[
+            key(b"allocation:bytes:identity:"),
+            declared(b"allocation:bytes:identity:"),
+        ],
+    );
+    let visitor = call(visitor_type, b"allocate", &[size(0).unwrap()]);
+    let count = method(b"count", visitor);
+    let empty = call(h.id.root, b"sequence", &[]);
+    let remaining = || as_size(call(count, b"invokeOn:arguments:", &[fixture, empty])).unwrap();
+    let object_key = {
+        let local = h.scope();
+        let object_key = local.call(named(b"Object"), b"clone", &[]).unwrap();
+        let value = local.call(named(b"Object"), b"clone", &[]).unwrap();
+        local
+            .call(globals, b"at:put:", &[object_key, value])
+            .unwrap();
+        let args = local
+            .call(h.id.root, b"sequence", &[object_key, value])
+            .unwrap();
+        local
+            .call(declared(b"watch"), b"invokeOn:arguments:", &[fixture, args])
+            .unwrap();
+        object_key
+    };
+    h.send(gc, b"collectPrecisely", &[]).unwrap();
+    assert_eq!(remaining(), 2);
+    h.send(globals, b"remove:", &[object_key]).unwrap();
+    h.send(gc, b"collectPrecisely", &[]).unwrap();
+    assert_eq!(
+        remaining(),
+        0,
+        "removed bindings must release both identities"
+    );
     std::fs::remove_file(path).unwrap();
-} }
+    std::fs::remove_file(library).unwrap();
+}
