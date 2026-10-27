@@ -2123,3 +2123,24 @@ the remaining native migration or qualification of later runtime corrections.
 A fresh cold build must include the native-loader, standalone-emitter,
 call-preparation and failed-activation fixes.
 [Receipt](../measurements/current-image-oop-20261027.json).
+
+## Native module composition and result retention
+
+The general `modules` harness now uses Oop messages and declared callbacks.
+It retains foreign-thread refusal, idempotent Roots/Namespace/Boolean/nil/Bootstrap
+initialization, current Symbol validation, binding enumeration and recovery from
+visitor failure. Live binding inventory distinguishes raw absence from bound
+language nil. Root retention during a visitor enters the next snapshot, and release
+tokens remain one-use.
+
+Boolean/nil identity and operator matrices, selected-branch counts and live branch
+replacement pass; an explicit failing callback verifies that unchosen branches are
+not entered. Immediate Word Oops are accepted as ordinary operands. Reloading a
+native owner preserves replacements. Bootstrap retains duplicate and nested load
+results independently and releases exactly those retained references.
+
+The module, Root registry and native-loader suites pass. Symbol validation now
+observes the existing `isSymbol:` operation and native loading observes the Name
+owner's loader. Out-of-range index checks use representable size Oops instead of
+the removed native Word carrier. No runtime or Id change was needed.
+[Receipt](../measurements/modules-oop-20261027.json).

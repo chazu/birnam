@@ -1,704 +1,352 @@
-//! Production native modules, reached only through Siphon and real Id messages.
-mod support;
-use birnam_abi::{
-    Oop,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{cell::Cell, ffi::c_void};
-use std::os::unix::ffi::OsStrExt;
-
-unsafe fn send(id: &Protocol, receiver: Oop, name: &[u8], args: &[Operand]) -> Operand {
-    unsafe { id.send_named(receiver, name, args) }.expect("production message succeeds")
+//! Native initialization, Namespace, Roots and Boolean policy through Oop messages.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, id_protocol::Protocol, size};
+use std::{path::Path, ptr};
+// Only the rejection path runs on this thread; the creating thread waits.
+struct ForeignThreadProbe {
+    id: Protocol,
+    selector: Oop,
 }
-fn object(value: Operand) -> Oop {
-    value
-        .as_object()
-        .expect("module boundary returns an Object")
-}
-unsafe fn load(
-    id: &Protocol,
-    directory: &std::path::Path,
-    name: &str,
-    args: &[Operand],
-) -> Operand {
-    let path = directory.join(format!("libbirnam_{name}.dylib"));
-    let mut request = vec![Operand::bytes(path.as_os_str().as_bytes())];
-    request.extend_from_slice(args);
-    unsafe { id.send(id.receiver, id.load, &request) }.expect("load production module")
-}
-// Only exercises the rejection boundary; the parent keeps the Id carrier live
-// and makes no concurrent owner-thread calls while the foreign thread runs.
-struct ForeignThreadProbe { id: Protocol, selector: Oop }
 unsafe impl Send for ForeignThreadProbe {}
 impl ForeignThreadProbe {
-    fn invoke(self) -> (u32, usize) {
-        let failure=unsafe {self.id.send(self.id.receiver,self.selector,&[])}.err().expect("foreign-thread Id message must decline");
-        (failure.status,failure.detail)
+    fn invoke(self) -> usize {
+        unsafe { self.id.send(self.id.root, self.selector, &[]) }
+            .unwrap_err()
+            .addr()
     }
-}
-struct Counter {
-    id: Protocol,
-    alias: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn counted(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let state = unsafe { &*context.cast::<Counter>() };
-    state.calls.set(state.calls.get() + 1);
-    unsafe {
-        state.id.send(
-            receiver,
-            state.alias,
-            birnam_abi::borrowed_slice(args, count).unwrap(),
-        )
-    }
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn binding_snapshot(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let Some([key, value]) = birnam_abi::borrowed_slice(a, n) else {
-            return Outcome::failed(native::INVALID_REQUEST, 0);
-        };
-        (&mut *c.cast::<Vec<(Oop, Oop)>>()).push((object(*key), object(*value)));
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe extern "C" fn rejected_binding(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 79)
-}
-struct Snapshot {
-    id: Protocol,
-    roots: Oop,
-    extra: Oop,
-    retained: bool,
-    token: usize,
-    objects: Vec<Oop>,
-}
-unsafe extern "C" fn visit(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let Some([value]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
-        return Outcome::failed(native::INVALID_REQUEST, 0);
-    };
-    let state = unsafe { &mut *context.cast::<Snapshot>() };
-    state.objects.push(object(*value));
-    if !state.retained {
-        state.retained = true;
-        state.token = unsafe {
-            send(
-                &state.id,
-                state.roots,
-                b"retain:",
-                &[Operand::object(state.extra)],
-            )
-        }
-        .as_word()
-        .unwrap();
-    }
-    Outcome::loaded(Operand::unit())
 }
 #[test]
-#[ignore = "scripts/native-message-test.sh builds the production modules"]
+#[ignore = "requires production Oop modules"]
 fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
-    unsafe {
-        let directory = std::path::PathBuf::from(
-            std::env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").expect("production module directory"),
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let key = |n: &[u8]| hooks.symbol(n);
+    let call = |r, n: &[u8], a: &[Oop]| h.send(r, n, a).unwrap();
+    let vt = |v| call(h.id.root, b"behaviorOf:", &[v]);
+    let set = |v, n: &[u8], m| {
+        call(v, b"addMethod", &[key(n), m]);
+    };
+    let count = key(b"allocationCount");
+    let foreign = ForeignThreadProbe {
+        id: h.id,
+        selector: count,
+    };
+    assert_eq!(
+        std::thread::spawn(move || foreign.invoke()).join().unwrap(),
+        birnam_abi::object_reference(h.id.invalid).addr()
+    );
+    assert!(as_size(unsafe { h.id.send(h.id.root, count, &[]) }.unwrap()).is_some());
+    let load = |n: &str, a: &[Oop]| {
+        h.load_native(
+            &q,
+            &h.resources.lib_dir.join(format!("libbirnam_{n}.dylib")),
+            a,
+        )
+        .unwrap()
+    };
+    assert_eq!(load("root_registry", &[]), h.roots);
+    assert_eq!(load("namespace", &[h.roots]), h.namespace);
+    let name = key(b"sample");
+    let prototype = h.named(b"Object").unwrap();
+    let value = q.call(prototype, b"clone", &[]).unwrap();
+    assert!(call(h.namespace, b"at:", &[name]).is_null());
+    assert_eq!(call(h.namespace, b"at:put:", &[name, value]), value);
+    assert_eq!(call(h.namespace, b"at:", &[name]), value);
+    assert_eq!(call(h.namespace, b"nameOf:", &[value]), name);
+    assert!(call(h.namespace, b"nameAt:", &[size(usize::MAX >> 1).unwrap()]).is_null());
+    assert!(h.send(h.namespace, b"at:", &[value]).is_err());
+    let path = std::env::temp_dir().join(format!("birnam-modules-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/modules.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = h.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let bootstrap = h.named(b"Bootstrap").unwrap();
+    let context = hooks.context(&[h.roots, bootstrap, q.string(b"nested").unwrap()]);
+    let method = |n: &[u8], c| {
+        q.call(
+            q.call(fixture, b"methodAt:", &[key(n)]).unwrap(),
+            b"withContext:",
+            &[c],
+        )
+        .unwrap()
+    };
+    let root_vt = vt(h.id.root);
+    let original = call(root_vt, b"lookup", &[key(b"isSymbol:")]);
+    set(root_vt, b"moduleOriginalSymbol:", original);
+    let symbol_calls = hooks.context(&[key(b"moduleOriginalSymbol:"), size(0).unwrap()]);
+    set(root_vt, b"isSymbol:", method(b"forward", symbol_calls));
+    let at = key(b"at:");
+    hooks.put(symbol_calls, 1, size(0).unwrap());
+    assert_eq!(
+        unsafe { h.id.send(h.namespace, at, &[name]) }.unwrap(),
+        value
+    );
+    assert_eq!(hooks.count(symbol_calls, 1), 1);
+    set(root_vt, b"isSymbol:", original);
+    call(root_vt, b"removeMethod:", &[key(b"moduleOriginalSymbol:")]);
+    let visitor = q.call(prototype, b"clone", &[]).unwrap();
+    let visitor_vt = q
+        .call(h.id.root, b"ensurePrivateVtableFor:", &[visitor])
+        .unwrap();
+    for n in [
+        b"visit:".as_slice(),
+        b"binding:value:",
+        b"configureVisit",
+        b"reset",
+        b"containsBinding",
+        b"bindingKeyCount",
+        b"rootCountFor:",
+        b"retainedToken",
+        b"configureLoad",
+        b"dispose",
+    ] {
+        set(visitor_vt, n, method(n, context));
+    }
+    call(h.namespace, b"bindingsDo:", &[visitor]);
+    assert_eq!(
+        as_size(call(visitor, b"containsBinding", &[name, value])),
+        Some(1)
+    );
+    let missing = key(b"inventoryAbsent");
+    let bound_nil = key(b"inventoryNil");
+    let nil = h.named(b"nil").unwrap();
+    call(h.namespace, b"at:put:", &[missing, ptr::null_mut()]);
+    call(h.namespace, b"at:put:", &[bound_nil, nil]);
+    call(visitor, b"reset", &[]);
+    call(h.namespace, b"liveBindingsDo:", &[visitor]);
+    assert_eq!(
+        as_size(call(visitor, b"containsBinding", &[name, value])),
+        Some(1)
+    );
+    assert_eq!(
+        as_size(call(visitor, b"bindingKeyCount", &[missing])),
+        Some(0)
+    );
+    assert_eq!(
+        as_size(call(visitor, b"containsBinding", &[bound_nil, nil])),
+        Some(1)
+    );
+    let failure = hooks.context(&[hooks.fault(79), size(0).unwrap()]);
+    set(
+        visitor_vt,
+        b"binding:value:",
+        hooks.method(b"deny", failure),
+    );
+    assert!(h.send(h.namespace, b"liveBindingsDo:", &[visitor]).is_err());
+    set(
+        visitor_vt,
+        b"binding:value:",
+        method(b"binding:value:", context),
+    );
+    call(visitor, b"reset", &[]);
+    call(h.namespace, b"liveBindingsDo:", &[visitor]);
+    assert_eq!(
+        as_size(call(visitor, b"containsBinding", &[name, value])),
+        Some(1)
+    );
+    assert!(h.send(h.namespace, b"bindingsDo:", &[]).is_err());
+    let ns_vt = vt(h.namespace);
+    let original = call(ns_vt, b"lookup", &[key(b"rootsDo:")]);
+    set(ns_vt, b"moduleOriginalRoots:", original);
+    let roots_calls = hooks.context(&[key(b"moduleOriginalRoots:"), size(0).unwrap()]);
+    set(ns_vt, b"rootsDo:", method(b"forward", roots_calls));
+    let config = key(b"configureVisit");
+    let roots_do = key(b"rootsDo:");
+    let reset = key(b"reset");
+    let root_count = key(b"rootCountFor:");
+    let retained = key(b"retainedToken");
+    let release = key(b"release:");
+    hooks.put(roots_calls, 1, size(0).unwrap());
+    let extra = h.send(prototype, b"clone", &[]).unwrap();
+    unsafe { h.id.send(visitor, config, &[extra, size(1).unwrap()]) }.unwrap();
+    unsafe { h.id.send(h.roots, roots_do, &[visitor]) }.unwrap();
+    let observed = |v| as_size(unsafe { h.id.send(visitor, root_count, &[v]) }.unwrap()).unwrap();
+    assert_eq!(hooks.count(roots_calls, 1), 1);
+    for v in [h.namespace, name, value] {
+        assert!(observed(v) > 0);
+    }
+    assert_eq!(observed(extra), 0);
+    unsafe { h.id.send(visitor, reset, &[]) }.unwrap();
+    unsafe { h.id.send(h.roots, roots_do, &[visitor]) }.unwrap();
+    assert!(observed(extra) > 0);
+    let token = unsafe { h.id.send(visitor, retained, &[]) }.unwrap();
+    assert_eq!(
+        as_size(unsafe { h.id.send(h.roots, release, &[token]) }.unwrap()),
+        Some(1)
+    );
+    assert_eq!(
+        as_size(unsafe { h.id.send(h.roots, release, &[token]) }.unwrap()),
+        Some(0)
+    );
+    set(ns_vt, b"rootsDo:", original);
+    call(ns_vt, b"removeMethod:", &[key(b"moduleOriginalRoots:")]);
+    let truth = load("boolean", &[h.namespace]);
+    let falsity = h.named(b"false").unwrap();
+    assert_eq!(h.named(b"Boolean").unwrap(), truth);
+    assert_eq!(h.named(b"true").unwrap(), truth);
+    assert_eq!(h.named(b"False").unwrap(), falsity);
+    assert_ne!(truth, falsity);
+    assert_ne!(truth, nil);
+    assert!(load("nil", &[h.namespace]).is_null());
+    for (v, opposite) in [(truth, falsity), (falsity, truth)] {
+        assert_eq!(call(v, b"not", &[]), opposite);
+        for other in [truth, falsity, nil] {
+            assert_eq!(
+                call(v, b"==", &[other]),
+                if v == other { truth } else { falsity }
+            );
+            assert_eq!(
+                call(v, b"&", &[other]),
+                if v == truth { other } else { falsity }
+            );
+            assert_eq!(
+                call(v, b"|", &[other]),
+                if v == truth { truth } else { other }
+            );
+        }
+    }
+    for v in [truth, falsity, nil, prototype] {
+        assert_eq!(
+            call(v, b"isNil", &[]),
+            if v == nil { truth } else { falsity }
         );
-        let id = birnam_siphon::load(directory.join("libbirnam_id.dylib").as_os_str().as_bytes())
-            .expect("Siphon loads Id");
-        let selector=id.intern_name(b"allocationCount").unwrap();
-        let probe=ForeignThreadProbe {id,selector};
-        assert_eq!(std::thread::spawn(move || probe.invoke()).join().unwrap(),(native::INVALID_REQUEST,0));
-        assert!(id.send(id.receiver,selector,&[]).unwrap().as_word().is_some());
-        let namespace = object(load(
-            &id,
-            &directory,
+        assert_eq!(
+            call(v, b"notNil", &[]),
+            if v == nil { falsity } else { truth }
+        );
+    }
+    let branch = q.call(prototype, b"clone", &[]).unwrap();
+    let bvt = q
+        .call(h.id.root, b"ensurePrivateVtableFor:", &[branch])
+        .unwrap();
+    let branch_state = hooks.context(&[nil, size(0).unwrap()]);
+    set(bvt, b"value", hooks.method(b"fixedCount", branch_state));
+    let unused = q.call(prototype, b"clone", &[]).unwrap();
+    let uvt = q
+        .call(h.id.root, b"ensurePrivateVtableFor:", &[unused])
+        .unwrap();
+    let untouched = hooks.context(&[hooks.fault(80), size(0).unwrap()]);
+    set(uvt, b"value", hooks.method(b"deny", untouched));
+    for (receiver, n, args, answer, called) in [
+        (
+            truth,
+            b"ifTrue:ifFalse:".as_slice(),
+            vec![branch, unused],
+            nil,
+            true,
+        ),
+        (falsity, b"ifTrue:ifFalse:", vec![unused, branch], nil, true),
+        (truth, b"ifTrue:", vec![branch], nil, true),
+        (falsity, b"ifTrue:", vec![unused], nil, false),
+        (truth, b"ifFalse:", vec![unused], nil, false),
+        (falsity, b"ifFalse:", vec![branch], nil, true),
+        (truth, b"and:", vec![branch], nil, true),
+        (falsity, b"and:", vec![unused], falsity, false),
+        (truth, b"or:", vec![unused], truth, false),
+        (falsity, b"or:", vec![branch], nil, true),
+    ] {
+        let before = hooks.count(branch_state, 1);
+        assert_eq!(call(receiver, n, &args), answer);
+        assert_eq!(hooks.count(branch_state, 1) - before, usize::from(called));
+    }
+    assert_eq!(hooks.count(untouched, 1), 0);
+    let replaced = hooks.context(&[truth, size(0).unwrap()]);
+    set(bvt, b"value", hooks.method(b"fixedCount", replaced));
+    assert_eq!(call(falsity, b"or:", &[branch]), truth);
+    assert_eq!(hooks.count(replaced, 1), 1);
+    assert!(h.send(truth, b"ifTrue:", &[]).is_err());
+    assert_eq!(call(truth, b"&", &[size(0).unwrap()]), size(0).unwrap());
+    let bool_vt = vt(truth);
+    let original = call(bool_vt, b"lookup", &[key(b"not")]);
+    set(bool_vt, b"moduleOriginalNot", original);
+    let bool_calls = hooks.context(&[key(b"moduleOriginalNot"), size(0).unwrap()]);
+    set(bool_vt, b"not", method(b"forward", bool_calls));
+    assert_eq!(load("boolean", &[h.namespace]), truth);
+    assert_eq!(call(truth, b"not", &[]), falsity);
+    assert_eq!(hooks.count(bool_calls, 1), 1);
+    set(bool_vt, b"not", original);
+    call(bool_vt, b"removeMethod:", &[key(b"moduleOriginalNot")]);
+    assert_eq!(
+        load(
             "bootstrap",
-            &[Operand::bytes(directory.as_os_str().as_bytes())],
-        ));
-        let roots = object(send(
-            &id,
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Roots").unwrap())],
-        ));
-        assert_eq!(object(load(&id, &directory, "root_registry", &[])), roots);
+            &[q.string(h.resources.lib_dir.as_os_str().as_encoded_bytes())
+                .unwrap()]
+        ),
+        h.namespace
+    );
+    let ns_path = q
+        .string(
+            h.resources
+                .lib_dir
+                .join("libbirnam_namespace.dylib")
+                .as_os_str()
+                .as_encoded_bytes(),
+        )
+        .unwrap();
+    for _ in 0..2 {
         assert_eq!(
-            object(load(
-                &id,
-                &directory,
-                "namespace",
-                &[Operand::object(roots)]
-            )),
-            namespace
+            call(bootstrap, b"loadNative:", &[ns_path, h.roots]),
+            h.namespace
         );
-        let key = id.intern_name(b"sample").unwrap();
-        let prototype = send(&id, id.receiver, b"objectPrototype", &[]);
-        let parent = object(send(&id, id.receiver, b"behaviorOf:", &[prototype]));
-        let value = object(send(&id, parent, b"allocate", &[Operand::word(0)]));
+    }
+    for expected in [1, 1, 0] {
         assert_eq!(
-            send(&id, namespace, b"at:", &[Operand::object(key)]).kind(),
-            native::UNIT
+            as_size(call(bootstrap, b"release:", &[h.namespace])),
+            Some(expected)
         );
+    }
+    assert!(
+        h.send(
+            bootstrap,
+            b"loadNative:",
+            &[q.string(b"/no/such/birnam/module").unwrap(), h.namespace]
+        )
+        .is_err()
+    );
+    assert_eq!(
+        as_size(call(bootstrap, b"release:", &[h.namespace])),
+        Some(0)
+    );
+    let name_vt = call(h.id.root, b"nameBehavior", &[]);
+    let loader = call(name_vt, b"lookup", &[key(b"loadNative")]);
+    let nested_loader = method(b"reentrantLoad", context);
+    let outer_path = q.string(b"outer").unwrap();
+    let inputs = h.scope();
+    let outer = inputs.call(prototype, b"clone", &[]).unwrap();
+    let nested = inputs.call(prototype, b"clone", &[]).unwrap();
+    call(visitor, b"configureLoad", &[nested]);
+    set(name_vt, b"loadNative", nested_loader);
+    assert_eq!(call(bootstrap, b"loadNative:", &[outer_path, outer]), outer);
+    set(name_vt, b"loadNative", loader);
+    drop(inputs);
+    unsafe {
+        h.id.send(visitor, config, &[ptr::null_mut(), size(0).unwrap()])
+    }
+    .unwrap();
+    unsafe { h.id.send(h.roots, roots_do, &[visitor]) }.unwrap();
+    for v in [outer, nested] {
+        assert_eq!(observed(v), 1, "only Bootstrap result retention remains");
         assert_eq!(
-            object(send(
-                &id,
-                namespace,
-                b"at:put:",
-                &[Operand::object(key), Operand::object(value)]
-            )),
-            value
-        );
-        assert_eq!(
-            object(send(&id, namespace, b"at:", &[Operand::object(key)])),
-            value
-        );
-        assert_eq!(
-            object(send(&id, namespace, b"nameOf:", &[Operand::object(value)])),
-            key
-        );
-        assert_eq!(
-            send(&id, namespace, b"nameAt:", &[Operand::word(usize::MAX)]).kind(),
-            native::UNIT
-        );
-        assert!(
-            id.send_named(namespace, b"at:", &[Operand::object(value)])
-                .is_err()
-        );
-
-        // Namespace must consult Id's current Symbol validation method each time.
-        let selector = id.intern_name(b"symbolBytesOf:").unwrap();
-        let original = send(&id, id.receiver, b"lookup", &[Operand::object(selector)])
-            .as_entry()
-            .unwrap();
-        let alias = id.intern_name(b"fixtureOriginal").unwrap();
-        send(
-            &id,
-            id.receiver,
-            b"addMethod",
-            &[Operand::object(alias), Operand::entry(original)],
-        );
-        let counter = Box::leak(Box::new(Counter {
-            id,
-            alias,
-            calls: Cell::new(0),
-        }));
-        send(
-            &id,
-            id.receiver,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(counted, (counter as *mut Counter).cast())),
-            ],
-        );
-        assert_eq!(
-            object(send(&id, namespace, b"at:", &[Operand::object(key)])),
-            value
-        );
-        assert_eq!(counter.calls.get(), 1);
-        send(
-            &id,
-            id.receiver,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(original)],
-        );
-        send(
-            &id,
-            id.receiver,
-            b"removeMethod:",
-            &[Operand::object(alias)],
-        );
-
-        // Root providers are also called by fresh dispatch, after snapshotting.
-        let behavior = object(send(
-            &id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(namespace)],
-        ));
-        let selector = id.intern_name(b"rootsDo:").unwrap();
-        let original = send(&id, behavior, b"lookup", &[Operand::object(selector)])
-            .as_entry()
-            .unwrap();
-        let alias = id.intern_name(b"fixtureOriginal").unwrap();
-        send(
-            &id,
-            behavior,
-            b"addMethod",
-            &[Operand::object(alias), Operand::entry(original)],
-        );
-        let counter = Box::leak(Box::new(Counter {
-            id,
-            alias,
-            calls: Cell::new(0),
-        }));
-        send(
-            &id,
-            behavior,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(counted, (counter as *mut Counter).cast())),
-            ],
-        );
-        let extra = object(send(
-            &id,
-            object(send(
-                &id,
-                id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(value)],
-            )),
-            b"allocate",
-            &[Operand::word(0)],
-        ));
-        let mut snapshot = Snapshot {
-            id,
-            roots,
-            extra,
-            retained: false,
-            token: 0,
-            objects: Vec::new(),
-        };
-        let visitor = support::visitor(snapshot.id, visit, (&raw mut snapshot).cast());
-        let visitor_behavior =
-            support::object(support::send(id, id.receiver, b"behaviorOf:", &[visitor]));
-        let mut bindings = Vec::<(Oop, Oop)>::new();
-        support::install(
-            id,
-            visitor_behavior,
-            b"binding:value:",
-            binding_snapshot,
-            (&raw mut bindings).cast(),
-        );
-        send(&id, namespace, b"bindingsDo:", &[visitor]);
-        assert!(bindings.contains(&(key, value)));
-        // The language-facing inventory omits raw absence, retaining bound nil.
-        let missing_key = id.intern_name(b"inventoryAbsent").unwrap();
-        send(&id, namespace, b"at:put:", &[Operand::object(missing_key), Operand::unit()]);
-        bindings.clear();
-        send(&id, namespace, b"liveBindingsDo:", &[visitor]);
-        assert!(bindings.contains(&(key, value)));
-        assert!(!bindings.iter().any(|(name, _)| *name == missing_key));
-        // Rejection drops the temporary root inventory; a later call still works.
-        support::install(id, visitor_behavior, b"binding:value:", rejected_binding, core::ptr::null_mut());
-        assert!(id.send_named(namespace, b"liveBindingsDo:", &[visitor]).is_err());
-        support::install(id, visitor_behavior, b"binding:value:", binding_snapshot, (&raw mut bindings).cast());
-        bindings.clear();
-        send(&id, namespace, b"liveBindingsDo:", &[visitor]);
-        assert!(bindings.contains(&(key, value)));
-        assert!(
-            id.send_named(namespace, b"bindingsDo:", &[Operand::entry(original)])
-                .is_err()
-        );
-
-        send(&id, roots, b"rootsDo:", &[visitor]);
-        assert_eq!(counter.calls.get(), 1);
-        assert!(
-            snapshot.objects.contains(&namespace)
-                && snapshot.objects.contains(&key)
-                && snapshot.objects.contains(&value)
-        );
-        assert!(
-            !snapshot.objects.contains(&extra),
-            "retention during a visitor enters the next snapshot"
-        );
-        snapshot.objects.clear();
-        send(&id, roots, b"rootsDo:", &[visitor]);
-        assert!(snapshot.objects.contains(&extra));
-        assert_eq!(
-            send(&id, roots, b"release:", &[Operand::word(snapshot.token)]).as_word(),
+            as_size(unsafe { h.id.send(bootstrap, release, &[v]) }.unwrap()),
             Some(1)
         );
-        assert_eq!(
-            send(&id, roots, b"release:", &[Operand::word(snapshot.token)]).as_word(),
-            Some(0)
-        );
-        send(
-            &id,
-            behavior,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(original)],
-        );
-        send(&id, behavior, b"removeMethod:", &[Operand::object(alias)]);
-        boolean_nil(&id, &directory, namespace);
-        bootstrap_retention(&id, &directory, namespace);
     }
-}
-
-struct Branch {
-    answer: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn branch_value(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    assert_eq!(count, 0);
-    let branch = unsafe { &*context.cast::<Branch>() };
-    branch.calls.set(branch.calls.get() + 1);
-    Outcome::loaded(Operand::object(branch.answer))
-}
-unsafe fn boolean_nil(id: &Protocol, directory: &std::path::Path, namespace: Oop) {
-    unsafe {
-        let truth = object(load(
-            id,
-            directory,
-            "boolean",
-            &[Operand::object(namespace)],
-        ));
-        let get = |name: &[u8]| {
-            object(send(
-                id,
-                namespace,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let falsity = get(b"false");
-        let nil = get(b"nil");
-        assert_eq!(get(b"Boolean"), truth);
-        assert_eq!(get(b"true"), truth);
-        assert_eq!(get(b"False"), falsity);
-        assert_ne!(truth, falsity);
-        assert_ne!(truth, nil);
-        assert_eq!(
-            load(id, directory, "nil", &[Operand::object(namespace)]).kind(),
-            native::UNIT
-        );
-        for (value, opposite) in [(truth, falsity), (falsity, truth)] {
-            assert_eq!(object(send(id, value, b"not", &[])), opposite);
-            for other in [truth, falsity, nil] {
-                assert_eq!(
-                    object(send(id, value, b"==", &[Operand::object(other)])),
-                    if value == other { truth } else { falsity }
-                );
-                assert_eq!(
-                    object(send(id, value, b"&", &[Operand::object(other)])),
-                    if value == truth { other } else { falsity }
-                );
-                assert_eq!(
-                    object(send(id, value, b"|", &[Operand::object(other)])),
-                    if value == truth { truth } else { other }
-                );
-            }
-        }
-        let prototype = object(send(id, id.receiver, b"objectPrototype", &[]));
-        for value in [truth, falsity, nil, prototype] {
-            assert_eq!(
-                object(send(id, value, b"isNil", &[])),
-                if value == nil { truth } else { falsity }
-            );
-            assert_eq!(
-                object(send(id, value, b"notNil", &[])),
-                if value == nil { falsity } else { truth }
-            );
-        }
-        let parent = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(prototype)],
-        ));
-        let behavior = object(send(id, parent, b"delegated", &[]));
-        let block = object(send(id, behavior, b"allocate", &[Operand::word(0)]));
-        let branch = Box::leak(Box::new(Branch {
-            answer: nil,
-            calls: Cell::new(0),
-        }));
-        let selector = id.intern_name(b"value").unwrap();
-        send(
-            id,
-            behavior,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(
-                    branch_value,
-                    (branch as *mut Branch).cast(),
-                )),
-            ],
-        );
-        let yes = Operand::object(block);
-        // The unchosen argument deliberately has no value method.
-        let unused = Operand::object(prototype);
-        for (receiver, name, args, answer, called) in [
-            (
-                truth,
-                b"ifTrue:ifFalse:".as_slice(),
-                vec![yes, unused],
-                nil,
-                true,
-            ),
-            (falsity, b"ifTrue:ifFalse:", vec![unused, yes], nil, true),
-            (truth, b"ifTrue:", vec![yes], nil, true),
-            (falsity, b"ifTrue:", vec![unused], nil, false),
-            (truth, b"ifFalse:", vec![unused], nil, false),
-            (falsity, b"ifFalse:", vec![yes], nil, true),
-            (truth, b"and:", vec![yes], nil, true),
-            (falsity, b"and:", vec![unused], falsity, false),
-            (truth, b"or:", vec![unused], truth, false),
-            (falsity, b"or:", vec![yes], nil, true),
-        ] {
-            let before = branch.calls.get();
-            assert_eq!(object(send(id, receiver, name, &args)), answer);
-            assert_eq!(branch.calls.get() - before, usize::from(called));
-        }
-        let replacement = Box::leak(Box::new(Branch {
-            answer: truth,
-            calls: Cell::new(0),
-        }));
-        send(
-            id,
-            behavior,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(
-                    branch_value,
-                    (replacement as *mut Branch).cast(),
-                )),
-            ],
-        );
-        assert_eq!(object(send(id, falsity, b"or:", &[yes])), truth);
-        assert_eq!(replacement.calls.get(), 1);
-        assert!(id.send_named(truth, b"ifTrue:", &[]).is_err());
-        assert!(id.send_named(truth, b"&", &[Operand::word(0)]).is_err());
-        // Loading again must not reinstall methods over application changes.
-        let boolean_behavior = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(truth)],
-        ));
-        let selector = id.intern_name(b"not").unwrap();
-        let original = send(
-            id,
-            boolean_behavior,
-            b"lookup",
-            &[Operand::object(selector)],
-        )
-        .as_entry()
-        .unwrap();
-        let alias = id.intern_name(b"fixtureOriginal").unwrap();
-        send(
-            &*id,
-            boolean_behavior,
-            b"addMethod",
-            &[Operand::object(alias), Operand::entry(original)],
-        );
-        let counter = Box::leak(Box::new(Counter {
-            id: *id,
-            alias,
-            calls: Cell::new(0),
-        }));
-        send(
-            id,
-            boolean_behavior,
-            b"addMethod",
-            &[
-                Operand::object(selector),
-                Operand::entry(NativeEntry::new(counted, (counter as *mut Counter).cast())),
-            ],
-        );
-        assert_eq!(
-            object(load(
-                id,
-                directory,
-                "boolean",
-                &[Operand::object(namespace)]
-            )),
-            truth
-        );
-        assert_eq!(object(send(id, truth, b"not", &[])), falsity);
-        assert_eq!(counter.calls.get(), 1);
-        send(
-            id,
-            boolean_behavior,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(original)],
-        );
-        send(
-            id,
-            boolean_behavior,
-            b"removeMethod:",
-            &[Operand::object(alias)],
-        );
-    }
-}
-
-struct ReentrantLoad {
-    id: Protocol,
-    bootstrap: Oop,
-    nested: Oop,
-    depth: Cell<usize>,
-}
-unsafe extern "C" fn reentrant_load(
-    context: *mut c_void,
-    _: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let state = unsafe { &*context.cast::<ReentrantLoad>() };
-    let arguments = unsafe { birnam_abi::borrowed_slice(args, count) }.unwrap();
-    if state.depth.get() == 0 {
-        state.depth.set(1);
-        let nested = unsafe {
-            send(
-                &state.id,
-                state.bootstrap,
-                b"loadNative:",
-                &[Operand::bytes(b"nested"), Operand::object(state.nested)],
-            )
-        };
-        assert_eq!(object(nested), state.nested);
-        state.depth.set(0);
-    }
-    Outcome::loaded(arguments[1])
-}
-unsafe fn bootstrap_retention(id: &Protocol, directory: &std::path::Path, namespace: Oop) {
-    unsafe {
-        let bootstrap = object(send(
-            id,
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Bootstrap").unwrap())],
-        ));
-        assert_eq!(
-            object(load(
-                id,
-                directory,
-                "bootstrap",
-                &[Operand::bytes(directory.as_os_str().as_bytes())]
-            )),
-            namespace
-        );
-        let path = directory.join("libbirnam_namespace.dylib");
-        let roots = object(send(
-            id,
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"Roots").unwrap())],
-        ));
-        for _ in 0..2 {
-            assert_eq!(
-                object(send(
-                    id,
-                    bootstrap,
-                    b"loadNative:",
-                    &[
-                        Operand::bytes(path.as_os_str().as_bytes()),
-                        Operand::object(roots)
-                    ]
-                )),
-                namespace
-            );
-        }
-        for expected in [1, 1, 0] {
-            assert_eq!(
-                send(id, bootstrap, b"release:", &[Operand::object(namespace)]).as_word(),
-                Some(expected)
-            );
-        }
-        assert!(
-            id.send_named(
-                bootstrap,
-                b"loadNative:",
-                &[
-                    Operand::bytes(b"/no/such/birnam/module"),
-                    Operand::object(namespace)
-                ]
-            )
-            .is_err()
-        );
-        assert_eq!(
-            send(id, bootstrap, b"release:", &[Operand::object(namespace)]).as_word(),
-            Some(0)
-        );
-        // Replace the real Id loader to exercise a nested initializer returning
-        // one of its inputs. Bootstrap must retain both results independently.
-        let parent = object(send(
-            id,
-            namespace,
-            b"at:",
-            &[Operand::object(id.intern_name(b"ObjectVt").unwrap())],
-        ));
-        let outer = object(send(id, parent, b"allocate", &[Operand::word(0)]));
-        let nested = object(send(id, parent, b"allocate", &[Operand::word(0)]));
-        let original = send(id, id.receiver, b"lookup", &[Operand::object(id.load)])
-            .as_entry()
-            .unwrap();
-        let state = Box::leak(Box::new(ReentrantLoad {
-            id: *id,
-            bootstrap,
-            nested,
-            depth: Cell::new(0),
-        }));
-        send(
-            id,
-            id.receiver,
-            b"addMethod",
-            &[
-                Operand::object(id.load),
-                Operand::entry(NativeEntry::new(
-                    reentrant_load,
-                    (state as *mut ReentrantLoad).cast(),
-                )),
-            ],
-        );
-        assert_eq!(
-            object(send(
-                id,
-                bootstrap,
-                b"loadNative:",
-                &[Operand::bytes(b"outer"), Operand::object(outer)]
-            )),
-            outer
-        );
-        send(
-            id,
-            id.receiver,
-            b"addMethod",
-            &[Operand::object(id.load), Operand::entry(original)],
-        );
-        let mut snapshot = Snapshot {
-            id: *id,
-            roots,
-            extra: outer,
-            retained: true,
-            token: 0,
-            objects: Vec::new(),
-        };
-        let visitor = support::visitor(snapshot.id, visit, (&raw mut snapshot).cast());
-        send(id, roots, b"rootsDo:", &[visitor]);
-        for value in [outer, nested] {
-            assert_eq!(
-                snapshot.objects.iter().filter(|o| **o == value).count(),
-                1,
-                "only the result retention remains"
-            );
-            assert_eq!(
-                send(id, bootstrap, b"release:", &[Operand::object(value)]).as_word(),
-                Some(1)
-            );
-        }
-        snapshot.objects.clear();
-        send(id, roots, b"rootsDo:", &[visitor]);
-        assert!(!snapshot.objects.contains(&outer) && !snapshot.objects.contains(&nested));
-    }
+    unsafe { h.id.send(visitor, reset, &[]) }.unwrap();
+    unsafe { h.id.send(h.roots, roots_do, &[visitor]) }.unwrap();
+    assert_eq!(observed(outer), 0);
+    assert_eq!(observed(nested), 0);
+    call(visitor, b"dispose", &[]);
 }

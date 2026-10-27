@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "scope": "Native module composition, current Namespace/Roots/Boolean behavior and nested Bootstrap result retention through Oops",
+  "base_revision": "8373774275d7d5e28ad771293123cbad35f49342",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/activation-wmlwn0vv/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/modules.rs": "b95a3ba761208031d1c8debbb60ea2c7c3aef60e5091786515ff53531ae815e3",
+    "tests/fixtures/oop-host/modules.c": "4759fffcb72f120b1a94e95df917f8af37db6c69ce2a2106e6c9355d954f1324"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/modules-final.log",
+      "sha256": "d80dcd98d8ded60a8653ae8a47c06b046f902a6f176486d42d74b613ebf4b9c2",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Foreign-thread entry refuses with the actual Id failure object; the owning thread remains usable",
+    "Roots, Namespace, Boolean, nil and Bootstrap initialize idempotently",
+    "Namespace reads validate through current Id isSymbol:; invalid keys and out-of-range size indices retain their results",
+    "Binding inventories omit raw absence while preserving bound language nil, and recover after visitor failure",
+    "Root enumeration uses current providers and a stable snapshot; retention during a callback appears next time and tokens release once",
+    "Boolean/nil identities and operators, selected branches, unchosen failing branches and current replacement",
+    "Native reloading does not reinstall methods over replacements",
+    "Bootstrap result references count independently for repeated loads, missing loads and nested loader reentry"
+  ],
+  "representation_adjustments": [
+    "Maximum representable immediate size replaces an obsolete full-width native Word index",
+    "Immediate Word Oops are ordinary Boolean operands rather than invalid carriers",
+    "Current Name loading and isSymbol: validation replace removed raw carrier entrypoints"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native targets and compiler groups remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Current cold archive and Host qualification incomplete"
+  ]
+}
