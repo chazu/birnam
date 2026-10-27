@@ -2431,3 +2431,23 @@ owners, Store-independent core, project/build/packaging and query paths. Only th
 image group remains in that queue. These are evidence for that older revision,
 not qualification of subsequent runtime changes.
 [Receipt](../measurements/latest-cli-oop-20261027.json).
+
+## Exhaustive Trace graphs and native cleanup through Oops
+
+The `trace_graphs` harness now runs all 4,096 directed three-node graph/root
+combinations against independent bit closure. Equal-valued String nodes remain
+distinct, and declared identities retain unsigned ordering through `2^63` and
+`2^64 - 1`. Foreign endpoints, duplicate objects/identities and zero identities
+reject before report callbacks; duplicate roots and edges remain valid.
+
+Adversarial providers retain the checks for expired sinks, swallowed malformed
+Word-conversion failures, missing completion, swallowed report errors and full-width
+coverage masks. Cleanup collection preserves fresh values and native failures;
+cleanup failure does not replace a primary body failure. Empty graphs complete once.
+
+Return cases use owned Bytes, declared Method Oops and the ordinary Id receiver in
+place of retired native carriers. The fixture still overwrites its source buffer
+during cleanup. Native absence, language nil and unmarked Fault data stay distinct.
+A deferred Bytes echo survives cleanup collection with the exact argument identity.
+The complete test passes with `MallocScribble=1`; no runtime or Id change was needed.
+[Receipt](../measurements/trace-graphs-oop-20261027.json).

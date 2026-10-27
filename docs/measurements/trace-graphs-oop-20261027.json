@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "scope": "Exhaustive authored Trace graph closure, adversarial providers, cleanup and Oop return-value acceptance",
+  "base_revision": "2c841bba31a31d0e847b46fa0dcd82881cc8e98e",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-lifetime-wqe01zuu/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/trace_graphs.rs": "9ff4db1401e7fa228c1b73fb182b070d123619287e14ccdcf9d806e47342c7e0",
+    "tests/fixtures/oop-host/trace-graphs.c": "257e74eba906cbaedf0c5adb12be817faff8e3967c4aa94d05cd877734df00be"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/trace-graphs-final.log",
+      "sha256": "31910325da4c7d6c100cdf7f4f738a3318f4ae84a74f8b9204e648612a52ce0c",
+      "exit": 0
+    }
+  ],
+  "environment": {
+    "MallocScribble": "1"
+  },
+  "independent_graph_root_combinations": 4096,
+  "retained_checks": [
+    "All directed three-node graphs and root subsets match independent bit closure",
+    "Distinct equal-valued String nodes remain distinct; declared identities sort as unsigned full-width Words",
+    "Foreign roots/edges, duplicate identities/objects and zero identities reject before report rows",
+    "Duplicate roots/edges are permitted; expired observation sinks refuse later writes",
+    "Malformed Word conversion failures latch even when provider ignores them; missing completion and swallowed report failures reject",
+    "Full-width gap masks retain strict acceptance semantics",
+    "Cleanup collection preserves fresh String/Bytes results and exact declared Method/Id receiver identity",
+    "Native absence, language nil and unmarked Fault data remain distinct from failing returns",
+    "Cleanup failure is reported on successful body; primary body failure takes precedence",
+    "Empty graph completes exactly once",
+    "Deferred native Bytes echo survives cleanup collection and preserves exact argument Oop identity"
+  ],
+  "representation_adjustments": [
+    "Declared Methods and Oop contexts replace native-entry carriers and Rust callback pointers",
+    "Full-width Words use their public half-word operations",
+    "Native source buffers are converted to owned Bytes before return; cleanup still overwrites the original source buffer",
+    "Retired NativeEntry/protocol-pointer result cases now exercise declared Method and ordinary Id-receiver Oops",
+    "Failure assertions use the existing explicit native-failure status/detail data"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native/compiler integration and automatic optimization scope decisions",
+    "Current cold candidates predate the latest runtime corrections"
+  ]
+}
