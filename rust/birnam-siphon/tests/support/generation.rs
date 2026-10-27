@@ -3,7 +3,7 @@
 mod oop;
 use birnam_abi::{Oop, as_size, size};
 use birnam_host_support::{Context, Scope};
-use std::path::Path;
+use std::{cell::RefCell, path::Path};
 pub fn bootstrap() -> Context {
     oop::bootstrap()
 }
@@ -12,6 +12,9 @@ pub struct H<'a> {
     pub q: Scope<'a>,
     pub fixture: Oop,
     pub gc: Oop,
+    retain: Oop,
+    release: Oop,
+    tokens: RefCell<Vec<Oop>>,
 }
 impl<'a> H<'a> {
     pub fn new(host: &'a Context) -> Self {
@@ -36,24 +39,30 @@ impl<'a> H<'a> {
         );
         let fixture = host.load_native(&q, &path, &[]).unwrap();
         std::fs::remove_file(path).unwrap();
+        let retain = q.keep(host.intern(b"retain:").unwrap()).unwrap();
+        let release = q.keep(host.intern(b"release:").unwrap()).unwrap();
         Self {
             host,
             q,
             fixture,
             gc,
+            retain,
+            release,
+            tokens: RefCell::new(vec![]),
         }
     }
     pub fn named(&self, n: &[u8]) -> Oop {
         self.host.named(n).unwrap()
     }
     pub fn key(&self, n: &[u8]) -> Oop {
-        self.q.keep(self.host.intern(n).unwrap()).unwrap()
+        self.keep(self.host.intern(n).unwrap())
     }
     pub fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
-        self.q.call(r, n, a).unwrap()
+        self.keep(self.host.send(r, n, a).unwrap())
     }
     pub fn text(&self, b: &[u8]) -> Oop {
-        self.q.string(b).unwrap()
+        let q = self.host.scope();
+        self.keep(q.string(b).unwrap())
     }
     pub fn bytes(&self, v: Oop) -> Vec<u8> {
         self.q.read_bytes(self.call(v, b"bytes", &[])).unwrap()
@@ -145,5 +154,20 @@ impl<'a> H<'a> {
             assert_ne!(value, self.named(b"nil"));
             self.call(module, b"markLoaded:", &[self.key(name.as_bytes())]);
         }
+    }
+    pub fn keep(&self, value: Oop) -> Oop {
+        let token = unsafe { self.host.id.send(self.host.roots, self.retain, &[value]) }.unwrap();
+        self.tokens.borrow_mut().push(token);
+        value
+    }
+    pub fn clear(&self) {
+        for token in self.tokens.take().into_iter().rev() {
+            unsafe { self.host.id.send(self.host.roots, self.release, &[token]) }.unwrap();
+        }
+    }
+}
+impl Drop for H<'_> {
+    fn drop(&mut self) {
+        self.clear();
     }
 }

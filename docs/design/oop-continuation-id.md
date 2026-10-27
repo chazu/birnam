@@ -2520,3 +2520,26 @@ cold installation/archive/Host checkpoint, not the remaining native integration
 or qualification of later runtime corrections. The newer `642e79e2` queue and
 current-runtime `a3eaa227` archive qualification continue separately.
 [Receipt](../measurements/latest-image-oop-20261027.json).
+
+## Candidate admission, owned factories and retirement through Oops
+
+The candidate and retirement harnesses now use Oop Methods and declared callbacks.
+Inspection and mapping remain inert, mapping uses the inspected bytes after the
+author path is overwritten, and replaced TCC compilation methods are never entered.
+Preparation tokens remain one-use and fresh; mutable descriptions and unrelated
+Store facts do not become artifact authority, and Generation does not consult
+Store's basis. Unstable method targets are rejected without specialization.
+
+The independent factory check uses the current `candidateDataFor:` description and
+`withImplementation:` constructor instead of unpacking the retired two-object
+candidate format. It verifies helper capture identity and execution without
+publishing dispatch or Globals bindings. The invalid-target case now restores valid
+artifact bytes before inspection, avoiding rejection for the wrong reason.
+
+Retirement covers unmapped, inert, resumable, synchronous and reentrant-callback
+cases in isolated bootstrap/running/metadata-drift processes. File removal is
+conditional on exact owned bytes and remains separate from logical discard.
+Captured Methods stay callable after discard and release their mappings after the
+last reference disappears; retained counts and bytes return to zero. No runtime
+or Id change was needed.
+[Receipt](../measurements/candidate-retirement-oop-20261027.json).

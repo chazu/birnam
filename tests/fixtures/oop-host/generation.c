@@ -1,7 +1,7 @@
 /* Generation probes enter saved Methods through explicit selector aliases. */
 #include "../oop-id-v2/id.h"
 static IdProtocol id;
-enum{AT,PUT,GC,RECORD,CONSTRUCT,FAULT,COUNT};static Oop names[COUNT];
+enum{AT,PUT,GC,RECORD,CONSTRUCT,FAULT,REJECT,EDIT,REMOVE,ADD,COUNT};static Oop names[COUNT];
 #define CHECK(v) do{Oop checked=(v);if(id_fault(checked))return checked;}while(0)
 static Oop send(Oop r,size_t s,const Oop*a,size_t n){return id.message(id.root,r,names[s],a,n);}
 static Oop get(Oop c,size_t i){Oop k=id_size(i);return send(c,AT,&k,1);}
@@ -24,7 +24,18 @@ static Oop fault(Oop root,Oop c,Oop r,const Oop*a,size_t n){
  }
  CHECK(send(get(c,0),GC,0,0));return get(c,3);
 }
+/* [fault,calls]. */
+static Oop reject(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)r;(void)a;(void)n;CHECK(increment(c,1));return id_failure(get(c,0));}
+/* [setter alias,armed,denied]. A reentrant remove/reinstall is an ordinary edit. */
+static Oop edit(Oop root,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root;if(n!=2)return id.invalid;Oop answer=id.message(id.root,r,get(c,0),a,n);CHECK(answer);
+ if(get(c,1)==id_size(1)){
+  CHECK(put(c,1,id_size(0)));CHECK(send(r,REMOVE,a+1,1));Oop restored=send(r,ADD,a,n);CHECK(restored);
+  if(restored!=a[0])CHECK(increment(c,2));
+ }
+ return answer;
+}
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t count,const Oop*a,size_t n){(void)a;if(n||count!=COUNT)return p->invalid;id=*p;for(size_t i=0;i<count;i++)names[i]=s[i];return image;}
-static const IdLiteral literals[]={LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("recordModuleSource:named:"),LIT("constructing"),LIT("fault")};
-static const IdMethodSpec methods[]={{CONSTRUCT,constructing},{FAULT,fault}};
-const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,COUNT,methods,2,initialize};
+static const IdLiteral literals[]={LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("recordModuleSource:named:"),LIT("constructing"),LIT("fault"),LIT("reject"),LIT("edit"),LIT("removeMethod:"),LIT("addMethod:as:")};
+static const IdMethodSpec methods[]={{CONSTRUCT,constructing},{FAULT,fault},{REJECT,reject},{EDIT,edit}};
+const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,COUNT,methods,4,initialize};

@@ -1,521 +1,250 @@
-//! Real candidate objects, inert admission and relocation through the Id owners.
+//! Inert candidate admission, owned bytes, factory captures and explicit targets.
+#[path = "support/generation.rs"]
+#[allow(dead_code)]
 mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-unsafe extern "C" fn forbidden(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(1, 994)
-}
-struct Drift {
-    id: Protocol,
-    original: NativeEntry,
-    db: Oop,
-    entity: Oop,
-    attribute: Oop,
-    value: Oop,
-    fired: Cell<bool>,
-}
-unsafe extern "C" fn drift_basis(
-    c: *mut c_void,
-    receiver: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Drift>();
-        let answer = c.original.method.unwrap()(c.original.context, receiver, a, n);
-        if !c.fired.replace(true) {
-            c.id.send_named(
-                c.db,
-                b"assert:attr:value:",
-                &[
-                    Operand::object(c.entity),
-                    Operand::object(c.attribute),
-                    Operand::object(c.value),
-                ],
-            )
-            .unwrap();
-        }
-        answer
-    }
-}
+use birnam_abi::size;
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production native modules"]
+#[ignore = "requires production Oop modules"]
 fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_selection() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        optional_modules(id, ns, &["store"]);
-        lifecycle_records(id, ns);
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let tokens = RefCell::new(Vec::new());
-        let keep = |o: Oop| {
-            tokens.borrow_mut().push(retain(id, roots, o));
-            o
-        };
-        let symbol = |name: &[u8]| keep(id.intern_name(name).unwrap());
-        let call = |r: Oop, name: &[u8], args: &[Oop]| {
-            keep(object(send(
-                id,
-                r,
-                name,
-                &args
-                    .iter()
-                    .copied()
-                    .map(Operand::object)
-                    .collect::<Vec<_>>(),
-            )))
-        };
-        let text = |bytes: &[u8]| {
-            keep(object(send(
-                id,
-                named(b"String"),
-                b"fromBytes:",
-                &[Operand::bytes(bytes)],
-            )))
-        };
-        let integer = |i: usize| {
-            keep(object(send(
-                id,
-                named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(i)],
-            )))
-        };
-        let at = |v: Oop, i: usize| call(v, b"at:", &[integer(i)]);
-        let bytes = |o: Oop| {
-            let b = send(id, o, b"bytes", &[]).as_bytes().unwrap();
-            borrowed_bytes(b.pointer, b.length).unwrap().to_vec()
-        };
-        let value = |o: Oop| {
-            send(id, named(b"Integer"), b"wordOf:", &[Operand::object(o)])
-                .as_word()
-                .unwrap()
-        };
-        let prototype = |name: &[u8]| call(named(b"Globals"), b"at:", &[symbol(name)]);
-        let record = |name: &[u8]| call(prototype(name), b"clone", &[]);
-        let codegen = named(b"Codegen");
-        let db = named(b"db");
-        let globals = named(b"Globals");
-        let yes = named(b"true");
-        let no = named(b"false");
-        let nil = named(b"nil");
-        // This fixture starts with no live method or helper. Its source must
-        // describe that actual baseline before testing inert candidate mapping.
-        let baseline=text(b"[Module named: #candidateFactory requires: #[]]; [Reflect removeMethod: #candidateAnswer on: Integer]");
-        let candidate=text(b"[Module named: #candidateFactory requires: #[]]; let candidateHelper := [| 22]; [Reflect defineMethod: #candidateAnswer on: Integer as: [:self | [candidateHelper value]]]");
-        let name = symbol(b"candidateFactory");
+    let host = support::bootstrap();
+    let h = support::H::new(&host);
+    h.lifecycle();
+    let cg = h.named(b"Codegen");
+    let g = h.named(b"Generation");
+    let globals = h.named(b"Globals");
+    let db = h.named(b"db");
+    let yes = h.named(b"true");
+    let no = h.named(b"false");
+    let nil = h.named(b"nil");
+    let name = h.key(b"candidateFactory");
+    let ivt = h.named(b"IntegerVt");
+    let baseline=h.text(b"[Module named: #candidateFactory requires: #[]]; [Reflect removeMethod: #candidateAnswer on: Integer]");
+    let candidate=h.text(b"[Module named: #candidateFactory requires: #[]]; let candidateHelper := [| 22]; [Reflect defineMethod: #candidateAnswer on: Integer as: [:self | [candidateHelper value]]]");
+    assert_eq!(
+        h.call(cg, b"recordModuleSource:named:", &[baseline, name]),
+        baseline
+    );
+    let projection = h.call(cg, b"initialGenerationProjection", &[]);
+    let generation = h.record(b"DispatchGeneration");
+    for (attr, value) in [
+        (b"sourceMap".as_slice(), h.at(projection, 1)),
+        (b"baseDigest", h.at(projection, 2)),
+        (b"generationSelection", h.at(projection, 3)),
+    ] {
         assert_eq!(
-            call(codegen, b"recordModuleSource:named:", &[baseline, name]),
-            baseline
+            h.call(
+                h.named(b"Reflect"),
+                b"slot:in:put:",
+                &[h.key(attr), generation, value]
+            ),
+            generation
         );
-        let projection = call(codegen, b"initialGenerationProjection", &[]);
-        let generation = record(b"DispatchGeneration");
-        for (attr, v) in [
-            (b"sourceMap".as_slice(), at(projection, 1)),
-            (b"baseDigest", at(projection, 2)),
-            (b"generationSelection", at(projection, 3)),
-        ] {
+    }
+    h.call(
+        h.prototype(b"DispatchGeneration"),
+        b"current:",
+        &[generation],
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            h.call(g, b"adoptInitialGeneration:", &[generation]),
+            generation
+        );
+    }
+    let fault = unsafe {
+        host.id.send(
+            h.named(b"Execution"),
+            h.key(b"failNative:detail:"),
+            &[size(1).unwrap(), size(994).unwrap()],
+        )
+    }
+    .unwrap_err();
+    h.keep(fault);
+    let dir = std::env::temp_dir().join(format!("birnam-candidate-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for synchronous in [false, true] {
+        let path = dir.join(if synchronous {
+            "sync.dylib"
+        } else {
+            "resume.dylib"
+        });
+        let output = h.text(path.as_os_str().as_encoded_bytes());
+        let compiled = if synchronous {
+            h.call(
+                g,
+                b"compileCandidate:named:output:selection:",
+                &[candidate, name, output, h.vector(&[])],
+            )
+        } else {
+            h.call(
+                g,
+                b"compileCandidate:named:output:",
+                &[candidate, name, output],
+            )
+        };
+        assert_eq!(compiled, output);
+        let artifact = std::fs::read(&path).unwrap();
+        assert_eq!(&artifact[..8], b"BIRNAMC2");
+        let unit = h.record(b"CompiledUnit");
+        assert_eq!(h.call(g, b"inspectCandidate:into:", &[output, unit]), unit);
+        assert_eq!(h.call(g, b"candidateMapped:", &[unit]), no);
+        let publication = || h.vector(&[h.key(b"activate"), unit]);
+        assert_eq!(h.call(globals, b"at:", &[h.key(b"candidateHelper")]), nil);
+        let unmapped = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        assert_eq!(
+            h.call(unmapped, b"kind", &[]),
+            h.key(b"candidatePreparationFailed")
+        );
+        std::fs::write(&path, b"corrupt replacement").unwrap();
+        let tvt = h.vt(h.named(b"TCC"));
+        let calls = h.context(&[fault, size(0).unwrap()]);
+        let deny = h.method(b"reject", calls);
+        let prior: Vec<_> = [b"compile:".as_slice(), b"compileObject:"]
+            .into_iter()
+            .map(|n| {
+                let m = h.binding(tvt, n);
+                h.bind(tvt, n, deny);
+                (n, m)
+            })
+            .collect();
+        assert_eq!(h.call(g, b"mapCandidate:", &[unit]), unit);
+        assert_eq!(h.call(g, b"candidateMapped:", &[unit]), yes);
+        assert_eq!(h.call(globals, b"at:", &[h.key(b"candidateHelper")]), nil);
+        assert!(h.binding(ivt, b"candidateAnswer").is_null());
+        h.call(h.gc, b"collectPrecisely", &[]);
+        assert_eq!(h.call(g, b"mapCandidate:", &[unit]), unit);
+        assert_eq!(h.count(calls, 1), 0, "mapping must not compile source");
+        for (n, m) in prior {
+            h.bind(tvt, n, m);
+        }
+        h.call(
+            h.named(b"Reflect"),
+            b"slot:in:put:",
+            &[h.key(b"unitName"), unit, h.key(b"forgedModule")],
+        );
+        let described = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        h.q.check_result(described).unwrap();
+        assert_eq!(
+            h.call(
+                h.named(b"Reflect"),
+                b"slot:in:",
+                &[h.key(b"unitName"), unit]
+            ),
+            h.key(b"forgedModule")
+        );
+        h.call(g, b"discardPrepared:", &[described]);
+        h.call(
+            h.named(b"Reflect"),
+            b"slot:in:put:",
+            &[h.key(b"unitName"), unit, name],
+        );
+        let token = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        h.q.check_result(token).unwrap();
+        assert_eq!(h.call(globals, b"at:", &[h.key(b"candidateHelper")]), nil);
+        assert!(h.binding(ivt, b"candidateAnswer").is_null());
+        let duplicate = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        assert_eq!(
+            h.call(duplicate, b"kind", &[]),
+            h.key(b"candidatePreparationFailed")
+        );
+        h.call(h.gc, b"collectPrecisely", &[]);
+        assert_eq!(h.call(g, b"discardPrepared:", &[token]), unit);
+        let consumed = h.call(g, b"discardPrepared:", &[token]);
+        assert_eq!(
+            h.call(consumed, b"kind", &[]),
+            h.key(b"invalidPreparedToken")
+        );
+        let second = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        assert_ne!(second, token);
+        assert_eq!(h.call(g, b"discardPrepared:", &[second]), unit);
+        h.call(db, b"assert:attr:value:", &[unit, h.key(b"testDrift"), yes]);
+        let unrelated = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        h.q.check_result(unrelated).unwrap();
+        assert_eq!(h.call(g, b"discardPrepared:", &[unrelated]), unit);
+        let dvt = h.vt(db);
+        let basis = h.binding(dvt, b"basis");
+        h.bind(dvt, b"basis", deny);
+        let unrelated = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
+        h.bind(dvt, b"basis", basis);
+        h.q.check_result(unrelated).unwrap();
+        assert_eq!(
+            h.count(calls, 1),
+            0,
+            "Generation must not consult Store basis"
+        );
+        h.call(g, b"discardPrepared:", &[unrelated]);
+        // Use valid bytes so this checks the target protocol, not file corruption.
+        std::fs::write(&path, &artifact).unwrap();
+        let bad = h.call(h.named(b"Object"), b"clone", &[]);
+        let invalid = h.call(g, b"inspectCandidate:into:", &[output, bad]);
+        assert_eq!(h.call(invalid, b"isError", &[]), yes);
+        let removal_source=h.text(b"[Module named: #candidateFactory requires: #[]]; let candidateHelper := [| 22]; [Reflect removeMethod: #candidateAnswer on: Integer]");
+        let remove_path = h.text(dir.join("remove.dylib").as_os_str().as_encoded_bytes());
+        assert_eq!(
+            h.call(
+                g,
+                b"compileCandidate:named:output:",
+                &[removal_source, name, remove_path]
+            ),
+            remove_path
+        );
+        let removal = h.record(b"CompiledUnit");
+        assert_eq!(
+            h.call(g, b"inspectCandidate:into:", &[remove_path, removal]),
+            removal
+        );
+        assert_eq!(h.call(g, b"mapCandidate:", &[removal]), removal);
+        let rejected = h.call(
+            g,
+            b"prepareActivation:plan:",
+            &[removal, h.vector(&[h.key(b"activate"), removal])],
+        );
+        assert_eq!(
+            h.call(rejected, b"kind", &[]),
+            h.key(b"missingDirectMethod")
+        );
+        // Execute the already mapped factory through the current public description.
+        // No initializer writes a dispatch or Globals binding until activation.
+        let info = h.call(g, b"candidateDataFor:", &[unit]);
+        let factory = h.at(info, 6);
+        let adapters = h.at(info, 7);
+        let block = h.call(
+            h.named(b"Block"),
+            b"fromMethod:captures:",
+            &[factory, h.vector(&[])],
+        );
+        let machine = h.call(h.named(b"Machine"), b"new", &[]);
+        let values = h.call(machine, b"runBlock:", &[block]);
+        let helper = h.at(values, 0);
+        let implementation = h.at(values, 1);
+        assert_eq!(h.number(h.call(helper, b"value", &[])), 22);
+        assert_eq!(
+            h.call(implementation, b"captureAt:", &[h.integer(0)]),
+            helper
+        );
+        let method = h.call(h.at(adapters, 0), b"withImplementation:", &[implementation]);
+        assert_eq!(h.number(h.call(method, b"invokeOn:", &[h.integer(1)])), 22);
+        assert_eq!(h.call(globals, b"at:", &[h.key(b"candidateHelper")]), nil);
+        assert_eq!(
+            h.call(globals, b"at:", &[h.key(b"__candidate_values")]),
+            nil
+        );
+        if synchronous {
+            let temporary = h.call(h.named(b"Object"), b"clone", &[]);
+            let before = h.vt(temporary);
+            h.call(globals, b"at:put:", &[h.key(b"Integer"), temporary]);
+            let rejected = h.call(g, b"prepareActivation:plan:", &[unit, publication()]);
             assert_eq!(
-                call(named(b"Reflect"), b"slot:in:put:", &[symbol(attr), generation, v]),
+                h.call(rejected, b"kind", &[]),
+                h.key(b"unstableMethodTarget")
+            );
+            assert_eq!(h.vt(temporary), before);
+            h.call(globals, b"remove:", &[h.key(b"Integer")]);
+            assert_eq!(
+                h.call(g, b"adoptInitialGeneration:", &[generation]),
                 generation
             );
         }
-        call(prototype(b"DispatchGeneration"), b"current:", &[generation]);
-        assert_eq!(
-            call(
-                named(b"Generation"),
-                b"adoptInitialGeneration:",
-                &[generation]
-            ),
-            generation
-        );
-        assert_eq!(
-            call(
-                named(b"Generation"),
-                b"adoptInitialGeneration:",
-                &[generation]
-            ),
-            generation
-        );
-        let dir = std::env::temp_dir().join(format!("birnam-candidate-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        for synchronous in [false, true] {
-            let path = dir.join(if synchronous {
-                "sync.dylib"
-            } else {
-                "resume.dylib"
-            });
-            let path_object = text(path.as_os_str().as_bytes());
-            let compiled = if synchronous {
-                call(
-                    named(b"Generation"),
-                    b"compileCandidate:named:output:selection:",
-                    &[
-                        candidate,
-                        name,
-                        path_object,
-                        call(named(b"Vector"), b"new", &[]),
-                    ],
-                )
-            } else {
-                call(
-                    named(b"Generation"),
-                    b"compileCandidate:named:output:",
-                    &[candidate, name, path_object],
-                )
-            };
-            assert_eq!(
-                compiled,
-                path_object,
-                "candidate compilation failed: {:?}",
-                bytes(call(codegen, b"lastError", &[]))
-            );
-            let artifact = std::fs::read(&path).unwrap();
-            let unit = record(b"CompiledUnit");
-            assert_eq!(
-                call(
-                    named(b"Generation"),
-                    b"inspectCandidate:into:",
-                    &[path_object, unit]
-                ),
-                unit
-            );
-            assert_eq!(call(named(b"Generation"), b"candidateMapped:", &[unit]), no);
-            assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
-            let publication = || {
-                    let mut plan = call(named(b"Vector"), b"new", &[]);
-                for value in [symbol(b"activate"), unit                ] {
-                    plan = call(plan, b"add:", &[value]);
-                }
-                plan
-            };
-            let unmapped = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, publication()],
-            );
-            assert_eq!(
-                call(unmapped, b"kind", &[]),
-                symbol(b"candidatePreparationFailed")
-            );
-            // Rewriting the author path cannot change already inspected bytes.
-            std::fs::write(&path, b"corrupt replacement").unwrap();
-            let tcc_behavior = object(send(
-                id,
-                id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(named(b"TCC"))],
-            ));
-            let mut prior = Vec::new();
-            for selector in [b"compile:".as_slice(), b"compileObject:"] {
-                let key = symbol(selector);
-                prior.push((
-                    key,
-                    send(
-                        id,
-                        id.receiver,
-                        b"bindingOf:in:",
-                        &[Operand::object(key), Operand::object(tcc_behavior)],
-                    ),
-                ));
-                install(id, tcc_behavior, selector, forbidden, core::ptr::null_mut());
-            }
-            assert_eq!(call(named(b"Generation"), b"mapCandidate:", &[unit]), unit);
-            assert_eq!(
-                call(named(b"Generation"), b"candidateMapped:", &[unit]),
-                yes
-            );
-            assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
-            assert_eq!(
-                send(
-                    id,
-                    id.receiver,
-                    b"bindingOf:in:",
-                    &[
-                        Operand::object(symbol(b"candidateAnswer")),
-                        Operand::object(named(b"IntegerVt"))
-                    ]
-                )
-                .kind(),
-                birnam_abi::id_protocol::UNIT
-            );
-            collect(id, named(b"GC"));
-            assert_eq!(call(named(b"Generation"), b"mapCandidate:", &[unit]), unit);
-            for (key, entry) in prior {
-                send(
-                    id,
-                    tcc_behavior,
-                    b"addMethod",
-                    &[Operand::object(key), entry],
-                );
-            }
-            // The editable description is not artifact authority. Preparation
-            // uses the owned artifact's identity and must not police this field.
-            call(named(b"Reflect"), b"slot:in:put:", &[symbol(b"unitName"), unit, symbol(b"forgedModule")]);
-            let described = call(named(b"Generation"), b"prepareActivation:plan:", &[unit, publication()]);
-            assert_eq!(call(described, b"isError", &[]), no);
-            assert_eq!(call(named(b"Reflect"), b"slot:in:", &[symbol(b"unitName"), unit]), symbol(b"forgedModule"));
-            call(named(b"Generation"), b"discardPrepared:", &[described]);
-            call(named(b"Reflect"), b"slot:in:put:", &[symbol(b"unitName"), unit, name]);
-            let plan = publication();
-            let token = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, plan],
-            );
-            assert_eq!(
-                call(token, b"isError", &[]),
-                no,
-                "preparation: {:?}",
-                bytes(call(codegen, b"lastError", &[]))
-            );
-            assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
-            assert_eq!(
-                send(
-                    id,
-                    id.receiver,
-                    b"bindingOf:in:",
-                    &[
-                        Operand::object(symbol(b"candidateAnswer")),
-                        Operand::object(named(b"IntegerVt"))
-                    ]
-                )
-                .kind(),
-                birnam_abi::id_protocol::UNIT
-            );
-            let duplicate = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, publication()],
-            );
-            assert_eq!(
-                call(duplicate, b"kind", &[]),
-                symbol(b"candidatePreparationFailed")
-            );
-            collect(id, named(b"GC"));
-            assert_eq!(
-                call(named(b"Generation"), b"discardPrepared:", &[token]),
-                unit
-            );
-            let consumed = call(named(b"Generation"), b"discardPrepared:", &[token]);
-            assert_eq!(
-                call(consumed, b"kind", &[]),
-                symbol(b"invalidPreparedToken")
-            );
-            let second = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, publication()],
-            );
-            assert_ne!(second, token, "preparation creates a fresh ordinary token identity");
-            assert_eq!(
-                call(named(b"Generation"), b"discardPrepared:", &[second]),
-                unit
-            );
-            let stale = publication();
-            call(
-                db,
-                b"assert:attr:value:",
-                &[unit, symbol(b"testDrift"), yes],
-            );
-            let rejected = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, stale],
-            );
-            assert_eq!(call(rejected, b"isError", &[]), no);
-            assert_eq!(call(named(b"Generation"), b"discardPrepared:", &[rejected]), unit);
-            // A callback may return the old basis and then mutate Store. The
-            // final snapshot check must catch that mixed observation.
-            let drifting_plan = publication();
-            let db_behavior = object(send(
-                id,
-                id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(db)],
-            ));
-            let basis_selector = symbol(b"basis");
-            let prior_basis = send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[
-                    Operand::object(basis_selector),
-                    Operand::object(db_behavior),
-                ],
-            )
-            .as_entry()
-            .unwrap();
-            let mut drift = Drift {
-                id,
-                original: prior_basis,
-                db,
-                entity: unit,
-                attribute: symbol(b"callbackDrift"),
-                value: integer(if synchronous { 2 } else { 1 }),
-                fired: Cell::new(false),
-            };
-            install(
-                id,
-                db_behavior,
-                b"basis",
-                drift_basis,
-                core::ptr::from_mut(&mut drift).cast(),
-            );
-            let rejected = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[unit, drifting_plan],
-            );
-            send(
-                id,
-                db_behavior,
-                b"addMethod",
-                &[Operand::object(basis_selector), Operand::entry(prior_basis)],
-            );
-            assert!(!drift.fired.get(), "Generation consulted Store basis");
-            assert_eq!(call(rejected, b"isError", &[]), no);
-            assert_eq!(call(named(b"Generation"), b"discardPrepared:", &[rejected]), unit);
-            let bad = call(named(b"Object"), b"clone", &[]);
-            assert_eq!(
-                call(
-                    call(
-                        named(b"Generation"),
-                        b"inspectCandidate:into:",
-                        &[path_object, bad]
-                    ),
-                    b"isError",
-                    &[]
-                ),
-                yes
-            );
-            // A removal must find a direct entry, never merely an inherited
-            // implementation or a Store mirror assertion.
-            let removal_source = text(b"[Module named: #candidateFactory requires: #[]]; let candidateHelper := [| 22]; [Reflect removeMethod: #candidateAnswer on: Integer]");
-            let removal_path = text(dir.join("remove.dylib").as_os_str().as_bytes());
-            assert_eq!(
-                call(
-                    named(b"Generation"),
-                    b"compileCandidate:named:output:",
-                    &[removal_source, name, removal_path]
-                ),
-                removal_path
-            );
-            let removal = record(b"CompiledUnit");
-            assert_eq!(
-                call(
-                    named(b"Generation"),
-                    b"inspectCandidate:into:",
-                    &[removal_path, removal]
-                ),
-                removal
-            );
-            assert_eq!(
-                call(named(b"Generation"), b"mapCandidate:", &[removal]),
-                removal
-            );
-            let mut removal_plan = call(named(b"Vector"), b"new", &[]);
-            for value in [symbol(b"activate"), removal            ] {
-                removal_plan = call(removal_plan, b"add:", &[value]);
-            }
-            let rejected = call(
-                named(b"Generation"),
-                b"prepareActivation:plan:",
-                &[removal, removal_plan],
-            );
-            assert_eq!(call(rejected, b"kind", &[]), symbol(b"missingDirectMethod"));
-            // Independently execute the private factory object as a compiler
-            // fixture. This is not activation: no dispatch/Globals are published.
-            assert_eq!(&artifact[..8], b"BIRNAMC1");
-            let mut cursor = 44;
-            let mut object_units = Vec::new();
-            for _ in 0..2 {
-                let len =
-                    u64::from_le_bytes(artifact[cursor..cursor + 8].try_into().unwrap()) as usize;
-                cursor += 8;
-                let blob = call(text(&artifact[cursor..cursor + len]), b"asBytes", &[]);
-                object_units.push(call(named(b"TCC"), b"loadObject:", &[blob]));
-                cursor += len;
-            }
-            assert_eq!(cursor, artifact.len());
-            let factory = call(object_units[0], b"initialize", &[]);
-            let empty = call(named(b"Vector"), b"new", &[]);
-            let block = call(named(b"Block"), b"fromMethod:captures:", &[factory, empty]);
-            let machine = call(named(b"Machine"), b"new", &[]);
-            let output = call(machine, b"runBlock:", &[block]);
-            let helper = at(output, 0);
-            let implementation = at(output, 1);
-            assert_eq!(value(call(helper, b"value", &[])), 22);
-            assert_eq!(call(implementation, b"captureAt:", &[integer(0)]), helper);
-            let method = call(object_units[1], b"initializeWith:", &[implementation]);
-            assert_eq!(value(call(method, b"invokeOn:", &[integer(1)])), 22);
-            assert_eq!(call(globals, b"at:", &[symbol(b"candidateHelper")]), nil);
-            assert_eq!(call(globals, b"at:", &[symbol(b"__candidate_values")]), nil);
-            if synchronous {
-                // Preparation cannot specialise a previously unowned singleton.
-                let temporary = call(named(b"Object"), b"clone", &[]);
-                let old_behavior = send(
-                    id,
-                    id.receiver,
-                    b"behaviorOf:",
-                    &[Operand::object(temporary)],
-                )
-                .as_object()
-                .unwrap();
-                call(globals, b"at:put:", &[symbol(b"Integer"), temporary]);
-                let rejected = call(
-                    named(b"Generation"),
-                    b"prepareActivation:plan:",
-                    &[unit, publication()],
-                );
-                assert_eq!(call(rejected, b"kind", &[]), symbol(b"unstableMethodTarget"));
-                assert_eq!(
-                    send(
-                        id,
-                        id.receiver,
-                        b"behaviorOf:",
-                        &[Operand::object(temporary)]
-                    )
-                    .as_object(),
-                    Some(old_behavior)
-                );
-                call(
-                    globals,
-                    b"remove:",
-                    &[symbol(b"Integer")],
-                );
-                let readoption = call(
-                    named(b"Generation"),
-                    b"adoptInitialGeneration:",
-                    &[generation],
-                );
-                // Scoped rejection does not poison a restored baseline.
-                assert_eq!(readoption, generation);
-            }
-        }
-        std::fs::remove_dir_all(dir).unwrap();
-        for token in tokens.into_inner() {
-            release(id, roots, token);
-        }
     }
+    std::fs::remove_dir_all(dir).unwrap();
 }

@@ -1,0 +1,59 @@
+{
+  "passed": true,
+  "scope": "Candidate admission/factory captures and retirement through production Oop owners, with adjacent projection and transaction checks",
+  "base_revision": "b0154c04ff119e35a20fcfd70f6aa4e73d55e0a1",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/candidate.rs": "8ca79c85edfc68c87a258d8b47d3617eb70eb02f6dfc5d0f6128f942d1dac7fc",
+    "rust/birnam-siphon/tests/candidate_retirement.rs": "427b1dddbc0bd3b9973d6e7956a7bf7c21abdf3940cd169c09ce7c96b65995e3",
+    "rust/birnam-siphon/tests/support/generation.rs": "3b1a44b687135bbe605b8fa3d7f018b35ddc5e1f76f9e67e4e7be47de58d644a",
+    "tests/fixtures/oop-host/generation.c": "7600f50a7cba971fea7e4a1af15833f58c1fbda7182af2b559a216ed1c07593e"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/candidate-final.log",
+      "sha256": "8a0978d0145704e3ea19cdcf4568d10ed3236c1aaad6f381ac014c89b2baabd9",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/candidate-adjacent.log",
+      "sha256": "eceb20be84c5195d92fceaae4a44ef35b6a1b8bf66267eed9b04f54671c2cb59",
+      "exit": 0
+    }
+  ],
+  "native_targets": [
+    "candidate",
+    "candidate_retirement",
+    "generation",
+    "generation_transaction"
+  ],
+  "isolated_retirement_phases": [
+    "bootstrap",
+    "running",
+    "metadata"
+  ],
+  "retained_checks": [
+    "Canonical initial adoption is idempotent and candidate inspection/mapping does not publish bindings",
+    "Mapping uses owned inspected bytes despite author-path replacement and does not invoke TCC compilation",
+    "Preparation preserves one-use/fresh token identity, mutable description independence and Store-basis independence",
+    "Removal requires a direct binding; unstable targets reject without specialization",
+    "Mapped factory outputs preserve helper captures and callable behavior without Globals/dispatch publication",
+    "Conditional file cleanup preserves replacement files and is independent of logical discard",
+    "Unmapped/inert/resumable/synchronous/reentrant-callback modes preserve explicit activation/undo behavior",
+    "Replacing retained source metadata invalidates an already prepared token",
+    "Captured Methods remain callable after logical discard and file cleanup",
+    "After final references are released, watched mapping counts and bytes return to zero"
+  ],
+  "representation_adjustments": [
+    "Declared Oop callbacks and releasable test roots replace raw entries and native carrier roots",
+    "Current candidateDataFor: and withImplementation: protocols replace obsolete BIRNAMC1 unpacking and initializeWith:",
+    "Invalid-target inspection uses valid artifact bytes to avoid a false-positive corruption rejection"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Generation ledger and other native/compiler harnesses remain unported",
+    "Automatic optimization scope decisions and obsolete contract audit",
+    "Complete current-runtime cold Host qualification"
+  ]
+}
