@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "scope": "Production Oop tracing, finalization, current callbacks, weak Symbol retirement and native-root collection",
+  "base_revision": "b1a0491540135e072aa0ac4cf5ce48569586c897",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/activation-wmlwn0vv/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/memory.rs": "f2fabbd76b71577bdde79e5e8b43fe07f9988bf2091443daa44d0032bea5318e",
+    "tests/fixtures/oop-host/memory.c": "c081ea5ae84204b2365b4fcd4f1b831242beb18895666e4aff7a132f25ea6cf0"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/memory-lifecycle-final.log",
+      "sha256": "53948d56212311fe72274dfb5d5d0f9cf73994765a0a5448d2927079cb7f5e1e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/memory-id-owner.log",
+      "sha256": "452491488b0d8861ca5d09956271c60ace0d704a4326e563a7ebf54635c9fc93",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Repeated collector loading preserves identity",
+    "Current edge visitor replacement is seen within a collection; failed visitor sends prevent sweeping",
+    "Duplicate edges and cyclic graphs are visited once; trace errors and ignored visitor errors remain sticky",
+    "Current core references and LIFO trace-owner replacement remain observable",
+    "Allocation/delegation/new Name/new Symbol construction refuses during tracing/finalization; interning an existing Name succeeds and nested collect reports zero",
+    "Creation-order finalization observes detached-but-readable owned payloads; replacing a later finalizer takes effect with exact allocation identity",
+    "Weak Symbols and dead vtable records retire before finalizers run; later identities do not inherit old finalizers",
+    "Native-stack roots survive conservative and automatic collection",
+    "Three 5000-Symbol rooted batches return to exact independent count/name-byte baselines",
+    "Child-process release failure preserves detached storage and terminal collection state; explicit release handles are one-use"
+  ],
+  "representation_adjustments": [
+    "Owned graph metadata is indexed by allocation identity; liveness observations do not query freed objects",
+    "Symbol metrics are derived from existing allocation and Symbol messages",
+    "Malformed visitor arity replaces a forbidden legacy carrier; immediate Words are valid Oops",
+    "The uncompiled addWeakBinding carrier API is not restored; existing internal vtable weak-key tests still pass"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native targets and compiler groups remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Full latest cold qualification is incomplete"
+  ]
+}

@@ -2071,3 +2071,25 @@ The full core gate and activation, allocation-accounting, external-capacity and
 System GC suites pass. The change is local to GC and adds no Id operation, registry
 or payload classification. Full latest cold qualification remains pending.
 [Receipt](../measurements/memory-activation-oop-20261027.json).
+
+## Memory lifecycle and current tracing/finalization
+
+The `memory` harness now uses declared Oop callbacks and a test-owned graph
+representation. It retains duplicate-edge/cycle handling, phase checks, current
+visitor and core-reference replacement, sticky ignored visitor failure, LIFO live
+trace-owner replacement, creation-order finalization and live finalizer replacement.
+Finalizers identify the exact expected allocations and read only their own payloads
+while detached storage is still valid. A child process verifies that failed release
+preserves detached storage, makes collection terminal and leaves a one-use release
+handle. Conservative native roots and automatic budget collection remain covered.
+
+Three rooted batches of 5,000 Symbols return to their exact count/name-byte
+baseline, derived through existing allocation and Symbol messages. Weak-symbol and
+vtable retirement are observed before finalizers run. The former test-only opaque
+weak-binding injection had no production caller and belongs to the removed carrier
+API; it is not restored in Id. Internal weak-key pruning remains covered by Id's
+unit tests. Malformed visitor arity replaces an invalid old-carrier argument in the
+sticky-failure check; immediate Words are valid Oops and cannot serve as fake pointers.
+
+The memory suite and all 22 Id unit tests pass. No runtime or Id change was needed.
+[Receipt](../measurements/memory-lifecycle-oop-20261027.json).
