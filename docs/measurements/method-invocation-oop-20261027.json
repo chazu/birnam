@@ -1,0 +1,44 @@
+{
+  "passed": true,
+  "scope": "Authored method construction, declared code sharing, live policy, reentry, weak Method lifetime and actual prepared-generation survival",
+  "base_revision": "eee83dc9bbd95db11151684632fadd9d5dfd2527",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/system-gc-g2s4ppiz/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/method_invocation.rs": "2f4519f0f78d660caaab2e2e4881e55d62aced653bcbad319e9b5d5c0852e58d",
+    "tests/fixtures/oop-host/method-invocation.c": "9b7e50e88f0b5f1b99314a3083e5d895618b4236253a61c663353896ff9a8dcd",
+    "tests/fixtures/method-invocation-generation.birnam": "c542fc7970583c8784175f61f61208ff860a6a2879835ca1eebc4e278dc8e55c"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/method-invocation-final.log",
+      "sha256": "7801d954d42e6f874f238652d2fad8f7577530a905fb7a721b3fe52cb23436a5",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/method-invocation-seed.log",
+      "sha256": "e713b02a87731883169c4102efc475ee2aefcbfa158e005c494806eab5a19db4",
+      "exit": 0
+    }
+  ],
+  "construction_modes": [
+    "Installed authored MethodInvocation policy",
+    "Cold seed constructor selected by historical BIRNAM_METHOD_INVOCATION_BASELINE flag; this is not a pre-Oop performance baseline"
+  ],
+  "retained_checks": [
+    "Sixteen distinct retained Methods require no new TCC units; all sixteen are reclaimed after removal and scope/cache release.",
+    "Ordinary Error identity, native-failure conversion, refusal without publication, current factory/template constructors and no obsolete TCC compile send.",
+    "Nested construction preserves distinct cached arities; late conditional-slot conflict preserves the nested cache without replay.",
+    "Delegated Reflect constructor replacement remains isolated from the canonical facade.",
+    "Globals and Store revisions and the target binding remain unchanged by deriving a Method and clearing templates.",
+    "Fresh source-mode full-language process passes 14 checks: certificate validity, candidate mapping/preparation, construction/cache clearing/GC, prepared commit, new body, rollback, restored body and cleanup."
+  ],
+  "counter_probe": {
+    "log": ".cargo-target/oop-corrected-qualification/method-invocation.log",
+    "sha256": "6319d153afe999ed231dce2b84c95050a4d38a731d7241e1c711fab36116b60d",
+    "observed_binding_epoch_delta": 10,
+    "interpretation": "Real private-vtable edits advance the global epoch. Current candidate preparation retains source/binding observations, not that epoch; epoch comparisons protect coherent reads. The old numeric equality assertion is replaced by the actual prepared publication and certificate checks."
+  },
+  "resource_metrics": "liveNativeBytes is compared only when that optional method is installed. Timing lines are diagnostics, not a performance qualification.",
+  "runtime_changes": false,
+  "id_changes": false
+}

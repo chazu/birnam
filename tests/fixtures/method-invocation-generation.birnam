@@ -1,0 +1,31 @@
+// Constructor cache work must leave a prepared publication and its certificate usable.
+[[|
+let checks := [Cell with: #[]];
+let check := [:answer | [checks set: [[checks value] add: answer]]];
+let original := "[Module named: #methodInvocationGeneration requires: #[]]; [Reflect defineMethod: #methodInvocationGenerationAnswer on: Integer as: [:self | 10]]; [Module markLoaded: #methodInvocationGeneration]";
+let replacement := [original replace: "| 10" with: "| 20"];
+[Codegen recordModuleSource: original named: #methodInvocationGeneration];
+[Codegen eval: original];
+[check value: [[[DispatchGeneration adoptCurrent] isError] not]];
+[check value: [Generation validateImageGeneration]];
+[check value: [[CompiledUnit compile: replacement named: #methodInvocationGeneration output: MethodInvocationGenerationPath] = MethodInvocationGenerationPath]];
+let unit := [CompiledUnit open: MethodInvocationGenerationPath];
+[check value: [[unit map] == unit]];
+[MethodInvocation clearTemplates];
+let token := [Generation prepareActivation: unit plan: [unit publicationPlan: #activate]];
+[check value: [[token isError] not]];
+let basis := [Globals bindingBasis];
+let method := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
+[MethodInvocation clearTemplates];
+[GC collectPrecisely];
+[check value: [[method invokeOn: Integer arguments: #[42]] = 42]];
+[check value: [[Globals bindingBasis] = basis]];
+[check value: [Generation validateImageGeneration]];
+[check value: [[Generation commitPrepared: token] == unit]];
+[check value: [[3 methodInvocationGenerationAnswer] = 20]];
+[check value: [[unit rollback] == unit]];
+[check value: [[3 methodInvocationGenerationAnswer] = 10]];
+[check value: [[unit removeFiles] == unit]];
+[check value: [[unit discard] == unit]];
+[checks value]
+] value]

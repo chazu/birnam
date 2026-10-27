@@ -1595,3 +1595,30 @@ unsupported send returns `doesNotUnderstand` Error data. Valid template construc
 separately reject wrong arity. Neither case manufactures an invalid binding.
 No runtime or Id change was needed.
 [Receipt](../measurements/method-binding-oop-20261027.json).
+
+## Method construction policy, reentry and prepared publication
+
+The `method_invocation` harness now uses declared Oop callbacks and allocation
+identities. Both the seed constructor and installed authored policy construct
+sixteen distinct Methods without another TCC unit. Their retained Methods are
+reclaimed after removal and scope/cache release. Live owner, factory and template
+replacement, Error identity, native-failure conversion, refusal without
+publication, nested construction, conditional cache updates without replay, and
+delegated Reflect overrides pass. Templates use the existing declared Codegen
+entry, so replacing TCC compilation must have no effect on their construction.
+
+The old whole-Id `bindingEpoch` equality assertion failed: constructing a neutral
+template and bound Method adds ten real private-vtable edits. Current candidate
+preparation stores source and binding observations; the epoch protects coherent
+reads rather than remaining frozen for a preparation token's lifetime. The
+replacement acceptance exercises the intended feature directly in a fresh
+full-language process: prepare a candidate, derive a Method, clear templates,
+collect, validate the certificate, commit the original token, and roll back.
+All fourteen checks pass. Globals and Store revision equality and the unchanged
+target binding remain separate assertions.
+
+No runtime workaround, registry or Id change was added to suppress those edits.
+The historical baseline flag now selects the current seed constructor, not a
+pre-Oop runtime. The emitted timing lines are diagnostics; resident-byte checks
+remain conditional on the optional TCC metric.
+[Receipt](../measurements/method-invocation-oop-20261027.json).
