@@ -1,0 +1,86 @@
+{
+  "floor_sha256": {
+    "libbirnam_artifact.dylib": "54acc89f98aa10defe5018444d94b011b85b650edb892714a2a95f66306a9ef4",
+    "libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+    "libbirnam_bytes.dylib": "2fa0fa14a0b70901f57ca9747e75f2f8d4ff5f9962ed421d0a7ef76f68a814c0",
+    "libbirnam_codegen_runtime.dylib": "ea81458e35c83216e3260e0daf8fa544339d4b8434ae08412fdb5668c6c57cc5",
+    "libbirnam_collect.dylib": "a8163da77d02c2e0cc0bdbc060da54e31309b49a859e5bd0d4ac4cabfc40d267",
+    "libbirnam_error.dylib": "4a117c4b3a127990e210f2ecb29db81828681693ab00a6cfeac5b33b3f68e12d",
+    "libbirnam_execution.dylib": "46f4e30ac761998253a509e8b45f00d95ae066bacb42eefc8e099aa8db8d5428",
+    "libbirnam_file_io.dylib": "fd1ae2fdfcf36ffa8c84b4446e27e4dced7d5ae2eb4f70afbb54fe295f54ac8b",
+    "libbirnam_float.dylib": "06b8895d54f6e8a23f2d2a2fc0a0f908c45ba07e68f876740a4af8fe75eb778a",
+    "libbirnam_globalsOwner.dylib": "4064cfc7293ba253117137805cdfe8d6538cf8c3e1f8a67c06b13c9400da8e5e",
+    "libbirnam_id.dylib": "e7c367c4e9ef04f5c88babedc47416fdffce50cad417b86b1355b9c37ae651b3",
+    "libbirnam_integer.dylib": "8d2fb8e6b782887c92b0d79d117d8582d220cc5928e47777c406a1f25adb4b04",
+    "libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+    "libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+    "libbirnam_native_backend.dylib": "d6118cf077f7e38ac71aaabac7d7046f5c139fcf527ac43def84ebbca5a4071a",
+    "libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+    "libbirnam_object_model.dylib": "6d11fff386c714e3b6a9ab07801b90773492c7b5a163d0199e53aeb973567113",
+    "libbirnam_portable_code.dylib": "e1acf28e0721f059a2cbd7b4d07147582c89c51fb6ecef4b09800c84c9cb1ea5",
+    "libbirnam_prelude.dylib": "05481336067edb2ca1a978ac5b39c120eed35a97ba9fd969a68a3e36c79c989d",
+    "libbirnam_root_registry.dylib": "5e327132906f1f76b620d16949a66a16ff4cd979d56c6b4d885c14f134a63eb2",
+    "libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+    "libbirnam_tcc.dylib": "ec5a01594138448d1afc97ac605cbe9ae8fe9ce420556d6bf1296b391857bf48",
+    "libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+    "libbirnam_word.dylib": "38ecf2543c2c2379aa632754af652dacd34eb5996c8c12af63409b2ac942dd90"
+  },
+  "optional_sha256": {
+    "libbirnam_relational.dylib": "db27a83047c75546eae0349ece0dd87e57c9a1e80fb4e321b216215ea6b4875f",
+    "libbirnam_store.dylib": "263012cc45cefb0ad41daf6d27e002c68a4e526784abe20a093a0b42a0ec7d1b"
+  },
+  "passed": true,
+  "run": {
+    "argv": [
+      "mise",
+      "exec",
+      "--",
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-p",
+      "birnam-siphon",
+      "--test",
+      "globals_without_store",
+      "--",
+      "--include-ignored"
+    ],
+    "exit_code": 0,
+    "output": "\nrunning 1 test\ntest authored_bindings_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/globals_without_store.rs (.cargo-target/native-message-tests/debug/deps/globals_without_store-8198861f0645a80c)\n",
+    "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/globals_without_store.rs (.cargo-target/native-message-tests/debug/deps/globals_without_store-8198861f0645a80c)\n",
+    "stdout": "\nrunning 1 test\ntest authored_bindings_work_without_store_or_relational ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s\n\n",
+    "wall_ns": 703740666
+  },
+  "scope": "Actual Error/Globals compiled initializers on an Oop floor physically without Store, Relational, Bootstrap, Lang or Generation; explicit optional loading occurs only afterward",
+  "source_sha256": {
+    "modules/error.birnam": "7fe67aac7e4b8d4c6ad42ad88aecd89b96e7794961120a35d9f7648d1346f517",
+    "modules/globals-owner.birnam": "c66b740699134f8d6287a6e94dd0e378e32c85b01455297bdd478ccf8314faf2",
+    "rust/birnam-siphon/tests/globals_without_store.rs": "010a18d2384af74af554b4c736e6b28ff49f3b0054ed434d47ca27390675035a",
+    "rust/birnam-siphon/tests/support/minimal.rs": "2c68c9711fc00cc4872250fd21f9c784ef43ec0de7ac7907def9ff4722b77d00",
+    "scripts/globals-without-store-test.py": "909c5f31f2747893d7edc4fe8293b16130681079299cb3704f236512a378ac87",
+    "tests/fixtures/oop-host/allocation-presence.c": "a2a2f71fd34ec5ba02dd264885c02fb5f683f57ba1e64eb45bf628d1cb64d68a"
+  },
+  "base_revision": "9df733d4fa39f2b5967a58d6a59ad5c53191fc39",
+  "runtime_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "original_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-globals-floor-yoio7r0z/results.json",
+  "original_receipt_sha256": "609e535f21fdc3aa4a1eb02e53acb4fc248329d0b14ee63f2ed2361cc6005926",
+  "log": ".cargo-target/oop-current-qualification/globals-without-store-oop.log",
+  "log_sha256": "2a77fa993c6ab9677103215445aef6e0c25cc456949502af04c5aba5abf0f832",
+  "runtime_changes": false,
+  "id_changes": false,
+  "retained_checks": [
+    "Real compiled Globals initialization without a Globals seed or Namespace alias",
+    "Bound nil, immutable binding snapshots and distinct identity keys with equal text",
+    "Keys and values live only while their binding is reachable and are reclaimed after removal",
+    "Reload preserves the Globals owner and current state",
+    "Later Store/Relational loading preserves Globals and creates no implicit global facts",
+    "Explicit Store facts remain independent of Globals writes and survive repeated optional loading"
+  ],
+  "remaining": [
+    "Other isolated-floor and compiler/native harnesses",
+    "Complete full Host qualification for the corrected candidate",
+    "Pending contract decisions"
+  ]
+}

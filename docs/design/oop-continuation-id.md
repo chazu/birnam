@@ -2937,3 +2937,19 @@ All sixteen outer/nested checkpoint entries pass. The harness is now included in
 the native-message gate. Raw function-pointer construction and carrier packets
 were not recreated; no runtime or Id changes were needed.
 [Receipt](../measurements/invocation-arguments-oop-20261027.json).
+
+## Actual Globals initialization without Store
+
+The isolated Globals harness now constructs its native owners through Oop messages
+and loads the real compiled Error/Globals initializers. Its input directory has no
+Store, Relational, Bootstrap, Lang or Generation library, and no Globals seed or
+Namespace alias substitutes for the authored owner. The test-only composition
+helper uses the existing public loaders and owner operations.
+
+Bound nil, binding snapshots, identity keys, ordinary reachability, reclamation
+and repeated initialization pass. A separate second-phase directory supplies Store
+and Relational; loading them preserves the Globals owner, creates no implicit
+global facts, and leaves explicit Store facts independent of Globals mutation.
+The runner hashes the composition helper and allocation observer with its inputs.
+No runtime or Id change was needed.
+[Receipt](../measurements/globals-without-store-oop-20261027.json).
