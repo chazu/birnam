@@ -2759,3 +2759,28 @@ Methods; neither replacement is entered. The old raw capture-carrier query is
 also required to remain absent. No borrowed-pointer adapter or new protocol was
 introduced. The harness passes without runtime or Id changes.
 [Receipt](../measurements/capture-dependencies-oop-20261027.json).
+
+## Full image roundtrip and twenty-resave stability
+
+The main image harness now uses Oop Methods and declared callbacks. Its full
+roundtrip passes for mapped, rebuilt and native-code-stripped images, including
+fresh-process mapping of rebuilt resaves. It preserves numeric bit patterns,
+aliases, cycles, lexical captures, provenance, synchronous disposition, embedded
+binary assets, inherited methods, private/shared Map behavior, Cell behavior,
+Store history and cloned System behavior. Collecting restoration, partial mapping
+and publication failures, unsupported capabilities and structural corruption also
+retain their checks.
+
+The separate stability chain passes an initial snapshot and twenty alternating
+mapped/rebuilt resaves. From epoch 3 onward, each parity has unchanged retained
+facts, fact bytes, native units and image size. Every epoch releases fixture
+mappings against an independent source, mapped or rebuilt resident control. The
+roundtrip comprises eleven successful process checks; the chain comprises
+25 including controls and its parent.
+
+Setup now retains only the Lang Methods needed for cleanup and releases temporary
+setup roots. The old Module delete/reload step was removed because it discarded
+Store's authored image-provider registration. The real bootstrap composition is
+retained instead, with participation asserted. Direct binding observations use
+Execution's current protocol. No runtime or Id changes were needed.
+[Receipt](../measurements/image-roundtrip-resaves-oop-20261027.json).

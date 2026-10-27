@@ -1,0 +1,70 @@
+{
+  "passed": true,
+  "scope": "Full Oop image owner roundtrip and twenty-resave stability with independent resident controls",
+  "base_revision": "92be092d",
+  "runtime_revision": "a3eaa2272e5021f20fbe53cd73c62f8908788b40",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/image.rs": "c5716fa395751620c9286a2376c43a6f1c79c626289af00c759b6df58f66d300",
+    "tests/fixtures/oop-host/image-roundtrip.c": "b6375a9264896913c4c406e20bdf77734e47af07596a6ae8d4cbb21addf88114"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/image-roundtrip-oop.log",
+      "sha256": "53363ab1dada25f04c2b1bfc75a0263d0fa06de5c007faa7dbb02a69af0c3a52",
+      "exit": 0,
+      "successful_process_checks": 11
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/image-resaves-oop.log",
+      "sha256": "0065db0ba700715a01209f241f9f12ae1328f5ce41f4b072bf487038ffd86e1a",
+      "exit": 0,
+      "successful_process_checks": 25
+    }
+  ],
+  "resave_validation": {
+    "initial_snapshot_epoch": 0,
+    "successive_resaves": 20,
+    "modes": "alternating mapped and rebuilt",
+    "controls": [
+      "source",
+      "mapped",
+      "rebuilt"
+    ],
+    "comparison": "Each parity must match its observed baseline from epoch 3 onward: retained fact count, retained fact bytes, live native units and complete image size. Every epoch also releases fixture mappings against an independent resident control.",
+    "observed_stable_row": {
+      "retained_facts": 5,
+      "retained_fact_bytes": 200,
+      "native_units": 371,
+      "image_bytes": 67350380
+    },
+    "immutable_executable": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/image-tests-8ac6819d72b2",
+    "compiled_source_sha256": "8ac6819d72b25ccdf2627aedf3a70650a71ffe125b1c5e4485bcdc4588bdc5e1",
+    "source_variance_note": "The resave executable was copied before correcting removed direct-binding queries in the roundtrip-only helper/assertions. The resave path and its shared setup/cleanup were unchanged. Roundtrip ran the final source, and the C fixture was unchanged throughout."
+  },
+  "retained_checks": [
+    "Mapped/rebuilt/native-code-stripped restoration, plus fresh-process mapping of rebuilt resaves",
+    "Source-free operation with forbidden source/compiler entry points replaced by failing Methods",
+    "Exact Word/Float bits including negative zero, NaN payload, infinity and unsigned overflow diagnostics",
+    "Aliases, distinct equal values, cycles, closures, captures, provenance, synchronous disposition and embedded binary assets",
+    "Wide Vector, typed Map keys, private/shared Map vtables and rehashed identity keys",
+    "Inherited/replaced methods, Cell instance behavior, explicit Store history and cloned System behavior",
+    "Collecting slot restoration and portable binding enumeration",
+    "Partial mapping failure releases units and rejects reentrant cancellation",
+    "Partial publication failure preserves reached state and reports partialLoad without an automatic inverse",
+    "Unsupported live capabilities preserve the existing file; structural corruption is rejected before changing Globals",
+    "Independent resident-code controls and complete twenty-resave stability"
+  ],
+  "setup_corrections": [
+    "Only captured Lang methods are retained by the fixture across world cleanup; temporary setup roots are released",
+    "Retired Module delete/reload setup was removed because it discarded the authored Store image-provider registration; the real bootstrap composition is retained and participation asserted",
+    "Direct binding queries use current Execution directMethodFor:in:; no removed Id query or undo primitive was restored",
+    "Callback results are protected across collecting restoration through existing Root operations"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Remaining native/compiler harnesses and pending contract decisions",
+    "Complete current cold Host task, CLI and image groups"
+  ]
+}
