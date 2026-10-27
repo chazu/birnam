@@ -1,7 +1,5 @@
 //! Retained compiler optimization acceptance; Oop migration remains pending.
 //! General source/control/lifetime acceptance lives in compiler_source.rs.
-#[path = "compiler/accounting.rs"]
-mod accounting;
 #[path = "compiler/discarded_clone.rs"]
 mod discarded_clone;
 #[path = "compiler/dispatch.rs"]
@@ -196,7 +194,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
-        accounting::check(&mut h);
         globals::check(&mut h);
         publication::check(&mut h);
         h.clear();

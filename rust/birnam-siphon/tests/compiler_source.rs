@@ -1,4 +1,6 @@
 //! Source language, compilation failures and native code lifetime through Oops.
+#[path = "compiler/accounting.rs"]
+mod accounting;
 #[path = "support/oop.rs"]
 mod oop;
 use birnam_abi::{Oop, as_size, size};
@@ -187,6 +189,7 @@ fn source_compiles_and_runs_on_production_execution() {
     h.reclaimed();
     compiled_recovery(&h);
     h.reclaimed();
+    accounting::check(&h);
 }
 fn rejected_compilation(h: &H<'_>) {
     let syntax = h.eval(b"let :=");

@@ -1850,3 +1850,20 @@ mapped/rebuilt/resaved images, console/TCP activation and compiled-unit policy.
 Interaction, task, CLI and image groups remain in the serial queue. This receipt
 does not cover the subsequent native-loader and standalone-emitter corrections.
 [Receipt](../measurements/current-generation-oop-20261027.json).
+
+## Compiler allocation accounting
+
+The compiler accounting group now runs within `compiler_source` through Oops.
+An independent C fixture records allocation identities and requested payload sizes
+around parsing, Method construction and execution, and observes successful external
+charges through the current GC method. Rust checks that no collection occurred and
+calculates physical storage using the independent header-and-padding formula.
+The measured window excludes Host argument snapshots and fresh selector Names.
+
+Physical pressure is compared after the established `prepareAllocation` checkpoint.
+An experiment that reconciled it in the `allocationBytes` query was rejected by
+the core replacement test: it overrode a user-supplied charge of 1 with the physical
+size of 8. The query remains a policy observation and the runtime is unchanged.
+Default physical-plus-external accounting, custom charges, collection inside a
+charge callback, and reset after collection all pass. Eight compiler groups remain
+pending. [Receipt](../measurements/compiler-accounting-oop-20261027.json).

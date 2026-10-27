@@ -1,0 +1,40 @@
+{
+  "passed": true,
+  "scope": "Independent compiler allocation-pressure accounting through Oops; custom charging and collection controls retained",
+  "base_revision": "6706835b5a03a919e5b7b01f19a027a8cb2c8443",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/accounting.rs": "a7b95fb216b5a75a5645b00e0a9646860dc8b0e9082ead7a9e47da9be4dea116",
+    "rust/birnam-siphon/tests/compiler_source.rs": "d9ad919b8e1d5637a30d7f4b9f197e3955a53a3973f35038c74cf96cf7885a87",
+    "rust/birnam-siphon/tests/compiler.rs": "9a813080003397dad06877c0b232337666d3a1a4115638e644b585ad9805da16",
+    "tests/fixtures/oop-host/compiler-accounting.c": "9b4dbb7ee9d36d9ef7e9390457e93409e14023065a13cb0cdfaf30ec9a57474b"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-accounting-final.log",
+      "sha256": "ed0b06587766abed9a25e625b78060d3312b15c384f0061888b3aa6bb90d69f2",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-accounting-core-final.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "oracle": [
+    "Record Id allocation identities and requested sizes before and after source compilation/execution",
+    "Assert every earlier allocation remains present; no collection during the measurement",
+    "Calculate new physical storage independently as (requested payload + 8 + 7) & ~7",
+    "Observe successful external-allocation charges through the current GC method",
+    "Compare exact physical plus external bytes at the existing prepareAllocation checkpoint",
+    "Verify native mappings retire and collection resets pressure"
+  ],
+  "measurement_boundary": "Input source and fixture setup precede the measurement. The measured C callbacks use cached Symbols and direct Id messages, so no Host Name/argument-snapshot allocations enter the window. No Id charge-size helper or cumulative-byte counter is used by the independent oracle.",
+  "rejected_experiment": "Reconciling physical bytes inside allocationBytes made the core custom-charge test return 8 instead of its replacement charge 1. The experimental runtime change was removed.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Eight compiler groups and other native targets remain unported",
+    "Full latest cold/Host qualification is incomplete"
+  ]
+}

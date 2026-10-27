@@ -121,6 +121,12 @@ does not refund accumulated work. Only a successful collection resets the total;
 failed activation does not publish a partial inventory charge, and failed tracing
 does not reset it.
 
+Raw Oop transfer allocations join allocation pressure at `prepareAllocation`,
+using Id's cumulative allocation-byte fact. `allocationBytes` reads the current
+policy charge; it does not perform that checkpoint or override a replacement
+construction charge. The compiler accounting test compares the default pressure
+with independent physical allocation records after the checkpoint.
+
 Bytes reports its owned vector capacity through current `chargeExternalAllocation:`
 after publishing storage, registering finalization and rooting the object. Append
 reports only capacity growth, after releasing its owner-state borrow. Replacement
