@@ -2510,3 +2510,13 @@ and both source-free mapped/rebuilt image paths. All three targets pass without
 production changes. The removed whole-Id binding-undo primitive was not reintroduced;
 its old harness remains subject to contract audit.
 [Receipt](../measurements/generation-publication-oop-20261027.json).
+
+## Completed cold Host qualification for the call-preparation candidate
+
+Cold revision `83737742` passed all 16 image checks, completing all five Host
+groups: generation 17, interaction 6, tasks 6, CLI 18 and images 16. Its exact
+821-file installed manifest remained unchanged. This completes that revision's
+cold installation/archive/Host checkpoint, not the remaining native integration
+or qualification of later runtime corrections. The newer `642e79e2` queue and
+current-runtime `a3eaa227` archive qualification continue separately.
+[Receipt](../measurements/latest-image-oop-20261027.json).
