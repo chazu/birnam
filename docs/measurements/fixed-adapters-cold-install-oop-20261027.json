@@ -1,0 +1,78 @@
+{
+  "passed": true,
+  "scope": "Cold installation and archive relocation for 1fa7e3c2 including fixed-adapter null validation; full Host qualification remains ongoing",
+  "source_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb"
+  },
+  "source_manifest_sha256": "a2cce039dc4c267edd362a340cf7315803e2bb1c350e6cf3ba17d478e027037c",
+  "prefix": "/private/tmp/birnam-oop-adapters-wt7knhai/prefix",
+  "receipt_sha256": "f42a890fe1a75196c1be8d329d6a4cd6d50f2d592ce281f5fc8f551c5c7fdb6a",
+  "staged_manifest_files": 826,
+  "staged_manifest_sha256": "4596776fe54e31f5bb79e5caede725aa1befbd711d6fccdc22e9a7a3183ae8d8",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-adapters-wt7knhai/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-adapters-wt7knhai/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_log": "/private/tmp/birnam-oop-adapters-wt7knhai/install.log",
+  "install_log_sha256": "47a65b60f4ec7030018a13aa969cf8b2981691283b3a93ae541e384ae9c5dfde",
+  "no_birnam_on_path": true,
+  "build_cache": null,
+  "archive": "/private/tmp/birnam-oop-adapters-wt7knhai/candidate.tar.gz",
+  "archive_sha256": "2c3ebd44f59bf7b6996eef920381b88941c45a362b5dec82603cdefc4615c981",
+  "archive_smoke_log": "/private/tmp/birnam-oop-adapters-wt7knhai/archive-smoke.log",
+  "archive_smoke_log_sha256": "911f4f0ac9aea648d178923f0c051c0a8876dba9a80ccc248e11758ef8f8395b",
+  "archive_smoke_build_paths_hidden": true,
+  "build_paths_restored": true,
+  "install_seconds": 754.821379,
+  "archive_smoke_seconds": 318.5501,
+  "remaining": [
+    "Complete full serial Host qualification on this candidate",
+    "Remaining native/compiler acceptance migrations and contract decisions"
+  ]
+}

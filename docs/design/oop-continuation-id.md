@@ -2911,3 +2911,16 @@ constructor replacements remain observable, including collection and changed
 bounds. Schema tags belong to Bytes-owned table data; no payload-type catalog is
 introduced in Id. The harness passes without runtime changes.
 [Receipt](../measurements/tagged-rows-oop-20261027.json).
+
+## Corrected adapter candidate cold installation and archive
+
+Commit 1fa7e3c2 builds from a clean detached checkout with no Birnam on PATH and no
+build cache. Its exact 826-file published closure verifies; the build-only Lang
+seed is excluded. Archive qualification passes signatures, relocation, source,
+diagnostics, GC, saved images and compiled startup without parsing while the
+original source and prefix paths are hidden. Both paths are restored afterward.
+
+Fresh immutable Host test binaries are prepared and the full serial Host groups
+are now running against this candidate. This installation/archive receipt does
+not claim completion of those groups or the remaining native/compiler migration.
+[Receipt](../measurements/fixed-adapters-cold-install-oop-20261027.json).
