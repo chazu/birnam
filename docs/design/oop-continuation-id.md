@@ -2025,3 +2025,13 @@ than the removed native Word carrier. It verifies abort and the GC owner's exact
 diagnostic. Oversized representable size queries decline without allocation;
 invalid arguments remain failures. No runtime or Id change was needed.
 [Receipt](../measurements/allocation-accounting-oop-20261027.json).
+
+## Cold candidate CLI acceptance
+
+All 18 installed Host CLI checks passed on cold revision `9f638b73`, covering
+native entry/compiler replacement, artifacts and Lang, Alien adapters, operation
+without Store, workers, relocated project check/build/run/install/test, dependency
+resolution and collecting project queries. The image group remains in the serial
+queue. Later native-loader, standalone-emitter and call-preparation corrections
+still require a new cold candidate.
+[Receipt](../measurements/current-cli-oop-20261027.json).
