@@ -2232,3 +2232,13 @@ including compiler, loader, materialization, mapped/rebuilt method bindings and
 native callback image checks. The running cold candidate predates these two
 runtime corrections and does not qualify them.
 [Receipt](../measurements/execution-methods-oop-20261027.json).
+
+## Cold generation qualification after call-preparation integration
+
+All 17 generation checks passed on cold revision `83737742`, including publication,
+source registries, generation operations, drifted mapped/rebuilt images, console/TCP
+activation and rollback, and 62 compiled-unit policy checks. The serial runner has
+advanced to interaction; tasks, CLI and image groups remain queued. This candidate
+includes call preparation and the earlier loader/emitter/GC fixes, but predates the
+Method clone and initializer-result lifetime corrections above.
+[Receipt](../measurements/latest-generation-oop-20261027.json).
