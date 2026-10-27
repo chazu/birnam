@@ -2968,3 +2968,12 @@ absent. Resource methods that require those optional services are not claimed by
 this test. The smaller Globals isolation check also passes after the shared helper
 extension. No runtime or Id change was needed.
 [Receipt](../measurements/task-without-store-oop-20261027.json).
+
+## Actual Alien initialization without Store
+
+The Alien isolation harness now uses the same Oop service composition. Its actual
+recipe initializer and unchanged source assertions pass for native wrapping,
+collection, recipe reuse and authored replacement with registration retirement.
+Store, Relational, Bootstrap, Image and Isolate are absent from the input directory.
+No runtime or Id changes were needed; this does not replace full Host or image
+qualification. [Receipt](../measurements/alien-without-store-oop-20261027.json).
