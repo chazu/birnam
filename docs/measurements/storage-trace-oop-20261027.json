@@ -1,0 +1,48 @@
+{
+  "passed": true,
+  "scope": "Real Storage snapshot/Trace physical-graph and unfiltered heap acceptance through Oop callbacks",
+  "base_revision": "b03ced0d6e8d56b8f364cdeb45cbdffab8c675d6",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/recovery-lifetime-wqe01zuu/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/storage_trace.rs": "bdb8e110f11dcc9996f967d2cdd956017d2579c99b92854a71631a1e15c042b4",
+    "rust/birnam-siphon/tests/trace_heap.rs": "257d4953e285c5543e7229f7c07c999d62fb3300d3ca16ba681c1e86146e28c5",
+    "rust/birnam-siphon/tests/support/storage_trace.rs": "869f420ff260900128540c39db27f052c7777db52fc95606b7317f51f8e09653",
+    "tests/fixtures/oop-host/storage-trace.c": "a3ba8e7e0d1186fd9a17cad56134ce8e2ded1443ae74ba2f62e3904da1c5ded3"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/storage-trace-oop.log",
+      "sha256": "001a3d1d22a0f0506c772bf9c4111357bcc7d055fda218d2fa8ca0a03c4baa2f",
+      "exit": 0
+    }
+  ],
+  "native_targets": [
+    "storage_trace",
+    "trace_heap"
+  ],
+  "unfiltered_allocations_reported": 31595,
+  "retained_checks": [
+    "Physical inventory is protected during owner/report collection without becoming declared graph roots",
+    "Reachable and unreachable cycles remain distinct; a rooted Integer containing address bits does not keep the pointed-to object reachable",
+    "Strict coverage rejects unobserved native roots and missing payload owners unless explicitly accepted",
+    "Nested Storage/Trace observation refuses; swallowed malformed visitor failure latches and escaped visitor remains expired",
+    "Report failure preserves its native status/detail and later observations succeed",
+    "Current reference-owner replacement changes the next graph; removing an explicit root changes reachability",
+    "After observation roots are released, ordinary GC reclaims the unreachable graph",
+    "Unfiltered physical inventory reports each live allocation once in identity order and preserves completion collection",
+    "Trace does not disable automatic collection"
+  ],
+  "representation_adjustments": [
+    "Declared callbacks and Oop contexts replace raw native entries and Rust callback pointers",
+    "Weak fixture node observations carry allocation identities; post-reclamation checks enumerate identities instead of sending to freed objects",
+    "Malformed visitor arity exercises failure latching without manufacturing an invalid Oop pointer",
+    "Native failures use the existing explicit Execution failure operation and Oop detail data"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Exhaustive authored Trace graph/return-value harness remains unported",
+    "Other native/compiler integration and automatic optimization scope decisions",
+    "Running cold candidates predate the newest runtime corrections"
+  ]
+}

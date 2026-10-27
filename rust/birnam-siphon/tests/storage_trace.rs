@@ -1,458 +1,112 @@
-//! Real Storage/Trace modules, scoped inventory roots and live owner selection.
+//! Real Storage snapshots, Trace reachability and live reference-owner selection.
+#[path = "support/storage_trace.rs"]
+#[allow(dead_code)]
 mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{self as native, Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-    ptr,
-};
-use std::{
-    collections::{HashMap, HashSet},
-    os::unix::ffi::OsStrExt,
-};
-use support::*;
-struct Probe {
-    id: Protocol,
-    roots: Oop,
-    gc: Oop,
-    storage: Oop,
-    trace: Oop,
-    report: Cell<Oop>,
-    edges: RefCell<HashMap<usize, Vec<Oop>>>,
-    rows: RefCell<HashMap<usize, (usize, bool)>>,
-    completed: Cell<usize>,
-    observations: Cell<usize>,
-    gaps: Cell<usize>,
-    fail: Cell<bool>,
-    bad_owner: Cell<bool>,
-    collect: Cell<bool>,
-    in_collection: Cell<bool>,
-    saved: Cell<Oop>,
-    token: Cell<usize>,
-    sample: RefCell<HashSet<usize>>,
-    proxy: Cell<Oop>,
-    target: Cell<Oop>,
-    sweep_scratch: Cell<bool>,
-}
-fn failure() -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 991)
-}
-unsafe extern "C" fn observed(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe>();
-        p.observations.set(p.observations.get() + 1);
-        let [target] = borrowed_slice(a, n).unwrap() else {
-            panic!("observer arity")
-        };
-        let previous = p.target.replace(object(*target));
-        let result =
-            p.id.send_named(r, b"originalObserve:", &[Operand::object(p.proxy.get())]);
-        p.target.set(previous);
-        result.map_or_else(|e| e, Outcome::loaded)
-    }
-}
-// Keep repeated adversarial cases small while using the REAL Storage inventory,
-// root exclusion, owner callbacks and collection protection. The replacement
-// observe: method projects the fixture's subgraph only after Storage builds it.
-// trace_heap separately exercises an unfiltered physical-heap report.
-unsafe fn project(
-    c: *mut c_void,
-    a: *const Operand,
-    n: usize,
-    name: &[u8],
-    objects: usize,
-) -> Outcome {
-    let p = unsafe { &*c.cast::<Probe>() };
-    let args = unsafe { borrowed_slice(a, n) }.unwrap();
-    let included = args
-        .iter()
-        .take(objects)
-        .all(|v| p.sample.borrow().contains(&object(*v).addr()));
-    if included {
-        unsafe { p.id.send_named(p.target.get(), name, args) }.map_or_else(|e| e, Outcome::loaded)
-    } else {
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe extern "C" fn allocation(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe { project(c, a, n, b"allocation:bytes:identity:", 1) }
-}
-unsafe extern "C" fn root(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe { project(c, a, n, b"root:", 1) }
-}
-unsafe extern "C" fn edge(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe { project(c, a, n, b"edgeFrom:to:", 2) }
-}
-unsafe extern "C" fn projected_complete(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe { project(c, a, n, b"complete:", 0) }
-}
-unsafe extern "C" fn no_edges(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::unit())
-}
-unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe>();
-        let [value, visitor] = borrowed_slice(a, n).unwrap() else {
-            panic!("owner args")
-        };
-        let value = object(*value);
-        let visitor = object(*visitor);
-        if !p.in_collection.get() {
-            let nested =
-                p.id.send_named(p.storage, b"observe:", &[Operand::object(p.report.get())])
-                    .unwrap_err();
-            assert_eq!(nested.detail, 2);
-            if p.bad_owner.get() {
-                if p.saved.get().is_null() {
-                    p.saved.set(visitor);
-                    p.token.set(retain(p.id, p.roots, visitor));
-                }
-                assert!(
-                    p.id.send_named(
-                        visitor,
-                        b"visit:",
-                        &[Operand::object(ptr::without_provenance_mut(8))]
-                    )
-                    .is_err()
-                );
-                return Outcome::loaded(Operand::unit()); // failure must latch
-            }
-            if p.collect.get() {
-                p.in_collection.set(true);
-                collect(p.id, p.gc);
-                p.in_collection.set(false);
-            }
-        }
-        let edges = p
-            .edges
-            .borrow()
-            .get(&value.addr())
-            .cloned()
-            .unwrap_or_default();
-        for edge in edges {
-            send(p.id, visitor, b"visit:", &[Operand::object(edge)]);
-        }
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe fn row(c: *mut c_void, a: *const Operand, n: usize, reached: bool) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe>();
-        let [value, identity] = borrowed_slice(a, n).unwrap() else {
-            panic!("report args")
-        };
-        let value = object(*value);
-        let identity = identity.as_word().unwrap();
-        assert!(
-            p.rows
-                .borrow_mut()
-                .insert(value.addr(), (identity, reached))
-                .is_none()
-        );
-        if p.fail.get() {
-            return failure();
-        }
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe extern "C" fn reached(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe { row(c, a, n, true) }
-}
-unsafe extern "C" fn not_reached(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe { row(c, a, n, false) }
-}
-unsafe extern "C" fn complete(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Probe>();
-        let [gaps] = borrowed_slice(a, n).unwrap() else {
-            panic!("complete args")
-        };
-        p.gaps.set(gaps.as_word().unwrap());
-        p.completed.set(p.completed.get() + 1);
-        let nested =
-            p.id.send_named(
-                p.trace,
-                b"report:acceptingGaps:",
-                &[Operand::object(p.report.get()), Operand::word(1)],
-            )
-            .unwrap_err();
-        assert_eq!(nested.detail, 2);
-        if p.collect.get() {
-            p.in_collection.set(true);
-            collect(p.id, p.gc);
-            p.in_collection.set(false);
-            for &address in p.rows.borrow().keys() {
-                assert!(present(p.id, ptr::with_exposed_provenance_mut(address)));
-            }
-        }
-        Outcome::loaded(Operand::word(73))
-    }
-}
-unsafe fn report(p: &Probe, accept: usize) -> Result<Operand, Outcome> {
-    p.rows.borrow_mut().clear();
-    p.completed.set(0);
-    unsafe {
-        // Authored diagnostics allocate ordinary temporary objects. Reclaim the
-        // preceding report's scratch before taking another physical inventory,
-        // while preserving our deliberately unreachable fixture graph. Release
-        // these setup roots BEFORE observation so reachability remains tested.
-        if p.sweep_scratch.get() {
-            let mut tokens = Vec::new();
-            for (&address, edges) in p.edges.borrow().iter() {
-                let o = ptr::with_exposed_provenance_mut(address);
-                if present(p.id, o) {
-                    tokens.push(retain(p.id, p.roots, o));
-                }
-                for &o in edges {
-                    if present(p.id, o) {
-                        tokens.push(retain(p.id, p.roots, o));
-                    }
-                }
-            }
-            p.in_collection.set(true);
-            collect(p.id, p.gc);
-            p.in_collection.set(false);
-            for token in tokens {
-                release(p.id, p.roots, token);
-            }
-        }
-        p.id.send_named(
-            p.trace,
-            b"report:acceptingGaps:",
-            &[Operand::object(p.report.get()), Operand::word(accept)],
-        )
-    }
-}
+use birnam_abi::{as_size, size};
+
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production modules"]
+#[ignore = "requires production Oop Storage and authored Trace"]
 fn live_diagnostics_preserve_graph_coverage_lifetimes_and_failure_cleanup() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let gc = named(b"GC");
-        send(id, gc, b"automaticCollection:", &[Operand::word(0)]);
-        send(id, gc, b"precisePayloads:", &[Operand::word(1)]);
-        let p = Box::new(Probe {
-            id,
-            roots,
-            gc,
-            storage: named(b"Storage"),
-            trace: named(b"Trace"),
-            report: Cell::new(ptr::null_mut()),
-            edges: RefCell::new(HashMap::new()),
-            rows: RefCell::new(HashMap::new()),
-            completed: Cell::new(0),
-            observations: Cell::new(0),
-            gaps: Cell::new(0),
-            fail: Cell::new(false),
-            bad_owner: Cell::new(false),
-            collect: Cell::new(false),
-            in_collection: Cell::new(false),
-            saved: Cell::new(ptr::null_mut()),
-            token: Cell::new(0),
-            sample: RefCell::new(HashSet::new()),
-            proxy: Cell::new(ptr::null_mut()),
-            target: Cell::new(ptr::null_mut()),
-            sweep_scratch: Cell::new(true),
-        });
-        let c = (&*p as *const Probe).cast_mut().cast();
-        let proxy_vt = behavior(id);
-        for (name, method) in [
-            (
-                b"allocation:bytes:identity:".as_slice(),
-                allocation as native::Method,
-            ),
-            (b"root:", root),
-            (b"edgeFrom:to:", edge),
-            (b"complete:", projected_complete),
-        ] {
-            install(id, proxy_vt, name, method, c);
-        }
-        p.proxy.set(allocate(id, proxy_vt, 0));
-        retain(id, roots, p.proxy.get());
-        let storage_behavior = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(p.storage)],
-        ));
-        let original = send(
-            id,
-            id.receiver,
-            b"bindingOf:in:",
-            &[
-                Operand::object(id.intern_name(b"observe:").unwrap()),
-                Operand::object(storage_behavior),
-            ],
-        );
-        send(
-            id,
-            storage_behavior,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(b"originalObserve:").unwrap()),
-                original,
-            ],
-        );
-        install(id, storage_behavior, b"observe:", observed, c);
-
-        let report_behavior = behavior(id);
-        for (name, method) in [
-            (b"reached:identity:".as_slice(), reached as native::Method),
-            (b"notReached:identity:", not_reached),
-            (b"complete:", complete),
-        ] {
-            install(id, report_behavior, name, method, c);
-        }
-        p.report.set(allocate(id, report_behavior, 0));
-        retain(id, roots, p.report.get());
-        let owner_behavior = behavior(id);
-        install(id, owner_behavior, b"referencesOf:do:", references, c);
-        let owner = allocate(id, owner_behavior, 0);
-        retain(id, roots, owner);
-        let pair = behavior(id);
-        retain(id, roots, pair);
-        send(
-            id,
-            gc,
-            b"trace:with:",
-            &[Operand::object(pair), Operand::object(owner)],
-        );
-        let x = allocate(id, pair, 0);
-        let y = allocate(id, pair, 0);
-        let u = allocate(id, pair, 0);
-        let v = allocate(id, pair, 0);
-        for (a, b) in [(x, y), (y, x), (u, v), (v, u)] {
-            p.edges.borrow_mut().insert(a.addr(), vec![b]);
-        }
-        let x_root = retain(id, roots, x);
-        let raw = object(send(
-            id,
-            named(b"Integer"),
+    let host = support::bootstrap();
+    let h = support::H::new(&host);
+    h.call(h.gc, b"automaticCollection:", &[size(0).unwrap()]);
+    let original = h.project_storage();
+    let owner = h.object();
+    h.bind(
+        h.private(owner),
+        b"referencesOf:do:",
+        h.method(b"referencesOf:do:"),
+    );
+    let pair = h.call(h.named(b"ObjectVt"), b"delegated", &[]);
+    h.call(h.gc, b"trace:with:", &[pair, owner]);
+    let setup = host.scope();
+    let nodes: Vec<_> = (0..4)
+        .map(|_| setup.call(pair, b"allocate", &[size(0).unwrap()]).unwrap())
+        .collect();
+    let raw = setup
+        .call(
+            h.named(b"Integer"),
             b"fromWord:",
-            &[Operand::word(u.addr())],
-        ));
-        retain(id, roots, raw);
-        p.sample
-            .borrow_mut()
-            .extend([x, y, u, v, raw].map(|o| o.addr()));
-        // Strict coverage never silently accepts unobserved native stack roots.
-        assert_eq!(report(&p, 0).unwrap_err().detail, 3);
-        assert_eq!(p.completed.get(), 0);
-        assert!(p.rows.borrow().is_empty());
-        assert_eq!(report(&p, 2).unwrap_err().detail, 3);
-        p.collect.set(true);
-        assert_eq!(report(&p, 1).unwrap().as_word(), Some(73));
-        assert_eq!(p.completed.get(), 1);
-        assert_eq!(p.gaps.get(), 1);
-        for (o, reached) in [(x, true), (y, true), (u, false), (v, false), (raw, true)] {
-            assert_eq!(p.rows.borrow()[&o.addr()].1, reached);
-        }
-        let identity = p.rows.borrow()[&u.addr()].0;
-        // A retained expired owner callback cannot write into any later observation.
-        p.bad_owner.set(true);
-        assert!(report(&p, 1).is_err());
-        p.bad_owner.set(false);
-        assert!(
-            id.send_named(p.saved.get(), b"visit:", &[Operand::object(x)])
-                .is_err()
-        );
-        p.fail.set(true);
-        assert_eq!(report(&p, 1).unwrap_err().detail, 991);
-        p.fail.set(false);
-        assert_eq!(report(&p, 1).unwrap().as_word(), Some(73));
-        assert_eq!(p.rows.borrow()[&u.addr()].0, identity);
-
-        // Reference-owner selection is live, including replacement between reports.
-        let empty_behavior = behavior(id);
-        install(
-            id,
-            empty_behavior,
-            b"referencesOf:do:",
-            no_edges,
-            ptr::null_mut(),
-        );
-        let empty_owner = allocate(id, empty_behavior, 0);
-        retain(id, roots, empty_owner);
-        send(
-            id,
-            gc,
-            b"trace:with:",
-            &[Operand::object(pair), Operand::object(empty_owner)],
-        );
-        report(&p, 1).unwrap();
-        assert!(p.rows.borrow()[&x.addr()].1);
-        assert!(!p.rows.borrow()[&y.addr()].1);
-        send(
-            id,
-            gc,
-            b"trace:with:",
-            &[Operand::object(pair), Operand::object(owner)],
-        );
-        report(&p, 1).unwrap();
-        assert!(p.rows.borrow()[&y.addr()].1);
-        assert!(p.observations.get() >= 8);
-        // Root changes affect declared reachability despite observation protection.
-        release(id, roots, x_root);
-        report(&p, 1).unwrap();
-        assert!(!p.rows.borrow()[&x.addr()].1);
-        assert!(!p.rows.borrow()[&y.addr()].1);
-        // Enumeration and report callbacks never reclaim unrooted objects.
-        assert!(present(id, u));
-        assert!(present(id, v));
-        p.collect.set(false);
-        release(id, roots, p.token.get());
-        // Ordinary collection resumes after observation roots have been released.
-        p.in_collection.set(true);
-        collect(id, gc);
-        p.in_collection.set(false);
-        for value in [x, y, u, v] {
-            assert!(!present(id, value));
-        }
-        // Missing nonempty payload owners are an explicit additional coverage gap.
-        let unknown_behavior = behavior(id);
-        retain(id, roots, unknown_behavior);
-        send(
-            id,
-            id.receiver,
-            b"parentOf:put:",
-            &[
-                Operand::object(unknown_behavior),
-                Operand::object(ptr::null_mut()),
-            ],
-        );
-        // Precise GC deliberately rejects unowned nonempty payloads.
-        p.sweep_scratch.set(false);
-        let unknown = allocate(id, unknown_behavior, 8);
-        retain(id, roots, unknown);
-        p.sample.borrow_mut().clear();
-        p.sample.borrow_mut().insert(unknown.addr());
-        assert_eq!(report(&p, 1).unwrap_err().detail, 3);
-        report(&p, 3).unwrap();
-        assert_eq!(p.gaps.get(), 3);
-        assert!(p.rows.borrow()[&unknown.addr()].1);
-        // No later callback can retain this stack context: native test process exits.
-        Box::leak(p);
+            &[setup.word(nodes[2].addr()).unwrap()],
+        )
+        .unwrap();
+    let x_pin = host.scope();
+    x_pin.keep(nodes[0]).unwrap();
+    h.q.keep(raw).unwrap();
+    h.call(
+        h.probe,
+        b"configure",
+        &[nodes[0], nodes[1], nodes[2], nodes[3], raw],
+    );
+    let ids: Vec<_> = nodes.iter().copied().map(|o| h.identity(o)).collect();
+    drop(setup);
+    h.flags(false, false, false, true, false);
+    for mask in [0, 2] {
+        assert_eq!(h.detail(h.report(mask).unwrap_err()), 3);
+        assert_eq!(h.stat(0), 0);
+        assert_eq!(h.stat(1), 0);
     }
+    h.flags(true, false, false, true, false);
+    assert_eq!(as_size(h.report(1).unwrap()), Some(73));
+    assert_eq!(h.stat(1), 1);
+    assert_eq!(h.stat(3), 1);
+    assert_eq!(h.stat(0), 5);
+    for (i, reached) in [true, true, false, false, true].into_iter().enumerate() {
+        assert_eq!(h.row(i).1, reached, "node {i}");
+    }
+    let identity = h.row(2).0;
+    h.flags(true, true, false, true, false);
+    assert!(h.report(1).is_err());
+    h.flags(true, false, false, true, false);
+    assert!(host.send(h.field(8), b"visit:", &[nodes[0]]).is_err());
+    h.flags(true, false, true, true, false);
+    assert_eq!(h.detail(h.report(1).unwrap_err()), 991);
+    h.flags(true, false, false, true, false);
+    assert_eq!(as_size(h.report(1).unwrap()), Some(73));
+    assert_eq!(h.row(2).0, identity);
+    let empty = h.object();
+    h.bind(h.private(empty), b"referencesOf:do:", h.method(b"empty"));
+    h.call(h.gc, b"trace:with:", &[pair, empty]);
+    h.report(1).unwrap();
+    assert!(h.row(0).1);
+    assert!(!h.row(1).1);
+    h.call(h.gc, b"trace:with:", &[pair, owner]);
+    h.report(1).unwrap();
+    assert!(h.row(1).1);
+    assert!(h.stat(2) >= 8);
+    drop(x_pin);
+    h.report(1).unwrap();
+    assert!(!h.row(0).1 && !h.row(1).1);
+    assert!(
+        h.present(ids[2]) && h.present(ids[3]),
+        "observation protection must retain unreachable endpoints"
+    );
+    h.flags(false, false, false, true, false);
+    h.put(8, std::ptr::null_mut());
+    h.collect();
+    for id in ids {
+        assert!(
+            !h.present(id),
+            "ordinary GC resumes after observation releases its roots"
+        );
+    }
+    let unknown_vt = h.call(h.named(b"ObjectVt"), b"delegated", &[]);
+    h.call(
+        host.id.root,
+        b"parentOf:put:",
+        &[unknown_vt, std::ptr::null_mut()],
+    );
+    let unknown = h.call(unknown_vt, b"allocate", &[size(8).unwrap()]);
+    h.call(h.probe, b"configure", &[unknown]);
+    h.flags(false, false, false, false, false);
+    assert_eq!(h.detail(h.report(1).unwrap_err()), 3);
+    assert_eq!(as_size(h.report(3).unwrap()), Some(73));
+    assert_eq!(h.stat(3), 3);
+    assert!(h.row(0).1);
+    h.bind(h.vt(h.storage), b"observe:", original);
+    h.call(
+        h.vt(h.storage),
+        b"removeMethod:",
+        &[h.key(b"originalObserve:")],
+    );
 }

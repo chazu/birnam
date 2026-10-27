@@ -2397,3 +2397,24 @@ The core Oop gate, 26 Execution unit tests and nine native suites pass, includin
 compiler/materialization, frame inspection, strict Block/native boundaries and
 mapped/rebuilt image checks. Both running cold candidates predate this correction.
 [Receipt](../measurements/recovery-owner-oop-20261027.json).
+
+## Physical Storage and Trace acceptance through Oops
+
+The `storage_trace` and `trace_heap` harnesses now use declared callbacks and Oop
+contexts. The real Storage inventory protects objects during owner and report
+collection without counting that protection as declared graph roots. Reachable and
+unreachable cycles remain distinct, and a rooted Integer containing another
+object's address bits does not create a reference to that object.
+
+The checks retain strict coverage refusal, nested observation refusal, swallowed
+visitor-failure latching, expired callbacks, report failure cleanup, current
+reference-owner replacement and explicit root removal. Ordinary GC reclaims the
+graph after observation releases its protection. Reclamation checks use allocation
+identities; malformed callback arity replaces the old invalid-pointer fixture.
+
+An unfiltered report visited all 31,595 allocations once in identity order and
+collected during completion. A failing replacement of `automaticCollection:` was
+never entered: Trace did not disable automatic collection to pass. Both targets
+pass without runtime or Id changes. The separate exhaustive logical-graph and
+native-result harness remains pending.
+[Receipt](../measurements/storage-trace-oop-20261027.json).
