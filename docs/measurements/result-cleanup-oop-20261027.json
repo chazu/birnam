@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "scope": "Fresh compiled results and reflection inventories survive collecting cleanup through the production Host handoff",
+  "base_revision": "1ad2508eccedc3e71675a63580b42d9a77acf24c",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/result_cleanup.rs": "14d6ace455ed081667b4d2ea94610311b61326ca694ee88fda6192e2465b96b6",
+    "tests/fixtures/oop-host/result-cleanup.c": "126969e05cd14b21c7893162a8ed628022793fa56ba8abe95d2716868c316c2a"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/result-cleanup-oop.log",
+      "sha256": "b598ffe1433b1935b1e62db84b981de2754f0768313529c52fdafed025f23212",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "A synchronous generated method returns its fresh Word through collecting replacement of Roots release:",
+    "The observed final allocation identity matches the value actually returned to the caller",
+    "releaseTokensProtecting preserves the result while both token releases collect, propagates the exact first native failure and still drains both tokens",
+    "Failed cleanup leaves no private protection for either released value",
+    "Reflect directMethodsOf:, allMethodsOf: and allGlobalNames return inventories alive through collecting Host cleanup",
+    "Failed reflection handoff preserves the failure through Host error reporting and reclaims the unreturned inventory"
+  ],
+  "owner_boundary": "Codegen and Execution now hold scoped Oop references in their own owner state. Their private scope exit does not invoke Roots release:. The current collecting cleanup path is exercised through production Host Context.send and existing Roots releaseTokensProtecting; no per-return registry calls or byte-token carrier are restored.",
+  "observation": "Fixture stores only numeric allocation identities for watched results; it does not retain them or query freed Oops.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Remaining native/compiler harnesses and contract decisions",
+    "Complete current cold Host CLI and image qualification"
+  ]
+}

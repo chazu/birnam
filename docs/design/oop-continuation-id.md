@@ -2809,3 +2809,20 @@ group passes, and the exact 822-file installation manifest and receipt remain
 unchanged. This closes that older candidate's qualification; it does not qualify
 production corrections added afterward.
 [Receipt](../measurements/machine-image-oop-20261027.json).
+
+## Results through collecting cleanup
+
+The result-cleanup harness now exercises a compiled synchronous result and all
+three Reflect inventories through the production Host handoff. Replacing Roots
+`release:` with a collecting Method does not reclaim the result before the caller
+receives it. Observations use weak allocation identities and verify that the
+watched allocation is the actual returned value.
+
+The explicit `releaseTokensProtecting` failure case still drains both requested
+tokens, keeps its result alive through every cleanup callback and propagates the
+first native failure. Failed cleanup and a failed inventory handoff then release
+their temporary values. Codegen/Execution owner-local scopes no longer call Roots
+on each exit; the test uses the actual Host cleanup path instead of reintroducing
+that implementation dependency or the old byte-token carrier. All checks pass
+without runtime or Id changes.
+[Receipt](../measurements/result-cleanup-oop-20261027.json).
