@@ -1563,3 +1563,20 @@ All three System suites and the complete Oop core gate pass on the updated stage
 prefix. The GC fixture uses pre-interned selectors for exact charge comparisons,
 so Host helper allocations cannot change the measured interval.
 [Receipt and baseline comparison](../measurements/system-gc-oop-20261027.json).
+
+## Complete corrected-candidate Host image acceptance
+
+The serial image retry on cold candidate `52c617fe` passes all 16 checks, including
+optional Store, Host/Image, native loading, authored Trace, frame calls, collection
+search, StringBuilder, OS services, Alien recipes/publication/reentry/hashing and
+saved-code startup. Existing assertions and limits were unchanged; the original
+concurrent timeout remains recorded.
+[Serial image receipt](../measurements/corrected-image-serial-oop-20261027.json).
+
+Together with the recorded generation (17), interaction (6), task (6) and CLI (18)
+groups, this completes all five Host acceptance groups for that specific cold
+candidate. No qualification job remains live. It does not qualify the later
+incoming-adapter, native Block-return or GC-query corrections. Those have staged
+core/focused evidence and still need a fresh cold installation and full Host
+acceptance. The remaining native test harnesses and retained compiler features
+also prevent declaring the overall migration complete.
