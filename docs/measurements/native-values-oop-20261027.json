@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "Word/Bytes ownership and explicit outbound Oop adapter acceptance",
+  "base_revision": "317393f26020b29228e5f0594de68734a26ee85e",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-incoming-5ta1my25/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/native_values.rs": "f10751f4fadf35e7872a447f2e3d8e19c99e00160706451d508ac3c16d3fc6a8",
+    "tests/fixtures/oop-host/native-values.c": "d5e94f7eb569f0c8ec3358b638afedf5df76da57508c60487322216a78003d88"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/native-values.log",
+      "sha256": "64994dea92bfc38f26bcf255f25fec46cd99ca1ea5cd11901a70d4acc6e4dad5",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

@@ -1419,3 +1419,14 @@ arithmetic and String-to-Integer parsing still work. No runtime or Id change was
 needed; the removed Id `memoryManager` query was replaced by the existing Namespace
 GC binding in the test fixture.
 [Receipt](../measurements/numbers-loading-oop-20261027.json).
+
+## Primitive values and explicit outbound adapters
+
+The `native_values` harness now uses Oop values and a declared C callback. It
+preserves wrapping arithmetic, unsigned comparison/division, full-width rendering
+and overflow, byte bounds, copy independence, live factory replacement under
+collection and exact failure identity. The callback mutates the original Bytes
+object before reading its argument through owner messages; the explicit outbound
+adapter's snapshot remains unchanged. A later copied result also survives further
+mutation and collection. No runtime or Id change was needed.
+[Receipt](../measurements/native-values-oop-20261027.json).

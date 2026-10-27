@@ -1,253 +1,120 @@
-//! The primitive owners and the explicit native-carrier boundary remain replaceable.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{cell::Cell, ffi::c_void};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-struct Factory {
-    id: Protocol,
-    entry: NativeEntry,
-    gc: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn collecting_factory(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    let f = unsafe { &*c.cast::<Factory>() };
-    f.calls.set(f.calls.get() + 1);
-    if let Err(e) = unsafe { f.id.send_named(f.gc, b"collectPrecisely", &[]) } {
-        return e;
-    }
-    unsafe { (f.entry.method.unwrap())(f.entry.context, r, a, n) }
-}
-struct Reentry {
-    id: Protocol,
-    bytes: Oop,
-    gc: Oop,
-}
-unsafe extern "C" fn byte_callback(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<Reentry>() };
-    let Some([a]) = (unsafe { borrowed_slice(a, n) }) else {
-        return Outcome::failed(native::INVALID_REQUEST, 0);
-    };
-    let Some(a) = a.as_bytes() else {
-        return Outcome::failed(native::INVALID_REQUEST, 0);
-    };
-    let answer = (|| unsafe {
-        // Deliberately mutate the provider and collect before reading the inputs.
-        s.id.send_named(s.bytes, b"appendBytes:", &[Operand::bytes(b"changed")])?;
-        s.id.send_named(s.gc, b"collectPrecisely", &[])?;
-        let a = borrowed_bytes(a.pointer, a.length).unwrap();
-        assert_eq!(a, b"ab");
-        Ok(Operand::object(s.bytes))
-    })();
-    answer.map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn failure(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(native::INVALID_REQUEST, 987)
-}
+//! Primitive value owners and explicit native adapters remain replaceable.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use std::path::Path;
+
 #[test]
-#[ignore = "production dylibs and authored nativeValues artifact required"]
+#[ignore = "requires production Oop modules"]
 fn primitive_ownership_and_explicit_abi_use_live_id_messages() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let (word, bytes, integer, execution, roots, gc, nil) = (
-            named(b"Word"),
-            named(b"Bytes"),
-            named(b"Integer"),
-            named(b"Execution"),
-            named(b"Roots"),
-            named(b"GC"),
-            named(b"nil"),
-        );
-        let mut tokens = Vec::new();
-        let mut keep = |v: Operand| {
-            let v = object(v);
-            tokens.push(retain(id, roots, v));
-            v
-        };
-        let w = |v: usize| send(id, word, b"fromBits:", &[Operand::word(v)]);
-        let zero = keep(w(0));
-        let one = keep(w(1));
-        let max = keep(w(usize::MAX));
-        let sixty_four = keep(w(64));
-        let bits = |v: Operand| send(id, object(v), b"bits", &[]).as_word().unwrap();
-        assert_eq!(
-            bits(send(id, max, b"wrappingAdd:", &[Operand::object(one)])),
-            0
-        );
-        assert_eq!(
-            bits(send(
-                id,
-                zero,
-                b"wrappingSubtract:",
-                &[Operand::object(one)]
-            )),
-            usize::MAX
-        );
-        assert_eq!(
-            bits(send(
-                id,
-                max,
-                b"shiftRight:",
-                &[Operand::object(sixty_four)]
-            )),
-            0
-        );
-        assert_eq!(
-            send(id, max, b"unsignedLessThan:", &[Operand::object(one)]).as_object(),
-            Some(named(b"false"))
-        );
-        assert!(
-            id.send_named(one, b"unsignedDivide:", &[Operand::object(zero)])
-                .is_err()
-        );
-        let rendered = keep(send(id, max, b"printString", &[]));
-        let raw = send(id, rendered, b"bytes", &[]).as_bytes().unwrap();
-        assert_eq!(
-            borrowed_bytes(raw.pointer, raw.length).unwrap(),
-            b"0xffffffffffffffff"
-        );
-        let error = keep(send(id, max, b"asInteger", &[]));
-        assert_eq!(
-            object(send(id, error, b"kind", &[])),
-            id.intern_name(b"overflow").unwrap()
-        );
-        let data = keep(send(id, bytes, b"fromBytes:", &[Operand::bytes(b"ab")]));
-        assert_eq!(
-            send(id, data, b"byteAtWord:", &[Operand::word(1)]).as_word(),
-            Some(b'b' as usize)
-        );
-        assert_eq!(
-            send(id, data, b"byteAtWord:", &[Operand::word(usize::MAX)]).kind(),
-            native::UNIT
-        );
-        let reentry = Box::leak(Box::new(Reentry {
-            id,
-            bytes: data,
-            gc,
-        }));
-        install(
-            id,
-            id.receiver,
-            b"byteCallback",
-            byte_callback,
-            core::ptr::from_mut(reentry).cast(),
-        );
-        let result = keep(send(
-            id,
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let named = |name: &[u8]| h.named(name).unwrap();
+    let key = |name: &[u8]| hooks.symbol(name);
+    let call = |r, name: &[u8], args: &[Oop]| q.call(r, name, args).unwrap();
+    let bits = |value| q.word_bits(call(value, b"bits", &[])).unwrap();
+    let word = named(b"Word");
+    let bytes = named(b"Bytes");
+    let execution = named(b"Execution");
+    let gc = named(b"GC");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let w = |value| call(word, b"fromBits:", &[q.word(value).unwrap()]);
+    let zero = w(0);
+    let one = w(1);
+    let max = w(usize::MAX);
+    let sixty_four = w(64);
+    assert_eq!(bits(call(max, b"wrappingAdd:", &[one])), 0);
+    assert_eq!(bits(call(zero, b"wrappingSubtract:", &[one])), usize::MAX);
+    assert_eq!(bits(call(max, b"shiftRight:", &[sixty_four])), 0);
+    assert_eq!(call(max, b"unsignedLessThan:", &[one]), named(b"false"));
+    assert!(h.send(one, b"unsignedDivide:", &[zero]).is_err());
+    let rendered = call(max, b"printString", &[]);
+    assert_eq!(q.string_bytes(rendered).unwrap(), b"0xffffffffffffffff");
+    let error = call(max, b"asInteger", &[]);
+    assert_eq!(call(error, b"kind", &[]), key(b"overflow"));
+    let data = call(bytes, b"fromBytes:", &[q.byte_values(b"ab").unwrap()]);
+    assert_eq!(
+        as_size(call(data, b"byteAtWord:", &[size(1).unwrap()])),
+        Some(b'b' as usize)
+    );
+    assert!(call(data, b"byteAtWord:", &[q.word(usize::MAX).unwrap()]).is_null());
+
+    let path =
+        std::env::temp_dir().join(format!("birnam-native-values-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/native-values.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = h.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let callback = call(module, b"methodAt:", &[key(b"callback")]);
+    let callback = call(callback, b"withContext:", &[hooks.context(&[data, gc])]);
+    let probe = call(named(b"Object"), b"clone", &[]);
+    let behavior = call(h.id.root, b"ensurePrivateVtableFor:", &[probe]);
+    call(behavior, b"addMethod", &[key(b"byteCallback"), callback]);
+    assert_eq!(
+        call(
             execution,
             b"objectResultOf:selector:byteArgument:",
-            &[
-                Operand::object(id.receiver),
-                Operand::object(id.intern_name(b"byteCallback").unwrap()),
-                Operand::object(data),
-            ],
-        ));
-        assert_eq!(result, data);
-        let wb = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(word)],
-        ));
-        let original = send(
-            id,
-            wb,
-            b"lookup",
-            &[Operand::object(id.intern_name(b"fromBits:").unwrap())],
-        )
-        .as_entry()
-        .unwrap();
-        let factory = Box::leak(Box::new(Factory {
-            id,
-            entry: original,
-            gc,
-            calls: Cell::new(0),
-        }));
-        install(
-            id,
-            wb,
-            b"fromBits:",
-            collecting_factory,
-            core::ptr::from_mut(factory).cast(),
-        );
-        let result = keep(send(
-            id,
-            execution,
-            b"wordResultOf:selector:",
-            &[
-                Operand::object(integer),
-                Operand::object(id.intern_name(b"word").unwrap()),
-            ],
-        ));
-        assert_eq!(bits(Operand::object(result)), 0);
-        assert_eq!(factory.calls.get(), 1);
-        send(
-            id,
-            wb,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(b"fromBits:").unwrap()),
-                Operand::entry(original),
-            ],
-        );
-        let snapshot = keep(send(
-            id,
-            execution,
-            b"bytesResultOf:selector:",
-            &[
-                Operand::object(data),
-                Operand::object(id.intern_name(b"bytes").unwrap()),
-            ],
-        ));
-        send(id, data, b"appendBytes:", &[Operand::bytes(b"!")]);
-        collect(id, gc);
-        let raw = send(id, snapshot, b"bytes", &[]).as_bytes().unwrap();
-        assert_eq!(
-            borrowed_bytes(raw.pointer, raw.length).unwrap(),
-            b"abchanged"
-        );
-        install(
-            id,
-            id.receiver,
-            b"abiFailure",
-            failure,
-            core::ptr::null_mut(),
-        );
-        let e = id
-            .send_named(
+            &[probe, key(b"byteCallback"), data]
+        ),
+        data
+    );
+    assert_eq!(q.read_bytes(data).unwrap(), b"abchanged");
+
+    let word_vt = call(h.id.root, b"behaviorOf:", &[word]);
+    let selector = key(b"fromBits:");
+    let original = call(word_vt, b"lookup", &[selector]);
+    let context = hooks.context(&[original, gc, size(0).unwrap()]);
+    call(
+        word_vt,
+        b"addMethod",
+        &[selector, hooks.method(b"collectEvery", context)],
+    );
+    let result = call(
+        execution,
+        b"wordResultOf:selector:",
+        &[named(b"Integer"), key(b"word")],
+    );
+    assert_eq!(bits(result), 0);
+    assert_eq!(hooks.count(context, 2), 1);
+    call(word_vt, b"addMethod", &[selector, original]);
+    let snapshot = call(
+        execution,
+        b"bytesResultOf:selector:",
+        &[data, key(b"bytes")],
+    );
+    call(data, b"appendByteValues", &[size(b'!' as usize).unwrap()]);
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(q.read_bytes(snapshot).unwrap(), b"abchanged");
+    assert_eq!(q.read_bytes(data).unwrap(), b"abchanged!");
+    let fault = hooks.fault(987);
+    let failed = hooks.context(&[fault, size(0).unwrap()]);
+    call(
+        behavior,
+        b"addMethod",
+        &[key(b"abiFailure"), hooks.method(b"deny", failed)],
+    );
+    assert_eq!(
+        unsafe {
+            h.id.send(
                 execution,
-                b"wordResultOf:selector:",
-                &[
-                    Operand::object(id.receiver),
-                    Operand::object(id.intern_name(b"abiFailure").unwrap()),
-                ],
+                key(b"wordResultOf:selector:"),
+                &[probe, key(b"abiFailure")],
             )
-            .unwrap_err();
-        assert_eq!((e.status, e.detail), (native::INVALID_REQUEST, 987));
-        assert_eq!(nil, named(b"nil"));
-        for token in tokens {
-            release(id, roots, token);
         }
-    }
+        .unwrap_err(),
+        fault
+    );
+    assert_eq!(hooks.count(failed, 1), 1);
 }
