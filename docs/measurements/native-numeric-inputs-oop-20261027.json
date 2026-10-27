@@ -1,0 +1,48 @@
+{
+  "passed": true,
+  "scope": "Native numeric owner roots across collecting validation, nested construction, failure and return",
+  "base_revision": "689ce4f76b57da703d350a7cde8fe6623d47211d",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/native_numeric_inputs.rs": "f9c1c805462f224379c71394e89478446809924c49ae56ce7353cddb976043fd",
+    "tests/fixtures/oop-host/numeric-inputs.c": "444df95914168d024532a04656746ad24ef447cd1edf6cfa8d8c92c0ca1c5233"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/native-numeric-inputs-oop.log",
+      "sha256": "0707d1094208c69066da31a8cbdd1ea4bcd192f8ca2fa2cf0352236eeb9a0bcd",
+      "exit": 0,
+      "targets": [
+        "native_numeric_inputs",
+        "numbers"
+      ]
+    }
+  ],
+  "retained_checks": [
+    "Native numeric construction performs no Roots registrations; numeric owners do not re-register receiver or input Oops",
+    "Collecting live vtable lookup preserves inputs and newly allocated values",
+    "Nested construction releases the discarded child while the parent value remains alive",
+    "At least six collecting validation callbacks are exercised",
+    "Word and Integer validation failures preserve exact native failure identity and release the failed allocation",
+    "Successful owner scopes release the result after its caller root is dropped"
+  ],
+  "observation": "Callback contexts store allocation identities rather than weak object pointers; presence and reclamation are observed using the allocated-object list. Raw Id sends isolate numeric-owner Root registrations from Host argument snapshots.",
+  "fixture_diagnosis": {
+    "initial_log": ".cargo-target/oop-current-qualification/native-numeric-inputs-before-cleanup.log",
+    "initial_log_sha256": "f5e3bbaf75f44dab8183d1b24fcd110d2e8e91245ad8a46600e74c9c6424f25f",
+    "initial_exit": 0,
+    "initial_seconds": 329.04,
+    "sample": ".cargo-target/oop-current-qualification/native-numeric-inputs-sample.txt",
+    "sample_sha256": "8fae13d625722a4231b92d53f82ce22196c863dc578147b4cb23db8c33152ec8",
+    "cause": "Explicit cleanup GC invoked the collecting lookup hook for each traced object; each hook rescanned the entire allocation list. The fixture now suppresses recursive instrumentation during explicit cleanup while preserving all collecting numeric validation callbacks and assertions.",
+    "final_numeric_test_seconds": 5.83,
+    "runtime_performance_claim": false
+  },
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Full image roundtrip/resave checks remain active",
+    "Remaining cold Host groups",
+    "Other native/compiler harnesses and pending contract/optimization decisions"
+  ]
+}

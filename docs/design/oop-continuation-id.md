@@ -2702,3 +2702,19 @@ body, and a supported immediate is accepted. The old Operand word/object carrier
 distinction no longer exists. The generated-input and adjacent native incoming
 harnesses pass without runtime or Id changes.
 [Receipt](../measurements/invocation-inputs-oop-20261027.json).
+
+## Numeric owner temporary roots
+
+The numeric-input harness now uses declared Oop callbacks, weak allocation
+identities and the allocated-object list. It preserves zero redundant Root
+registration checks, collecting validation, nested temporary-value reclamation,
+exact failure propagation, failed-construction cleanup and result reclamation
+after the caller releases it. The adjacent number harness also passes.
+
+The initial port passed but spent 329 seconds rescanning all allocations for each
+lookup made by explicit cleanup GC. A process sample identified this quadratic
+fixture work. Cleanup collections now suppress recursive instrumentation while
+numeric validation callbacks remain collecting and all assertions remain enabled;
+the numeric harness passes in 5.8 seconds. This is a fixture correction, not a
+runtime speedup. No runtime or Id changes were needed.
+[Receipt](../measurements/native-numeric-inputs-oop-20261027.json).
