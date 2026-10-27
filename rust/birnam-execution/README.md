@@ -157,11 +157,15 @@ and future compiled Blocks. Bootstrap installs the separate [Block Loop
 module](../../docs/design/authored-small-modules.md#block-loops) after Lang; later stackless controls
 replace its authored synchronous entries through normal MOP publication.
 
-`Execution evaluatePreservingFailures:` evaluates a Block with native failures
-propagating as their original status/detail. Its scoped policy is restored on
-success or failure; ordinary evaluation still converts failed native sends into
-language Errors. This supports the authored bootstrap loop's existing boundary
-without adding a loop driver or changing suspension/retention rules.
+A direct native call to a Block preserves its body's result, including a native
+failure return. Language Machines convert failed native sends into Error data at
+pending-call completion. Block entry does not insert another answer continuation
+or convert failures on behalf of a native caller.
+
+`Execution evaluatePreservingFailures:` retains the explicit scoped policy for
+evaluating language code with native failures propagated unchanged. The previous
+policy is restored on success or failure; ordinary language evaluation still
+converts failed native sends into Errors.
 
 ## Remaining migration and acceptance
 

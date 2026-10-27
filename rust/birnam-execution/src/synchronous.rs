@@ -31,7 +31,6 @@ struct Admitted {
 struct State {
     id: Protocol,
     control: Control,
-    value_answer: Oop,
     native_value: Oop,
     native_answer: Oop,
     capture_seed: Oop,
@@ -256,39 +255,11 @@ unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> O
         {
             return Err(invalid());
         }
-        let destination = if admitted.native_signature.is_some()
-            || k.is_null()
-            || s.resume.borrow().return_methods.contains_key(&k.addr())
-        {
-            *k
-        } else {
-            let context = q.keep(s.make_block(s.block_vt, &[*k])?);
-            q.keep(s.send(s.value_answer, b"withContext:", &[context])?)
-        };
-        let mut values = vec![method, r, destination];
+        // Block entry preserves the body's native result. Machine call completion
+        // owns conversion to language Error data when a language caller awaits it.
+        let mut values = vec![method, r, *k];
         values.extend_from_slice(args);
         s.transfer(b"prepareEntry", &values)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn value_answer(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let p = INSTANCE.load(Ordering::Acquire);
-        if p.is_null() {
-            return Err(invalid());
-        }
-        let s = state((*p).ns)?;
-        let [_, value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let q = s.scope(&[c, *value]);
-        let k = q.keep(s.field(c, 0)?);
-        let value = q.keep(s.language_result(if abi::is_fault(*value) {
-            Err(abi::object_reference(*value))
-        } else {
-            Ok(*value)
-        })?);
-        s.transfer(b"answerTo:with:", &[k, value])
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -445,7 +416,6 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.receiver,
             s.block,
             s.block_vt,
-            s.value_answer,
             s.native_value,
             s.native_answer,
             s.capture_seed,
@@ -642,7 +612,6 @@ const NAMES: &[&[u8]] = &[
     b"driveBridge",
     b"faultKind",
     b"driveActive",
-    b"valueAnswer",
     b"continuationBarrier",
     b"suspendAt:continueAt:",
     b"captureAt:continueAt:",
@@ -877,7 +846,6 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"driveBridge"),
     Literal::new(b"faultKind"),
     Literal::new(b"driveActive"),
-    Literal::new(b"valueAnswer"),
     Literal::new(b"continuationBarrier"),
     Literal::new(b"suspendAt:continueAt:"),
     Literal::new(b"captureAt:continueAt:"),
@@ -1207,79 +1175,79 @@ static METHODS: &[MethodSpec] = &[
         convention: 1,
     },
     MethodSpec {
-        name: 116,
-        entry: Some(value_answer),
-        convention: 1,
-    },
-    MethodSpec {
-        name: 118,
+        name: 117,
         entry: Some(resumable::suspend_at),
         convention: 0,
     },
     MethodSpec {
-        name: 119,
+        name: 118,
         entry: Some(resumable::capture_at),
         convention: 0,
     },
     MethodSpec {
-        name: 120,
+        name: 119,
         entry: Some(resumable::resume),
         convention: 0,
     },
     MethodSpec {
-        name: 121,
+        name: 120,
         entry: Some(resumable::resume_bounded),
         convention: 0,
     },
     MethodSpec {
-        name: 122,
+        name: 121,
         entry: Some(resumable::restore),
         convention: 0,
     },
     MethodSpec {
-        name: 140,
+        name: 139,
         entry: Some(resumable::boundary_call),
         convention: 0,
     },
     MethodSpec {
-        name: 141,
+        name: 140,
         entry: Some(resumable::boundary_exit),
         convention: 0,
     },
     MethodSpec {
-        name: 142,
+        name: 141,
         entry: Some(resumable::delivery_pending),
         convention: 0,
     },
     MethodSpec {
-        name: 143,
+        name: 142,
         entry: Some(resumable::acknowledge),
         convention: 0,
     },
     MethodSpec {
-        name: 144,
+        name: 143,
         entry: Some(resumable::exit_runnable),
         convention: 0,
     },
     MethodSpec {
-        name: 145,
+        name: 144,
         entry: Some(resumable::control::eligible),
         convention: 0,
     },
     MethodSpec {
-        name: 146,
+        name: 145,
         entry: Some(resumable::control::protected),
         convention: 0,
     },
     MethodSpec {
-        name: 147,
+        name: 146,
         entry: Some(resumable::control::leave),
         convention: 0,
     },
     MethodSpec {
-        name: 148,
+        name: 147,
         entry: Some(resumable::control::park),
         convention: 0,
+    },
+    MethodSpec {
+        name: 148,
+        entry: Some(value),
+        convention: 1,
     },
     MethodSpec {
         name: 149,
@@ -1322,62 +1290,57 @@ static METHODS: &[MethodSpec] = &[
         convention: 1,
     },
     MethodSpec {
-        name: 157,
-        entry: Some(value),
-        convention: 1,
-    },
-    MethodSpec {
-        name: 159,
+        name: 158,
         entry: Some(invalid_request),
         convention: 0,
     },
     MethodSpec {
-        name: 160,
+        name: 159,
         entry: Some(native_adapters::optional_word),
         convention: 0,
     },
     MethodSpec {
-        name: 161,
+        name: 160,
         entry: Some(native_adapters::object_word),
         convention: 0,
     },
     MethodSpec {
-        name: 162,
+        name: 161,
         entry: Some(native_adapters::discard_word),
         convention: 0,
     },
     MethodSpec {
-        name: 163,
+        name: 162,
         entry: Some(native_adapters::object_bytes),
         convention: 0,
     },
     MethodSpec {
-        name: 164,
+        name: 163,
         entry: Some(native_adapters::bytes_factory),
         convention: 0,
     },
     MethodSpec {
-        name: 165,
+        name: 164,
         entry: Some(native_adapters::word_result),
         convention: 0,
     },
     MethodSpec {
-        name: 166,
+        name: 165,
         entry: Some(native_adapters::bytes_result),
         convention: 0,
     },
     MethodSpec {
-        name: 167,
+        name: 166,
         entry: Some(native_adapters::with_signature),
         convention: 0,
     },
     MethodSpec {
-        name: 168,
+        name: 167,
         entry: Some(native_adapters::value),
         convention: 1,
     },
     MethodSpec {
-        name: 169,
+        name: 168,
         entry: Some(native_adapters::fail),
         convention: 0,
     },
@@ -1387,22 +1350,22 @@ static METHODS: &[MethodSpec] = &[
         convention: 1,
     },
     MethodSpec {
-        name: 184,
+        name: 183,
         entry: Some(invoke_method),
         convention: 1,
     },
     MethodSpec {
-        name: 185,
+        name: 184,
         entry: Some(reflection::code_object),
         convention: 0,
     },
     MethodSpec {
-        name: 186,
+        name: 185,
         entry: Some(reflection::admit),
         convention: 0,
     },
     MethodSpec {
-        name: 187,
+        name: 186,
         entry: Some(reflection::code_value),
         convention: 0,
     },
@@ -1412,127 +1375,127 @@ static METHODS: &[MethodSpec] = &[
         convention: 0,
     },
     MethodSpec {
-        name: 189,
+        name: 188,
         entry: Some(reflection::binding),
         convention: 0,
     },
     MethodSpec {
-        name: 191,
+        name: 190,
         entry: Some(reflection::direct_method),
         convention: 0,
     },
     MethodSpec {
-        name: 192,
+        name: 191,
         entry: Some(reflection::binding_matches),
         convention: 0,
     },
     MethodSpec {
-        name: 194,
+        name: 193,
         entry: Some(reflection::from_method),
         convention: 0,
     },
     MethodSpec {
-        name: 198,
+        name: 197,
         entry: Some(reflection::block_synchronous),
         convention: 0,
     },
     MethodSpec {
-        name: 199,
+        name: 198,
         entry: Some(reflection::admit_selected),
         convention: 0,
     },
     MethodSpec {
-        name: 200,
+        name: 199,
         entry: Some(reflection::capture_at),
         convention: 0,
     },
     MethodSpec {
-        name: 201,
+        name: 200,
         entry: Some(reflection::shell),
         convention: 0,
     },
     MethodSpec {
-        name: 202,
+        name: 201,
         entry: Some(reflection::restore_captures),
         convention: 0,
     },
     MethodSpec {
-        name: 203,
+        name: 202,
         entry: Some(reflection::from_code),
         convention: 0,
     },
     MethodSpec {
-        name: 209,
+        name: 208,
         entry: Some(dnu_identity),
         convention: 0,
     },
     MethodSpec {
-        name: 210,
+        name: 209,
         entry: Some(resumable::frame_view::current),
         convention: 0,
     },
     MethodSpec {
-        name: 211,
+        name: 210,
         entry: Some(resumable::frame_view::word::<0>),
         convention: 0,
     },
     MethodSpec {
-        name: 212,
+        name: 211,
         entry: Some(resumable::frame_view::word::<1>),
         convention: 0,
     },
     MethodSpec {
-        name: 213,
+        name: 212,
         entry: Some(resumable::frame_view::word::<2>),
         convention: 0,
     },
     MethodSpec {
-        name: 214,
+        name: 213,
         entry: Some(resumable::frame_view::word::<3>),
         convention: 0,
     },
     MethodSpec {
-        name: 215,
+        name: 214,
         entry: Some(resumable::frame_view::word::<4>),
         convention: 0,
     },
     MethodSpec {
-        name: 216,
+        name: 215,
         entry: Some(resumable::frame_view::read::<false>),
         convention: 0,
     },
     MethodSpec {
-        name: 217,
+        name: 216,
         entry: Some(resumable::frame_view::read::<true>),
         convention: 0,
     },
     MethodSpec {
-        name: 218,
+        name: 217,
         entry: Some(invalid_request),
         convention: 0,
     },
     MethodSpec {
-        name: 223,
+        name: 222,
         entry: Some(resumable::recovery::with_inline),
         convention: 0,
     },
     MethodSpec {
-        name: 224,
+        name: 223,
         entry: Some(resumable::recovery::recover::<false>),
         convention: 0,
     },
     MethodSpec {
-        name: 225,
+        name: 224,
         entry: Some(resumable::recovery::recover::<true>),
         convention: 0,
     },
     MethodSpec {
-        name: 231,
+        name: 230,
         entry: Some(native_adapters::native_signature),
         convention: 0,
     },
     MethodSpec {
-        name: 232,
+        name: 231,
         entry: Some(native_adapters::deferred_answer),
         convention: 1,
     },
@@ -1591,11 +1554,6 @@ unsafe extern "C" fn initialize(
         let s = Box::leak(Box::new(State {
             id,
             control,
-            value_answer: keep(send(
-                image,
-                b"methodAt:",
-                &[names[b"valueAnswer".as_slice()]],
-            )?)?,
             native_value: keep(send(
                 image,
                 b"methodAt:",
@@ -1640,8 +1598,7 @@ unsafe extern "C" fn initialize(
             let name = NAMES[spec.name];
             if matches!(
                 name,
-                b"valueAnswer"
-                    | b"nativeSignatureValue"
+                b"nativeSignatureValue"
                     | b"nativeDeferredAnswer"
                     | b"codeValue"
                     | b"binding:value:weak:"

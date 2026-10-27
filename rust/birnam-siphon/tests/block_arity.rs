@@ -60,6 +60,46 @@ fn blocks_reject_wrong_arity_and_preserve_current_replacement() {
     q.check_result(answer).unwrap();
     assert_eq!(answer, h.named(b"true").unwrap());
 
+    // A native caller of synchronous Block code receives the exact failure.
+    // A language Machine handles that failure at its own pending call instead.
+    let hooks = oop::hooks::Hooks::new(&h);
+    let failure = hooks.fault(83);
+    let failed = hooks.context(&[failure, size(0).unwrap()]);
+    let callback = q.call(h.named(b"Object").unwrap(), b"clone", &[]).unwrap();
+    let callback_vt = q
+        .call(h.id.root, b"ensurePrivateVtableFor:", &[callback])
+        .unwrap();
+    q.call(
+        callback_vt,
+        b"addMethod",
+        &[hooks.symbol(b"fail"), hooks.method(b"deny", failed)],
+    )
+    .unwrap();
+    let globals = h.named(b"Globals").unwrap();
+    let name = hooks.symbol(b"BlockFailureFixture");
+    q.call(globals, b"at:put:", &[name, callback]).unwrap();
+    let source = q.string(b"[BlockFailureFixture fail]").unwrap();
+    let method = q.call(cg, b"compileSynchronous:", &[source]).unwrap();
+    q.check_result(method).unwrap();
+    let block = q
+        .call(
+            h.named(b"Block").unwrap(),
+            b"fromMethod:captureOperands:",
+            &[method],
+        )
+        .unwrap();
+    assert_eq!(
+        unsafe { h.id.send(block, hooks.symbol(b"value"), &[]) }.unwrap_err(),
+        failure
+    );
+    let error = q.call(cg, b"eval:", &[source]).unwrap();
+    assert_eq!(
+        q.call(error, b"kind", &[]).unwrap(),
+        hooks.symbol(b"nativeFailure")
+    );
+    assert_eq!(hooks.count(failed, 1), 2);
+    q.call(globals, b"remove:", &[name]).unwrap();
+
     let source = q.string(b"42").unwrap();
     let method = q.call(cg, b"compileSynchronous:", &[source]).unwrap();
     q.check_result(method).unwrap();
@@ -75,7 +115,6 @@ fn blocks_reject_wrong_arity_and_preserve_current_replacement() {
 
     // Entry uses the shape admitted earlier; it must not require another
     // metadata query on the captured Method before entering its body.
-    let hooks = oop::hooks::Hooks::new(&h);
     let context = hooks.context(&[hooks.fault(27), size(0).unwrap()]);
     let behavior = q.call(h.id.root, b"behaviorOf:", &[captured]).unwrap();
     q.call(

@@ -1,0 +1,60 @@
+{
+  "passed": true,
+  "scope": "Native Block failure propagation restored; System output harness migrated; language Machine conversion, native adapters, suspension, image recovery and pending-call recovery retained",
+  "base_revision": "279b598066b3d7fcfe1117d46706ad5b25427da8",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-native-return-huqumtfi/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "4ffb4deb6b542d662001e0dbd4f29d61e7c327bc966b7f00bce6da3bbb1e72ce",
+    "rust/birnam-siphon/examples/oop_slice/compiler.rs": "50b7ab0b2451cc941ebb9dd9441e27bc76cb5392af8c745719632a1c2a360959",
+    "rust/birnam-siphon/tests/block_arity.rs": "2ab2479d8d9b38d7ce9dc1fc2f4993053dff5d84691546a52443c9d265cfe1bc",
+    "rust/birnam-siphon/tests/system_output.rs": "50195a27afbeeb8253d4371dea8faef6b810560fd9a28749f13d2ecce5051c68",
+    "tests/fixtures/oop-host/system-output.c": "91d894a69c50aa9066f923aaa0cf77a1fc0d6390af537ae00fb912eb429c05b6"
+  },
+  "execution_dylib_sha256": "b7ee820a61822468a586f6d9d35467c00cebbde350745a01b5a67b5d146d83b4",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/block-native-return-focused.log",
+      "sha256": "b5b75587a27f7b8c55d68e331e4e62b180bdfa328d0fe1a8687eb1483e345fc3",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/block-failure-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "log": ".cargo-target/oop-corrected-qualification/system-output.log",
+    "sha256": "9dc7dcf570761dd2d6b4bbb3ae5aa39c1294a5d2f9084190d5243dbf6da7ab02",
+    "failure": "Native String factory failure returned as ordinary Error data through authored Object printString."
+  },
+  "pre_oop_baseline": {
+    "prefix": "/Users/chazu/.local/opt/birnam",
+    "revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+    "manifest_sha256": "bd97c4016aa69896af06bd6ba821d8d062df81065b09cd99cf14409a1892b0bc",
+    "checks": [
+      {
+        "log": ".cargo-target/oop-corrected-qualification/system-output-prior.log",
+        "sha256": "7f2f96ff7bda7403d356b680bd39aa333494ef123f8444934bdf7a97195458a9",
+        "exit": 0
+      },
+      {
+        "log": ".cargo-target/oop-corrected-qualification/block-failure-prior-contract.log",
+        "sha256": "ff7e842f78b9c55fcc2daa5c7b3b4b4013eae7238a2a039c5cf863b72b0bc049",
+        "exit": 0
+      }
+    ],
+    "probe_source": "mod support;\nuse support::*;\nuse birnam_abi::{Oop,id_protocol::{Operand,Outcome,NativeEntry}};\nuse std::{ffi::c_void,os::unix::ffi::OsStrExt,ptr};\nunsafe extern \"C\" fn fail(_: *mut c_void,_:Oop,_:*const Operand,_:usize)->Outcome{Outcome::failed(6,941)}\nfn main(){unsafe{\n let id=id();let ns=load(id,\"bootstrap\",&[Operand::bytes(directory().as_os_str().as_bytes())]);\n let named=|n:&[u8]|object(send(id,ns,b\"at:\",&[Operand::object(id.intern_name(n).unwrap())]));\n let roots=named(b\"Roots\");let gc=named(b\"GC\");\n send(id,gc,b\"budget:\",&[Operand::word(1024*1024)]);\n let callback=object(send(id,named(b\"Object\"),b\"clone\",&[]));retain(id,roots,callback);\n let vt=object(send(id,id.receiver,b\"ensurePrivateVtableFor:\",&[Operand::object(callback)]));\n install(id,vt,b\"fail\",fail,ptr::null_mut());\n send(id,named(b\"Globals\"),b\"at:put:\",&[Operand::object(id.intern_name(b\"BlockFailureFixture\").unwrap()),Operand::object(callback)]);\n let source=object(send(id,named(b\"String\"),b\"fromBytes:\",&[Operand::bytes(b\"[BlockFailureFixture fail]\")]));retain(id,roots,source);\n let method=object(send(id,named(b\"Method\"),b\"fromNative:owner:\",&[Operand::entry(NativeEntry::new(fail,ptr::null_mut())),Operand::object(named(b\"nil\"))]));retain(id,roots,method);\n let captures=object(send(id,named(b\"Vector\"),b\"new\",&[]));retain(id,roots,captures);\n let block=object(send(id,named(b\"Block\"),b\"fromMethod:captures:\",&[Operand::object(method),Operand::object(captures)]));retain(id,roots,block);\n let failure=id.send_named(block,b\"value\",&[]).unwrap_err();assert_eq!((failure.status,failure.detail),(6,941));\n let error=object(send(id,named(b\"Codegen\"),b\"eval:\",&[Operand::object(source)]));retain(id,roots,error);\n assert_eq!(object(send(id,error,b\"kind\",&[])),id.intern_name(b\"nativeFailure\").unwrap());\n println!(\"PRIOR_BLOCK_FAILURE_CONTRACT_OK: native synchronous Block preserves failure; source evaluation returns Error\");\n}}\n",
+    "probe_support": "Baseline rust/birnam-siphon/tests/support/mod.rs, with include_bytes paths made absolute to the installed source",
+    "probe_support_sha256": "998f24099658faf43b0e7e44ead3bcf749c621cddf5897fbec327d6fde921274",
+    "observed": "Unchanged output harness passes. Native entry of a Block wrapping a declared native Method preserves status 6/detail 941; Codegen eval of a failed native send returns nativeFailure Error data."
+  },
+  "before_sequence": "Block value prepares body with an extra answer; that answer converts a native failure before returning to the caller.",
+  "after_sequence": "Block value prepares body with the caller answer; Machine pending-call completion performs language conversion when applicable.",
+  "new_required_mechanisms": [],
+  "removed_mechanisms": [
+    "Block valueAnswer continuation implementation, Method root, and per-call context and Method allocations"
+  ],
+  "id_changes": false,
+  "scope_limit": "Staged-runtime qualification. Cold candidate 52c617fe predates this and both incoming-adapter fixes; remaining native harness migrations and fresh full installation qualification are pending."
+}

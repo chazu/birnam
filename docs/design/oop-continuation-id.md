@@ -1480,3 +1480,44 @@ that match an object's address do not retain that object, including after privat
 vtable changes. Malformed reference-slot checks still reject invalid Map/Vector
 storage. No runtime or Id change was needed.
 [Receipt](../measurements/collections-oop-20261027.json).
+
+## Restore native Block failure propagation and System output acceptance
+
+Migrating `system_output` reproduced a regression: a native failure from the
+current String factory became ordinary Error data when called through authored
+Object `printString`. The unchanged pre-Oop harness passes on installed revision
+`a271e4c5`; an independent probe there also confirms that a native caller of a
+Block receives the native failure while source evaluation returns Error data.
+
+The Oop Block entry added an answer continuation that called `language_result`.
+That conversion belongs to language Machine completion, which already performs
+it. The operation sequence is now:
+
+```text
+before: Block value -> prepare body with an extra answer -> convert failure -> caller
+ after: Block value -> prepare body with the caller's answer -> caller
+```
+
+The extra answer implementation, its context allocation and its stored Method
+are removed. No message, registry, representation or Id operation is added.
+Execution continues to interpret its own Block fields and admitted arity; Id
+still enters selected Methods directly. Wrong-arity rejection and current Block
+method replacement remain observable. Machine pending-call completion retains
+language Error conversion. A focused check distinguishes that conversion from
+exact native failure propagation through synchronous compiled Block code.
+
+The earlier Oop core fixture expected the added conversion on a direct native
+Block call. Its expectation is corrected against the pre-Oop runtime, rather
+than treated as authority over the retained behavior. Error data and marked
+failure returns remain separate assertions; a fixed injected failure also checks
+exact identity. The System output harness retains its exact binary/Unicode stdout
+oracle, collecting factory/byte callbacks, nested printing, reload/replacement
+and receiver lifetime checks. The obsolete raw-word rejection becomes a supported
+immediate Word output check plus a null-argument rejection check.
+
+The complete Oop core gate and the Block, Boolean, native-boundary, pending-call
+recovery and System output suites pass. They include the forbidden-dispatch
+oracle, 177 task-control checks, suspension and mapped/rebuilt image recovery.
+[Receipt and baseline comparison](../measurements/block-native-return-oop-20261027.json).
+The cold candidate `52c617fe` predates this correction and the incoming-adapter
+fixes; full installation qualification for these later changes remains pending.

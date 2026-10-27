@@ -187,14 +187,19 @@ pub(super) unsafe fn check(
         let execution = send(ns, b"at:", &[sel(b"Execution")]).unwrap();
         let failure = send(execution, b"evaluatePreservingFailures:", &[failing_block])
             .expect_err("preserved failed return");
+        let failure_token = send(roots, b"retain:", &[failure]).unwrap();
         assert!(!abi::is_fault(failure));
         assert_eq!(send(failure, b"isError", &[]), Ok(truth));
-        let converted = send(failing_block, b"value", &[]).unwrap();
-        assert_eq!(send(converted, b"isError", &[]), Ok(truth));
+        // Native Block entry preserves the failed return, as it did before the
+        // Oop migration. Language Machine completion owns Error conversion.
+        let direct = send(failing_block, b"value", &[]).unwrap_err();
+        assert_eq!(send(direct, b"isError", &[]), Ok(truth));
+        // The body creates a fresh division Error on each call.
         assert_eq!(
-            send(converted, b"at:", &[abi::size(0).unwrap()]),
-            Ok(sel(b"nativeFailure"))
+            send(direct, b"at:", &[abi::size(0).unwrap()]),
+            send(failure, b"at:", &[abi::size(0).unwrap()])
         );
+        send(roots, b"release:", &[failure_token]).unwrap();
         send(roots, b"release:", &[block_token]).unwrap();
         send(roots, b"release:", &[fail_token]).unwrap();
         let invalid = send(codegen, b"compileSynchronous:", &[text(b"[ :x |")]).unwrap();
