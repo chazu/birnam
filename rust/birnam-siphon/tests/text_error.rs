@@ -1,534 +1,336 @@
-//! Real String/Error libraries loaded by Bootstrap through Siphon and Id.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{cell::Cell, ffi::c_void, ptr};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-unsafe fn text(id: Protocol, value: Oop) -> Vec<u8> {
-    let bytes = unsafe { send(id, value, b"bytes", &[]) }
-        .as_bytes()
-        .unwrap();
-    unsafe { borrowed_bytes(bytes.pointer, bytes.length) }
-        .unwrap()
-        .to_vec()
-}
-unsafe fn make(id: Protocol, string: Oop, bytes: &[u8]) -> Oop {
-    object(unsafe { send(id, string, b"fromBytes:", &[Operand::bytes(bytes)]) })
-}
-unsafe fn selected(id: Protocol, behavior: Oop, name: &[u8]) -> NativeEntry {
-    unsafe {
-        send(
-            id,
-            behavior,
-            b"lookup",
-            &[Operand::object(id.intern_name(name).unwrap())],
-        )
-    }
-    .as_entry()
-    .unwrap()
-}
-unsafe fn alias(id: Protocol, vt: Oop, name: &[u8], entry: NativeEntry) -> Oop {
-    unsafe {
-        let selector = id.intern_name(name).unwrap();
-        send(
-            id,
-            vt,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(entry)],
-        );
-        selector
-    }
-}
-unsafe fn restore(id: Protocol, vt: Oop, name: &[u8], entry: NativeEntry, alias: Oop) {
-    unsafe {
-        send(
-            id,
-            vt,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(name).unwrap()),
-                Operand::entry(entry),
-            ],
-        );
-        send(id, vt, b"removeMethod:", &[Operand::object(alias)]);
-    }
-}
-struct Counted {
-    id: Protocol,
-    alias: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn counted(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let c = unsafe { &*context.cast::<Counted>() };
-    c.calls.set(c.calls.get() + 1);
-    unsafe {
-        c.id.send(receiver, c.alias, borrowed_slice(args, count).unwrap())
-    }
-    .map_or_else(|e| e, Outcome::loaded)
-}
-struct Replacement {
-    id: Protocol,
-    gc: Oop,
-    value: Oop,
-}
-unsafe extern "C" fn replacement(
-    context: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    _: usize,
-) -> Outcome {
-    let r = unsafe { &*context.cast::<Replacement>() };
-    match unsafe { r.id.send_named(r.gc, b"collectPrecisely", &[]) } {
-        Ok(_) => Outcome::loaded(Operand::object(r.value)),
-        Err(e) => e,
-    }
-}
-struct Allocating {
-    id: Protocol,
-    gc: Oop,
-    alias: Oop,
-    input: *mut u8,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn allocating(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let a = unsafe { &*context.cast::<Allocating>() };
-    a.calls.set(a.calls.get() + 1);
-    if !a.input.is_null() {
-        unsafe { a.input.write(b'z') };
-    }
-    if let Err(e) = unsafe { a.id.send_named(a.gc, b"collectPrecisely", &[]) } {
-        return e;
-    }
-    unsafe {
-        a.id.send(receiver, a.alias, borrowed_slice(args, count).unwrap())
-    }
-    .map_or_else(|e| e, Outcome::loaded)
-}
-struct Finalized {
-    id: Protocol,
-    gc: Oop,
-    alias: Oop,
-    calls: Cell<usize>,
-    string: Oop,
-}
-unsafe extern "C" fn finalized(
-    context: *mut c_void,
-    receiver: Oop,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    let f = unsafe { &*context.cast::<Finalized>() };
-    f.calls.set(f.calls.get() + 1);
-    // Retiring a byte buffer must not allow allocating text from a finalizer.
-    if unsafe {
-        f.id.send_named(f.string, b"fromBytes:", &[Operand::bytes(b"forbidden")])
-    }
-    .is_ok()
-    {
-        return Outcome::failed(native::INVALID_REQUEST, 1);
-    }
-    if unsafe { f.id.send_named(f.gc, b"collectPrecisely", &[]) }
-        .ok()
-        .and_then(|v| v.as_word())
-        != Some(0)
-    {
-        return Outcome::failed(native::INVALID_REQUEST, 2);
-    }
-    unsafe {
-        f.id.send(receiver, f.alias, borrowed_slice(args, count).unwrap())
-    }
-    .map_or_else(|e| e, Outcome::loaded)
-}
+//! Real String/Error ownership, replacement and collection through Oop messages.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use std::{path::Path, ptr};
+
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production dylibs"]
+#[ignore = "requires production Oop modules"]
 fn owned_text_builders_and_errors_use_live_messages_and_gc() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
+    let h = oop::bootstrap();
+    let q = h.scope();
+    let hooks = oop::hooks::Hooks::new(&h);
+    let named = |name: &[u8]| h.named(name).unwrap();
+    let key = |name: &[u8]| hooks.symbol(name);
+    let call = |r, name: &[u8], args: &[Oop]| q.call(r, name, args).unwrap();
+    let text = |v| q.read_bytes(call(v, b"bytes", &[])).unwrap();
+    let string = named(b"String");
+    let sb = named(b"StringBuilder");
+    let error = named(b"Error");
+    let svt = named(b"StringVt");
+    let evt = named(b"ErrorFactoryVt");
+    let gc = named(b"GC");
+    let truth = named(b"true");
+    let falsity = named(b"false");
+    let nil = named(b"nil");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    assert_eq!(
+        h.load_native(
+            &q,
+            &h.resources.lib_dir.join("libbirnam_string.dylib"),
+            &[h.namespace]
+        )
+        .unwrap(),
+        string
+    );
+    let path = q
+        .string(
+            h.resources
+                .lib_dir
+                .join("libbirnam_error.dylib")
+                .as_os_str()
+                .as_encoded_bytes(),
+        )
+        .unwrap();
+    assert_eq!(call(named(b"Codegen"), b"load:", &[path]), error);
+    for (v, expected) in [
+        (truth, b"true".as_slice()),
+        (falsity, b"false"),
+        (nil, b"nil"),
+    ] {
+        assert_eq!(text(call(v, b"printString", &[])), expected);
+    }
+    let raw = [0, 0xff, b'a', b' ', b'\t'];
+    let value = q.string(&raw).unwrap();
+    assert_eq!(text(value), raw);
+    assert_eq!(as_size(call(value, b"length", &[])), Some(raw.len()));
+    assert_eq!(call(value, b"printString", &[]), value);
+    let clone = call(value, b"clone", &[]);
+    assert_ne!(clone, value);
+    assert_eq!(text(clone), raw);
+    let a = call(value, b"bytes", &[]);
+    let b = call(clone, b"bytes", &[]);
+    assert_ne!(a, b);
+    call(a, b"appendByteValues", &[size(b'!' as usize).unwrap()]);
+    assert_eq!(q.read_bytes(b).unwrap(), raw);
+    assert_eq!(text(value), raw);
+    assert_eq!(call(value, b"=", &[clone]), truth);
+    assert_eq!(call(string, b"=", &[nil]), falsity);
+    // String owns native bytes behind a zero-payload handle. No foreign payload writes.
+    assert_eq!(
+        as_size(call(h.id.root, b"allocationSizeOf:", &[value])),
+        Some(0)
+    );
+    assert!(
+        h.send(
+            named(b"ObjectModel"),
+            b"slot:in:",
+            &[size(0).unwrap(), value]
+        )
+        .is_err()
+    );
+    call(h.id.root, b"ensurePrivateVtableFor:", &[value]);
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(text(value), raw);
+    assert_eq!(text(call(value, b"new", &[])), raw);
+    let trimmed = q.string(b" \t\r\n\x0b\x0c hello \x0c").unwrap();
+    assert_eq!(text(call(trimmed, b"trimmed", &[])), b"hello");
+    let needle = q.string(b"aa").unwrap();
+    let repl = q.string(b"b").unwrap();
+    let source = q.string(b"aaaaa").unwrap();
+    assert_eq!(
+        text(call(source, b"replace:with:", &[needle, repl])),
+        b"bba"
+    );
+    assert_eq!(
+        text(call(source, b"replace:with:", &[string, repl])),
+        b"aaaaa"
+    );
+    assert_eq!(text(call(source, b",", &[truth])), b"aaaaatrue");
+    assert_eq!(
+        call(q.string(b"opaque\0tail").unwrap(), b"asSymbol", &[]),
+        key(b"opaque")
+    );
+    for name in [b"size".as_slice(), b"at:", b"asInteger", b"asNumber"] {
+        let method = call(svt, b"lookup", &[key(name)]);
+        assert!(!method.is_null());
+        assert_eq!(
+            call(h.id.root, b"behaviorOf:", &[method]),
+            call(h.id.root, b"methodBehavior", &[])
         );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let string = named(b"String");
-        let sb = named(b"StringBuilder");
-        let error = named(b"Error");
-        let svt = named(b"StringVt");
-        let evt = named(b"ErrorFactoryVt");
-        let base = named(b"ObjectVt");
-        let gc = named(b"GC");
-        let roots = named(b"Roots");
-        let truth = named(b"true");
-        let nil = named(b"nil");
-        assert_eq!(load(id, "string", &[Operand::object(ns)]), string);
-        let error_path = directory().join("libbirnam_error.dylib");
-        let path = make(id, string, error_path.as_os_str().as_bytes());
-        let path_token = retain(id, roots, path);
-        assert_eq!(object(send(id, named(b"Codegen"), b"load:", &[Operand::object(path)])), error);
-        release(id, roots, path_token);
-        let mut tokens = Vec::new();
-        let mut keep = |value| {
-            tokens.push(retain(id, roots, value));
-            value
-        };
-        for (value, expected) in [
-            (truth, b"true".as_slice()),
-            (named(b"false"), b"false"),
-            (nil, b"nil"),
-        ] {
-            let printed = keep(object(send(id, value, b"printString", &[])));
-            assert_eq!(text(id, printed), expected);
+    }
+    let builder = call(sb, b"new", &[]);
+    call(builder, b"add:", &[source]);
+    call(builder, b"add:", &[truth]);
+    assert_eq!(text(call(builder, b"asString", &[])), b"aaaaatrue");
+    call(builder, b"add:", &[builder]);
+    assert_eq!(
+        text(call(builder, b"printString", &[])),
+        b"aaaaatrueaaaaatrue"
+    );
+    let empty = call(builder, b"clone", &[]);
+    assert_eq!(text(call(empty, b"asString", &[])), b"");
+    call(h.id.root, b"ensurePrivateVtableFor:", &[builder]);
+    call(gc, b"collectPrecisely", &[]);
+    call(builder, b"add:", &[nil]);
+    assert!(text(call(builder, b"asString", &[])).ends_with(b"nil"));
+
+    let path = std::env::temp_dir().join(format!("birnam-text-error-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/text-error.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = h.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let method = |name: &[u8], context| {
+        call(
+            call(module, b"methodAt:", &[key(name)]),
+            b"withContext:",
+            &[context],
+        )
+    };
+    let install = |vt, name: &[u8], m| {
+        call(vt, b"addMethod", &[key(name), m]);
+    };
+    let selected = |vt, name: &[u8]| call(vt, b"lookup", &[key(name)]);
+
+    // Printing and text operations must observe the current String factory.
+    let original = selected(svt, b"fromBytes:");
+    let alias = key(b"fixtureFromBytes:");
+    call(svt, b"addMethod", &[alias, original]);
+    let counter = hooks.context(&[alias, size(0).unwrap()]);
+    install(svt, b"fromBytes:", method(b"counted", counter));
+    call(truth, b"printString", &[]);
+    call(nil, b"printString", &[]);
+    call(source, b"trimmed", &[]);
+    call(builder, b"asString", &[]);
+    assert_eq!(hooks.count(counter, 1), 4);
+    install(svt, b"fromBytes:", original);
+    call(svt, b"removeMethod:", &[alias]);
+
+    // Snapshot the byte provider before the String allocation callback mutates it.
+    let meta = call(h.id.root, b"behaviorOf:", &[svt]);
+    let allocation = selected(meta, b"allocate");
+    let allocate_alias = key(b"fixtureAllocate");
+    call(meta, b"addMethod", &[allocate_alias, allocation]);
+    let input = q.byte_values(b"abc").unwrap();
+    let alloc = hooks.context(&[gc, allocate_alias, input, size(0).unwrap(), svt]);
+    install(meta, b"allocate", method(b"allocating", alloc));
+    let copied = call(string, b"fromBytes:", &[input]);
+    assert_eq!(q.read_bytes(input).unwrap(), b"zbc");
+    assert_eq!(text(copied), b"abc");
+    assert_eq!(text(call(copied, b"clone", &[])), b"abc");
+    // Each String has one Id allocation; its byte vector belongs to String.
+    assert_eq!(hooks.count(alloc, 3), 2);
+    install(meta, b"allocate", allocation);
+    call(meta, b"removeMethod:", &[allocate_alias]);
+
+    let custom = call(named(b"Object"), b"clone", &[]);
+    let custom_behavior = call(h.id.root, b"ensurePrivateVtableFor:", &[custom]);
+    let response = q.string(b"callback").unwrap();
+    install(
+        custom_behavior,
+        b"printString",
+        method(b"replacement", hooks.context(&[gc, response])),
+    );
+    assert_eq!(text(call(source, b",", &[custom])), b"aaaaacallback");
+    call(builder, b"add:", &[custom]);
+    assert!(text(call(builder, b"asString", &[])).ends_with(b"callback"));
+
+    let observations = h.scope();
+    let probe = observations
+        .keep(call(named(b"Object"), b"clone", &[]))
+        .unwrap();
+    let probe_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[probe]);
+    for name in [
+        b"watch".as_slice(),
+        b"remaining",
+        b"allocation:bytes:identity:",
+        b"finalized",
+        b"violations",
+    ] {
+        install(probe_vt, name, method(name, probe));
+    }
+    let watch = key(b"watch");
+    // Keep the Error, but no separate root for its message or getter results.
+    {
+        let errors = h.scope();
+        let kind = key(b"problem");
+        let provider = q.byte_values(b"retained by error").unwrap();
+        let message = h.send(string, b"fromBytes:", &[provider]).unwrap();
+        let fault = errors
+            .call(error, b"kind:message:", &[kind, message])
+            .unwrap();
+        unsafe {
+            h.id.send(probe, watch, &[message]).unwrap();
         }
-        let raw = [0, 0xff, b'a', b' ', b'\t'];
-        let value = keep(make(id, string, &raw));
-        assert_eq!(text(id, value), raw);
-        assert_eq!(send(id, value, b"length", &[]).as_word(), Some(raw.len()));
-        assert_eq!(object(send(id, value, b"printString", &[])), value);
-        let clone = keep(object(send(id, value, b"clone", &[])));
-        assert_ne!(clone, value);
-        assert_eq!(text(id, clone), raw);
-        let a = send(id, value, b"bytes", &[]).as_bytes().unwrap();
-        let b = send(id, clone, b"bytes", &[]).as_bytes().unwrap();
-        assert_ne!(a.pointer, b.pointer);
+        call(gc, b"collectPrecisely", &[]);
+        assert_eq!(as_size(call(probe, b"remaining", &[])), Some(1));
+        let check = |r, name: &[u8], args: &[Oop]| errors.call(r, name, args).unwrap();
+        assert_eq!(check(fault, b"kind", &[]), kind);
+        assert_eq!(check(fault, b"message", &[]), message);
+        assert_eq!(check(fault, b"isError", &[]), truth);
         assert_eq!(
-            object(send(id, value, b"=", &[Operand::object(clone)])),
-            truth
+            check(fault, b"unknownImmediate:", &[size(7).unwrap()]),
+            fault
+        );
+        assert_eq!(call(source, b"isError", &[]), falsity);
+        assert_eq!(check(fault, b"unknownMessage:", &[source]), fault);
+        let copied_error = check(fault, b"clone", &[]);
+        assert_ne!(copied_error, fault);
+        call(gc, b"collectPrecisely", &[]);
+        assert_eq!(check(copied_error, b"message", &[]), message);
+        assert_eq!(check(check(error, b"kind:", &[kind]), b"message", &[]), nil);
+        assert_eq!(
+            check(check(error, b"message:", &[message]), b"kind", &[]),
+            key(b"error")
         );
         assert_eq!(
-            object(send(id, string, b"=", &[Operand::object(nil)])),
-            named(b"false")
+            check(check(error, b"kind:", &[ptr::null_mut()]), b"kind", &[]),
+            nil
         );
-        // Raw payload corruption and private behavior mutation cannot redirect ownership.
-        value.cast::<usize>().write(usize::MAX);
-        value.cast::<usize>().add(1).write(usize::MAX);
-        send(
-            id,
-            id.receiver,
-            b"ensurePrivateVtableFor:",
-            &[Operand::object(value)],
-        );
-        collect(id, gc);
-        assert_eq!(text(id, value), raw);
-        assert_eq!(text(id, keep(object(send(id, value, b"new", &[])))), raw);
-        let trimmed = keep(make(id, string, b" \t\r\n\x0b\x0c hello \x0c"));
-        assert_eq!(
-            text(id, keep(object(send(id, trimmed, b"trimmed", &[])))),
-            b"hello"
-        );
-        let needle = keep(make(id, string, b"aa"));
-        let repl = keep(make(id, string, b"b"));
-        let source = keep(make(id, string, b"aaaaa"));
-        assert_eq!(
-            text(
-                id,
-                keep(object(send(
-                    id,
-                    source,
-                    b"replace:with:",
-                    &[Operand::object(needle), Operand::object(repl)]
-                )))
+        for (name, args, expected) in [
+            (
+                b"missingTextMethod".as_slice(),
+                vec![],
+                b"does not understand #missingTextMethod".as_slice(),
             ),
-            b"bba"
-        );
-        assert_eq!(
-            text(
-                id,
-                keep(object(send(
-                    id,
-                    source,
-                    b"replace:with:",
-                    &[Operand::object(string), Operand::object(repl)]
-                )))
+            (
+                b"missingImmediate:",
+                vec![size(9).unwrap()],
+                b"does not understand #missingImmediate:",
             ),
-            b"aaaaa"
-        );
-        assert_eq!(
-            text(
-                id,
-                keep(object(send(id, source, b",", &[Operand::object(truth)])))
-            ),
-            b"aaaaatrue"
-        );
-        let symbolic = keep(make(id, string, b"opaque\0tail"));
-        assert_eq!(
-            object(send(id, symbolic, b"asSymbol", &[])),
-            id.intern_name(b"opaque").unwrap()
-        );
-        // Numeric text is installed after both completed number families.
-        for name in [b"size".as_slice(), b"at:", b"asInteger", b"asNumber"] {
+        ] {
+            let dnu = check(source, name, &args);
+            assert_eq!(check(dnu, b"kind", &[]), key(b"doesNotUnderstand"));
             assert_eq!(
-                send(
-                    id,
-                    svt,
-                    b"lookup",
-                    &[Operand::object(id.intern_name(name).unwrap())]
-                )
-                .kind(),
-                native::NATIVE_ENTRY
+                errors.string_bytes(check(dnu, b"message", &[])).unwrap(),
+                expected
             );
         }
-        let builder = keep(object(send(id, sb, b"new", &[])));
-        send(id, builder, b"add:", &[Operand::object(source)]);
-        send(id, builder, b"add:", &[Operand::object(truth)]);
-        assert_eq!(
-            text(id, keep(object(send(id, builder, b"asString", &[])))),
-            b"aaaaatrue"
-        );
-        send(id, builder, b"add:", &[Operand::object(builder)]);
-        assert_eq!(
-            text(id, keep(object(send(id, builder, b"printString", &[])))),
-            b"aaaaatrueaaaaatrue"
-        );
-        let empty = keep(object(send(id, builder, b"clone", &[])));
-        assert_eq!(
-            text(id, keep(object(send(id, empty, b"asString", &[])))),
-            b""
-        );
-        send(
-            id,
-            id.receiver,
-            b"ensurePrivateVtableFor:",
-            &[Operand::object(builder)],
-        );
-        collect(id, gc);
-        send(id, builder, b"add:", &[Operand::object(nil)]);
-        assert!(text(id, keep(object(send(id, builder, b"asString", &[])))).ends_with(b"nil"));
-
-        // Every construction by printing/operations observes the current String factory.
-        let original = selected(id, svt, b"fromBytes:");
-        let counter = Box::leak(Box::new(Counted {
-            id,
-            alias: alias(id, svt, b"fixtureFromBytes:", original),
-            calls: Cell::new(0),
-        }));
-        install(
-            id,
-            svt,
-            b"fromBytes:",
-            counted,
-            ptr::from_mut(counter).cast(),
-        );
-        keep(object(send(id, truth, b"printString", &[])));
-        keep(object(send(id, nil, b"printString", &[])));
-        keep(object(send(id, source, b"trimmed", &[])));
-        keep(object(send(id, builder, b"asString", &[])));
-        assert_eq!(counter.calls.get(), 4);
-        restore(id, svt, b"fromBytes:", original, counter.alias);
-
-        // Bytes are copied before an allocating callback can mutate their source.
-        let allocation = selected(id, id.receiver, b"allocate");
-        let mut input = *b"abc";
-        let alloc = Box::leak(Box::new(Allocating {
-            id,
-            gc,
-            alias: alias(id, id.receiver, b"fixtureAllocate", allocation),
-            input: input.as_mut_ptr(),
-            calls: Cell::new(0),
-        }));
-        install(
-            id,
-            id.receiver,
-            b"allocate",
-            allocating,
-            ptr::from_mut(alloc).cast(),
-        );
-        let copied = keep(make(id, string, &input));
-        assert_eq!(&input, b"zbc");
-        assert_eq!(text(id, copied), b"abc");
-        let snapshot = keep(object(send(id, copied, b"clone", &[])));
-        assert_eq!(text(id, snapshot), b"abc");
-        // Each text wrapper has a separate Bytes allocation owned by that module.
-        assert_eq!(alloc.calls.get(), 4);
-        restore(id, id.receiver, b"allocate", allocation, alloc.alias);
-
-        // A printString callback may collect and reenter String construction.
-        let custom_behavior = keep(behavior(id));
-        let custom = keep(allocate(id, custom_behavior, 0));
-        let response = keep(make(id, string, b"callback"));
-        let replacement = Box::leak(Box::new(Replacement {
-            id,
-            gc,
-            value: response,
-        }));
-        install(
-            id,
-            custom_behavior,
-            b"printString",
-            self::replacement,
-            ptr::from_mut(replacement).cast(),
-        );
-        assert_eq!(
-            text(
-                id,
-                keep(object(send(id, source, b",", &[Operand::object(custom)])))
-            ),
-            b"aaaaacallback"
-        );
-        send(id, builder, b"add:", &[Operand::object(custom)]);
-
-        let kind = keep(id.intern_name(b"problem").unwrap());
-        let message = make(id, string, b"retained by error");
-        let fault = keep(object(send(
-            id,
-            error,
-            b"kind:message:",
-            &[Operand::object(kind), Operand::object(message)],
-        )));
-        collect(id, gc);
-        assert!(present(id, message));
-        assert_eq!(object(send(id, fault, b"kind", &[])), kind);
-        assert_eq!(object(send(id, fault, b"message", &[])), message);
-        assert_eq!(object(send(id, fault, b"isError", &[])), truth);
-        assert_eq!(object(send(id, fault, b"unknownNativeOperand:", &[Operand::word(7)])), fault);
-        assert_eq!(object(send(id, source, b"isError", &[])), named(b"false"));
-        assert_eq!(
-            object(send(
-                id,
-                fault,
-                b"unknownMessage:",
-                &[Operand::object(source)]
-            )),
-            fault
-        );
-        let copied_error = keep(object(send(id, fault, b"clone", &[])));
-        assert_ne!(copied_error, fault);
-        collect(id, gc);
-        assert_eq!(object(send(id, copied_error, b"message", &[])), message);
-        let only_kind = keep(object(send(id, error, b"kind:", &[Operand::object(kind)])));
-        assert_eq!(object(send(id, only_kind, b"message", &[])), nil);
-        let only_message = keep(object(send(
-            id,
-            error,
-            b"message:",
-            &[Operand::object(message)],
-        )));
-        assert_eq!(
-            object(send(id, only_message, b"kind", &[])),
-            id.intern_name(b"error").unwrap()
-        );
-        let null = keep(object(send(
-            id,
-            error,
-            b"kind:",
-            &[Operand::object(ptr::null_mut())],
-        )));
-        assert_eq!(object(send(id, null, b"kind", &[])), nil);
-        let dnu = keep(object(send(id, source, b"missingTextMethod", &[])));
-        let raw_dnu = keep(object(send(id, source, b"missingNativeOperand:", &[Operand::word(9)])));
-        assert_eq!(object(send(id, raw_dnu, b"kind", &[])), id.intern_name(b"doesNotUnderstand").unwrap());
-        assert_eq!(text(id, object(send(id, raw_dnu, b"message", &[]))), b"does not understand #missingNativeOperand:");
-        assert_eq!(
-            object(send(id, dnu, b"kind", &[])),
-            id.intern_name(b"doesNotUnderstand").unwrap()
-        );
-        assert_eq!(
-            text(id, object(send(id, dnu, b"message", &[]))),
-            b"does not understand #missingTextMethod"
-        );
-        let factory = selected(id, evt, b"kind:message:");
-        // An authored entry's context belongs to a collectible Method/Unit.
-        // Pin that owner while the binding is replaced and collection runs.
-        keep(object(send(id, named(b"Execution"), b"methodOfEntry:", &[Operand::entry(factory)])));
-        replacement.value = fault;
-        install(
-            id,
-            evt,
-            b"kind:message:",
-            self::replacement,
-            ptr::from_mut(replacement).cast(),
-        );
-        assert_eq!(
-            object(send(id, source, b"anotherMissingMethod", &[])),
-            fault
-        );
-        send(
-            id,
-            evt,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(b"kind:message:").unwrap()),
-                Operand::entry(factory),
-            ],
-        );
-
-        // Text wrapper keys and Bytes storage keys are weak; both owners finalize
-        // independently, including builders. Repeated allocations also exercise address reuse.
-        collect(id, gc);
-        let fin = selected(id, svt, b"finalize:");
-        let finalizer = Box::leak(Box::new(Finalized {
-            id,
-            gc,
-            alias: alias(id, svt, b"fixtureFinalize:", fin),
-            calls: Cell::new(0),
-            string,
-        }));
-        install(
-            id,
-            svt,
-            b"finalize:",
-            finalized,
-            ptr::from_mut(finalizer).cast(),
-        );
-        for _ in 0..32 {
-            let doomed = make(id, string, b"temporary");
-            let doomed_builder = object(send(id, sb, b"new", &[]));
-            assert_eq!(collect(id, gc), 4); // two wrappers and their two Bytes backings
-            assert!(!present(id, doomed));
-            assert!(!present(id, doomed_builder));
-        }
-        assert_eq!(finalizer.calls.get(), 64);
-        restore(id, svt, b"finalize:", fin, finalizer.alias);
-        // Automatic collections across construction, appending and Error slot writes.
-        send(id, gc, b"budget:", &[Operand::word(1)]);
-        for _ in 0..8 {
-            let s = keep(make(id, string, b"budget"));
-            let e = keep(object(send(id, error, b"message:", &[Operand::object(s)])));
-            assert_eq!(object(send(id, e, b"message", &[])), s);
-            send(id, builder, b"add:", &[Operand::object(s)]);
-        }
-        send(id, gc, b"budget:", &[Operand::word(1024 * 1024)]);
-        for token in tokens {
-            release(id, roots, token);
-        }
-        collect(id, gc);
-        assert!(!present(id, message));
-        assert!(present(id, string));
-        assert!(present(id, error));
-        assert!(present(id, sb));
-        // Copying a String method to unrelated payload never exposes raw pointers.
-        let clone = selected(id, svt, b"clone");
-        send(
-            id,
-            base,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(b"badStringClone").unwrap()),
-                Operand::entry(clone),
-            ],
-        );
-        assert!(
-            id.send_named(named(b"Object"), b"badStringClone", &[])
-                .is_err()
-        );
+        let factory = selected(evt, b"kind:message:");
+        // Context and callback are rooted only until the factory is restored.
+        let context = errors.call(h.id.root, b"sequence", &[gc, fault]).unwrap();
+        let declared = call(module, b"methodAt:", &[key(b"replacement")]);
+        let replacement = errors.call(declared, b"withContext:", &[context]).unwrap();
+        h.send(evt, b"addMethod", &[key(b"kind:message:"), replacement])
+            .unwrap();
+        assert_eq!(check(source, b"anotherMissingMethod", &[]), fault);
+        install(evt, b"kind:message:", factory);
     }
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(as_size(call(probe, b"remaining", &[])), Some(0));
+
+    // String and builder handles are weak keys in String's native byte storage.
+    // Check exact allocation identities, not unrelated temporary Name allocations.
+    let fin = selected(svt, b"finalize:");
+    let fin_alias = key(b"fixtureFinalize:");
+    call(svt, b"addMethod", &[fin_alias, fin]);
+    let provider = q.byte_values(b"temporary").unwrap();
+    let finalizer = method(
+        b"finalize",
+        hooks.context(&[gc, string, provider, fin_alias]),
+    );
+    let from = key(b"fromBytes:");
+    let new = key(b"new");
+    call(gc, b"collectPrecisely", &[]);
+    install(svt, b"finalize:", finalizer);
+    for _ in 0..32 {
+        unsafe {
+            let doomed = h.id.send(string, from, &[provider]).unwrap();
+            let doomed_builder = h.id.send(sb, new, &[]).unwrap();
+            h.id.send(probe, watch, &[doomed, doomed_builder]).unwrap();
+        }
+        assert_eq!(as_size(call(probe, b"remaining", &[])), Some(2));
+        call(gc, b"collectPrecisely", &[]);
+        assert_eq!(as_size(call(probe, b"remaining", &[])), Some(0));
+    }
+    assert_eq!(as_size(call(probe, b"finalized", &[])), Some(64));
+    assert_eq!(as_size(call(probe, b"violations", &[])), Some(0));
+    install(svt, b"finalize:", fin);
+    call(svt, b"removeMethod:", &[fin_alias]);
+
+    call(gc, b"budget:", &[size(1).unwrap()]);
+    for _ in 0..8 {
+        let s = q.string(b"budget").unwrap();
+        let e = call(error, b"message:", &[s]);
+        assert_eq!(call(e, b"message", &[]), s);
+        call(builder, b"add:", &[s]);
+    }
+    call(gc, b"budget:", &[size(1024 * 1024).unwrap()]);
+    unsafe {
+        h.id.send(probe, watch, &[string, error, sb]).unwrap();
+    }
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(as_size(call(probe, b"remaining", &[])), Some(3));
+    // Copying a String Method to an unrelated object cannot expose native bytes.
+    let clone = selected(svt, b"clone");
+    install(custom_behavior, b"badStringClone", clone);
+    assert!(h.send(custom, b"badStringClone", &[]).is_err());
+    drop(hooks);
+    drop(q);
+    h.send(gc, b"collectPrecisely", &[]).unwrap();
+    assert_eq!(
+        as_size(observations.call(probe, b"remaining", &[]).unwrap()),
+        Some(3)
+    );
 }

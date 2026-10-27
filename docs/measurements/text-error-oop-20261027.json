@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "scope": "Retained String, StringBuilder and Error ownership, live replacement, byte snapshots and finalization acceptance through Oops",
+  "base_revision": "0767f444e7c21fd07a4b17b006e5805e76279397",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-incoming-5ta1my25/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/text_error.rs": "9123306c35ae7a4cb63bae680072d7d4bdfd4410bec5ed17e2a59aee78c577d5",
+    "tests/fixtures/oop-host/text-error.c": "2186cb47bf77b1612096b49f2bada4c936bf314e09205abf1596a08eff45aede"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/text-error.log",
+      "sha256": "7bc7d462cb9e21f50cf05cb0a1cb70a198848457388b45952eab57ad8860be1d",
+      "exit": 0
+    }
+  ],
+  "representation_checks": [
+    "String handles have zero payload bytes; ObjectModel slot access rejects them.",
+    "A collecting allocation callback mutates the byte provider after String snapshots it; original bytes survive construction and clone.",
+    "Each String now has one managed handle and a native byte vector owned by String; there is no separately managed Bytes backing.",
+    "Allocation identities prove Error-held message survival and reclamation after releasing roots, and reclamation of 32 String/builder pairs.",
+    "All 64 wrapper finalizers forward successfully, reject String allocation, and observe zero reclaimed objects from recursive collection.",
+    "String, Error and StringBuilder prototypes survive release of test roots."
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

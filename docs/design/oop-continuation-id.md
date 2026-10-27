@@ -1442,3 +1442,22 @@ checks. A declared C observer compares allocation identities to confirm that raw
 numeric bits do not retain an object at that address, even after assigning the
 Integer a private vtable. No runtime or Id change was needed.
 [Receipt](../measurements/numbers-oop-20261027.json).
+
+## String, builder and Error ownership
+
+The `text_error` harness now uses Oop messages and declared C callbacks. Its
+retained checks cover binary text, independent clones and byte copies, printing,
+replacement, trimming, symbols, builders, live factory replacement, collecting
+callbacks, Error propagation and constructor defaults. A collecting allocation
+callback mutates the source byte provider after String snapshots it; construction
+and cloning preserve the original bytes.
+
+The ownership checks follow the current representation: String owns native byte
+vectors behind zero-payload handles, so there is no foreign payload to corrupt or
+separate managed Bytes backing to count. ObjectModel slot access is rejected;
+private vtable changes preserve the bytes. Allocation identities prove message
+retention by Error, reclamation after releasing roots and reclamation of 32
+String/builder pairs. All 64 finalizers reject construction, observe no work from recursive
+collection, and forward successfully. Prototypes survive releasing test roots,
+and a copied String Method rejects an unrelated receiver. No runtime or Id change
+was needed. [Receipt](../measurements/text-error-oop-20261027.json).
