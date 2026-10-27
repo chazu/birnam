@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "scope": "Unchanged compiled-unit CLI replay on the current cold candidate prefix; this does not erase the earlier timeout or establish its cause",
+  "candidate_revision": "a3eaa2272e5021f20fbe53cd73c62f8908788b40",
+  "prefix": "/private/tmp/birnam-oop-language-6u04vc65/prefix",
+  "test_source_sha256": "51d5f3b71872c7f7a44964deabf6e8d37975b0c157a82b9f6032a6d238084607",
+  "calls": [
+    {
+      "argv": [
+        "/private/tmp/birnam-oop-language-6u04vc65/prefix/bin/birnam",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-compiled-unit-627ufb1_/baseline.birnam"
+      ],
+      "timeout": 300,
+      "started_ns": 1793130806268054000,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "wall_ns": 222586640583
+    },
+    {
+      "argv": [
+        "/private/tmp/birnam-oop-language-6u04vc65/prefix/bin/birnam",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-compiled-unit-627ufb1_/baseline.image"
+      ],
+      "timeout": 900,
+      "started_ns": 1793131028856727000,
+      "exit_code": 0,
+      "stdout": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> #[#compiledUnitCheck 1 true]\nbirnam> #[#compiledUnitCheck 2 true]\nanObject\nbirnam> nil\nbirnam> #[#compiledUnitCheck 3 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 4 true]\nanObject\nbirnam> #[#compiledUnitCheck 5 true]\nanObject\nbirnam> #[#compiledUnitCheck 6 true]\nanObject\nbirnam> #[#compiledUnitCheck 7 true]\nanObject\nbirnam> #[#compiledUnitCheck 8 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 9 true]\nanObject\nbirnam> #[#compiledUnitCheck 10 true]\nanObject\nbirnam> #[#compiledUnitCheck 11 true]\nanObject\nbirnam> #[#compiledUnitCheck 12 true]\nanObject\nbirnam> #[#compiledUnitCheck 13 true]\nanObject\nbirnam> #[#compiledUnitCheck 14 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 15 true]\nanObject\nbirnam> #[#compiledUnitCheck 16 true]\nanObject\nbirnam> #[#compiledUnitCheck 17 true]\nanObject\nbirnam> #[#compiledUnitCheck 18 true]\nanObject\nbirnam> #[#compiledUnitCheck 19 true]\nanObject\nbirnam> #[#compiledUnitCheck 20 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 21 true]\nanObject\nbirnam> #[#compiledUnitCheck 22 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 23 true]\nanObject\nbirnam> #[#compiledUnitCheck 24 true]\nanObject\nbirnam> #[#compiledUnitCheck 25 true]\nanObject\nbirnam> #[#compiledUnitCheck 26 true]\nanObject\nbirnam> #[#compiledUnitCheck 27 true]\nanObject\nbirnam> #[#compiledUnitCheck 28 true]\nanObject\nbirnam> #[#compiledUnitCheck 29 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 30 true]\nanObject\nbirnam> #[#compiledUnitCheck 31 true]\nanObject\nbirnam> #[#compiledUnitCheck 32 true]\nanObject\nbirnam> #[#compiledUnitCheck 33 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 34 true]\nanObject\nbirnam> #[#compiledUnitCheck 35 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 36 true]\nanObject\nbirnam> #[#compiledUnitCheck 37 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 38 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 39 true]\nanObject\nbirnam> #[#compiledUnitCheck 40 true]\nanObject\nbirnam> #[#compiledUnitCheck 41 true]\nanObject\nbirnam> #[#compiledUnitCheck 42 true]\nanObject\nbirnam> #[#compiledUnitCheck 43 true]\nanObject\nbirnam> #[#compiledUnitCheck 44 true]\nanObject\nbirnam> #[#compiledUnitCheck 45 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 46 true]\nanObject\nbirnam> anObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 47 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 48 true]\nanObject\nbirnam> anObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 49 true]\nanObject\nbirnam> #[#compiledUnitCheck 50 true]\nanObject\nbirnam> #[#compiledUnitCheck 51 true]\nanObject\nbirnam> #[#compiledUnitCheck 52 true]\nanObject\nbirnam> #[#compiledUnitCheck 53 true]\nanObject\nbirnam> #[#compiledUnitCheck 54 true]\nanObject\nbirnam> #[#compiledUnitCheck 55 true]\nanObject\nbirnam> anObject\nbirnam> #[#compiledUnitCheck 56 true]\nanObject\nbirnam> #[#compiledUnitCheck 57 true]\nanObject\nbirnam> #[#compiledUnitCheck 58 true]\nanObject\nbirnam> #[#compiledUnitCheck 59 true]\nanObject\nbirnam> #[#compiledUnitCheck 60 true]\nanObject\nbirnam> #[#compiledUnitCheck 61 true]\nanObject\nbirnam> #[#compiledUnitCheck 62 true]\nanObject\nbirnam> \n",
+      "stderr": "unit has no current binding ledger\n",
+      "wall_ns": 15899183833
+    }
+  ],
+  "policy_checks": 62,
+  "log": ".cargo-target/oop-language-qualification/compiled-unit-diagnosis/replay.log",
+  "log_sha256": "398440b52f4d32ea81ae5ced70ec220ec850ad309d5cefa992633604651ed6dc",
+  "deadlines_changed": false,
+  "runtime_changes": false,
+  "cause": "Not established. The timeout did not reproduce in this attempt.",
+  "remaining": [
+    "Unchanged retry on a freshly relocated prefix",
+    "Remaining current-runtime cold Host groups"
+  ]
+}

@@ -2658,3 +2658,23 @@ worker handle. The unchanged wire-only peer now lives with the Oop fixtures.
 
 The harness passes without runtime or Id changes. The worker-ready deadline
 remains 15 seconds. [Receipt](../measurements/isolate-conversion-oop-20261027.json).
+
+## Alien callbacks and wrapper reclamation
+
+The Alien harness now uses Oops and scoped roots. Signed, unsigned, floating-point
+and by-value struct calls retain their checks, as do owned buffers, collecting
+Integer construction, recursive callbacks and release during an active callback.
+After explicit Store removal of wrappers and release of temporary roots, live
+native code units return to the compiled floor and the foreign library can close.
+The unchanged plain-C fixture is compiled at a fresh temporary path by the test,
+so the native gate no longer writes it into an installed prefix.
+
+These checks pass without runtime or Id changes.
+[Receipt](../measurements/alien-callbacks-oop-20261027.json).
+
+The unchanged compiled-unit CLI replay also passes on the current cold prefix:
+baseline image preparation takes 222.6 seconds, followed by all 62 policy checks
+in 15.9 seconds, within the original 300/900-second limits. This does not establish
+the original timeout's cause or qualify relocation by itself. The original failed
+attempt is retained; a fresh relocated retry and remaining Host groups are running.
+[Replay receipt](../measurements/compiled-unit-timeout-replay-oop-20261027.json).

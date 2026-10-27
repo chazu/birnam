@@ -22,7 +22,6 @@ export BIRNAM_TEST_MODULE_DIRECTORY="$prefix/lib"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_machine.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_machine_fixture.dylib"
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib rust/birnam-abi/tests/fixtures/id-protocol-v1/alien.c -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_alien_fixture.dylib"
 # Audit the actual converted dylibs; no installed legacy construction graph.
 python3 - "$BIRNAM_TEST_MODULE_DIRECTORY" <<'PY_AUDIT'
 import json

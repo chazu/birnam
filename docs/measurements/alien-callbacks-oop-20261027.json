@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "scope": "Alien foreign calls, owned buffers, recursive/self-releasing callbacks and code reclamation through Oops",
+  "base_revision": "f0febd3f9b98dc6a705d040c8f32af72dee02025",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/alien.rs": "ba9bbf67fe5d540eddb6c84acfdc2442698088366acc78cbf179274164140138",
+    "tests/fixtures/oop-host/alien.c": "c1745103af6326e6c21351f8dbbc7ac180557c64073b8258c4fdae7961ad2015",
+    "scripts/native-message-test.sh": "3820036a4475156fe7dc81da5df80b13e45b8207de37824e6475007ca179259e"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/alien-oop.log",
+      "sha256": "850a034d21d14db642cffa1afa0d32fc8e37c150b52ad99b49fd8ffdb0fbc221",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/alien-oop-compile.log",
+      "sha256": "a5ba163021be17690b579fa011ea62c6b5488fd1c770f2cccd499ac25b3b23c6",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "strlen and signed addition",
+    "By-value structs and unsigned usize::MAX round trips, including an unsigned struct",
+    "Exact floating-point result bits",
+    "Zero-initialized owned buffers, poke/peek, explicit free, null state and double-free rejection",
+    "Collecting Integer construction during FFI marshalling",
+    "Callback with collection, recursive reentry and release inside an active callback",
+    "Released callbacks become null; a library in use cannot close",
+    "All wrappers removed through explicit Store operations; temporary native code units return to the pinned compiled floor; library then closes"
+  ],
+  "fixture_change": "Unchanged C FFI library moved from obsolete Id-protocol-v1 fixtures and compiled to a fresh temporary path by the test; native-message gate no longer writes this fixture into the installed prefix",
+  "validation_note": "Acceptance passed; an unused bytes helper was then removed and the final target compiled without warnings. Gate shell syntax and diff checks passed.",
+  "runtime_changes": false,
+  "id_changes": false
+}
