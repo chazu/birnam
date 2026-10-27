@@ -1375,3 +1375,11 @@ closure observation and all 177 task-control checks. Code, assertions and the
 15-second worker deadline are unchanged from the concurrent run. This qualifies
 that candidate's task group; it predates the incoming-adapter correction above.
 [Serial task receipt](../measurements/corrected-tasks-serial-oop-20261026.json).
+
+The complete CLI group passes serially on the same cold candidate with unchanged
+limits: exact installed manifest/relocation, native owners/backends/compilers,
+artifact and language checks, Alien, optional-provider separation, ImageFormat,
+documentation, portable execution, workers and project operations/queries. The
+earlier concurrent timeout remains recorded. The image group is the remaining
+full-group retry for this candidate, which predates the incoming-adapter change.
+[Serial CLI receipt](../measurements/corrected-cli-serial-oop-20261026.json).
