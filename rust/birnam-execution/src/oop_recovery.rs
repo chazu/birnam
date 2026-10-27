@@ -146,9 +146,9 @@ pub(in crate::synchronous) unsafe extern "C" fn with_inline(
             return_slot,
         });
         s.send(s.id.root, b"reassociateBehaviorOf:with:", &[copy, behavior])?;
-        let arity = s.arities.borrow().get(&receiver.addr()).copied();
-        if let Some(arity) = arity {
-            s.arities.borrow_mut().insert(copy.addr(), arity);
+        let admitted = s.admitted.borrow().get(&receiver.addr()).cloned();
+        if let Some(admitted) = admitted {
+            s.admitted.borrow_mut().insert(copy.addr(), admitted);
         }
         Ok(copy)
     })()

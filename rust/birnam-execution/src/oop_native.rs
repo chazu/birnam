@@ -1,5 +1,5 @@
 //! Explicit native-facing adapters. Id arguments and results remain Oops;
-//! Word/Bytes normalization and synchronous failure/cleanup belong to this owner.
+//! Normalization, failure observers and deferred calls belong to this owner.
 use super::*;
 use birnam_abi::native_signature::Signature;
 struct Preserve<'a>(&'a Cell<bool>, bool);
@@ -16,6 +16,11 @@ unsafe fn copied_bytes(s: &State, q: &Scope<'_>, value: Oop) -> Result<Oop, Oop>
             s.names[b"sizeWord".as_slice()],
             s.names[b"atWord:".as_slice()],
         )?;
+        new_bytes(s, q, &bytes)
+    }
+}
+unsafe fn new_bytes(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
+    unsafe {
         let values: Vec<_> = bytes
             .iter()
             .map(|b| abi::size(*b as usize).unwrap())
@@ -114,17 +119,34 @@ pub(super) unsafe extern "C" fn with_signature(
             return Err(invalid());
         };
         let q = s.scope(&[*block, *sig]);
-        let _ = signature(s, &q, *sig)?;
+        let parsed = std::sync::Arc::new(signature(s, &q, *sig)?);
+        // Signature bytes are immutable admission data, not a mutable object
+        // hidden in the context. Public reflection returns a fresh byte value.
+        let sig = q.keep(new_bytes(s, &q, parsed.bytes())?);
         let mut fields = s.fields(*block)?;
         for &value in &fields {
             q.keep(value);
         }
         let method = *fields.first().ok_or_else(invalid)?;
-        let context = q.keep(s.send(s.id.root, b"sequence", &[method, *sig])?);
+        let context = q.keep(s.send(s.id.root, b"sequence", &[method])?);
+        s.admitted.borrow_mut().insert(
+            context.addr(),
+            Admitted {
+                arity: None,
+                native_signature: Some(parsed.clone()),
+            },
+        );
         fields[0] = q.keep(s.send(s.native_value, b"withContext:", &[context])?);
+        s.admitted.borrow_mut().insert(
+            fields[0].addr(),
+            Admitted {
+                arity: Some(parsed.arguments().len() + 1),
+                native_signature: Some(parsed),
+            },
+        );
         let code = q.keep(s.send(method, b"codeObject", &[])?);
         if code != s.nil {
-            let code = q.keep(s.send(code, b"withNativeSignature:", &[*sig])?);
+            let code = q.keep(s.send(code, b"withNativeSignature:", &[sig])?);
             if s.send(code, b"isError", &[])? == s.named(b"true")? {
                 return Ok(code);
             }
@@ -132,6 +154,36 @@ pub(super) unsafe extern "C" fn with_signature(
             s.send(fields[0], b"admitCodeObject:synchronous:", &[code, sync])?;
         }
         s.make_block(s.block_vt, &fields)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn native_signature(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [block] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*block]);
+        if s.storage.borrow().family_of(*block) != Some(s.block_vt) {
+            return Ok(s.nil);
+        }
+        let method = s.field(*block, 0)?;
+        let sig = s
+            .admitted
+            .borrow()
+            .get(&method.addr())
+            .and_then(|v| v.native_signature.clone());
+        if let Some(sig) = sig {
+            new_bytes(s, &q, sig.bytes())
+        } else {
+            Ok(s.nil)
+        }
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -165,18 +217,29 @@ unsafe fn notify(s: &State, q: &Scope<'_>, receiver: Oop, error: Oop) {
 pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = runtime()?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let q = s.scope(&[c, r]);
+        let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[c, r, *k]);
         for &a in args {
             q.keep(a);
         }
         let method = q.keep(context(s, c, 0)?);
-        let sig = q.keep(context(s, c, 1)?);
-        let sig = signature(s, &q, sig)?;
+        let sig = s
+            .admitted
+            .borrow()
+            .get(&c.addr())
+            .and_then(|v| v.native_signature.clone())
+            .ok_or_else(invalid)?;
         if args.len() != sig.arguments().len() + 1 {
+            if sig.observes_failure() {
+                if let Some(&receiver) = args.first() {
+                    notify(s, &q, receiver, invalid());
+                }
+            }
             return Err(invalid());
         }
-        let _restore = Preserve(&s.preserve, s.preserve.replace(true));
+        let restore = Preserve(&s.preserve, s.preserve.replace(true));
         let answer = (|| {
             let mut values = vec![args[0]];
             for (&value, &kind) in args[1..].iter().zip(sig.arguments()) {
@@ -203,17 +266,58 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                 b'W' | b'B' if value == s.nil => Ok(ptr::null_mut()),
                 b'w' | b'W' => s.send(value, b"bits", &[]),
                 b'b' | b'B' => copied_bytes(s, &q, value),
-                b'v' => s.send(value, b"value", &[]),
+                b'v' => Ok(value),
                 b'm' => evaluate_request(s, &q, value),
                 _ => Err(invalid()),
             }
         })();
+        drop(restore);
         if let Err(error) = answer {
             if sig.observes_failure() {
                 notify(s, &q, args[0], error);
             }
         }
-        answer
+        let value = q.keep(answer?);
+        if sig.result() == b'v' {
+            let destination = if sig.observes_failure() {
+                let context = q.keep(s.send(s.id.root, b"sequence", &[*k, args[0]])?);
+                let answer = q.keep(s.send(s.native_answer, b"withContext:", &[context])?);
+                resumable::alias_return(s, *k, answer);
+                answer
+            } else {
+                *k
+            };
+            // The selector body has returned. Defer the chosen branch to Id's
+            // continuing driver, outside the synchronous conversion/body scope.
+            s.transfer(
+                b"prepareSend",
+                &[value, s.names[b"value".as_slice()], destination],
+            )
+        } else {
+            s.transfer(b"answerTo:with:", &[*k, value])
+        }
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn deferred_answer(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = runtime()?;
+        let [_, value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[c, *value]);
+        let k = q.keep(context(s, c, 0)?);
+        let receiver = q.keep(context(s, c, 1)?);
+        if abi::is_fault(*value) {
+            notify(s, &q, receiver, abi::object_reference(*value));
+        }
+        s.transfer(b"answerTo:with:", &[k, *value])
     })()
     .unwrap_or_else(abi::fault_reference)
 }

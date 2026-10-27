@@ -8,6 +8,16 @@ Historical feature descriptions below remain preservation requirements where
 migration is unfinished; they are not claims of full runtime acceptance.
 No v1 compatibility path is built.
 
+The Oop incoming adapter retains signature metadata in Execution-owned admission
+records. `nativeSignatureOf:` accepts an Oop and returns fresh signature Bytes for
+an adapted Block, or nil otherwise. Codegen uses that public owner query when
+constructing named Methods; it does not inspect Block storage. Native arguments
+are validated by the adapter, while ordinary named arity behavior is unchanged.
+Deferred `v` results return prepared continuation work after the selector body and
+conversion scope have ended. Failure observers preserve the caller's Machine and
+do not classify ordinary Error/Fault values as failures. The Oop native-boundary
+test covers suspension, GC, replacement and mapped/rebuilt image recovery.
+
 Design 90 batch 1 now runs native Methods, Blocks and Machines over the production
 prefix, including frames, bounded drives, suspension, continuations and native
 control boundaries, inline fallback, atomic flat/graph recovery, hot PC candidate

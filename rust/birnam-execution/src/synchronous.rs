@@ -21,11 +21,19 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
+#[derive(Clone, Default)]
+struct Admitted {
+    arity: Option<usize>,
+    // Immutable admission data for Methods and native-adapter contexts.
+    // Weak keys are removed before address reuse; these values contain no Oops.
+    native_signature: Option<std::sync::Arc<abi::native_signature::Signature>>,
+}
 struct State {
     id: Protocol,
     control: Control,
     value_answer: Oop,
     native_value: Oop,
+    native_answer: Oop,
     capture_seed: Oop,
     code_getter: Oop,
     binding_visitor_vt: Oop,
@@ -38,9 +46,9 @@ struct State {
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     storage: RefCell<Objects>,
-    // CodeObject shape admitted by this owner. Keys do not retain Methods;
-    // the existing retirement callback removes them before address reuse.
-    arities: RefCell<HashMap<usize, usize>>,
+    // Admission facts owned by Execution. Keys retain neither Methods nor
+    // adapter contexts; retirement removes both before address reuse.
+    admitted: RefCell<HashMap<usize, Admitted>>,
     engine: RefCell<ExecutionState>,
     resume: RefCell<resumable::Runtime>,
     depth: Cell<usize>,
@@ -237,14 +245,20 @@ unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> O
         };
         let q = s.scope(&[r, *k]);
         let method = q.keep(s.field(r, 0)?);
-        if s.arities
+        let admitted = s
+            .admitted
             .borrow()
             .get(&method.addr())
-            .is_some_and(|&arity| arity != args.len())
+            .cloned()
+            .unwrap_or_default();
+        if admitted.native_signature.is_none()
+            && admitted.arity.is_some_and(|arity| arity != args.len())
         {
             return Err(invalid());
         }
-        let destination = if k.is_null() || s.resume.borrow().return_methods.contains_key(&k.addr())
+        let destination = if admitted.native_signature.is_some()
+            || k.is_null()
+            || s.resume.borrow().return_methods.contains_key(&k.addr())
         {
             *k
         } else {
@@ -433,6 +447,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.block_vt,
             s.value_answer,
             s.native_value,
+            s.native_answer,
             s.capture_seed,
             s.code_getter,
             s.binding_visitor_vt,
@@ -477,7 +492,7 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
         let mut storage = s.storage.borrow_mut();
         for &v in values {
             storage.remove(v);
-            s.arities.borrow_mut().remove(&v.addr());
+            s.admitted.borrow_mut().remove(&v.addr());
         }
         Ok(ptr::null_mut())
     })()
@@ -742,6 +757,8 @@ const NAMES: &[&[u8]] = &[
     b"bitsOf:",
     b"allOopLayoutOf:words:",
     b"referenceOwnerOf:",
+    b"nativeSignatureOf:",
+    b"nativeDeferredAnswer",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -975,6 +992,8 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"bitsOf:"),
     Literal::new(b"allOopLayoutOf:words:"),
     Literal::new(b"referenceOwnerOf:"),
+    Literal::new(b"nativeSignatureOf:"),
+    Literal::new(b"nativeDeferredAnswer"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1355,7 +1374,7 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 168,
         entry: Some(native_adapters::value),
-        convention: 0,
+        convention: 1,
     },
     MethodSpec {
         name: 169,
@@ -1507,6 +1526,16 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(resumable::recovery::recover::<true>),
         convention: 0,
     },
+    MethodSpec {
+        name: 231,
+        entry: Some(native_adapters::native_signature),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 232,
+        entry: Some(native_adapters::deferred_answer),
+        convention: 1,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1572,6 +1601,11 @@ unsafe extern "C" fn initialize(
                 b"methodAt:",
                 &[names[b"nativeSignatureValue".as_slice()]],
             )?)?,
+            native_answer: keep(send(
+                image,
+                b"methodAt:",
+                &[names[b"nativeDeferredAnswer".as_slice()]],
+            )?)?,
             capture_seed: keep(send(
                 send(id.root, b"methodBehavior", &[])?,
                 b"lookup",
@@ -1592,7 +1626,7 @@ unsafe extern "C" fn initialize(
             names: names.clone(),
             scoped: RefCell::new(Vec::new()),
             storage: RefCell::new(Objects::default()),
-            arities: RefCell::new(HashMap::new()),
+            admitted: RefCell::new(HashMap::new()),
             engine: RefCell::new(ExecutionState::new(1)),
             resume: RefCell::new(resumable::Runtime::default()),
             depth: Cell::new(0),
@@ -1606,7 +1640,11 @@ unsafe extern "C" fn initialize(
             let name = NAMES[spec.name];
             if matches!(
                 name,
-                b"valueAnswer" | b"nativeSignatureValue" | b"codeValue" | b"binding:value:weak:"
+                b"valueAnswer"
+                    | b"nativeSignatureValue"
+                    | b"nativeDeferredAnswer"
+                    | b"codeValue"
+                    | b"binding:value:weak:"
             ) {
                 continue;
             }

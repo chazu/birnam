@@ -1,5 +1,4 @@
 //! Authored Boolean behavior preserves Oop identity and current dispatch.
-//! Native-boundary parity is still pending; retain the failing acceptance checks.
 #[path = "support/oop.rs"]
 mod oop;
 use birnam_abi::{Oop, as_size, size};
@@ -22,7 +21,7 @@ fn require_failure(
 }
 
 #[test]
-#[ignore = "production Oop Boolean native-boundary integration remains pending"]
+#[ignore = "requires production Oop Boolean artifact"]
 fn authored_boolean_preserves_identity_branching_oops_and_replacements() {
     let h = oop::bootstrap();
     let q = h.scope();

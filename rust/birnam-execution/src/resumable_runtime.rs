@@ -569,6 +569,14 @@ fn take_return(s: &State, context: usize) -> Result<ReturnSite, Oop> {
     s.resume.borrow_mut().returns.remove(&context);
     Ok(site)
 }
+// A native failure observer forwards to an existing answer. Keep that answer's
+// pending-call identity so a registered branch stays on the caller's Machine.
+pub(super) fn alias_return(s: &State, original: Oop, alias: Oop) {
+    let mut runtime = s.resume.borrow_mut();
+    if let Some(context) = runtime.return_methods.get(&original.addr()).copied() {
+        runtime.return_methods.insert(alias.addr(), context);
+    }
+}
 unsafe fn return_method(
     s: &State,
     machine: Oop,

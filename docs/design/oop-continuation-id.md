@@ -1292,6 +1292,9 @@ needed. Full corrected-candidate Host acceptance remains incomplete.
 
 ## Pending Boolean native-boundary parity
 
+This checkpoint is superseded by the incoming-adapter connection below. Its failing
+receipt remains evidence of the earlier candidate.
+
 The Boolean harness now uses Oops and reaches all its retained checks. Truth
 tables, chosen-only callbacks, opaque result identities, reflection, Module reload
 stability, pure Word identity selection and collecting replacements pass before
@@ -1327,3 +1330,41 @@ one successful rerun does not establish their exclusive cause. The full task gro
 is being retried serially with the same assertions, request limits and 15-second
 worker startup deadline. No runtime or performance adjustment was made.
 [Isolated multicore receipt](../measurements/corrected-multicore-isolated-oop-20261026.json).
+
+## Continuing incoming adapters and Boolean parity
+
+The explicit incoming adapter now preserves Boolean's retained native contract
+while deferring the chosen branch through Id's existing continuation messages.
+Before this change, Boolean used ordinary source Blocks after its incoming
+signatures were removed; malformed native calls and callback failures could become
+ordinary language results. The existing adapter's deferred call also used a
+synchronous send. After this change, Boolean again declares its signatures. The
+adapter validates and converts arguments, evaluates its selector body within the
+existing synchronous native scope, restores that scope, then returns prepared Id
+work for the selected branch. No native frame remains around that branch.
+
+Execution owns the immutable signature and arity facts. Its existing weak
+admission table now also records native-adapter contexts; retirement removes those
+keys before address reuse. Signature data contains no Oop references. The new
+owner query `Execution nativeSignatureOf:` returns fresh bytes for an adapted Block
+and nil for other objects, without querying an arbitrary implementation's metadata
+or reading foreign payloads. Codegen uses this query during Method construction,
+chooses the continuing entry and leaves native argument validation to Execution.
+Ordinary named Methods retain their existing arity behavior, including System
+`load:`'s missing-argument nil result. Id and its interface are unchanged.
+
+Failure observers use a captured answer Method containing the original answer and
+receiver. Execution records that Method as an alias of its own pending-call
+continuation when applicable, keeping registered branches on the caller's Machine.
+The alias uses the existing weak return table. No Id continuation representation
+is inspected. Unmarked Error/Fault data remains data; native failures retain their
+exact identity. Global Block value replacement remains observable.
+
+The Boolean test now passes all its retained checks. Additional acceptance covers
+immutable signature snapshots, arbitrary implementation objects, captured and
+rebound Methods, observers on adaptation and callback failures, branch suspension
+with and without an observer, failure-policy isolation while parked, collection,
+and mapped/rebuilt image recovery. Block arity, Integer policy, pending-call
+recovery and the complete Oop core gate also pass. This is staged-runtime evidence;
+the cold candidate `52c617fe` does not include this later adapter correction.
+[Receipt](../measurements/native-boundary-oop-20261026.json).

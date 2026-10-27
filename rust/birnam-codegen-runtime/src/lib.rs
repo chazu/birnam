@@ -395,11 +395,17 @@ unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop,
         let arity = s.send(c, b"at:", &[abi::size(2).unwrap()])?;
         let policy = abi::as_size(arity).ok_or_else(invalid)?;
         let arity = policy & 0xff;
-        if args.len() < arity || (policy & 0x100 == 0 && arity != args.len()) {
+        if policy & 0x200 == 0
+            && (args.len() < arity || (policy & 0x100 == 0 && arity != args.len()))
+        {
             return s.transfer(b"answerTo:with:", &[*k, s.named(b"nil")?]);
         }
         let mut values = vec![implementation, selector, *k, r];
-        values.extend_from_slice(&args[..arity]);
+        values.extend_from_slice(if policy & 0x100 != 0 {
+            &args[..args.len().min(arity)]
+        } else {
+            args
+        });
         s.transfer(b"prepareSend", &values)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -428,6 +434,22 @@ impl State {
         arity: Oop,
     ) -> Result<Oop, Oop> {
         unsafe {
+            // Execution owns Block storage and explicit incoming adapters.
+            // Query that owner at construction; never inspect a foreign payload
+            // or probe an arbitrary implementation's optional methods.
+            let signature = q.keep(self.send(
+                self.named(b"Execution")?,
+                b"nativeSignatureOf:",
+                &[implementation],
+            )?);
+            let native = signature != self.named(b"nil")?;
+            let policy = abi::as_size(arity).ok_or_else(invalid)? & !0x200;
+            let arity = abi::size(policy | if native { 0x200 } else { 0 }).ok_or_else(invalid)?;
+            let template = if native {
+                self.implementation_entry
+            } else {
+                template
+            };
             let context = q.keep(self.send(
                 self.id.root,
                 b"sequence",
@@ -568,11 +590,15 @@ unsafe extern "C" fn enter_implementation_sync(
             abi::as_size(s.send(c, b"at:", &[abi::size(2).unwrap()])?).ok_or_else(invalid)?;
         let policy = arity;
         let arity = policy & 0xff;
-        if n < arity || (policy & 0x100 == 0 && n != arity) {
+        if policy & 0x200 == 0 && (n < arity || (policy & 0x100 == 0 && n != arity)) {
             return s.named(b"nil");
         }
         let mut values = vec![r];
-        values.extend_from_slice(&args[..arity]);
+        values.extend_from_slice(if policy & 0x100 != 0 {
+            &args[..args.len().min(arity)]
+        } else {
+            args
+        });
         s.id.send(implementation, selector, &values)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -927,6 +953,7 @@ const NAMES: &[&[u8]] = &[
     b"allGlobalNames",
     b"count",
     b"nameAt:",
+    b"nativeSignatureOf:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1125,6 +1152,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"allGlobalNames"),
     Literal::new(b"count"),
     Literal::new(b"nameAt:"),
+    Literal::new(b"nativeSignatureOf:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {

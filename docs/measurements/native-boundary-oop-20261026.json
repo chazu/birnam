@@ -1,0 +1,45 @@
+{
+  "passed": true,
+  "scope": "Continuing incoming adapters and restored Boolean native behavior; scoped native, core, suspension and mapped/rebuilt image checks",
+  "base_revision": "e821cfbb7dcdbf810b6b2529541a2d60b9c23219",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-boundary-mw3cq73q/prefix",
+  "source_sha256": {
+    "modules/boolean.birnam": "f2ea6a13260168e8feccd70d77c16035230055939aa8a1c12ea1555e493c8760",
+    "rust/birnam-codegen-runtime/src/lib.rs": "dc60cbf2ea0fd85c6c0ba7b451a7eeb40d9b663d4ed8165194c660c135118890",
+    "rust/birnam-execution/src/synchronous.rs": "9389f877ec3bccf6b5a83253a3db84070337f8231fd41cd9ccfe5a3faef059be",
+    "rust/birnam-execution/src/oop_native.rs": "9a4ea6c14491f30f12dc5b49caa220ed4dab6bf28dc728406fcf0777ef2ccab3",
+    "rust/birnam-execution/src/oop_reflection.rs": "1c3449f9515bf31c118c49d7ae721f072de3f984845f07375ef05d8ca296bfff",
+    "rust/birnam-execution/src/oop_recovery.rs": "da94404e0c426d1714f3a38b704d665d6657c7e699b1d8faedc3e8fd385ab2e8",
+    "rust/birnam-execution/src/resumable_runtime.rs": "6432cfa974941acb7cc03a6393dc0b8758f453b65d263bee40b597da6838b428",
+    "rust/birnam-siphon/tests/boolean_values.rs": "803f92cebd82b74ed910a25b8029f83e2c265e8e99462d116fa3482e08ea2dab",
+    "rust/birnam-siphon/tests/native_boundaries.rs": "0c49dde1c672ed1c09e47bb7168a16b78484ff8c973662e13d883d43dcdb0628"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/native-boundary-acceptance-final.log",
+      "sha256": "24676ea5f4634a317203adcb595f71cfeae55adc4be7a88302373e2317cac3f4",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/native-boundary-image.log",
+      "sha256": "8d30ca4ac6dbf70b1b3c8be7eaf9339f01c484e1dff2bd340de831f10d6d550a",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/native-boundary-core-final.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "boolean": "docs/measurements/boolean-boundary-pending-oop-20261026.json",
+    "observed_branch_log": ".cargo-target/oop-corrected-qualification/native-observer-continuation-before.log",
+    "observed_branch_log_sha256": "54a8398843fc4af92521b4766cf5979c1e1e4e57bbd4428da56ff4c5a0246c0d"
+  },
+  "id_changes": false,
+  "new_owner_query": "Execution nativeSignatureOf: returns copied Bytes or nil; Id is unchanged",
+  "remaining": [
+    "Complete remaining native harness/feature migration",
+    "Fresh full installation qualification including this later adapter correction"
+  ]
+}

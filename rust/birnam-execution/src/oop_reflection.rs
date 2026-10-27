@@ -51,10 +51,11 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             &[s.names[b"codeObject".as_slice()], getter],
         )?;
         s.send(s.id.root, b"reassociateBehaviorOf:with:", &[r, private])?;
-        if let Some(arity) = arity {
-            s.arities.borrow_mut().insert(r.addr(), arity);
-        } else {
-            s.arities.borrow_mut().remove(&r.addr());
+        let mut records = s.admitted.borrow_mut();
+        let record = records.entry(r.addr()).or_default();
+        record.arity = arity;
+        if record.arity.is_none() && record.native_signature.is_none() {
+            records.remove(&r.addr());
         }
         Ok(r)
     })()
@@ -74,9 +75,9 @@ pub(super) unsafe extern "C" fn captured(_: Oop, c: Oop, r: Oop, _: *const Oop, 
             b"reassociateBehaviorOf:with:",
             &[method, behavior],
         )?;
-        let arity = s.arities.borrow().get(&r.addr()).copied();
-        if let Some(arity) = arity {
-            s.arities.borrow_mut().insert(method.addr(), arity);
+        let admitted = s.admitted.borrow().get(&r.addr()).cloned();
+        if let Some(admitted) = admitted {
+            s.admitted.borrow_mut().insert(method.addr(), admitted);
         }
         Ok(method)
     })()
