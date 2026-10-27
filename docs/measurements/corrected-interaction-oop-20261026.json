@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "scope": "Complete installed Host interaction group on the corrected cold candidate; not full language/native qualification",
+  "candidate_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
+  "prefix": "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/socket-owner-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.nOb2cC/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:socket-owner-test.py",
+      "started_unix_ns": 1793058256917528000,
+      "status": "passed",
+      "wall_ns": 390736631541
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/repl-owner-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.nOb2cC/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:repl-owner-test.py",
+      "started_unix_ns": 1793058742448502000,
+      "status": "passed",
+      "wall_ns": 394092642750
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-corrected-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "interaction:host-lib:startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+      "started_unix_ns": 1793059136621858000,
+      "status": "passed",
+      "wall_ns": 43542993042
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/interaction-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.nOb2cC/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:interaction-cli-test.py",
+      "started_unix_ns": 1793059180217512000,
+      "status": "passed",
+      "wall_ns": 952757964708
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/repl-golden.sh"
+      ],
+      "exit_code": 0,
+      "label": "interaction:repl-golden.sh",
+      "started_unix_ns": 1793060133051987000,
+      "status": "passed",
+      "wall_ns": 1002184341375
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/lsp-project-smoke.sh"
+      ],
+      "exit_code": 0,
+      "label": "interaction:lsp-project-smoke.sh",
+      "started_unix_ns": 1793061135302497000,
+      "status": "passed",
+      "wall_ns": 24431999500
+    }
+  ],
+  "log": ".cargo-target/oop-corrected-qualification/interaction.log",
+  "log_sha256": "41b4c7b64cebc3778687288224eeedd1a18736995e3d58f8d16c26e90f7cd6ba",
+  "remaining": "CLI/image timeout retries, multicore diagnosis, Boolean native-boundary parity and remaining native harnesses"
+}

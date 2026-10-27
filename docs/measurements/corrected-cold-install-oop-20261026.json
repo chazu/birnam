@@ -73,5 +73,5 @@
     "Complete corrected-candidate installed Host groups",
     "Remaining native harness and compiler optimization producer migration"
   ],
-  "host_acceptance_note": "Initial concurrent CLI and image attempts hit existing 300-second subprocess limits; retry at lower concurrency. Generation, interaction and tasks are still running."
+  "host_acceptance_note": "Generation and interaction groups passed. Initial CLI/image attempts hit 300-second subprocess limits. Tasks failed multicore assertions; an isolated diagnostic rerun is active. Full acceptance remains incomplete."
 }

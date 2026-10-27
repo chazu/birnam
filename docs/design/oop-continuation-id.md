@@ -1257,9 +1257,9 @@ signature, relocation, source/GC/image and compiled-startup checks while both th
 original checkout and installed prefix are hidden. Both paths were restored after
 the check. Complete installed Host acceptance remains pending. Initial concurrent
 CLI and image runs hit existing 300-second subprocess limits; their failures are
-retained for retries at lower concurrency. The other three groups continue. The
-cold/archive result does not substitute for those groups or the remaining native
-migration work.
+retained for retries at lower concurrency. Generation and interaction now pass;
+the task group reached failing multicore assertions and is under diagnosis. The
+cold/archive result does not substitute for full Host or native acceptance.
 [Receipt](../measurements/corrected-cold-install-oop-20261026.json).
 
 ## Globals ownership and partial image loads through Oops
@@ -1309,3 +1309,14 @@ must belong to the explicit incoming boundary and preserve selected-branch
 suspension; reinstating a synchronous deferred call is not sufficient. Id is
 unchanged, and migration relying on this missing native contract remains pending.
 [Evidence](../measurements/boolean-boundary-pending-oop-20261026.json).
+
+## Corrected-candidate generation and interaction acceptance
+
+The fresh corrected candidate `52c617fe` passes all 17 generation checks and all
+6 interaction checks, including mapped/rebuilt adoption and rollback, 62 compiled
+unit policies, collecting source-registry operations, persistent sessions, all 26
+REPL golden cases and LSP diagnostics/versions/close behavior. These results do not
+resolve the separate multicore failure or Boolean native-boundary gap. The two
+initial CLI/image timeout failures remain queued for lower-concurrency retries.
+[Generation receipt](../measurements/corrected-generation-oop-20261026.json),
+[interaction receipt](../measurements/corrected-interaction-oop-20261026.json).
