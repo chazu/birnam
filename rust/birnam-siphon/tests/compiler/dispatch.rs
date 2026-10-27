@@ -1,241 +1,130 @@
-//! Generated source keeps owner dispatch and roots without speculative PC entries.
+//! Generated calls observe current owners and their effects across repeated runs.
 use super::*;
-
-unsafe fn lookup(h: &H, receiver: Oop, name: &[u8]) -> NativeEntry {
-    unsafe {
-        send(
-            h.id,
-            h.id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(h.id.intern_name(name).unwrap()),
-                Operand::object(receiver),
-            ],
+use std::path::Path;
+pub(super) fn check(h: &H<'_>) {
+    h.reclaimed();
+    let q = h.host.scope();
+    let path = std::env::temp_dir().join(format!(
+        "birnam-compiler-dispatch-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/compiler-dispatch.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = h.host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let selected = |r, n: &[u8]| h.call(h.host.id.root, b"bind:to:", &[h.key(n), r]);
+    let set = |vt, n: &[u8], m| {
+        h.call(vt, b"addMethod", &[h.key(n), m]);
+    };
+    let method = |n: &[u8], c| {
+        q.call(
+            q.call(fixture, b"methodAt:", &[h.key(n)]).unwrap(),
+            b"withContext:",
+            &[c],
         )
-        .as_entry()
         .unwrap()
+    };
+    let run = |block| {
+        let drive = h.host.scope();
+        let machine = drive.call(h.named(b"Machine"), b"new", &[]).unwrap();
+        h.keep(drive.call(machine, b"runBlock:", &[block]).unwrap())
+    };
+    // Guard the removed raw-entry constructor as well as ordinary call results.
+    let method_vt = h.call(h.host.id.root, b"methodBehavior", &[]);
+    let forbidden = h.key(b"fromNative:owner:");
+    assert!(h.call(method_vt, b"lookup", &[forbidden]).is_null());
+    let candidate_calls = h.hooks.context(&[h.hooks.fault(91), size(0).unwrap()]);
+    set(
+        method_vt,
+        b"fromNative:owner:",
+        h.hooks.method(b"deny", candidate_calls),
+    );
+    let block = h.block(h.compile(b"let compiledAnswer := [20 + 22]; compiledAnswer"));
+    h.publish(b"compiledAnswer", h.named(b"nil"));
+    let integer = h.named(b"Integer");
+    let integer_vt = h.vt(integer);
+    let factory_original = selected(integer, b"fromWord:");
+    let factory = h.hooks.context(&[
+        factory_original,
+        h.named(b"GC"),
+        size(0).unwrap(),
+        size(0).unwrap(),
+    ]);
+    set(integer_vt, b"fromWord:", method(b"forward", factory));
+    assert_eq!(h.integer(run(block)), 42);
+    let cold_calls = h.hooks.count(factory, 2);
+    assert!(cold_calls > 0);
+    for _ in 0..40 {
+        assert_eq!(h.integer(run(block)), 42);
     }
-}
-unsafe fn restore(h: &H, behavior: Oop, name: &[u8], entry: NativeEntry) {
-    unsafe { install(h.id, behavior, name, entry.method.unwrap(), entry.context) }
-}
-unsafe fn run(h: &mut H, block: Oop) -> Oop {
-    unsafe {
-        let machine = object(send(h.id, h.named(b"Machine"), b"new", &[]));
-        let token = retain(h.id, h.roots, machine);
-        let result = object(send(h.id, machine, b"runBlock:", &[Operand::object(block)]));
-        h.keep(result);
-        release(h.id, h.roots, token);
-        result
+    h.hooks.put(factory, 2, size(0).unwrap());
+    assert_eq!(h.integer(run(block)), 42);
+    assert_eq!(
+        h.hooks.count(factory, 2),
+        cold_calls,
+        "warm execution preserves constructor effects"
+    );
+    set(integer_vt, b"fromWord:", factory_original);
+    let value = h.call(integer, b"fromWord:", &[size(20).unwrap()]);
+    let value_vt = h.vt(value);
+    let plus = selected(value, b"+");
+    set(value_vt, b"+", method(b"first", h.named(b"nil")));
+    assert_eq!(h.integer(run(block)), 22);
+    set(value_vt, b"+", plus);
+    let convert_original = selected(integer, b"wordOf:");
+    let converter = h.hooks.context(&[
+        convert_original,
+        h.named(b"GC"),
+        size(0).unwrap(),
+        size(1).unwrap(),
+    ]);
+    set(integer_vt, b"wordOf:", method(b"forward", converter));
+    let result = run(block);
+    assert!(
+        h.hooks.count(converter, 2) > 0,
+        "generated computation observes the current conversion before the test reads the result"
+    );
+    assert_eq!(h.integer(result), 42);
+    set(integer_vt, b"wordOf:", convert_original);
+    let machine = h.named(b"Machine");
+    let machine_vt = h.vt(machine);
+    let reader_original = selected(machine, b"oopAt:");
+    let reader = h.hooks.context(&[
+        reader_original,
+        h.named(b"GC"),
+        size(0).unwrap(),
+        size(1).unwrap(),
+    ]);
+    set(machine_vt, b"oopAt:", method(b"forward", reader));
+    assert_eq!(h.integer(run(block)), 42);
+    assert!(h.hooks.count(reader, 2) > 0);
+    set(machine_vt, b"oopAt:", reader_original);
+    assert_eq!(h.integer(run(block)), 42);
+    h.reclaimed();
+    let source = format!("{}42", "[1 + 2]; ".repeat(64));
+    let block = h.block(h.compile(source.as_bytes()));
+    assert_eq!(h.integer(run(block)), 42);
+    h.reclaimed();
+    let block = h.eval(b"let candidateCapture := 35; [ | let sum := [candidateCapture + 7]; sum]");
+    for _ in 0..40 {
+        assert_eq!(h.integer(run(block)), 42);
     }
-}
-
-struct Forward {
-    id: Protocol,
-    gc: Oop,
-    entry: NativeEntry,
-    calls: Cell<usize>,
-    collecting: bool,
-}
-unsafe extern "C" fn forward(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Forward>();
-        p.calls.set(p.calls.get() + 1);
-        if p.collecting {
-            collect(p.id, p.gc);
-        }
-        p.entry.method.unwrap()(p.entry.context, r, a, n)
-    }
-}
-// Ordinary compilation must not construct speculative native candidates.
-unsafe extern "C" fn reject_candidate(
-    c: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    _: usize,
-) -> Outcome {
-    unsafe {
-        *c.cast::<usize>() += 1;
-    }
-    Outcome::failed(birnam_abi::id_protocol::INVALID_REQUEST, 91)
-}
-unsafe extern "C" fn right_argument(
-    _: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe { Outcome::loaded(borrowed_slice(a, n).unwrap()[0]) }
-}
-
-pub(super) unsafe fn check(h: &mut H) {
-    unsafe {
-        h.clear();
-        h.collect();
-        assert_eq!(h.units(), 0);
-        let method = h.named(b"Method");
-        let method_vt = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(method)],
-        ));
-        let constructor = lookup(h, method, b"fromNative:owner:");
-        let mut candidate_calls = Box::new(0usize);
-        install(
-            h.id,
-            method_vt,
-            b"fromNative:owner:",
-            reject_candidate,
-            ptr::from_mut(&mut *candidate_calls).cast(),
-        );
-        let origin = h.compile(b"let compiledAnswer := [20 + 22]; compiledAnswer");
-        let block = h.block(origin);
-        // Both cold and warm runs update an existing binding. Authored Globals
-        // deliberately takes a different path when inserting a new name.
-        h.publish(b"compiledAnswer", h.named(b"nil"));
-        let integer = h.named(b"Integer");
-        let integer_vt = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(integer)],
-        ));
-        let mut factory = Box::new(Forward {
-            id: h.id,
-            gc: h.named(b"GC"),
-            entry: lookup(h, integer, b"fromWord:"),
-            calls: Cell::new(0),
-            collecting: false,
-        });
-        install(
-            h.id,
-            integer_vt,
-            b"fromWord:",
-            forward,
-            ptr::from_mut(&mut *factory).cast(),
-        );
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 42);
-        // This replacement has a visible call-count effect. Elision must not
-        // bypass it as though it were the ordinary pure constructor. This is
-        // dispatch/effect coverage, not a requirement to match physical heaps.
-        let cold_factory_calls = factory.calls.get();
-        for _ in 0..40 {
-            let result = run(h, block);
-            assert_eq!(h.integer(result), 42);
-        }
-        factory.calls.set(0);
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 42);
-        assert_eq!(
-            factory.calls.get(),
-            cold_factory_calls,
-            "execution preserves the replaced factory's call effects"
-        );
-        restore(h, integer_vt, b"fromWord:", factory.entry);
-
-        // Repeated execution cannot freeze the numeric operation selected by
-        // an ordinary source send. The changed implementation supplies 22.
-        let value = object(send(h.id, integer, b"fromWord:", &[Operand::word(20)]));
-        h.keep(value);
-        let value_vt = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(value)],
-        ));
-        let plus = lookup(h, value, b"+");
-        install(h.id, value_vt, b"+", right_argument, ptr::null_mut());
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 22);
-        restore(h, value_vt, b"+", plus);
-
-        // A current conversion still runs inside the compiled entry. Collecting
-        // here exercises the generated Call's roots, including its live PC token.
-        let mut converter = Box::new(Forward {
-            id: h.id,
-            gc: h.named(b"GC"),
-            entry: lookup(h, integer, b"wordOf:"),
-            calls: Cell::new(0),
-            collecting: true,
-        });
-        install(
-            h.id,
-            integer_vt,
-            b"wordOf:",
-            forward,
-            ptr::from_mut(&mut *converter).cast(),
-        );
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 42);
-        assert!(
-            converter.calls.get() > 0,
-            "compiled conversion is late-bound"
-        );
-        restore(h, integer_vt, b"wordOf:", converter.entry);
-
-        // Machine operations remain live sends, including collecting replacements.
-        let machine = h.named(b"Machine");
-        let machine_vt = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(machine)],
-        ));
-        let mut reader = Box::new(Forward {
-            id: h.id,
-            gc: h.named(b"GC"),
-            entry: lookup(h, machine, b"oopAt:"),
-            calls: Cell::new(0),
-            collecting: true,
-        });
-        install(
-            h.id,
-            machine_vt,
-            b"oopAt:",
-            forward,
-            ptr::from_mut(&mut *reader).cast(),
-        );
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 42);
-        assert!(reader.calls.get() > 0);
-        restore(h, machine_vt, b"oopAt:", reader.entry);
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 42);
-        h.clear();
-        h.collect();
-        assert_eq!(h.units(), 0);
-        assert_eq!(h.native_bytes(), 0);
-
-        // Larger functions use the same ordinary production path.
-        let source = format!("{}42", "[1 + 2]; ".repeat(64));
-        let origin = h.compile(source.as_bytes());
-        let block = h.block(origin);
-        let result = run(h, block);
-        assert_eq!(h.integer(result), 42);
-        h.clear();
-        h.collect();
-        assert_eq!(h.units(), 0);
-        assert_eq!(h.native_bytes(), 0);
-
-        // Nested Blocks retain the actual captured values and their shared
-        // Unit, then release the entire cycle after the last Block disappears.
-        let block =
-            h.eval(b"let candidateCapture := 35; [ | let sum := [candidateCapture + 7]; sum]");
-        for _ in 0..40 {
-            let result = run(h, block);
-            assert_eq!(h.integer(result), 42);
-        }
-        h.clear();
-        h.collect();
-        assert_eq!(h.units(), 0);
-        assert_eq!(h.native_bytes(), 0);
-
-        assert_eq!(
-            *candidate_calls, 0,
-            "source compilation needs no speculative candidates"
-        );
-        restore(h, method_vt, b"fromNative:owner:", constructor);
-    }
+    h.reclaimed();
+    assert_eq!(
+        h.hooks.count(candidate_calls, 1),
+        0,
+        "ordinary compilation must not reconstruct raw-entry candidates"
+    );
+    h.call(method_vt, b"removeMethod:", &[forbidden]);
 }

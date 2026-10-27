@@ -1905,3 +1905,23 @@ to baseline. The test's callback state releases its submitted Method after use.
 The full source target, explicit-invalidation and publication-contract targets
 pass. No runtime or Id change was needed. Six compiler groups remain pending.
 [Receipt](../measurements/compiler-publication-oop-20261027.json).
+
+## Generated dispatch and current dependency effects
+
+The compiler dispatch group now runs through Oops in `compiler_source`. Cold and
+repeated execution preserve the effects of a replaced Integer constructor; replacing
+addition changes the next compiled call. Collecting replacements of integer
+conversion and Machine frame reads remain observable. The conversion check observes
+the callback before the test itself converts the answer, so client-side inspection
+cannot satisfy it accidentally.
+
+Larger generated bodies and repeatedly invoked capturing Blocks retain their code
+and release all extra native units and bytes when their roots disappear. A failing
+test Method guards the absent legacy `fromNative:owner:` selector on Id's existing
+Method behavior; ordinary compilation must never enter it. The test does not
+reintroduce a Method factory or raw native-entry carrier.
+
+The complete source target passes. No runtime or Id change was needed. The five
+pending compiler groups are discarded-clone and numeric-predicate producers,
+alias-return production, call-window preparation and authored call preparation.
+[Receipt](../measurements/compiler-dispatch-oop-20261027.json).

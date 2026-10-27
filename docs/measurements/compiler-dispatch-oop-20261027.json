@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "scope": "Generated current dispatch, dependency effects, collecting callbacks and code retirement through Oops",
+  "base_revision": "a910b86c4ddfa8302f961256f91f6bb1caf454dc",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/dispatch.rs": "46f088e5c030f55d8fcbe87e1402e67b69e1cda69162ccc1b05b03e1e93c9238",
+    "rust/birnam-siphon/tests/compiler_source.rs": "fc05f895f176d0b4f6c636d4ce628b25a0ee71b3a7ee1ae456d29db3373561e6",
+    "rust/birnam-siphon/tests/compiler.rs": "996d05127fb7f8050b99a739274cbb1a7ebfefd2a9f534b5078cf2a83b2c3d91",
+    "tests/fixtures/oop-host/compiler-dispatch.c": "2c795d06a3bd0c8ff3609e9f2b2ee6f6cc15b0013a4e7f9fcd39f381503df24a"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-dispatch.log",
+      "sha256": "e60783853f5c2481a129c28ac93de5b763da08c721388bd936d9ce2f4f10d740",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Cold and warm generated execution preserves replaced Integer-constructor call counts across 40 repetitions",
+    "Replacing addition changes the next compiled result from 42 to 22",
+    "Current integer conversion collects during computation; callback count is checked before client-side result conversion",
+    "Current Machine frame reads collect while generated code and logical state stay live",
+    "Large source bodies with 64 sends and capturing Blocks repeated 40 times follow the same production execution path",
+    "Generated native units and relocated bytes return to baseline after final roots disappear",
+    "The legacy raw-entry constructor is absent and a failing trap installed for the test is never invoked"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Five compiler groups: discarded clone, numeric predicate, inline return, frame call and prepared call",
+    "Other native acceptance targets remain unported",
+    "Full latest cold/Host qualification remains incomplete"
+  ]
+}

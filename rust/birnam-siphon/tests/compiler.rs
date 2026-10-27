@@ -2,8 +2,6 @@
 //! General source/control/lifetime acceptance lives in compiler_source.rs.
 #[path = "compiler/discarded_clone.rs"]
 mod discarded_clone;
-#[path = "compiler/dispatch.rs"]
-mod dispatch;
 #[path = "compiler/frame_call.rs"]
 mod frame_call;
 #[path = "compiler/inline_return.rs"]
@@ -186,7 +184,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
         };
         frame_call::check(&mut h);
         prepared_call::check(&mut h);
-        dispatch::check(&mut h);
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
