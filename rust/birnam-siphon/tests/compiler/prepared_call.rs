@@ -1,64 +1,150 @@
-//! A real Birnam replacement, including collection and nested stackless control.
+//! Authored call preparation through the current Execution inspection operations.
 use super::*;
-use super::discarded_clone::{lookup, restore, vt};
-struct Replacement { target: Oop, authored: NativeEntry, original: NativeEntry, calls: usize, active: bool, helper_calls: usize }
-unsafe extern "C" fn replace(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        // A metacircular replacement still needs the bootstrap implementation
-        // for its own ABI/factory helpers. It never forwards the selected target
-        // transfer; that transfer is performed entirely by the authored body.
-        let fixture = c.cast::<Replacement>();
-        let target = r == (*fixture).target && !(*fixture).active;
-        let entry = if target {
-            (*fixture).calls += 1;
-            (*fixture).active = true;
-            (*fixture).authored
-        } else {
-            (*fixture).helper_calls += 1;
-            (*fixture).original
-        };
-        let result = entry.method.unwrap()(entry.context, r, a, n);
-        if target { (*fixture).active = false; }
-        result
+use std::path::Path;
+pub(super) fn check(h: &H<'_>) {
+    h.clear();
+    h.collect();
+    let baseline_units = h.units();
+    let baseline_bytes = h.native_bytes();
+    let q = h.host.scope();
+    let path =
+        std::env::temp_dir().join(format!("birnam-prepared-call-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/prepared-call.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = h.host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let execution = h.named(b"Execution");
+    let execution_vt = h.vt(execution);
+    let registration = h.key(b"fromStep:descriptor:selection:owner:callPlans:");
+    let register = h.call(execution_vt, b"lookup", &[registration]);
+    let captured = h.hooks.context(&[register, h.named(b"nil")]);
+    let capture = q
+        .call(
+            q.call(fixture, b"methodAt:", &[h.key(b"capture")]).unwrap(),
+            b"withContext:",
+            &[captured],
+        )
+        .unwrap();
+    h.call(execution_vt, b"addMethod", &[registration, capture]);
+    let admitted = h.compile(b"[Object clone]");
+    h.call(execution_vt, b"addMethod", &[registration, register]);
+    q.check_result(admitted).unwrap();
+    let saved = h.call(captured, b"at:", &[size(1).unwrap()]);
+    let mut arguments: Vec<_> = (0..5)
+        .map(|i| h.call(saved, b"at:", &[size(i).unwrap()]))
+        .collect();
+    let plans = q.read_bytes(h.call(arguments[4], b"bytes", &[])).unwrap();
+    assert!(plans.len() >= 24);
+    let mut wrong_version = plans.clone();
+    wrong_version[..4].copy_from_slice(&99u32.to_le_bytes());
+    let mut wrong_source = plans.clone();
+    wrong_source[20..24].copy_from_slice(&u32::MAX.to_le_bytes());
+    let mut trailing = plans.clone();
+    trailing.push(0);
+    for malformed in [
+        vec![],
+        plans[..plans.len() - 1].to_vec(),
+        wrong_version,
+        wrong_source,
+        trailing,
+    ] {
+        arguments[4] = q.string(&malformed).unwrap();
+        assert!(
+            unsafe { h.host.id.send(execution, registration, &arguments) }.is_err(),
+            "malformed plans must fail admission"
+        );
     }
-}
-unsafe extern "C" fn failed(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(6, 71)
-}
-pub(super) unsafe fn check(h: &mut H) {
-    unsafe {
-        let id = h.id;
-        let body = h.eval(include_bytes!("../../../../tests/fixtures/execution/prepared-call-reference.birnam"));
-        h.bind(b"PreparedReference", body);
-        let holder = h.eval(b"[[| let holder := [Object clone]; let method := [[TCC compile: [NativeBackend named: 2 synchronous: true]] initializeWith: PreparedReference]; [[Reflect vtableOf: holder] addMethod: method as: #prepareCall:selector:]; holder] value]");
-        let authored = lookup(h, holder, b"prepareCall:selector:");
-        let argument = h.eval(b"[Object clone]");
-        h.bind(b"PreparedArgument", argument);
-        let block = h.eval(b"[| let a := PreparedArgument; let b := a; let c := b; let first := [[:x :y :z | y] value: a value: b value: c]; let next := first; let last := next; [[:x :y | y] value: next value: last]]");
-        let target = object(send(id, h.named(b"Machine"), b"new", &[]));
-        h.keep(target);
-        let behavior = vt(h, target);
-        let original = lookup(h, target, b"prepareCall:selector:");
-        let mut fixture = Replacement { target, authored, original, calls: 0, active: false, helper_calls: 0 };
-        install(id, behavior, b"prepareCall:selector:", replace, ptr::from_mut(&mut fixture).cast());
-        let result = id.send_named(target, b"runBlock:", &[Operand::object(block)]);
-        restore(h, behavior, b"prepareCall:selector:", original);
-        assert_eq!(object(result.unwrap()), argument, "authored transfer preserves exact identity");
-        assert!(fixture.calls >= 2, "normal and tail calls must exercise the authored implementation");
-        let failed_machine = object(send(id, h.named(b"Machine"), b"new", &[]));
-        h.keep(failed_machine);
-        install(id, behavior, b"prepareCall:selector:", failed, ptr::null_mut());
-        let failure = id.send_named(failed_machine, b"runBlock:", &[Operand::object(block)]);
-        restore(h, behavior, b"prepareCall:selector:", original);
-        let failure = failure.unwrap_err();
-        assert_eq!((failure.status, failure.detail), (6, 71), "entered coarse failure must not replay legacy preparation");
-        // Replacement has gone away; a subsequent fresh run sees the native body.
-        assert_eq!(discarded_clone::run(h, block, true), argument);
-        send(id, vt(h, holder), b"removeMethod:", &[Operand::object(id.intern_name(b"prepareCall:selector:").unwrap())]);
-        h.bind(b"PreparedReference", h.named(b"nil"));
-        h.bind(b"PreparedArgument", h.named(b"nil"));
-        send(id, h.named(b"Codegen"), b"evictMaterializations", &[]);
-        h.clear();
-        h.collect();
+    h.hooks.put(captured, 1, h.named(b"nil"));
+    let machine = h.named(b"Machine");
+    let operation = h.key(b"prepareCall:selector:");
+    let original = h.call(h.host.id.root, b"bind:to:", &[operation, machine]);
+    assert!(
+        !original.is_null(),
+        "Execution must expose authored call preparation"
+    );
+    let body = h.eval(include_bytes!(
+        "../../../../tests/fixtures/execution/prepared-call-reference.birnam"
+    ));
+    h.host.scope().check_result(body).unwrap();
+    h.bind(b"PreparedReference", body);
+    let holder=h.eval(b"[[| let holder := [Object clone]; [Reflect defineMethod: #prepareCall:selector: on: holder as: PreparedReference]; holder] value]");
+    h.host.scope().check_result(holder).unwrap();
+    let authored = h.call(h.host.id.root, b"bind:to:", &[operation, holder]);
+    let argument = h.eval(b"[Object clone]");
+    h.bind(b"PreparedArgument", argument);
+    let block=h.eval(b"[| let firstBody := [:x :y :z | y]; let lastBody := [:x :y | y]; let a := PreparedArgument; let b := a; let c := b; let first := [firstBody value: a value: b value: c]; let next := first; let last := next; [lastBody value: next value: last]]");
+    let target = h.call(machine, b"new", &[]);
+    let behavior = h.vt(target);
+    let state = h.hooks.context(&[
+        target,
+        authored,
+        original,
+        size(0).unwrap(),
+        size(0).unwrap(),
+        size(0).unwrap(),
+        h.named(b"Integer"),
+        size(0).unwrap(),
+    ]);
+    let replacement = q
+        .call(
+            q.call(fixture, b"methodAt:", &[h.key(b"replace")]).unwrap(),
+            b"withContext:",
+            &[state],
+        )
+        .unwrap();
+    h.call(behavior, b"addMethod", &[operation, replacement]);
+    let result = unsafe { h.host.id.send(target, h.key(b"runBlock:"), &[block]) };
+    h.call(behavior, b"addMethod", &[operation, original]);
+    assert_eq!(
+        result.unwrap(),
+        argument,
+        "authored preparation preserves exact identity"
+    );
+    assert!(h.hooks.count(state, 3) >= 2);
+    assert!(h.hooks.count(state, 5) > 0);
+    assert!(
+        h.hooks.count(state, 7) > 0,
+        "authored preparation executes ordered alias copies"
+    );
+    let failed = h.call(machine, b"new", &[]);
+    let fault = h.hooks.fault(71);
+    let failure = h.hooks.context(&[fault, size(0).unwrap()]);
+    h.call(
+        behavior,
+        b"addMethod",
+        &[operation, h.hooks.method(b"deny", failure)],
+    );
+    let result = unsafe { h.host.id.send(failed, h.key(b"runBlock:"), &[block]) };
+    h.call(behavior, b"addMethod", &[operation, original]);
+    assert_eq!(result.unwrap_err(), fault);
+    assert_eq!(
+        h.hooks.count(failure, 1),
+        1,
+        "an entered failure is not replayed"
+    );
+    let fresh = h.call(machine, b"new", &[]);
+    assert_eq!(h.call(fresh, b"runBlock:", &[block]), argument);
+    h.call(h.vt(holder), b"removeMethod:", &[operation]);
+    for (i, v) in [(0, h.named(b"nil")), (1, h.named(b"nil"))] {
+        h.hooks.put(state, i, v);
     }
+    h.bind(b"PreparedReference", h.named(b"nil"));
+    h.bind(b"PreparedArgument", h.named(b"nil"));
+    h.call(h.named(b"Codegen"), b"evictMaterializations", &[]);
+    drop(q);
+    h.clear();
+    h.collect();
+    assert_eq!(h.units(), baseline_units);
+    assert_eq!(h.native_bytes(), baseline_bytes);
 }

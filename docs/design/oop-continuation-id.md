@@ -1980,3 +1980,33 @@ multicore checks and all 177 task-control checks. The worker-ready deadline rema
 15 seconds. CLI and image groups remain in the serial queue. This receipt does not
 cover the subsequent native-loader and standalone-emitter corrections.
 [Receipt](../measurements/current-tasks-oop-20261027.json).
+
+## Authored call preparation and admitted plans
+
+The Oop emitter now registers derived call plans through Execution's restored
+`fromStep:descriptor:selection:owner:callPlans:` factory and emits one current
+`prepareCall:selector:` send per call site. Plans retain receiver/argument sources
+and ordered alias copies; top-level published bindings stay outside those copies.
+Execution reuses the existing canonical admission checks before publishing a Method.
+Truncated plans, wrong versions, invalid source slots and trailing data are rejected.
+Canonical descriptor and image formats are unchanged.
+
+Execution owns the plan and frame representation. Its preparation implementation
+uses current frame reads/writes and call-site publication, preserving their existing
+replacement behavior. It does not read foreign payloads, add an Id operation,
+introduce a registry or retry an entered failure. The direct-frame experiment was
+replaced with this single message-based implementation during validation.
+
+The authored reference performs normal and tail preparation, including ordered
+copies, collection and nested explicit Machine execution. Its outer callback is
+explicitly materialized synchronously so it does not replace the target's logical
+frame before inspection. The transfer body runs on the new Machine. Named Method
+construction uses ordinary Reflect rather than the removed raw-entry adapter.
+The reference passes on the bare composition and again after loading the compiled
+stdlib and stackless-control artifacts through the existing startup path.
+
+The core gate, all 26 Execution unit tests, the full source target, materialization,
+frame views, pending recovery, native boundaries, embedding and mapped/rebuilt
+Method-binding acceptance pass. Metadata-capture fixtures now observe the restored
+five-argument factory. Four compiler groups and full latest cold qualification
+remain pending. [Receipt](../measurements/prepared-call-oop-20261027.json).

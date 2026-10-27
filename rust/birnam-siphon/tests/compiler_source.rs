@@ -7,6 +7,8 @@ mod dispatch;
 mod globals;
 #[path = "support/oop.rs"]
 mod oop;
+#[path = "compiler/prepared_call.rs"]
+mod prepared_call;
 #[path = "compiler/publication.rs"]
 mod publication;
 use birnam_abi::{Oop, as_size, size};
@@ -199,6 +201,32 @@ fn source_compiles_and_runs_on_production_execution() {
     globals::check(&h);
     publication::check(&h);
     dispatch::check(&h);
+    prepared_call::check(&h);
+    let module_manager = host.global(&floor, b"Module").unwrap();
+    h.call(
+        module_manager,
+        b"libDir:",
+        &[h.string(host.resources.lib_dir.as_os_str().as_encoded_bytes())],
+    );
+    for module in ["stdlib", "stacklessControl"] {
+        let path = host
+            .resources
+            .lib_dir
+            .join(format!("libbirnam_{module}.dylib"));
+        let result = h.call(
+            h.named(b"Codegen"),
+            b"load:",
+            &[h.string(path.as_os_str().as_encoded_bytes())],
+        );
+        h.host.scope().check_result(result).unwrap();
+        assert_ne!(result, h.named(b"nil"), "load {module}");
+        h.call(module_manager, b"markLoaded:", &[h.key(module.as_bytes())]);
+        assert_eq!(
+            h.eval(format!("[Module isLoaded: #{module}]").as_bytes()),
+            h.named(b"true")
+        );
+    }
+    prepared_call::check(&h);
 }
 fn rejected_compilation(h: &H<'_>) {
     let syntax = h.eval(b"let :=");

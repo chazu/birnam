@@ -747,6 +747,9 @@ const NAMES: &[&[u8]] = &[
     b"nativeSignatureOf:",
     b"nativeDeferredAnswer",
     b"captureWord:of:",
+    b"fromStep:descriptor:selection:owner:callPlans:",
+    b"prepareCall:selector:",
+    b"callPlan:field:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -982,8 +985,26 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"nativeSignatureOf:"),
     Literal::new(b"nativeDeferredAnswer"),
     Literal::new(b"captureWord:of:"),
+    Literal::new(b"fromStep:descriptor:selection:owner:callPlans:"),
+    Literal::new(b"prepareCall:selector:"),
+    Literal::new(b"callPlan:field:"),
 ];
 static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 233,
+        entry: Some(resumable::from_step_plans),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 234,
+        entry: Some(resumable::call_preparation::prepared),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 235,
+        entry: Some(resumable::call_preparation::field),
+        convention: 0,
+    },
     MethodSpec {
         name: 232,
         entry: Some(reflection::capture_word_of),

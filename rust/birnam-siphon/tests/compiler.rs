@@ -8,8 +8,6 @@ mod frame_call;
 mod inline_return;
 #[path = "compiler/numeric_predicate.rs"]
 mod numeric_predicate;
-#[path = "compiler/prepared_call.rs"]
-mod prepared_call;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -183,7 +181,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
             floor: CompiledFloor::pin(id, ns, roots),
         };
         frame_call::check(&mut h);
-        prepared_call::check(&mut h);
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
@@ -194,17 +191,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
             h.native_bytes(),
             0,
             "actual libtcc relocated bytes reclaimed"
-        );
-        // Repeat the authored runtime replacement with the production selected
-        // stackless library. Its own loop/control work uses explicit frames.
-        optional_modules(id, ns, &["stdlib", "stacklessControl"]);
-        h.collect();
-        let baseline = h.units();
-        prepared_call::check(&mut h);
-        assert_eq!(
-            h.units(),
-            baseline,
-            "authored preparation code retires after replacement"
         );
     }
 }

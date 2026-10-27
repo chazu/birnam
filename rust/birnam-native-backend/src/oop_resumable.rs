@@ -46,10 +46,25 @@ impl Emitter {
         let mut out = format!(
             "static O function_{index}(O root,O context,O machine,const O*args,size_t n){{(void)root;(void)context;if(n!=1||!((uintptr_t)args[0]&1))return id.invalid;Call c={{0}};size_t pc=(uintptr_t)args[0]>>1;switch(pc){{\n"
         );
+        let mut plans = Vec::new();
+        let mut plan_count = 0u32;
         for block in &program.blocks {
             writeln!(out, "case {}:{{", block.pc.0).unwrap();
-            for operation in &block.operations {
-                use ir::OperationKind as Op;
+            use ir::OperationKind as Op;
+            let copies = if !(depth == 0 && self.persistent)
+                && matches!(&block.terminator, ir::Terminator::Call { arguments, .. } | ir::Terminator::TailCall { arguments, .. } if arguments.len() <= 16)
+            {
+                block
+                    .operations
+                    .iter()
+                    .rev()
+                    .take_while(|op| matches!(op.kind, Op::Bind { .. }))
+                    .count()
+            } else {
+                0
+            };
+            let copies = if copies <= 32 { copies } else { 0 };
+            for operation in &block.operations[..block.operations.len() - copies] {
                 let expr = match &operation.kind {
                     Op::EntryReceiver
                     | Op::EntryImplementation
@@ -119,25 +134,27 @@ impl Emitter {
                     arguments,
                     ..
                 } => {
-                    let start = layout.call_window_start.ok_or(Error::InvalidProgram)?;
-                    writeln!(out,"frame_put(&c,machine,{start},frame_get(&c,machine,{}, {get}),{put});frame_put(&c,machine,{},symbols[{}],{put});",slot(*receiver),start+1,self.name(selector)?).unwrap();
-                    for (i, arg) in arguments.iter().enumerate() {
-                        writeln!(
-                            out,
-                            "frame_put(&c,machine,{},frame_get(&c,machine,{}, {get}),{put});",
-                            start + 2 + i as u32,
-                            slot(*arg)
-                        )
-                        .unwrap();
+                    if call_site.0 != plan_count {
+                        return Err(Error::InvalidProgram);
                     }
-                    (
-                        if matches!(block.terminator, Term::TailCall { .. }) {
-                            b"tailCallSite:".as_slice()
-                        } else {
-                            b"callSite:".as_slice()
-                        },
-                        call_site.0,
-                    )
+                    plan_count += 1;
+                    for value in [block.pc.0, arguments.len() as u32 + 1, copies as u32] {
+                        plans.extend_from_slice(&value.to_le_bytes());
+                    }
+                    for source in std::iter::once(receiver).chain(arguments.iter()) {
+                        plans.extend_from_slice(&slot(*source).to_le_bytes());
+                    }
+                    for op in &block.operations[block.operations.len() - copies..] {
+                        let Op::Bind { source, .. } = op.kind else {
+                            unreachable!()
+                        };
+                        plans.extend_from_slice(&slot(source).to_le_bytes());
+                        plans.extend_from_slice(&slot(op.result).to_le_bytes());
+                    }
+                    let prepare = self.name(b"prepareCall:selector:")?;
+                    let selector = self.name(selector)?;
+                    writeln!(out,"O a[]={{size_oop({}),symbols[{selector}]}};O result=call(&c,machine,{prepare},a,2);return finish(&c,result);}}",call_site.0).unwrap();
+                    continue;
                 }
                 Term::Return(value) => (b"returnAt:".as_slice(), slot(*value)),
                 Term::Continue(pc) => (b"continueAt:".as_slice(), pc.0),
@@ -146,7 +163,14 @@ impl Emitter {
         }
         out.push_str("default:c.error=id.invalid;return finish(&c,0);}}\n");
         self.functions[index] = out;
-        self.descriptors[index] = Some((descriptor, selection));
+        let mut call_plans = 1u32.to_le_bytes().to_vec();
+        call_plans.extend_from_slice(&plan_count.to_le_bytes());
+        call_plans.extend_from_slice(&plans);
+        self.descriptors[index] = Some(ResumableMetadata {
+            descriptor,
+            selection,
+            call_plans,
+        });
         Ok(index)
     }
     fn resumable_literal(

@@ -615,7 +615,7 @@ pub(super) unsafe fn check(
             send(
                 execution_vt,
                 b"lookup",
-                &[sel(b"fromStep:descriptor:selection:owner:")],
+                &[sel(b"fromStep:descriptor:selection:owner:callPlans:")],
             )
             .unwrap(),
         );
@@ -662,7 +662,7 @@ pub(super) unsafe fn check(
                 execution_vt,
                 b"addMethod",
                 &[
-                    sel(b"fromStep:descriptor:selection:owner:"),
+                    sel(b"fromStep:descriptor:selection:owner:callPlans:"),
                     capture_registration,
                 ],
             )
@@ -675,7 +675,7 @@ pub(super) unsafe fn check(
             send(
                 execution_vt,
                 b"addMethod",
-                &[sel(b"fromStep:descriptor:selection:owner:"), register],
+                &[sel(b"fromStep:descriptor:selection:owner:callPlans:"), register],
             )
             .unwrap();
             let descriptor_bytes = read_bytes(field(metadata, 0));

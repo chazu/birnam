@@ -1,8 +1,6 @@
-// A complete authored call transfer. The synchronous ABI adapter only enters
-// another explicit Machine; iteration and nested control run on that Machine.
-// The target's logical frame remains the frame being prepared throughout.
-[Execution block: [:target :rawSite :selector |
-  [[Machine new] runBlock: [|
+// The synchronous outer callback constructs a closure, then an explicit Machine
+// runs the authored transfer. The target's original frame is current for inspection.
+[[| let transfer := [:target :rawSite :selector | [|
     let site := [Execution objectResultOf: Integer selector: #fromWord: wordArgument: rawSite];
     let receiverSlot := [target callPlan: site field: 0];
     let selectorSlot := [target callPlan: site field: 1];
@@ -24,5 +22,10 @@
       [target oopAt: [argumentStart + i] put: [target oopAt: source]]]];
     [target oopAt: selectorSlot put: selector];
     [[tail = 1] ifTrue: [| [target tailCallSite: site]] ifFalse: [| [target callSite: site]]]
-  ]]
-] withNativeSignature: "owO"]
+  ]];
+  let outer := [:target :rawSite :selector |
+    [[Machine new] runBlock: [transfer value: target value: rawSite value: selector]]
+  ];
+  let synchronous := [Codegen materializeSynchronous: [outer codeObject] captures: #[transfer]];
+  [Execution block: synchronous withNativeSignature: "owO"]
+] value]

@@ -1,5 +1,7 @@
 //! Oop message connection to the retained registration and Machine algorithms.
 use super::*;
+#[path = "oop_call_preparation.rs"]
+pub(super) mod call_preparation;
 #[path = "control.rs"]
 pub(super) mod control;
 #[path = "frame_view.rs"]
@@ -43,6 +45,9 @@ pub(super) struct Runtime {
 }
 pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"fromStep:descriptor:selection:owner:",
+    b"fromStep:descriptor:selection:owner:callPlans:",
+    b"prepareCall:selector:",
+    b"callPlan:field:",
     b"resumableEntry",
     b"runBlockStep",
     b"new",
@@ -174,13 +179,28 @@ unsafe fn refresh(s: &State, value: Oop) -> Result<(), Oop> {
     }
 }
 pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { register_step(c, a, n, false) }
+}
+pub(super) unsafe extern "C" fn from_step_plans(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { register_step(c, a, n, true) }
+}
+unsafe fn register_step(c: Oop, a: *const Oop, n: usize, plans: bool) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let [step, description, selection, owner] = borrowed_slice(a, n).ok_or_else(invalid)?
-        else {
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if args.len() != 4 + usize::from(plans) {
             return Err(invalid());
+        }
+        let [step, description, selection, owner] = &args[..4] else {
+            unreachable!()
         };
-        let _q = s.scope(&[*step, *owner, *description, *selection]);
+        let _q = s.scope(args);
         let description = bytes(
             s,
             *description,
@@ -191,6 +211,11 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
             *selection,
             birnam_artifact_codec::stackless_selection::MAX_CANONICAL_VALUE_BYTES,
         )?;
+        let call_plans = if plans {
+            Some(bytes(s, args[4], 16 << 20)?)
+        } else {
+            None
+        };
         let selected = checked(
             birnam_artifact_codec::stackless_selection::inspect_artifact_selection(&selection),
         )?;
@@ -210,12 +235,18 @@ pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop,
         let generation = abi::as_size(s.send(s.id.root, b"identityOf:", &[*owner])?)
             .filter(|n| *n != 0)
             .ok_or_else(invalid)? as u64;
-        let descriptor = checked(FrameDescriptor::admit_v2(
+        let mut descriptor = checked(FrameDescriptor::admit_v2(
             &description,
             authority,
             generation,
             key(s, *step)?,
         ))?;
+        if let Some(plans) = call_plans {
+            Arc::get_mut(&mut descriptor)
+                .ok_or_else(invalid)?
+                .admit_call_plans(&plans, &description, authority)
+                .map_err(|_| invalid())?;
+        }
         register_descriptor(s, descriptor, *step, *owner)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -1830,7 +1861,7 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             ) {
                 continue;
             }
-            let target = if name == b"fromStep:descriptor:selection:owner:" {
+            let target = if name.starts_with(b"fromStep:descriptor:selection:owner:") {
                 execution_type
             } else if name == b"withInline:at:owner:" {
                 q.keep(s.send(s.id.root, b"methodBehavior", &[])?)

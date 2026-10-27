@@ -39,10 +39,12 @@ candidate factories, image rebuild and generation descriptor hashing all call
 this owner through current Id lookup. Compiled/mapped artifact and image loading
 continue to consume saved metadata and objects without invoking it.
 
-New resumable emission uses admitted call plans (option bit 128); the default
-compiler mask is 253. It sends one ordinary `prepareCall:selector:` operation,
-without an optional fast-path/fallback pair. Plans are regenerated from portable
-IR and admitted atomically by Execution when constructing the Method.
+Current Oop resumable emission sends one ordinary `prepareCall:selector:` operation
+with admitted call plans. Plans are regenerated from portable IR and admitted
+atomically by Execution when constructing the Method. Execution preserves current
+frame reads/writes and call-site publication; an entered failure is not replayed.
+The historical option controls below remain pending Oop migration (prepared calls
+used bit 128 and the default mask was 253).
 
 Legacy resumable call-window optimization uses explicit option bit 32;
 mask 125 retains the previous emission. Bit 64 additionally folds up to 32 trailing local copies

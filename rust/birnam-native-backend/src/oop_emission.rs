@@ -14,9 +14,14 @@ struct Emitter {
     names: Vec<Vec<u8>>,
     functions: Vec<String>,
     programs: Vec<Vec<u8>>,
-    descriptors: Vec<Option<(Vec<u8>, Vec<u8>)>>,
+    descriptors: Vec<Option<ResumableMetadata>>,
     persistent: bool,
     dispositions: Option<Vec<bool>>,
+}
+struct ResumableMetadata {
+    descriptor: Vec<u8>,
+    selection: Vec<u8>,
+    call_plans: Vec<u8>,
 }
 impl Emitter {
     fn name(&mut self, n: &[u8]) -> Result<usize, Error> {
@@ -275,7 +280,7 @@ fn compile_mode(
         return Err(Error::InvalidProgram);
     }
     let execution = e.name(b"Execution")?;
-    let register = e.name(b"fromStep:descriptor:selection:owner:")?;
+    let register = e.name(b"fromStep:descriptor:selection:owner:callPlans:")?;
     let code_object = e.name(b"CodeObject")?;
     let from_canonical = e.name(b"fromCanonicalBytes:")?;
     let admit_code = e.name(b"admitCodeObject:synchronous:")?;
@@ -304,8 +309,12 @@ fn compile_mode(
         }
     }
     for (i, descriptor) in e.descriptors.iter().enumerate() {
-        if let Some((descriptor, selection)) = descriptor {
-            for (label, bytes) in [("descriptor", descriptor), ("selection", selection)] {
+        if let Some(metadata) = descriptor {
+            for (label, bytes) in [
+                ("descriptor", &metadata.descriptor),
+                ("selection", &metadata.selection),
+                ("plans", &metadata.call_plans),
+            ] {
                 writeln!(
                     out,
                     "static const unsigned char {label}_{i}[]={{{}}};",
@@ -364,7 +373,7 @@ fn compile_mode(
         )
         .unwrap();
         if e.descriptors[i].is_some() {
-            writeln!(out,"O descriptor=blob(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=blob(&c,selection_{i},sizeof(selection_{i}));O a[]={{method,descriptor,selection,owner}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,4);").unwrap();
+            writeln!(out,"O descriptor=blob(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=blob(&c,selection_{i},sizeof(selection_{i}));O plans=blob(&c,plans_{i},sizeof(plans_{i}));O a[]={{method,descriptor,selection,owner,plans}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,5);").unwrap();
         }
         let mode = if e.descriptors[i].is_some() {
             false_name

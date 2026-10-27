@@ -1,0 +1,69 @@
+{
+  "passed": true,
+  "scope": "Oop call-plan admission, current preparation messages and authored transfer, with adjacent control/materialization/image acceptance",
+  "base_revision": "d6c998a569fcf462bfb43c16bd4b0ff6fdca1653",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/prepared-live-shknlun1/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_call_preparation.rs": "5036b09547dbcfa07351a9918f4ce4cbc2e85a1fb89d597796d30c955b7659d4",
+    "rust/birnam-execution/src/resumable_runtime.rs": "00db2bfd03cb370c04a73dcc6d29f675076517fa87f0c09b4bc32cbc8a65c421",
+    "rust/birnam-execution/src/synchronous.rs": "f5a31fa489c17d28ac5bc79066f67f0a80a13e63998059790e16dd94d8cb2a1b",
+    "rust/birnam-native-backend/src/oop_emission.rs": "5fe1f29a34cef097a9a5cb4a10460020aa7f84d3bc0ed9bd9413aa223bc3d644",
+    "rust/birnam-native-backend/src/oop_resumable.rs": "29b2e683dcaf2485be50658c93fbccf93c3ef409e59adb69bcbd006b70245444",
+    "rust/birnam-siphon/tests/compiler/prepared_call.rs": "ec77d5921807518873588fa22a3d0286cb2a1b19e5c00c01550483410f06e1d6",
+    "rust/birnam-siphon/tests/compiler_source.rs": "126a8e7c0c1f19f2753a995c7047546d92bbd2f4e508a52f9348558e365ea887",
+    "tests/fixtures/oop-host/prepared-call.c": "9a7aa5dd72bbfe45d88f7079605e7823b7da34a39b81f7dbe91ef0b89882492f",
+    "tests/fixtures/execution/prepared-call-reference.birnam": "a7b744c61b03edcaff470b9beeed365938d89aaab681511750b84ca91b198d66",
+    "tests/fixtures/oop-continuation/module.c": "c478255b4c3669d5dc0b93cc7666fea916ebe0439f3a79c5ea2c2cd3faade37e",
+    "rust/birnam-siphon/examples/oop_slice.rs": "0dd5763f824a5a9932fa4a5404746715a6688b68bda9c6b3f7f6e02da35374dd",
+    "rust/birnam-siphon/examples/oop_slice/resumable.rs": "53b872c0939e24d237eb835bff1b33369c7ab76c69853e193966ba27ce3523e0",
+    "rust/birnam-siphon/examples/oop_slice/source_loading.rs": "8ac31a6d9cbc19c4ccb3b24424442da7d01c105dc763204e7c4acbca8229fac3"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/prepared-call-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/prepared-call-engine.log",
+      "sha256": "baf5cc25006831074a29423ae9a887ff26bf01ddd60d7ade58f33354039df426",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/prepared-call-final.log",
+      "sha256": "b47b31a4e68c82c2e7d5f22ec70c621a58f2110074bed4595d95e3725c04d837",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/prepared-call-published.log",
+      "sha256": "e17b459830801ad6d0e9d185ff9ce8a6b1096bb30321d7ef419a336b712b27d3",
+      "exit": 0
+    }
+  ],
+  "reproduction": {
+    "log": ".cargo-target/oop-current-qualification/prepared-call-before.log",
+    "sha256": "a288fdc230c3f715a0401210c74b2d9d397633cbfef38229049dd482170a55f0",
+    "result": "Execution lacked the existing prepareCall:selector: operation"
+  },
+  "retained_checks": [
+    "Derived version-1 call plans admitted against the canonical descriptor before Method registration",
+    "Malformed/truncated/version/source-slot/trailing-data plans reject through the public factory",
+    "Current slot reads/writes and call-site publication remain observable; no engine borrow spans callbacks",
+    "Authored normal and tail preparation preserves exact argument identity and executes ordered alias copies",
+    "Collecting nested explicit Machine computation leaves the target frame available for inspection",
+    "Exact native failure identity; entered preparation is not replayed",
+    "The same authored replacement passes after actual compiled stdlib and stacklessControl loading, verified with Module markers",
+    "Native-unit and byte counts return to their respective pre-test baselines",
+    "Core suspension, control, recovery and direct-dispatch invariants; 26 Execution unit tests; seven native suites including mapped/rebuilt images"
+  ],
+  "runtime_changes": [
+    "Restored Execution call-plan factory and preparation/inspection selectors above unchanged Id",
+    "Emitter uses derived metadata and one current preparation send; canonical descriptor/image formats unchanged"
+  ],
+  "id_changes": false,
+  "qualification_limit": "Staged prefix qualifies these changes. The running cold candidate predates this milestone, native-loader fixes and standalone emitter corrections.",
+  "remaining": [
+    "Discarded-clone and numeric-predicate producers, legacy call-window controls, and the pending automatic alias-return decision",
+    "Other native targets and full latest cold qualification"
+  ]
+}

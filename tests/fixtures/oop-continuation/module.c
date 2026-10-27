@@ -72,7 +72,7 @@ static Oop capture_factory(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root
  CHECK(put(get(c,1),0,a[0]));Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);
  Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
 /* Observe the public descriptor/selection arguments without reading Method data. */
-static Oop capture_registration(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=4)return id.invalid;
+static Oop capture_registration(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=4&&n!=5)return id.invalid;
  CHECK(put(get(c,1),0,a[1]));CHECK(put(get(c,1),1,a[2]));
  Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
 /* context = [original callSite, mode selector, site index, result slot, pc,
