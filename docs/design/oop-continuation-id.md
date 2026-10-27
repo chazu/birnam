@@ -2418,3 +2418,16 @@ never entered: Trace did not disable automatic collection to pass. Both targets
 pass without runtime or Id changes. The separate exhaustive logical-graph and
 native-result harness remains pending.
 [Receipt](../measurements/storage-trace-oop-20261027.json).
+
+## Cold qualification checkpoints for both active candidates
+
+Cold revision `642e79e2` passed all 17 generation checks, including the lifetime
+and Machine-entry corrections. Its serial queue has advanced to interaction.
+This candidate predates the later explicit candidate/numeric support and recovery
+ownership correction. [Receipt](../measurements/machine-generation-oop-20261027.json).
+
+Older cold revision `83737742` passed all 18 CLI checks, covering its native/source
+owners, Store-independent core, project/build/packaging and query paths. Only the
+image group remains in that queue. These are evidence for that older revision,
+not qualification of subsequent runtime changes.
+[Receipt](../measurements/latest-cli-oop-20261027.json).
