@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "scope": "Inert Artifact inspection and descriptor lifetime through Oop protocols",
+  "base_revision": "894a14230ebabd6434cc02985c5fcfb17c5a13c4",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/artifact.rs": "c4be1f2848a17773ccfad4affd10e259b4645b00a11b19fb3a899d685fa2d22b",
+    "tests/fixtures/oop-host/allocation-presence.c": "a2a2f71fd34ec5ba02dd264885c02fb5f683f57ba1e64eb45bf628d1cb64d68a"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/artifact-oop.log",
+      "sha256": "d4e72986134a306b0ad8b880aa6a0a38473046f6f7f311481723734e926bd237",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Invalid paths, missing/truncated/duplicate descriptions, ABI/target mismatch, missing/escaping native requirements and sparse-file size limit",
+    "Real dylib constructor sentinel is never activated by inspection",
+    "Nine current String/Integer/Vector/ObjectModel dependencies collect while constructing and reading descriptors",
+    "All descriptor fields, list projections and invalid index/arity cases preserve their behavior",
+    "Native failure propagates exactly without overwriting language diagnostics",
+    "Transient input is released while its descriptor remains rooted; descriptor is reclaimed after final release",
+    "Symbol projection preserves its existing C-string rule while String projections retain embedded NUL bytes",
+    "Invalid native path bytes reject; ObjectModel clone preserves descriptor references",
+    "Authored publication and live descriptor replacement survive repeated module initialization",
+    "Compiled source uses the public inspection operation without activation"
+  ],
+  "representation_adjustments": [
+    "Declared callbacks replace raw native entries",
+    "Oop byte values and existing Word/String messages replace native carriers",
+    "Reclamation is checked by allocation identity rather than sending messages to freed objects"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Generation ledger image cases and final raw-root rerun remain in flight",
+    "Other native/compiler integration and scope decisions",
+    "Complete current-runtime cold Host qualification"
+  ]
+}

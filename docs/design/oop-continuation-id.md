@@ -2571,3 +2571,18 @@ The checks also preserve Symbol-name validation, exact native load failure,
 unchanged artifacts after compilation failure, source-digest corruption refusal
 and successful loading after restoring valid bytes. The target passes without
 runtime or Id changes. [Receipt](../measurements/artifact-activation-oop-20261027.json).
+
+## Inert Artifact inspection and descriptor lifetime
+
+The Artifact inspection harness now uses Oop callbacks and owner messages. It
+retains malformed/path/ABI/target/dependency checks, the sparse-file size limit,
+all descriptor projections and invalid-index behavior. A real dylib constructor
+sentinel remains untouched. Nine replaced String, Integer, Vector and ObjectModel
+operations collect while constructing and inspecting the descriptor.
+
+Native failures preserve identity and do not overwrite language diagnostics.
+Transient input and descriptor reclamation are checked by allocation identity.
+Embedded NUL handling, descriptor cloning, authored publication, live method
+replacement, repeated module loading and compiled inspection all pass. No runtime
+or Id change was needed.
+[Receipt](../measurements/artifact-inspection-oop-20261027.json).
