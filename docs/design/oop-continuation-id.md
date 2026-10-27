@@ -2342,3 +2342,30 @@ No Id hook or second implicit Method-entry protocol has been introduced.
 The core Oop gate, 26 Execution unit tests and seven native suites pass, including
 numeric policies, native adapters, Machine candidates, recovery and compiler
 behavior. [Receipt](../measurements/execution-numeric-oop-20261027.json).
+
+## Cold installation and archive after lifetime and Machine-entry fixes
+
+Clean revision `642e79e2` passed cold installation without a Birnam executable on
+PATH or a build cache. Its exact 822-file installation excludes the Lang seed.
+Archive qualification passed with the original source and prefix hidden, including
+signatures, relocation, source/GC/image behavior and parser/compiler-free startup.
+Both hidden paths were restored. Full serial Host qualification is now running.
+
+The first archive attempt exceeded the aggregate 300-second CLI limit. A diagnostic
+run retained each command's existing 300-second limit and passed every assertion
+in 281 seconds: full stdlib image save took about 218 seconds and image load about
+12. The unchanged archive gate then passed on retry. No deadline was changed; the
+failed attempt and diagnostic evidence remain in the receipt. No semantic failure
+was reproduced, and the source of the timing variation is not established.
+
+This candidate includes Method/result lifetime and Machine registration/argument
+binding fixes. It predates explicit candidate and numeric evaluator restoration.
+[Receipt](../measurements/machine-cold-install-oop-20261027.json).
+
+## Cold task qualification after call-preparation integration
+
+All six task checks passed on cold revision `83737742`, including task images,
+workers, concurrency services and cleanup, closure collection behavior, multicore
+and task control. The worker-ready deadline remains 15 seconds. CLI and image
+groups remain in that serial queue; this receipt does not qualify the later runtime
+corrections. [Receipt](../measurements/latest-tasks-oop-20261027.json).

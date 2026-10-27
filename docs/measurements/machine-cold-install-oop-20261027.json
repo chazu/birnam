@@ -1,0 +1,99 @@
+{
+  "passed": true,
+  "scope": "Cold installation and archive relocation at 642e79e2 with lifetime and Machine-entry fixes; subsequent explicit candidate/numeric support and full Host qualification are not qualified by this receipt",
+  "source_revision": "642e79e2fa5ed527d522bd23f9573308025d49f6",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "642e79e2fa5ed527d522bd23f9573308025d49f6"
+  },
+  "source_manifest_sha256": "9b639a8f589e151fba0e3b1242cd3db55e3d49d0caabcce886ee7a7e41f3935d",
+  "prefix": "/private/tmp/birnam-oop-machine-gyzvkzv9/prefix",
+  "receipt_sha256": "97b1688d566b4a224980eb59bf09a7e7ef2ce2d9e76650b8d7af0402cb84fa1d",
+  "staged_manifest_files": 822,
+  "staged_manifest_sha256": "872f65dd916f1e83129415224f1e298fa13767c7d3fef94f68b46e98c9cd0376",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-machine-gyzvkzv9/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-machine-gyzvkzv9/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_log": "/private/tmp/birnam-oop-machine-gyzvkzv9/install.log",
+  "install_log_sha256": "a3f1ec1c3df6742328f43c92e149457ad650b58412b629b7608a71d95ca58b4d",
+  "archive": "/private/tmp/birnam-oop-machine-gyzvkzv9/candidate.tar.gz",
+  "archive_sha256": "7e4c141ec1a7fcc370d9b735008ce26c38712828cefae0240bc1e1666dbe2a8a",
+  "archive_smoke_log": "/private/tmp/birnam-oop-machine-gyzvkzv9/archive-smoke.log",
+  "archive_smoke_log_sha256": "a378cfeeb531b86cb09faa10ff5d3eb0504ecceed1a325e1ee18ba18e3fc4811",
+  "archive_smoke_build_paths_hidden": true,
+  "build_paths_restored": true,
+  "install_seconds": 773.116511,
+  "archive_smoke_seconds": 314.726482,
+  "prior_failed_attempts": [
+    {
+      "exit_code": 1,
+      "started_ns": 1793115801337352000,
+      "finished_ns": 1793116103976952000,
+      "log": "/private/tmp/birnam-oop-machine-gyzvkzv9/archive-smoke-attempt1.log",
+      "failure": "aggregate CLI timeout at 300 seconds",
+      "log_sha256": "9ed58f06c0441f7c05416923fea0e40a6f35d6afb27c8617729c5d2a419ef8c5"
+    }
+  ],
+  "diagnosis": {
+    "log": "/private/tmp/birnam-oop-machine-gyzvkzv9/cli-diagnostic.log",
+    "log_sha256": "c93af803c90b63904c739e67f80743f253f79e025e7d07208bb41082a222d1eb",
+    "results": "/private/tmp/birnam-oop-machine-gyzvkzv9/cli-diagnostic.json",
+    "results_sha256": "4ef3bd1067d330535bedbb477ea76a07fbea6d94ce695d69a3b06f7210c5ee63",
+    "passed": true,
+    "seconds": 281.277328,
+    "per_command_timeout_seconds": 300,
+    "observation": "All CLI assertions passed. Saving the full stdlib image took about 218 seconds; loading it took about 12. The initial aggregate timeout was not reproduced as a semantic failure.",
+    "qualification_deadlines_changed": false,
+    "unchanged_archive_retry_passed": true
+  },
+  "remaining": [
+    "Full serial Host qualification of this candidate is running",
+    "Later cold qualification of explicit candidate and numeric evaluator support",
+    "Remaining native/compiler integration and pending optimization scope decisions"
+  ]
+}
