@@ -1759,3 +1759,25 @@ file read. Native failures and ordinary registration Errors retain their distinc
 results, and registration refusal prevents evaluation. Compiler construction
 refusal and Module reload/replacement checks pass. No runtime or Id change was
 needed. [Receipt](../measurements/source-loader-oop-20261027.json).
+
+## Native loading and initializer results
+
+The native-loader harness now uses Oop messages and an independent C fixture.
+It retains the argument-order, collecting callback, replacement, failure-identity,
+initializer lifetime and source-loading checks. Explicit language nil and immediate
+Word results are valid Oops; native absence retains the receiver-returning convention.
+
+Two compatibility gaps were repaired. Bootstrap previously tried to append native
+absence to its result Vector; it now emits only the loaded status when the initializer
+has no result. NativeLoader returns its actual receiver for that record, while a
+present result, including language nil, is returned unchanged. NativeLoader also
+copies the path through `Bytes fromBytes:` before argument callbacks, so a callback
+cannot redirect loading by mutating a replaced String byte provider. The sequence is
+path conversion and copy, argument collection, then native loading.
+
+Bootstrap owns the loading result record; Bytes owns the copy and NativeLoader owns
+language policy. These changes add no Id operation, dispatch step, registry or shared
+private representation. The old fixture-build step was removed from the native gate;
+the migrated test compiles its own Oop fixtures. Core dispatch and compiler/control
+checks, native loading, source loading and explicit Store invalidation pass.
+[Receipt](../measurements/native-loader-oop-20261027.json).

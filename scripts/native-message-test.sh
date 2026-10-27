@@ -25,16 +25,6 @@ cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   rust/birnam-abi/tests/fixtures/id-protocol-v1/execution_machine.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_machine_fixture.dylib"
-for variant in target missing incompatible; do
-  flags=(-std=c11 -Wall -Wextra -Werror -dynamiclib)
-  case "$variant" in
-    missing) flags+=(-DLOADER_MISSING) ;;
-    incompatible) flags+=(-DLOADER_INCOMPATIBLE) ;;
-  esac
-  cc "${flags[@]}" \
-    rust/birnam-abi/tests/fixtures/id-protocol-v1/native_loader.c \
-    -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_loader_${variant}_fixture.dylib"
-done
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib rust/birnam-abi/tests/fixtures/id-protocol-v1/alien.c -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_alien_fixture.dylib"
 # Audit the actual converted dylibs; no installed legacy construction graph.
 python3 - "$BIRNAM_TEST_MODULE_DIRECTORY" <<'PY_AUDIT'

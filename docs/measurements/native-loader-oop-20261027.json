@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "scope": "Oop native-loader acceptance, source-loader and explicit Store invalidation, plus core Id/compiler/control checks",
+  "base_revision": "ef596316fd75cf51a53be653dc082798e82eee0b",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-loader-snapshot-_vuov9l2/prefix",
+  "source_sha256": {
+    "modules/native-loader.birnam": "5e96676d65ffca469f897622fd2f7f2df0bb8d58dbab6080e29a983ef9fd3827",
+    "rust/birnam-bootstrap/src/lib.rs": "4fe1b814937ec675eae84b1617cc5a625372de8f18cbf0d897df3b8021042c33",
+    "rust/birnam-siphon/tests/native_loader.rs": "9f034b806554e4ac64bfad4241b7bac082754651e63772691b0caffd0f756124",
+    "tests/fixtures/oop-host/native-loader.c": "57476320d13d769ae96659cb8fe0d4fd6523737ea41fe3b9fa80c0d05cd66a3b",
+    "scripts/native-message-test.sh": "6b01bb227e45b4fb941f3a8b0108de28e1ed01c27effa09f35f68b9c17b5c47c"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/native-loader-final.log",
+      "sha256": "3f943a0a68b00c213cc91afcbdb644f09f1fd849ffd77049f62af6f2b74f9313",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/native-loader-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "reproductions": [
+    {
+      "log": ".cargo-target/oop-current-qualification/native-loader-before.log",
+      "sha256": "ab8466004cc07acba6edcea9c6fcafe903cca7f6b426ebad7fc558a7e92aa7a0",
+      "result": "Native absence could not be appended to the language result Vector"
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/native-loader-snapshot-before.log",
+      "sha256": "554d07e75d79543ae542467e183a91ed6c2ac389988fdfe24f2233e7a788c59b",
+      "result": "Mutable path provider was read after argument callback changed its bytes"
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/native-loader-void-prior.log",
+      "sha256": "c3e38783095a5f2ab9f4fdc07bd41eef997cc7485cd1e5ba8504ce9ab28ca10c",
+      "result": "Pre-Oop installed runtime returns actual receiver for absent initializer result"
+    }
+  ],
+  "retained_checks": [
+    "Actual receiver returned for native absence; explicit language nil and immediate Word returned unchanged",
+    "Invalid arity/type, negative/wrong argument count, missing/incompatible module, mapping failure and NUL path diagnostics",
+    "Path bytes copied before collecting argument callbacks mutate the source provider",
+    "Exact returned allocation identity, argument survival during initialization and failed argument reclamation",
+    "Live integer, text, error and native loader replacement with exact native failure identity",
+    "Lazy Error publication during String construction and Module reload preserving replacement",
+    "No universal method subscription; explicit replaceable Store invalidation preserves user facts"
+  ],
+  "runtime_changes": [
+    "Bootstrap omits native absence from loaded status/result Vector",
+    "NativeLoader uses actual receiver for absent result and copies path through existing Bytes owner before argument callbacks"
+  ],
+  "id_changes": false,
+  "qualification_limit": "Staged prefix exercises these changes. The independently built cold candidate predates them; complete current cold/Host acceptance remains pending."
+}

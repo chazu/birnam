@@ -286,7 +286,9 @@ unsafe extern "C" fn load_result(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize
         let kind = q.keep(s.intern(kind)?);
         let factory = q.keep(s.named(b"Vector")?);
         let mut result = q.keep(s.send(factory, b"new", &[])?);
-        for value in [kind, value] {
+        // Native absence is not language nil. Omit an absent result so the
+        // language loader can preserve its receiver-returning void convention.
+        for value in [kind, value].into_iter().filter(|value| !value.is_null()) {
             result = q.keep(s.send(result, b"add:", &[value])?);
         }
         Ok(result)

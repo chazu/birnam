@@ -9,7 +9,9 @@ let loaderStringVt := StringVt;
 ]];
 [Reflect defineMethod: #finish:for: on: NativeLoader as: [:self :result :receiver |
   let status := [result at: 0];
-  [[status == #loaded] ifTrue: [| [result at: 1]] ifFalse: [|
+  [[status == #loaded] ifTrue: [|
+    [[[result size] = 1] ifTrue: [| receiver] ifFalse: [| [result at: 1]]]
+  ] ifFalse: [|
     [[status == #mappingFailed] ifTrue: [| [self error: #ioError message: "could not load module dylib"]] ifFalse: [|
       [[status == #incompatibleModule] ifTrue: [| [self error: #notAModule message: "missing or incompatible Oop native module declaration"]] ifFalse: [|
         [self error: #moduleError message: "native module initialization failed"]
@@ -25,7 +27,7 @@ let loaderStringVt := StringVt;
 ]];
 [Reflect defineMethod: #load:arguments:for: on: NativeLoader as: [:self :path :sequence :receiver |
   [[[[Reflect vtableOf: path] == loaderStringVt] not] ifTrue: [| nil] ifFalse: [|
-    let snapshot := [path bytes];
+    let snapshot := [Bytes fromBytes: [path bytes]];
     let length := [Integer integerValue: [sequence size]];
     [[length isNil] ifTrue: [| [self error: #typeError message: "module arguments need an Integer size"]] ifFalse: [|
       [[length < 0] ifTrue: [| [self error: #typeError message: "module argument count must be nonnegative"]] ifFalse: [|
