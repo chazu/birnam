@@ -1816,3 +1816,28 @@ removed, for both synchronous and resumable entries and nested Blocks. The core
 gate, materialization rejection/retry and source-loading checks pass as well.
 Full current cold qualification and the remaining native/compiler migrations are
 still pending. [Receipt](../measurements/embedding-oop-20261027.json).
+
+## Source compiler, control and native code lifetime
+
+The general compiler checks now run as `compiler_source` through Oop messages,
+without Store. The nine optimization groups remain in the existing `compiler`
+target and are still pending migration; both targets remain in the native gate.
+This split moves the general assertions rather than dropping the pending groups.
+
+The migrated checks retain source reflection, arithmetic, chaining, closures,
+captured-Method replacement, syntax/native compilation rejection, failed module
+admission, collecting constructor replacement, suspended-body replacement,
+boundary exit and abandoned-frame cleanup. Exact native-unit and relocated-byte
+counts return to their pinned bootstrap baseline.
+
+An independent C fixture compiled by TCC exercises actual pending-call recovery.
+It removes its own binding, collects and checkpoints retirement, then publishes a
+marker while still executing. The caller resumes once with 43; the candidate
+mapping retires afterward, while the baseline stays live. Initializer reuse and
+conflicting inputs retain their checks. The fixture gives its target a private
+vtable through Id instead of assuming Blocks have separate vtables, and retains
+TCC's declared Method context rather than overwriting that owner's state. The
+obsolete v1 recovery fixture is removed.
+
+The migrated target and the broader pending-call recovery target pass. No runtime
+or Id change was needed. [Receipt](../measurements/compiler-source-oop-20261027.json).

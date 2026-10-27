@@ -264,7 +264,10 @@ or GC suppression as substitutes for roots. No lock or borrowed foreign bytes ma
 span an outgoing send. Explicit Store publication preserves its MOP; executable references
 retain their Method/Unit owners. The deleted synchronous-evaluator and compiler
 state runners were not executing these tests in the current build. Production
-compiler/lifetime coverage remains in `birnam-siphon/tests/compiler.rs`; Image
+source/control/lifetime coverage is in `birnam-siphon/tests/compiler_source.rs`.
+The nine remaining optimization groups stay in `birnam-siphon/tests/compiler.rs`
+and its child modules; that target still requires Oop migration. Both targets remain
+in the full native gate. Image
 acceptance is in `birnam-siphon/tests/image.rs` and its linked contract above.
 
 ## Embedding

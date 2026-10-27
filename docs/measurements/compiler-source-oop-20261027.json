@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "scope": "General source compiler, control and native code lifetime through Oops, plus pending-call recovery acceptance",
+  "base_revision": "51a7d25641af5111f9488287d2dc8839473345ad",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler_source.rs": "75acac15f52896753c584d1a6989a0c710b4de9cd5383dbd7fd6515ad44a4c03",
+    "rust/birnam-siphon/tests/compiler.rs": "288b875e2a1156edc165fddeb3b0d340ecffd708dbaea62072acc77aad43a8f3",
+    "tests/fixtures/oop-host/compiler-recovery.c": "c3ef0500cf8b1e14da518acf9b87910fc1164fcfbb8a9a9b2a029c1d3446b0e9",
+    "scripts/native-message-test.sh": "5e7462ecc3ab7af5f3c63d4b8a1eaf13f87b847c85e155fa92d1ae8322fdf68e",
+    "rust/birnam-codegen-runtime/README.md": "ccd18b890290715ab73141924ce8843ffd6f27f07de41b48605eb50d237831d9"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-source-final.log",
+      "sha256": "44ade1d5750544adb2155e7df273812f51b39faf04edbe198b9c55a8662acc7c",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Reflection, arithmetic, chaining, lexical captures and captured Method identity under replacement",
+    "Syntax and C compilation rejection without native mappings; failed module admission is reclaimable",
+    "Replaced, captured and suspended body mappings retained until their final use, with exact native-unit and relocated-byte accounting",
+    "Protected boundary exit delivers once; abandoned suspended frames release code",
+    "Collecting current Integer factory during generated closure construction",
+    "TCC-compiled inline recovery callback removes its own binding, collects and checkpoints, then continues executing; caller returns 43 exactly once",
+    "Candidate mapping retires after return while baseline code remains; all mappings retire after final root release",
+    "Initializer reuse preserves exact identity and refuses conflicting initialization arguments"
+  ],
+  "harness_changes": [
+    "General assertions moved from compiler to compiler_source; both remain in native-message-test.sh",
+    "Recovery target gets a private vtable using existing Id operation",
+    "TCC owns its declared Method context; fixture state stays in the compiled unit and is retained through owner messages",
+    "Removed obsolete v1 compiled recovery fixture"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Nine compiler optimization groups still need Oop migration",
+    "Other native acceptance targets remain unported",
+    "Full latest cold/Host qualification remains incomplete"
+  ]
+}
