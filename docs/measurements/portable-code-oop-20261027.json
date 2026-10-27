@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "scope": "PortableCode public construction, inspection, immutable identity, diagnostics, live dependencies and ownership through Oops",
+  "base_revision": "d6cb772fa8157822213de8510e18ad24030b44f2",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/materialization-final-bucn25kx/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/portable_code.rs": "fb61fd611dedcb81b8a13cbae8e6ea09509c7b54087ed9dfb952801b8fcb10a8",
+    "tests/fixtures/oop-host/portable-code.c": "63515e188308821e0e142857d63faaba1d1ca9fcdf6449b35a748b8621b07000",
+    "tests/fixtures/portable-code-v1/SHA256SUMS": "fbe0a39da51a174d45f3ca4fc339b110672861e7f7c8d0438487d21af7d7940b"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/portable-code.log",
+      "sha256": "2a3460bcc1563ee4eaf5a5867d47a65a09a972c93f10de04743904b389778195",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Public constructors reify every program golden fixture; digests match independent SHA256SUMS.",
+    "All node/binding/statement forms, nested programs, byte names, exact float bits, duplicate captures, lexical scope and bounds.",
+    "CodeObject provenance, stripping/replacement, immutable clone identity and exact invalid-input diagnostics.",
+    "Collecting current String/Integer/Vector/allocation callbacks, exact native failure identity and derived factory behavior.",
+    "Raw allocations cannot impersonate admitted private values. Ten observed objects survive solely through their owner edges and are reclaimed after releasing anchors.",
+    "Reload returns the original CodeNode prototype while preserving an explicit namespace replacement."
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

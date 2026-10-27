@@ -1729,3 +1729,17 @@ arity, error, native-boundary and Method-binding/image suites and the complete c
 gate. This supersedes earlier notes that the full materialization harness remains
 unported; other native/compiler migration and latest cold-installation qualification
 are still pending. [Receipt](../measurements/materialization-full-oop-20261027.json).
+
+## PortableCode construction and ownership
+
+The `portable_code` harness now uses Oop values and declared collecting callbacks.
+It rebuilds every portable-program golden fixture through the public constructors,
+checks the independent digest, and inspects all node, binding and statement forms.
+Provenance updates, immutable identity, invalid-input messages, derived factories,
+raw-allocation rejection and current dependency replacement remain covered.
+Allocation identities prove retention through owner edges and reclamation after
+anchor release without querying freed Oops.
+
+The Oop initializer returns its original CodeNode prototype rather than the removed
+Unit carrier. Reload still preserves an explicit Namespace replacement. No runtime
+or Id change was needed. [Receipt](../measurements/portable-code-oop-20261027.json).
