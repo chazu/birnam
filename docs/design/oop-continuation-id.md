@@ -2035,3 +2035,18 @@ resolution and collecting project queries. The image group remains in the serial
 queue. Later native-loader, standalone-emitter and call-preparation corrections
 still require a new cold candidate.
 [Receipt](../measurements/current-cli-oop-20261027.json).
+
+## External Bytes capacity and collecting accounting
+
+The `external_allocation` harness now supplies Oop byte providers and observes
+the current external-charge method. Two 16 MiB construction rounds retain their
+buffers through the next collection checkpoint. Explicit automatic-collection
+suppression, re-enabling, zero charges and invalid-input rejection remain covered.
+
+A collecting accounting replacement verifies that Bytes publishes ownership and
+roots before reporting capacity. Construction and append preserve every byte;
+only capacity growth is charged, empty append does not double-charge, and restoring
+the original method affects the next construction. The measurement uses cached
+selectors so Host helper allocations cannot satisfy its threshold assertions.
+No runtime or Id change was needed.
+[Receipt](../measurements/external-allocation-oop-20261027.json).

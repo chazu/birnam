@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "scope": "External Bytes capacity, fixed GC pressure and collecting accounting replacement through Oops",
+  "base_revision": "8ba48ef50abc1512466a67cd5ca8dbed45ea05df",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/prepared-live-shknlun1/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/external_allocation.rs": "0bf9d934c7ee6663690453eb23028baeb9836f8d92bb61cf206abafcf0a5d2e9",
+    "tests/fixtures/oop-host/external-allocation.c": "f5f62cfa1568e15344497392fd1270459a14c2a7a2febf3dceb42a519ae1731b"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/external-allocation.log",
+      "sha256": "62605594b5910fd027f01448a9b610fca8da5bd9fd4bb8976b77f033a12b8fb1",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Two 16 MiB Bytes constructions contribute external capacity to the fixed budget and survive the next checkpoint through a real root",
+    "Automatic collection suppression and re-enabling remain explicit; assignment does not reset charge",
+    "Invalid external-charge arguments fail and zero is accepted without increasing pressure",
+    "Collecting replacement sees rooted, published Bytes storage during construction and growth",
+    "Every byte survives append and callback collection; capacity growth is charged, empty append does not charge existing capacity again",
+    "Restoring the accounting method is observed by the next construction"
+  ],
+  "representation_adjustment": "Input bytes are read through ordinary Oop sizeWord/atWord: providers; returned byte views are rooted Oops rather than borrowed native byte carriers.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native targets and compiler groups remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Full latest cold qualification is incomplete"
+  ]
+}
