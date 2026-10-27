@@ -112,7 +112,10 @@ existing Symbol remains permitted during collection because it does not allocate
 
 ## Allocation accounting and admission
 
-Activation accounts for the existing Id heap. Each subsequent guarded construction
+Activation publishes the existing Id heap charge only after owner validation
+succeeds. Installing Oop construction methods can itself allocate; if installation
+or validation fails, GC restores the previous charge and measurement origin while
+leaving the methods available for repair. Each subsequent guarded construction
 charges its actual requested size through current Id `allocationChargeFor:`; GC
 does not duplicate Id's storage geometry. The object stays temporarily rooted
 across this query. A replacement may collect or construct another object, so the

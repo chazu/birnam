@@ -160,36 +160,48 @@ pub(super) unsafe extern "C" fn activate(
         if s.phase.get() != Phase::Inactive {
             return Err(s.invalid());
         }
-        let object = s.send(s.id.root, b"objectBehavior", &[])?;
-        let meta = s.send(s.id.root, b"vtableBehavior", &[])?;
-        let name = s.send(s.id.root, b"nameBehavior", &[])?;
-        let method = s.send(s.id.root, b"methodBehavior", &[])?;
-        let module = s.send(s.id.root, b"moduleBehavior", &[])?;
-        for (target, public, implementation) in [
-            (meta, b"allocate".as_slice(), b"managedAllocate".as_slice()),
-            (meta, b"delegated", b"managedDelegated"),
-            (name, b"intern", b"managedIntern"),
-            (object, b"nameWithBytes", b"managedName"),
-            (object, b"sequence", b"managedSequence"),
-            (method, b"withContext:", b"managedContext"),
-            (module, b"newMethodAt:", b"managedNativeMethod"),
-        ] {
-            let implementation = s.send(s.image, b"methodAt:", &[s.names[implementation]])?;
-            let implementation = s.send(implementation, b"withContext:", &[s.receiver])?;
-            s.send(target, b"addMethod", &[s.names[public], implementation])?;
-        }
-        // Failed validation leaves complete policy methods installed; inactive
-        // construction can repair missing owners before a later activation.
-        s.phase.set(Phase::Marking);
-        let answer = collection::validate(s).and_then(|charge| { s.reset_accounting(charge)?; Ok(charge) });
+        let previous_charge = s.charged.get();
+        let previous_origin = s.accounting_origin.get();
+        let answer = (|| {
+            let object = s.send(s.id.root, b"objectBehavior", &[])?;
+            let meta = s.send(s.id.root, b"vtableBehavior", &[])?;
+            let name = s.send(s.id.root, b"nameBehavior", &[])?;
+            let method = s.send(s.id.root, b"methodBehavior", &[])?;
+            let module = s.send(s.id.root, b"moduleBehavior", &[])?;
+            for (target, public, implementation) in [
+                (meta, b"allocate".as_slice(), b"managedAllocate".as_slice()),
+                (meta, b"delegated", b"managedDelegated"),
+                (name, b"intern", b"managedIntern"),
+                (object, b"nameWithBytes", b"managedName"),
+                (object, b"sequence", b"managedSequence"),
+                (method, b"withContext:", b"managedContext"),
+                (module, b"newMethodAt:", b"managedNativeMethod"),
+            ] {
+                let implementation = s.send(s.image, b"methodAt:", &[s.names[implementation]])?;
+                let implementation = s.send(implementation, b"withContext:", &[s.receiver])?;
+                s.send(target, b"addMethod", &[s.names[public], implementation])?;
+            }
+            // Failed validation leaves complete policy methods installed; inactive
+            // construction can repair missing owners before a later activation.
+            s.phase.set(Phase::Marking);
+            collection::validate(s).and_then(|charge| { s.reset_accounting(charge)?; Ok(charge) })
+        })();
         *s.walk.borrow_mut() = None;
         s.phase.set(if answer.is_ok() {
             Phase::Idle
         } else {
             Phase::Inactive
         });
-        let charge=answer?;
-        s.charged.set(charge);
+        match answer {
+            Ok(charge) => s.charged.set(charge),
+            Err(error) => {
+                // Installing managed Oop constructors can itself allocate. A
+                // failed activation must not publish that partial accounting.
+                s.charged.set(previous_charge);
+                s.accounting_origin.set(previous_origin);
+                return Err(error);
+            }
+        }
         Ok(core::ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)

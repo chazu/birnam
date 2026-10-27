@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "scope": "Collector activation over bare Id, failure/repair and complete heap accounting through Oops",
+  "base_revision": "22f4be8c97cd1e1413e7ee78061661c6305da59d",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/activation-wmlwn0vv/prefix",
+  "source_sha256": {
+    "rust/birnam-collect/src/construction.rs": "9641711ddba243e7b3d326e349e6d5be4e0363dc58508a15a70ac082a30efbcc",
+    "rust/birnam-siphon/tests/memory_activation.rs": "aa0460f3952c5f7efac5048c7c7dac738ed93cdc960dcc1e6de138e065337bf3",
+    "tests/fixtures/oop-host/memory-activation.c": "2e0b57f71697e7c992a20b818a15d69ffe5ba2c91c5fe76ea24b772ad56154f9"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/memory-activation-final.log",
+      "sha256": "58d86bc5a0545f0cd48b9c487d570f15a6aea1cea19740a36505e0165ad9fcd9",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/memory-activation-callback.log",
+      "sha256": "97219d0c85d7411107e3ddf7ec7416f7252a13d81bad576c2eec8e55c802cb9c",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/memory-activation-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "reproduction": {
+    "log": ".cargo-target/oop-current-qualification/memory-activation-before.log",
+    "sha256": "cdb5caa37c6049c98cff6459b22cea799dd849f7affa656e9499725ead73470a",
+    "result": "Activation rejected uncovered storage but left a partial allocation charge from Oop method installation"
+  },
+  "retained_checks": [
+    "An opaque payload created before loading GC retains identity through failure, repair and successful activation",
+    "Failed validation and a constructor that allocates before failing preserve the prior accounting state",
+    "Failed activation refuses collection; installed construction methods permit owner repair",
+    "Successful activation matches an independent sum of existing header/payload storage",
+    "Current inherited owners are observed; missing parents and parent cycles fail safely and can be repaired",
+    "Reachable uncovered post-activation payloads fail precise collection; releasing roots permits reclamation",
+    "Allocation identities observe liveness without dereferencing reclaimed objects"
+  ],
+  "runtime_changes": [
+    "GC activation restores previous charge and accounting origin on failure; successful activation still publishes complete heap pressure"
+  ],
+  "id_changes": false,
+  "qualification_limit": "Staged acceptance includes this correction. The running cold candidate predates it and other recent loader/emitter/preparation changes.",
+  "remaining": [
+    "Other native and compiler targets remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Full latest cold qualification is incomplete"
+  ]
+}

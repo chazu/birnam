@@ -2050,3 +2050,24 @@ the original method affects the next construction. The measurement uses cached
 selectors so Host helper allocations cannot satisfy its threshold assertions.
 No runtime or Id change was needed.
 [Receipt](../measurements/external-allocation-oop-20261027.json).
+
+## Collector activation, failure and repair
+
+The `memory_activation` harness now starts from bare Id and Roots, creates an
+opaque payload before loading GC, and runs through an independent declared C
+module. It verifies failed activation, repair, complete initial-heap accounting,
+stable object identity, inherited owner coverage, detached/cyclic parents and
+uncovered allocations after activation. Precise payload mode makes the later
+owner-coverage checks explicit; identity-only observations avoid querying freed Oops.
+
+The test exposed partial accounting after activation failed: installing managed
+Oop construction methods can allocate through a method installed earlier in the
+same attempt. GC now restores its previous charge and measurement origin when
+installation or validation fails. Installed methods remain available for repair;
+successful activation publishes the complete inventory charge. A constructor that
+allocates and then fails exercises the installation failure path as well.
+
+The full core gate and activation, allocation-accounting, external-capacity and
+System GC suites pass. The change is local to GC and adds no Id operation, registry
+or payload classification. Full latest cold qualification remains pending.
+[Receipt](../measurements/memory-activation-oop-20261027.json).
