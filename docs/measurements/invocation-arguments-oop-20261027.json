@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "scope": "Reentrant Oop argument storage and explicit nullable adaptation through declared and compiled Methods",
+  "base_revision": "c26f24159fc919f994253f6a00d53efc049b4712",
+  "runtime_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/invocation_arguments.rs": "11665623ef435ad4259d2c9a557344056b69f733b0699ed47bd1fc3c8c0ec5c1",
+    "tests/fixtures/oop-host/invocation-arguments.c": "b984f7c62dd7d42dcdf834bea0cb95e2977e229ff1277c5687aa7496eedaf961",
+    "scripts/native-message-test.sh": "104538cc3065270c35c3ff746afbd3d22de74c19323d2a6c1e709f733e7f60de"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/invocation-arguments-oop.log",
+      "sha256": "3177894a3f82cad243cebfe190216fcb03625a97ff5004d34c4d596119da9897",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Declared native and compiled typed methods preserve outer argument arrays through collection and nested entry",
+    "Receiver, raw absence, immediate and language-nil inputs retain their expected meaning",
+    "Declared native return preserves raw absence; explicit authored nullable signature normalizes it to language nil",
+    "Byte object and numeric zero argument remain unchanged",
+    "Sixteen checkpoint entries prove both outer and nested paths execute"
+  ],
+  "migration_note": "Raw function-pointer construction and Operand packets are replaced by native module declarations and an actual compiled Method with the existing nullable signature. Nested authored calls traverse Execution again. The target is now included in the native-message gate.",
+  "runtime_changes": false,
+  "id_changes": false
+}

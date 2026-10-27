@@ -2924,3 +2924,16 @@ Fresh immutable Host test binaries are prepared and the full serial Host groups
 are now running against this candidate. This installation/archive receipt does
 not claim completion of those groups or the remaining native/compiler migration.
 [Receipt](../measurements/fixed-adapters-cold-install-oop-20261027.json).
+
+## Reentrant invocation arguments
+
+The invocation-argument harness now uses a declared native checkpoint and an
+actual compiled Method with the existing nullable signature. Both collect and
+reenter while preserving the outer Oop argument array. Native calls preserve raw
+absence; the explicitly typed authored entry normalizes it to language nil.
+Receiver, immediate, language-nil, byte-object and zero inputs remain intact.
+
+All sixteen outer/nested checkpoint entries pass. The harness is now included in
+the native-message gate. Raw function-pointer construction and carrier packets
+were not recreated; no runtime or Id changes were needed.
+[Receipt](../measurements/invocation-arguments-oop-20261027.json).
