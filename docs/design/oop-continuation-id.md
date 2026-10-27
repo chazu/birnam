@@ -2826,3 +2826,16 @@ on each exit; the test uses the actual Host cleanup path instead of reintroducin
 that implementation dependency or the old byte-token carrier. All checks pass
 without runtime or Id changes.
 [Receipt](../measurements/result-cleanup-oop-20261027.json).
+
+## Observable Integer/Word conversions
+
+The conversion-observability harness now uses declared Oop Methods. A replaced
+Word constructor is entered for both Integer arithmetic inputs, can retain their
+distinct temporary objects through collection, and can change the arithmetic
+result. A replaced Word getter changes result conversion and is entered once.
+Restoring the original methods restores the original arithmetic result.
+
+Collection runs before the fixture reads the constructor's observations into the
+caller scope, so those reads cannot accidentally supply the tested roots. All
+checks pass without runtime or Id changes.
+[Receipt](../measurements/integer-box-oop-20261027.json).

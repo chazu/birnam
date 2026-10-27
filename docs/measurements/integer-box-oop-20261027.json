@@ -1,0 +1,31 @@
+{
+  "passed": true,
+  "scope": "Observable Integer/Word conversion prevents unguarded temporary-object elimination",
+  "base_revision": "9c35ac96508b36a8efedb96c367c367661beb24f",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/integer_box_observability.rs": "290f8c5f942c88619fb9ac26ef099e75b007444decfad5e07e3d2a934917a4c0",
+    "tests/fixtures/oop-host/integer-box.c": "cb492408571df1ae25ee22e42f3b107a8a8a438932993b003c9e12bfbb6f6fe9"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/integer-box-oop.log",
+      "sha256": "7bc2c3d31b1f773c783a9888f2aa4d3672ad753c3dab55a2e5f5cb92f5ff4765",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Integer addition enters both replaced Word input constructors",
+    "Constructed temporary Words retain distinct identity and survive collection through references retained by the constructor",
+    "Constructor replacement changes arithmetic inputs and result from 16 to 20",
+    "Result conversion enters the replaced Word getter once and returns its changed value 99",
+    "Restoring the original methods restores result 16"
+  ],
+  "lifetime_note": "Collection precedes reading the observed temporary Words into the Rust caller scope, avoiding accidental caller roots that could mask broken retention.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native/compiler acceptance migrations and pending contract decisions",
+    "Current cold Host CLI and image qualification"
+  ]
+}

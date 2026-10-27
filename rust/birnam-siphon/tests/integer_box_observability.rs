@@ -1,47 +1,94 @@
-//! Concrete counterexamples to unguarded Integer/Word conversion elimination.
-mod support;
-use birnam_abi::{Oop,borrowed_slice,id_protocol::{NativeEntry,Operand,Outcome,Protocol}};
-use std::{cell::{Cell,RefCell},ffi::c_void,os::unix::ffi::OsStrExt};
-use support::*;
-struct Hook { id:Protocol, roots:Oop, original:NativeEntry, replace:Cell<bool>, calls:Cell<usize>, seen:RefCell<Vec<(Oop,usize)>> }
-unsafe extern "C" fn constructor(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
- let h=unsafe{&*c.cast::<Hook>()};h.calls.set(h.calls.get()+1);
- let args=unsafe{borrowed_slice(a,n)}.unwrap();
- let replacement=[Operand::word(10)];let args=if h.replace.get(){&replacement[..]}else{args};
- let answer=unsafe{(h.original.method.unwrap())(h.original.context,r,args.as_ptr(),args.len())};
- if let Some(o)=answer.value.as_object(){let pin=unsafe{retain(h.id,h.roots,o)};h.seen.borrow_mut().push((o,pin));}
- answer
-}
-unsafe extern "C" fn getter(c:*mut c_void,r:Oop,_:*const Operand,_:usize)->Outcome {
- let h=unsafe{&*c.cast::<Hook>()};h.calls.set(h.calls.get()+1);
- let pin=unsafe{retain(h.id,h.roots,r)};h.seen.borrow_mut().push((r,pin));
- Outcome::loaded(Operand::word(99))
-}
+//! Integer arithmetic preserves observable Word construction and conversion.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 #[test]
-#[ignore="requires production Integer policy"]
+#[ignore = "requires production Oop Integer policy"]
 fn constructors_and_getters_observe_and_change_temporary_words() {
- unsafe {
- let id=id();let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
- let named=|name:&[u8]|object(send(id,ns,b"at:",&[Operand::object(id.intern_name(name).unwrap())]));
- let (integer,word,roots,gc)=(named(b"Integer"),named(b"Word"),named(b"Roots"),named(b"GC"));
- let a=object(send(id,integer,b"fromWord:",&[Operand::word(7)]));let at=retain(id,roots,a);
- let b=object(send(id,integer,b"fromWord:",&[Operand::word(9)]));let bt=retain(id,roots,b);
- let run=||object(send(id,a,b"+",&[Operand::object(b)]));
- let read=|o|send(id,o,b"word",&[]).as_word().unwrap();assert_eq!(read(run()),16);
- let entry=|o,name:&[u8]|send(id,id.receiver,b"bind:to:",&[Operand::object(id.intern_name(name).unwrap()),Operand::object(o)]).as_entry().unwrap();
- let original=entry(word,b"fromBits:");let vt=named(b"WordVt");
- let mut h=Hook{id,roots,original,replace:Cell::new(false),calls:Cell::new(0),seen:RefCell::new(Vec::new())};
- install(id,vt,b"fromBits:",constructor,(&raw mut h).cast());
- assert_eq!(read(run()),16);assert_eq!(h.calls.get(),2,"both input Word factories remain current sends");
- assert_ne!(h.seen.borrow()[0].0,h.seen.borrow()[1].0,"temporary boxes have distinct identity");
- collect(id,gc);for &(o,_) in h.seen.borrow().iter(){assert!(present(id,o),"factory can retain a temporary beyond addition");}
- h.replace.set(true);h.calls.set(0);assert_eq!(read(run()),20,"constructor replacement changes arithmetic inputs");assert_eq!(h.calls.get(),2);
- install(id,vt,b"fromBits:",original.method.unwrap(),original.context);
- let bits=entry(word,b"bits");h.calls.set(0);
- install(id,vt,b"bits",getter,(&raw mut h).cast());
- assert_eq!(read(run()),99,"result conversion uses the current Word getter");assert_eq!(h.calls.get(),1);
- install(id,vt,b"bits",bits.method.unwrap(),bits.context);
- assert_eq!(read(run()),16);
- for (_,pin) in h.seen.borrow_mut().drain(..){release(id,roots,pin);}release(id,roots,bt);release(id,roots,at);
- }
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let key = |n: &[u8]| q.keep(host.intern(n).unwrap()).unwrap();
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let integer = named(b"Integer");
+    let word = named(b"Word");
+    let gc = named(b"GC");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let a = call(integer, b"fromWord:", &[size(7).unwrap()]);
+    let b = call(integer, b"fromWord:", &[size(9).unwrap()]);
+    let run = || call(a, b"+", &[b]);
+    let read = |value| q.word_bits(call(value, b"word", &[])).unwrap();
+    assert_eq!(read(run()), 16);
+    let path =
+        std::env::temp_dir().join(format!("birnam-integer-box-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/integer-box.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let original = call(host.id.root, b"bind:to:", &[key(b"fromBits:"), word]);
+    let vt = named(b"WordVt");
+    let alias = key(b"integerBoxOriginalFactory:");
+    call(vt, b"addMethod", &[alias, original]);
+    let seen = call(host.id.root, b"sequence", &[std::ptr::null_mut(); 16]);
+    let context = call(
+        host.id.root,
+        b"sequence",
+        &[alias, size(0).unwrap(), size(0).unwrap(), seen],
+    );
+    let method = |n: &[u8]| {
+        call(
+            call(fixture, b"methodAt:", &[key(n)]),
+            b"withContext:",
+            &[context],
+        )
+    };
+    let constructor = method(b"constructor");
+    let getter = method(b"getter");
+    let count = || as_size(call(context, b"at:", &[size(2).unwrap()])).unwrap();
+    call(vt, b"addMethod", &[key(b"fromBits:"), constructor]);
+    assert_eq!(read(run()), 16);
+    assert_eq!(count(), 2, "both input Word factories remain current sends");
+    // Collect before reading observations into the caller scope. The factory
+    // owns the only retained references to these temporary Words.
+    call(gc, b"collectPrecisely", &[]);
+    let first = call(seen, b"at:", &[size(0).unwrap()]);
+    let second = call(seen, b"at:", &[size(1).unwrap()]);
+    assert_ne!(
+        first, second,
+        "observable temporary Words have distinct identity"
+    );
+    assert_eq!(q.word_bits(call(first, b"bits", &[])).unwrap(), 7);
+    assert_eq!(q.word_bits(call(second, b"bits", &[])).unwrap(), 9);
+    call(context, b"at:put:", &[size(1).unwrap(), size(1).unwrap()]);
+    call(context, b"at:put:", &[size(2).unwrap(), size(0).unwrap()]);
+    assert_eq!(
+        read(run()),
+        20,
+        "constructor replacement changes arithmetic inputs"
+    );
+    assert_eq!(count(), 2);
+    call(vt, b"addMethod", &[key(b"fromBits:"), original]);
+    let bits = call(host.id.root, b"bind:to:", &[key(b"bits"), word]);
+    call(context, b"at:put:", &[size(2).unwrap(), size(0).unwrap()]);
+    call(vt, b"addMethod", &[key(b"bits"), getter]);
+    assert_eq!(
+        read(run()),
+        99,
+        "result conversion must enter the current Word getter"
+    );
+    assert_eq!(count(), 1);
+    call(vt, b"addMethod", &[key(b"bits"), bits]);
+    assert_eq!(read(run()), 16);
+    call(vt, b"removeMethod:", &[alias]);
 }
