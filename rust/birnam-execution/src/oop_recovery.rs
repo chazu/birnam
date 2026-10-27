@@ -14,7 +14,6 @@ pub(super) const CONTROLS: &[&[u8]] =
 #[derive(Default)]
 pub(super) struct Runtime {
     requests: Vec<Request>,
-    pub controls: Vec<Oop>,
 }
 struct Request {
     authority: RecoveryAuthority,
@@ -176,15 +175,7 @@ pub(super) unsafe fn try_inline(
             if !eligible {
                 return Ok(None);
             }
-            let expected = s.resume.borrow().recovery.controls.clone();
-            if expected.len() != CONTROLS.len() {
-                return Err(invalid());
-            }
-            let mut bindings = Vec::new();
-            for (&selector, method) in CONTROLS.iter().zip(expected) {
-                bindings.extend([site.machine, s.names[selector], method]);
-            }
-            if abi::as_size(s.send(s.id.root, b"nativeBindingsMatch:", &bindings)?) != Some(1) {
+            if !controls_current(s, site.machine, CONTROLS)? {
                 return Ok(None);
             }
             checked(s.engine.borrow().recovery_authority(

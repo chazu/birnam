@@ -186,7 +186,7 @@ fn production_execution_candidates_preserve_semantics_and_lifetimes() {
             return;
         }
         recovery::check(&mut h);
-        native_tier::check(&mut h);
+        native_tier::numeric(&mut h);
         h.release_all();
     }
 }

@@ -3,7 +3,8 @@
 static IdProtocol id;
 enum { AT, PUT, AT_WORD, COLLECT, WORD_OF, INTEGER, RETURN, CONTINUE, READ, WRITE,
        SUSPEND, CAPTURE, CALL, TAIL, PARK, ELIGIBLE, NEW, IDENTITY, ALLOCATIONS,
-       STEP, CALLBACK, BOUNDARY, TRACE, SELF, ALLOCATION, PRESENT, COUNT };
+       STEP, CALLBACK, BOUNDARY, TRACE, SELF, ALLOCATION, PRESENT,
+       CANDIDATE, WITHDRAW, OPTIMIZE, FROM, PROOF, ADD, COUNT };
 static Oop names[COUNT];
 #define CHECK(v) do { Oop checked=(v); if(id_fault(checked))return checked; } while(0)
 static Oop send(Oop r,size_t s,const Oop *a,size_t n) { return id.message(id.root,r,names[s],a,n); }
@@ -60,6 +61,38 @@ static Oop trace(Oop root,Oop c,Oop r,const Oop *a,size_t n) {
 static Oop self(Oop root,Oop c,Oop r,const Oop *a,size_t n) {
     (void)root;(void)c;(void)a;(void)n;return r;
 }
+/* [answer,Integer]. Both single-PC and branch/join descriptor candidates. */
+static Oop candidate(Oop root,Oop c,Oop machine,const Oop*a,size_t n) {
+    (void)root;if(n>1)return id.invalid;
+    if(n) {
+        Oop bits=send(get(c,1),WORD_OF,a,1);CHECK(bits);
+        size_t pc=id_unbox(bits);
+        if(pc!=3) {Oop next=id_size(pc==0?1:3);return send(machine,CONTINUE,&next,1);}
+    }
+    Oop word=id_size(1),slot=send(get(c,1),FROM,&word,1);CHECK(slot);
+    Oop args[]={slot,get(c,0)};CHECK(send(machine,WRITE,args,2));
+    return send(machine,RETURN,&slot,1);
+}
+/* [baseline,empty,GC,monitor,answer identity,constructor alias,calls]. */
+static Oop withdraw(Oop root,Oop c,Oop r,const Oop*a,size_t n) {
+    (void)root;if(n!=1)return id.invalid;
+    if(a[0]==id_size(1) && get(c,6)==id_size(0)) {
+        CHECK(put(c,6,id_size(1)));
+        Oop empty=get(c,1);CHECK(send(get(c,0),OPTIMIZE,&empty,1));
+        CHECK(send(get(c,2),COLLECT,0,0));
+        Oop identity=get(c,4);
+        if(send(get(c,3),PRESENT,&identity,1)!=id_size(1))return id.invalid;
+    }
+    return id.message(id.root,r,get(c,5),a,n);
+}
+/* [baseline,new steps,Id vtable,proof selector,original proof,alias,calls]. */
+static Oop proof(Oop root,Oop c,Oop r,const Oop*a,size_t n) {
+    (void)root;
+    CHECK(put(c,6,id_size(id_unbox(get(c,6))+1)));
+    Oop steps=get(c,1);CHECK(send(get(c,0),OPTIMIZE,&steps,1));
+    Oop binding[]={get(c,3),get(c,4)};CHECK(send(get(c,2),ADD,binding,2));
+    return id.message(id.root,r,get(c,5),a,n);
+}
 static size_t wanted,found;
 static Oop allocation(Oop root,Oop c,Oop r,const Oop *a,size_t n) {
     (void)root;(void)c;(void)r;if(n!=3)return id.invalid;
@@ -80,10 +113,12 @@ static const IdLiteral literals[]={
     LIT("captureAt:continueAt:"),LIT("callSite:"),LIT("tailCallSite:"),
     LIT("park"),LIT("controlEligible"),LIT("new"),LIT("identityOf:"),
     LIT("allocationsDo:"),LIT("step"),LIT("callback"),LIT("boundary"),
-    LIT("rootsDo:"),LIT("self"),LIT("allocation:bytes:identity:"),LIT("present")
+    LIT("rootsDo:"),LIT("self"),LIT("allocation:bytes:identity:"),LIT("present"),
+    LIT("candidate"),LIT("withdraw"),LIT("optimizeWith:"),LIT("fromWord:"),
+    LIT("proof"),LIT("addMethod")
 };
 static const IdMethodSpec methods[]={
     {STEP,step},{CALLBACK,callback},{BOUNDARY,boundary},{TRACE,trace},
-    {SELF,self},{ALLOCATION,allocation},{PRESENT,present}
+    {SELF,self},{ALLOCATION,allocation},{PRESENT,present},{CANDIDATE,candidate},{WITHDRAW,withdraw},{PROOF,proof}
 };
-const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,COUNT,methods,7,initialize};
+const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,COUNT,methods,10,initialize};

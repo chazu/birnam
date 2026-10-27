@@ -750,6 +750,7 @@ const NAMES: &[&[u8]] = &[
     b"fromStep:descriptor:selection:owner:callPlans:",
     b"prepareCall:selector:",
     b"callPlan:field:",
+    b"optimizeWith:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -988,8 +989,14 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"fromStep:descriptor:selection:owner:callPlans:"),
     Literal::new(b"prepareCall:selector:"),
     Literal::new(b"callPlan:field:"),
+    Literal::new(b"optimizeWith:"),
 ];
 static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 236,
+        entry: Some(resumable::native_tier::install),
+        convention: 0,
+    },
     MethodSpec {
         name: 233,
         entry: Some(resumable::from_step_plans),

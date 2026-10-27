@@ -1,0 +1,82 @@
+{
+  "passed": true,
+  "scope": "Explicit Method optimizeWith: installation, selection, withdrawal and lifetime through production Oop Execution",
+  "base_revision": "642e79e2fa5ed527d522bd23f9573308025d49f6",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/execution-candidates-2r_7gury/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native_tier.rs": "48760ea30e717d8de467c487d86de5a2fbf17e1638025cb35e58e64fea0a6f77",
+    "rust/birnam-execution/src/oop_recovery.rs": "faec12768484c16449d106838b627a82179058e327a7f065408a871a5a434a29",
+    "rust/birnam-execution/src/resumable_runtime.rs": "da6aa9ebb072f8101cff63d392223fd12f1bcc0c2b135cdae132c45912cd4e12",
+    "rust/birnam-execution/src/synchronous.rs": "00551720d0b768b4a65f92bfc5b16da52521730dc482be7cd18a7c9e4c374a78",
+    "rust/birnam-siphon/tests/execution_machines.rs": "0b9231e8d24cc71bdbe330338b27d1f7d73ff5e67f3995e45a9affb7736122e1",
+    "rust/birnam-siphon/tests/execution_machines/candidates.rs": "fc60ba71db5a743864f679872f27710e53aaa1e204b9aac067d35e8aedfd30fd",
+    "rust/birnam-siphon/tests/execution_machines/native_tier.rs": "963d75f949b96d51fa494bfd28d19bfe625f952aee2ff445a956363d7949dc6d",
+    "rust/birnam-siphon/tests/execution_candidates.rs": "65b09d49dfd40395645fe3db8d179843417393346e80364292d770110a7c62c8",
+    "tests/fixtures/oop-host/execution-machines.c": "3b0a08429ed979d607665c760f8d3609c7e78745d3c42e1de854739b024ef448"
+  },
+  "execution_library_sha256": "dae6e15026d5cb6608bec4a6a7dc43266ea6c85819530b022d5194d398b08bf3",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-candidates-final.log",
+      "sha256": "a5d9c6a3008387663110205e414ec0d9d86bed15e78ad3faebe8a2a72c54a306",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-candidates-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-candidates-unit.log",
+      "sha256": "8654226b7f81fb6f3aea79bbe55a7f04b6e67b859091e2d75d20f7a575fb48ba",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/execution-candidates-acceptance.log",
+      "sha256": "1bb86fe8c7cde015596f3635ccef9333b365dc1544a87b797519dc25e0968331",
+      "exit": 0
+    }
+  ],
+  "execution_unit_tests": 26,
+  "native_targets": [
+    "execution_machines",
+    "execution_methods",
+    "pending_call_recovery",
+    "frame_views",
+    "compiler_source",
+    "materialization",
+    "block_arity",
+    "native_boundaries",
+    "method_binding"
+  ],
+  "restored_operations": [
+    "Method optimizeWith:"
+  ],
+  "retained_checks": [
+    "One executable per program counter, 64-visit threshold and empty-sequence withdrawal",
+    "Captured aliases share the same logical installation",
+    "Invalid shape, invalid Methods, registered resumable steps and failing sequence reads preserve installation and visits",
+    "Changed Machine controls withdraw a candidate; restoring them does not reactivate it",
+    "Multiple program counters select their admitted executable",
+    "Reentrant installation during a successful current binding proof supersedes the old observation",
+    "Exact native failure identity and no ordinary-step replay after entered candidate failure",
+    "Withdrawal and collection during an entered candidate preserve its owner until return",
+    "96 registration/collection cycles release Methods and owners without stale registration reuse",
+    "Compiler, materialization, recovery, Block/native arity and mapped/rebuilt Method/image behavior"
+  ],
+  "ownership": [
+    "Candidate Methods and visit counts belong to the existing Execution registration record",
+    "Frame owner reference retains the existing registration context, which retains its Method, step and owner",
+    "Selection uses direct context lookup and existing Id binding proofs; no additional per-step registry or record scan",
+    "Guarded Machine method identities are stored once and shared with inline recovery"
+  ],
+  "id_changes": false,
+  "foreign_payload_access": false,
+  "performance_claim": null,
+  "remaining": [
+    "Native numeric consumer and older recovery harness remain pending",
+    "Other native targets and compiler optimization producers remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Cold revision 642e79e2 predates this candidate support and cannot qualify it"
+  ]
+}

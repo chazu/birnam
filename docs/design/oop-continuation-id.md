@@ -2276,3 +2276,35 @@ Block/native arity, pending recovery, compiler behavior and mapped/rebuilt Metho
 bindings. Id and public operation sets are unchanged. Cold qualification of these
 corrections and the previous lifetime fixes remains outstanding.
 [Receipt](../measurements/execution-machines-oop-20261027.json).
+
+## Explicit PC candidates through Oop Methods
+
+Execution again provides the existing `Method optimizeWith:` operation. A complete
+sequence supplies one declared Method per program counter; an empty sequence
+withdraws the candidate. Admission reads the current sequence before changing the
+installation. Invalid shape, invalid Methods, registered resumable steps and native
+read failures leave the current installation and visit count intact.
+
+Selection retains the existing 64-visit threshold and withdraws a candidate when
+the relevant Machine bindings change. It uses Id's current binding proof, shared
+with explicit inline recovery. Replacement during that proof takes precedence;
+an entered candidate retains its Method/context through withdrawal and collection,
+and its failure is never replayed through the ordinary step.
+
+The existing frame owner reference now points at Execution's registration context,
+which already traces its Method, step and owner. This gives the driver direct
+access to the existing record, avoiding a record scan or another table on every
+step. Candidate references and visit counts stay in that record. Id does not
+interpret this context or any descriptor or frame payload. No new public operation
+or implicit dispatch protocol is introduced; this restores an existing operation.
+
+The migrated tests cover captured aliases, single/multiple-PC candidates, malformed
+and failed admission, changed controls, reentrant replacement, failure identity,
+entered-owner survival and 96 registration/collection cycles. The older numeric
+consumer and recovery groups remain explicitly pending in `execution_candidates`.
+
+The core Oop gate, 26 Execution unit tests and nine native suites pass, including
+compiler/materialization, pending recovery, strict Block/native arity and
+mapped/rebuilt Method/image checks. This is semantic and lifetime acceptance, not
+a performance claim. The cold `642e79e2` candidate predates this restoration.
+[Receipt](../measurements/execution-candidates-oop-20261027.json).

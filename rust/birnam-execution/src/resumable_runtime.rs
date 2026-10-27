@@ -8,6 +8,8 @@ pub(super) mod control;
 pub(super) mod frame_view;
 #[path = "oop_recovery.rs"]
 pub(super) mod recovery;
+#[path = "oop_native_tier.rs"]
+pub(super) mod native_tier;
 use crate::{entry::EntryKey, execution::*};
 use std::{
     collections::{HashMap, HashSet},
@@ -24,6 +26,7 @@ struct Registered {
     capability: ResumableEntryCapability,
     lease: GenerationLeaseCapability,
     inline: Option<recovery::Inline>,
+    candidate: Option<std::rc::Rc<native_tier::Candidate>>,
 }
 #[derive(Default)]
 pub(super) struct Runtime {
@@ -42,6 +45,7 @@ pub(super) struct Runtime {
     active: Vec<MachineCapability>,
     pending: HashSet<u64>,
     recovery: recovery::Runtime,
+    controls: Vec<(&'static [u8], Oop)>,
 }
 pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"fromStep:descriptor:selection:owner:",
@@ -82,9 +86,24 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"recoverAt:with:",
     b"recoverAt:withGraph:",
     b"withInline:at:owner:",
+    b"optimizeWith:",
 ];
 fn checked<T, E>(value: Result<T, E>) -> Result<T, Oop> {
     value.map_err(|_| invalid())
+}
+unsafe fn controls_current(s: &State, machine: Oop, names: &[&[u8]]) -> Result<bool, Oop> {
+    unsafe {
+        let mut bindings = Vec::with_capacity(names.len() * 3);
+        {
+            let runtime = s.resume.borrow();
+            for &name in names {
+                let method = runtime.controls.iter().find(|(n, _)| *n == name)
+                    .map(|(_, method)| *method).ok_or_else(invalid)?;
+                bindings.extend([machine, s.names[name], method]);
+            }
+        }
+        Ok(s.send(s.id.root, b"nativeBindingsMatch:", &bindings)? == abi::size(1).unwrap())
+    }
 }
 
 pub(super) unsafe fn number(s: &State, value: usize) -> Result<Oop, Oop> {
@@ -267,7 +286,9 @@ unsafe fn register_descriptor(
         let context = q.keep(allocate(s, context_vt, 0)?);
         let method = q.keep(s.send(template, b"withContext:", &[context])?);
         let method_key = key(s, method)?;
-        descriptor.executable_owner.set(method);
+        // The existing registration context retains Method, step and owner and
+        // gives the driver direct access to this owner's optional candidate.
+        descriptor.executable_owner.set(context);
         let mut semantic = SemanticRegistrationV1::new(
             method_key,
             descriptor.clone(),
@@ -298,6 +319,7 @@ unsafe fn register_descriptor(
                 capability,
                 lease,
                 inline: None,
+                candidate: None,
             },
         );
         Ok(method)
@@ -803,7 +825,7 @@ pub(super) unsafe extern "C" fn advance(
             {
                 *left = left.saturating_sub(1);
             }
-            let (step, pc, count, immediate) = {
+            let (step, pc, count, immediate, origin) = {
                 let e = s.engine.borrow();
                 let m = checked(e.machine(OWNER, capability))?;
                 let f = m.arena().current_handle().ok_or_else(invalid)?;
@@ -812,6 +834,7 @@ pub(super) unsafe extern "C" fn advance(
                     checked(m.arena().program_counter(f))?,
                     checked(m.arena().descriptor(f))?.driver_argument_count(),
                     checked(m.arena().descriptor(f))?.immediate_program_counter,
+                    checked(m.arena().descriptor(f))?.executable_owner.get(),
                 )
             };
             q.keep(step);
@@ -829,6 +852,7 @@ pub(super) unsafe extern "C" fn advance(
             let turn = Invocation(s);
             s.resume.borrow_mut().active.push(capability);
             let active = Active(s, capability);
+            let step = native_tier::select(s, machine, origin, pc, &q)?.unwrap_or(step);
             let action = q.keep(s.invoke(step, machine, &args)?);
             drop(active);
             drop(turn);
@@ -1668,6 +1692,9 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
         if let Some(inline) = record.inline {
             values.extend([inline.method, inline.owner]);
         }
+        if let Some(candidate) = &record.candidate {
+            values.extend(&candidate.steps);
+        }
         return Ok(Some(values));
     }
     let family = s.storage.borrow().family_of(object);
@@ -1863,16 +1890,16 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             }
             let target = if name.starts_with(b"fromStep:descriptor:selection:owner:") {
                 execution_type
-            } else if name == b"withInline:at:owner:" {
+            } else if matches!(name, b"withInline:at:owner:" | b"optimizeWith:") {
                 q.keep(s.send(s.id.root, b"methodBehavior", &[])?)
             } else {
                 machine_vtable
             };
             let method = q.keep(s.send(image, b"methodAt:", &[s.names[name]])?);
             let method = q.keep(s.send(method, b"withContext:", &[s.ns])?);
-            if recovery::CONTROLS.contains(&name) {
+            if native_tier::CONTROLS.contains(&name) {
                 let mut r = s.resume.borrow_mut();
-                r.recovery.controls.push(method);
+                r.controls.push((name, method));
                 r.roots.push(method);
             }
             s.send(target, b"addMethod", &[s.names[name], method])?;

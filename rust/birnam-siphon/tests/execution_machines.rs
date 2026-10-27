@@ -1,4 +1,6 @@
 //! Production Machine scheduling, control and lifetime through Oop messages.
+#[path = "execution_machines/candidates.rs"]
+mod candidates;
 #[path = "support/oop.rs"]
 mod oop;
 use birnam_abi::{Oop, as_size, size};
@@ -472,4 +474,5 @@ fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
     drop(pin);
     h.clear();
     h.collect();
+    candidates::check(&h);
 }
