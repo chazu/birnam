@@ -18,6 +18,18 @@ conversion scope have ended. Failure observers preserve the caller's Machine and
 do not classify ordinary Error/Fault values as failures. The Oop native-boundary
 test covers suspension, GC, replacement and mapped/rebuilt image recovery.
 
+Capture inspection answers nil for uncoded Blocks, unsupported receivers and
+invalid indices. `captureWord:of:` validates the target with Execution's own
+storage and CodeObject metadata, then uses its current `captureWordAt:` reader.
+Synchronous generated code uses this owner entry rather than sending a missing
+capture message to an unrelated receiver. Resumable entry validates its required
+capture storage before reading through the replaceable reader.
+
+Oop Method invocation preserves native failure returns. A language Machine
+converts them at its pending call; there is no additional invocation-result
+continuation. The full materialization harness checks native and language callers,
+cache eviction, capture ordering and native-unit/byte retirement.
+
 Design 90 batch 1 now runs native Methods, Blocks and Machines over the production
 prefix, including frames, bounded drives, suspension, continuations and native
 control boundaries, inline fallback, atomic flat/graph recovery, hot PC candidate

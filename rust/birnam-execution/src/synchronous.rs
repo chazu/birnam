@@ -268,12 +268,19 @@ unsafe extern "C" fn capture(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) ->
     (|| unsafe {
         let s = state(c)?;
         let [index] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
+            return Ok(s.nil);
         };
-        let i = abi::as_size(*index)
-            .and_then(|i| i.checked_add(1))
-            .ok_or_else(invalid)?;
-        s.field(r, i)
+        let Some(i) = reflection::capture_index(s, *index)?.and_then(|i| i.checked_add(1)) else {
+            return Ok(s.nil);
+        };
+        let storage = s.storage.borrow();
+        if storage.family_of(r) != Some(s.block_vt) {
+            return Ok(s.nil);
+        }
+        Ok(storage
+            .read_payload_word(r, i)
+            .map(ptr::with_exposed_provenance_mut)
+            .unwrap_or(s.nil))
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -295,16 +302,11 @@ unsafe extern "C" fn capture_count(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usi
     (|| unsafe {
         let s = state(c)?;
         if n != 0 {
-            return Err(invalid());
+            return Ok(s.nil);
         }
-        let count = s
-            .storage
-            .borrow()
-            .payload_size(r)
-            .ok_or_else(invalid)?
-            .checked_div(size_of::<Oop>())
-            .and_then(|n| n.checked_sub(1))
-            .ok_or_else(invalid)?;
+        let Some(count) = reflection::inspect_captures(s, r)? else {
+            return Ok(s.nil);
+        };
         s.send(
             s.named(b"Integer")?,
             b"fromWord:",
@@ -744,6 +746,7 @@ const NAMES: &[&[u8]] = &[
     b"referenceOwnerOf:",
     b"nativeSignatureOf:",
     b"nativeDeferredAnswer",
+    b"captureWord:of:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -978,8 +981,14 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"referenceOwnerOf:"),
     Literal::new(b"nativeSignatureOf:"),
     Literal::new(b"nativeDeferredAnswer"),
+    Literal::new(b"captureWord:of:"),
 ];
 static METHODS: &[MethodSpec] = &[
+    MethodSpec {
+        name: 232,
+        entry: Some(reflection::capture_word_of),
+        convention: 0,
+    },
     MethodSpec {
         name: 22,
         entry: Some(from_operands),
@@ -1628,6 +1637,7 @@ unsafe extern "C" fn initialize(
                 b"fromMethod:captureOperands:"
                 | b"fromMethod:captures:"
                 | b"captureWordAt:"
+                | b"captureWord:of:"
                 | b"captureCount"
                 | b"clone" => block_vt,
                 b"methodFor:" => base,

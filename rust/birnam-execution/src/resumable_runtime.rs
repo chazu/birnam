@@ -336,6 +336,16 @@ unsafe fn materialize_entry(
         }
         let result = (|| {
             let (_, count) = checked(s.engine.borrow().acquired_entry_capture_layout(entry))?;
+            if count != 0 {
+                let storage = s.storage.borrow();
+                if storage.family_of(receiver) != Some(s.block_vt)
+                    || storage
+                        .payload_size(receiver)
+                        .is_none_or(|bytes| bytes / size_of::<Oop>() <= count)
+                {
+                    return Err(invalid());
+                }
+            }
             let mut captures = Vec::new();
             for i in 0..count {
                 captures.push(q.keep(s.send(

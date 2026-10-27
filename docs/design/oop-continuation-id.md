@@ -1697,3 +1697,35 @@ current value replacement, custom lookup, foreign receivers using the same handl
 and replacement of `methodFor:` itself. Core, arity, native-boundary, materialization
 error and mapped/rebuilt Method-binding checks pass. The prior failing probe remains
 as historical evidence. [Receipt](../measurements/block-method-capture-oop-20261027.json).
+
+## Complete portable materialization acceptance
+
+The full `materialization` harness now uses Oops and declared callbacks, with TCC
+resource metrics enabled in a separate copied prefix. It retains canonical-code
+identity, both execution dispositions, independent and nested captures, exact NaN
+bits/binary text, lexical scope, capture-read ordering, live replacements, failed
+construction cleanup, the 64-entry LRU bound/order, suspension across eviction,
+alias ownership and exact native-unit/byte retirement.
+
+The migration exposed three remaining compatibility gaps. Execution now answers
+nil for unavailable capture inspection and invalid indices. Synchronous capture
+reads go through the restored `Block captureWord:of:` owner entry: unsupported
+receiver storage returns nil, while valid Blocks use their current capture reader.
+Resumable entry validates its required owned capture storage before reading it.
+Generated initialization also stops immediately when CodeObject admission returns
+nil, so refused code cannot be published as executable.
+
+All representation-specific work remains with Execution, PortableCode and the
+compiler owners. No Id operation, ordinary-dispatch step, private cross-module
+representation or new registry is added. An attempted result-conversion wrapper
+on explicit invocation was rejected because it changed native recovery control
+failures. It is absent from the final implementation. The harness instead checks
+raw Oop invocation and the corresponding real language caller: native failure is
+preserved, and the language Machine produces Error data at its pending call.
+Ordinary Error values held in captures remain data.
+
+Full materialization and recovery pass, as do seven adjacent artifact, capture,
+arity, error, native-boundary and Method-binding/image suites and the complete core
+gate. This supersedes earlier notes that the full materialization harness remains
+unported; other native/compiler migration and latest cold-installation qualification
+are still pending. [Receipt](../measurements/materialization-full-oop-20261027.json).

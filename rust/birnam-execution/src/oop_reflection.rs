@@ -245,16 +245,79 @@ pub(super) unsafe extern "C" fn block_synchronous(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+// Public capture inspection is available only for this owner's coded Blocks.
+// No storage borrow is held while asking the Method for its current CodeObject.
+pub(super) unsafe fn inspect_captures(s: &State, r: Oop) -> Result<Option<usize>, Oop> {
+    unsafe {
+        if r == s.block || s.storage.borrow().family_of(r) != Some(s.block_vt) {
+            return Ok(None);
+        }
+        let q = s.scope(&[r]);
+        let method = q.keep(s.field(r, 0)?);
+        if s.send(method, b"codeObject", &[])? == s.nil {
+            return Ok(None);
+        }
+        Ok(s.storage
+            .borrow()
+            .payload_size(r)
+            .and_then(|bytes| (bytes / size_of::<Oop>()).checked_sub(1)))
+    }
+}
+pub(super) unsafe fn capture_index(s: &State, value: Oop) -> Result<Option<usize>, Oop> {
+    unsafe {
+        if let Some(i) = abi::as_size(value) {
+            return Ok(Some(i));
+        }
+        if value.is_null() || value == s.nil {
+            return Ok(None);
+        }
+        let _q = s.scope(&[value]);
+        let lo = abi::as_size(s.send(value, b"low32", &[])?);
+        let hi = abi::as_size(s.send(value, b"high32", &[])?);
+        Ok(lo
+            .zip(hi)
+            .filter(|(lo, hi)| *lo <= u32::MAX as usize && *hi <= 0x7fffffff)
+            .map(|(lo, hi)| lo | (hi << 32)))
+    }
+}
 pub(super) unsafe extern "C" fn capture_at(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let [index] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
+            return Ok(s.nil);
         };
-        let i = resumable::index(s, *index)?
-            .checked_add(1)
-            .ok_or_else(invalid)?;
-        s.field(r, i)
+        let q = s.scope(&[r, *index]);
+        let word = q.keep(s.send(s.named(b"Integer")?, b"wordOf:", &[*index])?);
+        let Some(i) = capture_index(s, word)? else {
+            return Ok(s.nil);
+        };
+        let Some(count) = inspect_captures(s, r)? else {
+            return Ok(s.nil);
+        };
+        if i >= count {
+            return Ok(s.nil);
+        }
+        s.field(r, i + 1)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn capture_word_of(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [index, target] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Ok(s.nil);
+        };
+        let _q = s.scope(&[*index, *target]);
+        if inspect_captures(s, *target)?.is_none() {
+            return Ok(s.nil);
+        }
+        s.send(*target, b"captureWordAt:", &[*index])
     })()
     .unwrap_or_else(abi::fault_reference)
 }

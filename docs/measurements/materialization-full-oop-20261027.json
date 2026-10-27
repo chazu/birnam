@@ -1,0 +1,75 @@
+{
+  "passed": true,
+  "scope": "Full portable materialization harness through Oops with TCC resource metrics, capture inspection/receiver compatibility and generated admission refusal",
+  "base_revision": "6732856a753575621d1de31be81c69908adff69b",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/materialization-final-bucn25kx/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_reflection.rs": "7bafcc8f5e5606d5872c28a90c2223a619c0abdc010de5e647a897b8d4219f8d",
+    "rust/birnam-execution/src/resumable_runtime.rs": "b63172c6f46f64ec2be9ec9bd5500e88bdebbc9d56902f912425ae3184031e59",
+    "rust/birnam-execution/src/synchronous.rs": "b300ac57aa52d12b3bd9384749bfa0588cb9121bc800374ea3db4cc3bf979222",
+    "rust/birnam-native-backend/src/oop_emission.rs": "1a70e8d52c408c68c6d35524f161b2cdf56ec9e0b02f965557c0d3898a043aaa",
+    "rust/birnam-siphon/tests/materialization.rs": "af2b2b60dcd4f66778e584415c128045fe7eddbac230683b915da89399a6c6fa",
+    "tests/fixtures/oop-host/materialization.c": "1ba2442c75816731fddeb3484497432031bdf054de977d9294927f034299c5c9"
+  },
+  "staged_sha256": {
+    "libbirnam_execution.dylib": "2bf7219ea859618816e4f708779572ef8a2de506d2dad3e7686066cecf6594ac",
+    "libbirnam_native_backend.dylib": "4a5a0abdd11e80f51b8ecf0f3721b99d49d67eae3459f5de0f7218b3cbfab724",
+    "libbirnam_tcc.dylib": "ec5a01594138448d1afc97ac605cbe9ae8fe9ce420556d6bf1296b391857bf48"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/materialization-full-final.log",
+      "sha256": "beb40dc28510c0e63c7d5e6239c4c504645088f80122d2062bf0b68ab21045aa",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/materialization-core-final.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/materialization-regressions-final.log",
+      "sha256": "73239a6b39ffeced7ae74bbb9ef31c0f24c5f11aa576066b89201c7f55fc7680",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/materialization-full-r4bzmsuk/prefix",
+    "log": ".cargo-target/oop-corrected-qualification/materialization-before-final.log",
+    "sha256": "848b5a85e1a348f2a9b5b372b401aa2b06c68393b819f5960ff060aaaa1d68d3",
+    "failure": "Capture inspection raised a native failure for the uncoded Block prototype instead of nil."
+  },
+  "pre_oop_baseline": {
+    "revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+    "log": ".cargo-target/oop-corrected-qualification/materialization-prior.log",
+    "sha256": "9ed228065c2d46f66ec94fe2c888af34d2f48b6fff2ef6847b84045518cabc8c",
+    "exit": 0,
+    "scope": "Full original harness, with fixture-path adjustments only."
+  },
+  "owner_changes": [
+    "Execution restores nil for unavailable capture inspection and invalid indices, with no foreign payload reads.",
+    "Block captureWord:of: is restored as the synchronous compiler owner entry; valid targets use their current captureWordAt: reader.",
+    "Resumable entry validates required Execution-owned capture storage before reading it.",
+    "Generated initialization returns immediately when CodeObject admission answers nil."
+  ],
+  "id_changes": false,
+  "ordinary_dispatch_changes": false,
+  "retained_checks": [
+    "Canonical code identity, distinct CodeObjects sharing materializations, source Block replacement and independent captures.",
+    "Both dispositions: exact floating bits and binary Strings, lexical lets, nested captures and original capture-read timing around compilation.",
+    "Native mismatch failure and language Error conversion are checked at their respective callers; synchronous mismatched receivers return nil.",
+    "Marked native failures and ordinary Error data in captures remain distinct.",
+    "Collecting dependency replacements remain live, including the restored owner reader.",
+    "Failed admission/Block construction publishes no cache entry and releases its native Unit.",
+    "The 64-entry LRU count and eviction order are unchanged.",
+    "Suspension survives cache eviction; synchronous native boundaries reject parking.",
+    "Source and materialized Methods retain code through aliases, with exact native-byte retirement after final removal.",
+    "Nested Block clones retain their shared mutable capture and code after every cache is evicted."
+  ],
+  "rejected_experiment": {
+    "description": "A temporary result-conversion continuation on generic explicit invocation changed native control failures in recovery. It was removed entirely. Native Oop invocation remains raw; actual language callers supply Error conversion.",
+    "log": ".cargo-target/oop-corrected-qualification/materialization-recovery.log",
+    "sha256": "e590f97a3ec1e25b9653556070346c1d755447ecac7d00b37bcfd41292b016cd"
+  },
+  "scope_limit": "The full materialization harness is now migrated. Other native/compiler harnesses and fresh latest-runtime cold installation/Host qualification remain pending. Resource-metrics TCC is confined to this staged test prefix."
+}

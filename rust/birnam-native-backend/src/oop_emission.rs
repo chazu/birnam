@@ -72,9 +72,13 @@ impl Emitter {
         for i in 0..p.parameter_count {
             writeln!(out, "O b{i}=args[{i}];").unwrap();
         }
-        let capture = self.name(b"captureWordAt:")?;
-        for i in 0..p.capture_count {
-            writeln!(out,"O ix{i}=size_oop({i});O b{}=call(&c,self,{capture},&ix{i},1);if(c.error)return finish(&c,0);",p.parameter_count+i).unwrap();
+        if p.capture_count != 0 {
+            let capture = self.name(b"captureWord:of:")?;
+            let block = self.name(b"Block")?;
+            writeln!(out, "O capture_owner=named(&c,{block});").unwrap();
+            for i in 0..p.capture_count {
+                writeln!(out,"O capture_args{i}[]={{size_oop({i}),self}};O b{}=call(&c,capture_owner,{capture},capture_args{i},2);if(c.error)return finish(&c,0);",p.parameter_count+i).unwrap();
+            }
         }
         let mut next = 0;
         let mut answer = None;
@@ -275,6 +279,7 @@ fn compile_mode(
     let from_canonical = e.name(b"fromCanonicalBytes:")?;
     let admit_code = e.name(b"admitCodeObject:synchronous:")?;
     let false_name = e.name(b"false")?;
+    let nil_name = e.name(b"nil")?;
     let method_names = (0..e.functions.len())
         .map(|i| e.name(format!("compiledFunction{i}").as_bytes()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -363,7 +368,7 @@ fn compile_mode(
         } else {
             e.names.iter().position(|v| v == b"true").unwrap()
         };
-        writeln!(out,"O encoded=blob(&c,program_{i},sizeof(program_{i}));O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(is_error(&c,code))return finish(&c,code);O admission[]={{code,named(&c,{mode})}};method=call(&c,method,{admit_code},admission,2);if(c.error)return finish(&c,0);").unwrap();
+        writeln!(out,"O encoded=blob(&c,program_{i},sizeof(program_{i}));O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(code==named(&c,{nil_name})||is_error(&c,code))return finish(&c,code);O admission[]={{code,named(&c,{mode})}};method=call(&c,method,{admit_code},admission,2);if(c.error)return finish(&c,0);").unwrap();
         writeln!(
             out,
             "methods[{i}]=method;raw(&c,owner,S_RETAIN,&method,1);if(c.error)return finish(&c,0);}}"
