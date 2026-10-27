@@ -1622,3 +1622,31 @@ The historical baseline flag now selects the current seed constructor, not a
 pre-Oop runtime. The emitted timing lines are diagnostics; resident-byte checks
 remain conditional on the optional TCC metric.
 [Receipt](../measurements/method-invocation-oop-20261027.json).
+
+## Artifact templates and deferred image bodies
+
+The `artifact_templates` harness now uses Oop callbacks. Synchronous and resumable
+artifact bodies load from one supplied native unit with source emission disabled;
+sixteen bindings retain independent receiver/argument/body behavior. Current
+constructor refusal and collecting reentry remain observable. Named image bindings
+now use declared Codegen templates rather than separately emitted C adapters, so
+the test checks current constructor selection and distinct equal-arity template
+objects instead of obsolete adapter-payload coalescing. Weak allocation identities
+prove that staging alone retains the selected templates and cancellation releases
+them. Historical activation measurement labels remain available to the existing
+benchmark script; this checkpoint makes no timing-regression claim.
+
+The deferred rebuild check exposed a result-convention regression. The pre-Oop
+runtime answers `nil` when source emission rejects a body, but the Oop path
+returned the Error object. The rebuild branch now restores `nil`, retaining its
+pending request for retry. Loader and initializer Errors keep their identity,
+and native failures keep their marker and identity. This changes one return path;
+it adds no Id operation, callback, registry or other mechanism.
+
+Acceptance also checks no eager body mapping, current loading/emission callbacks,
+nested-cancellation refusal, success-only caching, independent dispositions,
+retained code after stage cancellation, final code retirement, and deferred,
+repeatable rejection of corrupt object data without source fallback. The copied
+pre-Oop harness passes with only fixture-path adjustments. The complete Oop core
+gate and source/artifact/mapped/rebuilt Method-binding suite pass on the corrected
+staged runtime. [Receipt](../measurements/artifact-templates-oop-20261027.json).

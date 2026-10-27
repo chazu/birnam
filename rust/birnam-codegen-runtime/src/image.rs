@@ -413,7 +413,9 @@ unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oo
                     Body::Rebuild(request) => {
                         let source = emit(s, q, &request)?;
                         if s.is_error(source)? {
-                            return Ok(source);
+                            // Emission refusal answers nil and leaves this body retryable.
+                            // Loader and initializer Errors retain their own result convention.
+                            return Ok(nil);
                         }
                         call(s, q, s.named(b"TCC")?, b"compile:", &[source])?
                     }

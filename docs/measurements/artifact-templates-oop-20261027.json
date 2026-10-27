@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "scope": "Artifact template and deferred image-body acceptance through Oops; restored nil on rebuild emission rejection; complete core and mapped/rebuilt Method-binding checks",
+  "base_revision": "6a9d6fc42b9f3958f191dbaae80c8300a76415e2",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/artifact-templates-4z3n79_f/prefix",
+  "source_sha256": {
+    "rust/birnam-codegen-runtime/src/image.rs": "f9bbdbe97c71a3963728a1ef04dd5cc9a9ee5a88bcbccb185507a9e34b58ee6e",
+    "rust/birnam-siphon/tests/artifact_templates.rs": "ccbe28b977d4198b8f74c1aef15b9217c44a98ad1336834b4e0c4e7b8e726b0d",
+    "tests/fixtures/oop-host/artifact-templates.c": "f84720dbf3f7e33bf11c135ff204e96d6d0087e2819f8e78667870681aa5da23"
+  },
+  "codegen_runtime_sha256": "f52faed8fd321ff820d9b2f38b1990ca1db084993bcadafb6f6fe640b4d33814",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/artifact-templates.log",
+      "sha256": "cd1c513c3e6bacd83c59806e0dacc68074959dfe43865dd24241fb9a08c0d888",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/artifact-templates-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/artifact-templates-binding.log",
+      "sha256": "4cbafa0a147885e9381f1f9d93b85a3431e0d348d6909efff4692024194d7e1f",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "log": ".cargo-target/oop-corrected-qualification/artifact-templates-before.log",
+    "sha256": "e73a654187303c41517569986a3464ae90fd6fcf05f3b1810d161eae72878999",
+    "failure": "Rebuild body demand returned the source-emission Error object instead of the retained nil rejection result."
+  },
+  "pre_oop_baseline": {
+    "prefix": "/Users/chazu/.local/opt/birnam",
+    "revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+    "log": ".cargo-target/oop-corrected-qualification/artifact-templates-prior.log",
+    "log_sha256": "c3dfc8b457a9743e3f36497e1d296517d158c582eb5af61973d160f268488498",
+    "exit": 0,
+    "test_source_sha256": "f12bcc9db81b63cfb9bfa9a7e58e77f472de520274d3e303e67aafc5b5dd9410",
+    "adjustment": "Copied the installed pre-Oop test and support into a temporary probe crate; adjusted include_bytes paths because installed source excludes the portable fixture. Test logic is unchanged."
+  },
+  "retained_checks": [
+    "Synchronous and resumable artifact bodies execute from one supplied unit with source emission disabled; sixteen independent bindings and live construction/refusal/reentry remain.",
+    "Named image templates use current constructors; equal-arity choices remain distinct when their selected objects differ. Staging alone retains selected templates; cancellation releases them.",
+    "Body demand performs no eager mapping, observes current emission/loading callbacks, rejects nested cancellation, retains exact loader/initializer Errors and native failures, and retries without caching failed results.",
+    "Successful body demands reuse the same Method; the other disposition remains independent. Returned Methods retain code after cancellation; releasing them returns native units to the starting count.",
+    "Corrupt body object data is rejected on demand, repeatedly, without source fallback or leaking a mapping."
+  ],
+  "representation_adjustments": "Named bindings share declared Codegen entries and no longer require separate C adapter units. Tests observe current constructor selection and Oop lifetimes instead of obsolete adapter-object emission/coalescing. Historical activation measurement labels remain compatible with supplied-template-bench.py.",
+  "id_changes": false,
+  "new_required_mechanisms": [],
+  "qualification_limit": "Staged-runtime evidence. Full latest cold-installation qualification and other native/compiler harness migrations remain pending. Native timing lines and different metric configurations do not establish a performance regression percentage."
+}
