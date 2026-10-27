@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "scope": "Retained persistent Vector, Map, Range and String split acceptance through Oops, including collecting callbacks and precise lifetime checks",
+  "base_revision": "33134826766159c7aec75ad7a436318bb2642ace",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-incoming-5ta1my25/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/collections.rs": "ef1335bd99d03ad8671d9da88a1390a3ac1f8e1bddfa4f34e2583ad4ce5dc781",
+    "tests/fixtures/oop-host/collections.c": "8bd8dc49de480b4409bfb765b3a5ca1e8a7dc2836fc4f3197bb8de77708b49aa"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/collections.log",
+      "sha256": "b19cd01b05c24befc1f7fd9e59fbef61c25c3e1bcfccd26f78b4f1b27fb736c3",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "1100 Vector additions with snapshots across tail and tree growth boundaries; independent Rust sequence oracles.",
+    "Ten stable-sort keys survive collecting callbacks and are reclaimed after success; both keys preceding the third-call native failure are reclaimed.",
+    "Iteration observes callback replacement after its first call; folding retains only the final answer.",
+    "Persistent Map updates, binary String and numeric key semantics, 40 colliding keys and collecting reentrant equality.",
+    "Inclusive Range checks cover both i64 endpoints, empty and unrepresentably large ranges.",
+    "Binary-safe splitting retains empty/trailing fields and observes collecting String and Vector factory replacements.",
+    "Precise GC excludes address-shaped numeric bits, preserves private collection behavior, and retains text only while its collection holder is rooted.",
+    "Malformed Map and Vector reference slots fail through owner messages."
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

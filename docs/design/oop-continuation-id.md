@@ -1461,3 +1461,22 @@ String/builder pairs. All 64 finalizers reject construction, observe no work fro
 collection, and forward successfully. Prototypes survive releasing test roots,
 and a copied String Method rejects an unrelated receiver. No runtime or Id change
 was needed. [Receipt](../measurements/text-error-oop-20261027.json).
+
+## Persistent collections and collecting callbacks
+
+The `collections` harness now uses Oops while retaining its independent Rust
+sequence comparisons: Vector growth across tail and tree boundaries, persistent
+snapshots, stable sorting, folding, Map replacement and collisions, key-family
+semantics, inclusive range endpoints and binary-safe String splitting. Callbacks
+still collect and replace their own behavior during iteration; Map equality still
+reenters insertion. Factory replacements remain observable.
+
+A declared C fixture records allocation identities without retaining the observed
+objects. It verifies that Vector protects earlier sort keys across later collecting
+callbacks, then releases all keys after success or exact native failure. Folding
+releases intermediate answers while retaining the returned answer. Collection
+references retain String keys/values until their holder is released. Numeric bits
+that match an object's address do not retain that object, including after private
+vtable changes. Malformed reference-slot checks still reject invalid Map/Vector
+storage. No runtime or Id change was needed.
+[Receipt](../measurements/collections-oop-20261027.json).
