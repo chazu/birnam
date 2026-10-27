@@ -2543,3 +2543,17 @@ Captured Methods stay callable after discard and release their mappings after th
 last reference disappears; retained counts and bytes return to zero. No runtime
 or Id change was needed.
 [Receipt](../measurements/candidate-retirement-oop-20261027.json).
+
+## Current-runtime cold installation and archive qualification
+
+Clean revision `a3eaa227` passed cold installation without Birnam on PATH or a
+build cache. Its exact 827-file manifest excludes the Lang seed. Archive checks
+passed with the original source and prefix hidden, covering signatures,
+relocation, source/GC/image behavior and parser/compiler-free startup; both paths
+were restored, and no deadline changed. Full serial Host qualification is running.
+
+This candidate includes explicit Execution candidate selection, numeric evaluation,
+correct baseline recovery ownership and language nil conversion for absent native
+results. Subsequent commits so far change tests and documentation only. Remaining
+native/compiler integration is still open.
+[Receipt](../measurements/language-cold-install-oop-20261027.json).

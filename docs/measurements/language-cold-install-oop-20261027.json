@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "scope": "Current-runtime cold installation and archive qualification at a3eaa227, including explicit candidate/numeric support, recovery ownership and native absence conversion; full Host qualification remains running",
+  "source_revision": "a3eaa2272e5021f20fbe53cd73c62f8908788b40",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "a3eaa2272e5021f20fbe53cd73c62f8908788b40"
+  },
+  "source_manifest_sha256": "53e67610771573108f6ebeef463ec86cc9f8b86a224c10e7c7d198e226ccda23",
+  "prefix": "/private/tmp/birnam-oop-language-6u04vc65/prefix",
+  "receipt_sha256": "34554a1737f0adef60fbb60f101d8a533ea107e37b93c260a81ed1d616c5494b",
+  "staged_manifest_files": 827,
+  "staged_manifest_sha256": "8727eb08aabb5827b432a08477e0a04f7bdf070031ffb175bc41f0777cbde010",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-language-6u04vc65/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-language-6u04vc65/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_log": "/private/tmp/birnam-oop-language-6u04vc65/install.log",
+  "install_log_sha256": "fd5b599fd47d0958b05bc645f899bde8eb2aa505071e08942dfb50b8c9cce2cc",
+  "archive": "/private/tmp/birnam-oop-language-6u04vc65/candidate.tar.gz",
+  "archive_sha256": "306ccdf9596496d51f05155501aa843295eedb4bfba060c89c8fca9f79c360cd",
+  "archive_smoke_log": "/private/tmp/birnam-oop-language-6u04vc65/archive-smoke.log",
+  "archive_smoke_log_sha256": "f0e04037abde0c0c3fb4493e18858f8c292c6480f187300f1f636d39aa9b9f53",
+  "archive_smoke_build_paths_hidden": true,
+  "build_paths_restored": true,
+  "qualification_deadlines_changed": false,
+  "install_seconds": 897.313142,
+  "archive_smoke_seconds": 318.160139,
+  "remaining": [
+    "Complete full serial Host qualification",
+    "Remaining native/compiler integration and optimization scope decisions"
+  ]
+}
