@@ -2451,3 +2451,27 @@ during cleanup. Native absence, language nil and unmarked Fault data stay distin
 A deferred Bytes echo survives cleanup collection with the exact argument identity.
 The complete test passes with `MallocScribble=1`; no runtime or Id change was needed.
 [Receipt](../measurements/trace-graphs-oop-20261027.json).
+
+## Block loops and native absence at language calls
+
+The Block loop harness now uses declared callbacks and Oop contexts. It retains
+the 10,000-iteration case, non-Block receivers, missing/extra arguments, Boolean
+validation, exact-family Error handling, current condition/body replacement,
+collecting Error lookup and transient-result reclamation. Bootstrap loops still
+refuse suspension; installing the existing authored controls permits condition
+and body suspension, including Blocks created before replacement. Reloading the
+bootstrap loop module does not overwrite those replacements.
+
+The migration reproduced a result-conversion omission: a replaced Error factory
+returning native absence made a language loop return absence instead of nil.
+Execution's existing language-result handler now performs the former Unit-to-nil
+conversion for an absent Oop result at the Machine call boundary. Normal and tail
+language calls are checked, while direct native sends and explicit captured Method
+invocation still return raw absence. No Id operation, dispatch hook or generic
+Method/Block wrapper was added. The transient-result fixture observes the current
+Namespace `valueAt:` operation and checks reclamation by allocation identity.
+
+The core Oop gate, 26 Execution unit tests, 11 native suites and all four retention
+suites pass. The latter return to their pre-call allocation counts after collection;
+native adapter and exhaustive Trace checks still preserve raw absence and exact
+failure behavior. [Receipt](../measurements/block-loop-oop-20261027.json).

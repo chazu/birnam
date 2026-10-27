@@ -207,7 +207,7 @@ impl State {
     unsafe fn language_result(&self, result: Result<Oop, Oop>) -> Result<Oop, Oop> {
         unsafe {
             match result {
-                Ok(v) => Ok(v),
+                Ok(v) => Ok(if v.is_null() { self.nil } else { v }),
                 Err(e) if self.preserve.get() => Err(e),
                 Err(e) => {
                     let scope = self.scope(&[e]);

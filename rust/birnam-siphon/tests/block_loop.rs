@@ -1,698 +1,418 @@
 //! Bootstrap loop semantics and replacement by the existing authored controls.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use birnam_host_support::{Context, Scope};
+use std::path::Path;
+struct H<'a> {
+    host: &'a Context,
+    q: Scope<'a>,
+    fixture: Oop,
     gc: Oop,
-    tokens: RefCell<Vec<usize>>,
+    state: Oop,
+    probe: Oop,
 }
-impl H {
-    unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name).unwrap())],
-            ))
-        }
+impl H<'_> {
+    fn named(&self, n: &[u8]) -> Oop {
+        self.host.named(n).unwrap()
     }
-    unsafe fn keep(&self, o: Oop) -> Oop {
-        self.tokens
-            .borrow_mut()
-            .push(unsafe { retain(self.id, self.roots, o) });
-        o
+    fn key(&self, n: &[u8]) -> Oop {
+        self.q.keep(self.host.intern(n).unwrap()).unwrap()
     }
-    unsafe fn string(&self, b: &[u8]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                self.named(b"String"),
-                b"fromBytes:",
-                &[Operand::bytes(b)],
-            )))
-        }
+    fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
+        self.q.call(r, n, a).unwrap()
     }
-    unsafe fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                r,
-                name,
-                &args
-                    .iter()
-                    .copied()
-                    .map(Operand::object)
-                    .collect::<Vec<_>>(),
-            )))
-        }
+    fn string(&self, b: &[u8]) -> Oop {
+        self.q.string(b).unwrap()
     }
-    unsafe fn eval(&self, b: &[u8]) -> Oop {
-        unsafe { self.call(self.named(b"Codegen"), b"eval:", &[self.string(b)]) }
+    fn eval(&self, b: &[u8]) -> Oop {
+        self.call(self.named(b"Codegen"), b"eval:", &[self.string(b)])
     }
-    unsafe fn number(&self, o: Oop) -> usize {
-        unsafe {
-            send(
-                self.id,
-                self.named(b"Integer"),
-                b"wordOf:",
-                &[Operand::object(o)],
-            )
-            .as_word()
+    fn number(&self, v: Oop) -> usize {
+        self.q
+            .word_bits(self.call(self.named(b"Integer"), b"wordOf:", &[v]))
             .unwrap()
-        }
     }
-    unsafe fn bind(&self, name: &[u8], o: Oop) {
-        unsafe {
-            send(
-                self.id,
-                self.ns,
-                b"at:put:",
-                &[
-                    Operand::object(self.id.intern_name(name).unwrap()),
-                    Operand::object(o),
-                ],
-            );
-        }
+    fn bind(&self, n: &[u8], v: Oop) {
+        self.call(self.host.namespace, b"at:put:", &[self.key(n), v]);
     }
-    unsafe fn bytes(&self, o: Oop) -> Vec<u8> {
-        unsafe {
-            let b = send(self.id, o, b"bytes", &[]).as_bytes().unwrap();
-            borrowed_bytes(b.pointer, b.length).unwrap().to_vec()
-        }
+    fn vt(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"behaviorOf:", &[v])
     }
-    unsafe fn error(&self, kind: &[u8]) -> Oop {
-        unsafe {
-            self.call(
-                self.named(b"Error"),
-                b"kind:",
-                &[self.keep(self.id.intern_name(kind).unwrap())],
-            )
-        }
+    fn private(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"ensurePrivateVtableFor:", &[v])
     }
-}
-unsafe fn binding(h: &H, vt: Oop, name: &[u8]) -> NativeEntry {
-    unsafe {
-        send(
-            h.id,
-            h.id.receiver,
-            b"bindingOf:in:",
-            &[
-                Operand::object(h.id.intern_name(name).unwrap()),
-                Operand::object(vt),
-            ],
+    fn object(&self) -> Oop {
+        self.call(self.named(b"Object"), b"clone", &[])
+    }
+    fn context(&self, a: &[Oop]) -> Oop {
+        self.call(self.host.id.root, b"sequence", a)
+    }
+    fn native(&self, n: &[u8], c: Oop) -> Oop {
+        self.call(
+            self.call(self.fixture, b"methodAt:", &[self.key(n)]),
+            b"withContext:",
+            &[c],
         )
-        .as_entry()
-        .unwrap()
     }
-}
-unsafe fn set(h: &H, vt: Oop, name: &[u8], entry: NativeEntry) {
-    unsafe {
-        send(
-            h.id,
-            vt,
-            b"addMethod",
-            &[
-                Operand::object(h.id.intern_name(name).unwrap()),
-                Operand::entry(entry),
-            ],
-        );
+    fn method(&self, vt: Oop, n: &[u8]) -> Oop {
+        self.call(vt, b"lookup", &[self.key(n)])
     }
-}
-unsafe fn behavior_of(h: &H, value: Oop) -> Oop {
-    unsafe {
-        object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(value)],
-        ))
+    fn set(&self, vt: Oop, n: &[u8], m: Oop) {
+        self.call(vt, b"addMethod", &[self.key(n), m]);
     }
-}
-struct Counter {
-    id: Protocol,
-    gc: Oop,
-    truth: Oop,
-    falsity: Oop,
-    nil: Oop,
-    calls: Cell<usize>,
-    conditions: Cell<usize>,
-    limit: Cell<usize>,
-    inverted: Cell<bool>,
-    condition_result: Cell<Option<Oop>>,
-    body_result: Cell<Option<Oop>>,
-    failure: Cell<usize>,
-    collecting: Cell<bool>,
-}
-unsafe extern "C" fn condition(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let c = &*c.cast::<Counter>();
-        if n != 0 {
-            return Err(Outcome::failed(1, 0));
-        }
-        c.conditions.set(c.conditions.get() + 1);
-        if c.collecting.get() {
-            c.id.send_named(c.gc, b"collectPrecisely", &[])?;
-        }
-        if c.failure.get() == 1 {
-            return Err(Outcome::failed(881, 17));
-        }
-        Ok(Operand::object(c.condition_result.get().unwrap_or(
-            if (c.calls.get() < c.limit.get()) != c.inverted.get() {
-                c.truth
-            } else {
-                c.falsity
-            },
-        )))
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn body(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let c = &*c.cast::<Counter>();
-        if n != 0 {
-            return Err(Outcome::failed(1, 0));
-        }
-        c.calls.set(c.calls.get() + 1);
-        if c.collecting.get() {
-            c.id.send_named(c.gc, b"collectPrecisely", &[])?;
-        }
-        if c.failure.get() == 2 {
-            return Err(Outcome::failed(882, 19));
-        }
-        Ok(Operand::object(c.body_result.get().unwrap_or(c.nil)))
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
+    fn field(&self, c: Oop, i: usize) -> Oop {
+        self.call(c, b"at:", &[size(i).unwrap()])
+    }
+    fn put(&self, c: Oop, i: usize, v: Oop) {
+        self.call(c, b"at:put:", &[size(i).unwrap(), v]);
+    }
+    fn word(&self, i: usize, v: usize) {
+        self.put(self.state, i, size(v).unwrap());
+    }
+    fn count(&self, c: Oop, i: usize) -> usize {
+        as_size(self.field(c, i)).unwrap()
+    }
+    fn error(&self, n: &[u8]) -> Oop {
+        self.call(self.named(b"Error"), b"kind:", &[self.key(n)])
+    }
+    fn collect(&self) {
+        self.call(self.gc, b"collectPrecisely", &[]);
+    }
+    fn identity(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"identityOf:", &[v])
+    }
+    fn present(&self, v: Oop) -> bool {
+        as_size(self.call(self.probe, b"present:", &[v])).unwrap() == 1
+    }
+    fn override_value(&self, condition: bool, value: Option<Oop>) {
+        let i = if condition { 8 } else { 10 };
+        self.word(i, usize::from(value.is_some()));
+        self.put(self.state, i + 1, value.unwrap_or(self.named(b"nil")));
+    }
 }
 #[test]
-#[ignore = "requires production native modules"]
+#[ignore = "requires production Oop modules"]
 fn bootstrap_loops_use_live_sends_and_preserve_control_boundaries() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let h = H {
-            id,
-            ns,
-            roots: named(b"Roots"),
-            gc: named(b"GC"),
-            tokens: RefCell::new(Vec::new()),
-        };
-        let block_vt = behavior_of(&h, h.named(b"Block"));
-        assert_eq!(
-            object(send(
-                id,
-                id.receiver,
-                b"ownerOf:",
-                &[Operand::object(block_vt)]
-            )),
-            h.named(b"Block")
-        );
-        let while_true = binding(&h, block_vt, b"whileTrue:");
-        let while_false = binding(&h, block_vt, b"whileFalse:");
-        let c = Counter {
-            id,
-            gc: h.gc,
-            truth: h.named(b"true"),
-            falsity: h.named(b"false"),
-            nil: h.named(b"nil"),
-            calls: Cell::new(0),
-            conditions: Cell::new(0),
-            limit: Cell::new(10_000),
-            inverted: Cell::new(false),
-            condition_result: Cell::new(None),
-            body_result: Cell::new(None),
-            failure: Cell::new(0),
-            collecting: Cell::new(false),
-        };
-        // Aliases on non-Blocks preserve the receiver/body duck typing contract.
-        let cvt = h.keep(behavior(id));
-        let bvt = h.keep(behavior(id));
-        install(
-            id,
-            cvt,
-            b"value",
-            condition,
-            (&c as *const Counter).cast_mut().cast(),
-        );
-        install(
-            id,
-            bvt,
-            b"value",
-            body,
-            (&c as *const Counter).cast_mut().cast(),
-        );
-        set(&h, cvt, b"loop:", while_true);
-        let cond = h.keep(allocate(id, cvt, 0));
-        let action = h.keep(allocate(id, bvt, 0));
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        assert_eq!((c.conditions.get(), c.calls.get()), (10_001, 10_000));
-        assert_eq!(h.call(cond, b"loop:", &[]), c.nil);
-        assert_eq!(h.call(cond, b"loop:", &[action, action]), c.nil);
-        assert_eq!(
-            h.call(cond, b"loop:", &[c.nil]),
-            c.nil,
-            "false-first does not inspect body"
-        );
-        c.inverted.set(true);
-        c.calls.set(0);
-        c.conditions.set(0);
-        c.limit.set(3);
-        set(&h, cvt, b"loop:", while_false);
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        assert_eq!((c.conditions.get(), c.calls.get()), (4, 3));
-        c.inverted.set(false);
-        set(&h, cvt, b"loop:", while_true);
-        c.collecting.set(true);
-        let err = h.error(b"testLoop");
-        c.condition_result.set(Some(err));
-        c.calls.set(0);
-        assert_eq!(h.call(cond, b"loop:", &[action]), err);
-        assert_eq!(c.calls.get(), 0);
-        c.condition_result.set(Some(c.truth));
-        c.body_result.set(Some(err));
-        assert_eq!(h.call(cond, b"loop:", &[action]), err);
-        assert_eq!(c.calls.get(), 1);
-        c.condition_result.set(Some(c.nil));
-        let error = h.call(cond, b"loop:", &[action]);
-        assert_eq!(
-            h.call(error, b"kind", &[]),
-            id.intern_name(b"mustBeBoolean").unwrap()
-        );
-        assert_eq!(
-            h.bytes(h.call(error, b"message", &[])),
-            b"while loop condition must answer true or false"
-        );
-        c.condition_result.set(Some(c.truth));
-        c.body_result.set(None);
-        for (which, status, detail) in [(1, 881, 17), (2, 882, 19)] {
-            c.failure.set(which);
-            let error = id
-                .send_named(cond, b"loop:", &[Operand::object(action)])
-                .unwrap_err();
-            assert_eq!((error.status, error.detail), (status, detail));
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let gc = host.named(b"GC").unwrap();
+    q.call(gc, b"precisePayloads:", &[size(1).unwrap()])
+        .unwrap();
+    let path = std::env::temp_dir().join(format!("birnam-block-loop-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/block-loop.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let failure = |status, detail| {
+        let e = unsafe {
+            host.id.send(
+                named(b"Execution"),
+                host.intern(b"failNative:detail:").unwrap(),
+                &[size(status).unwrap(), size(detail).unwrap()],
+            )
         }
-        // Failure passthrough is scoped to the bootstrap loop. Ordinary source
-        // evaluation must retain Execution's normal language-error conversion.
-        h.bind(b"LoopFailureCondition", cond);
-        c.failure.set(1);
-        let ordinary = h.eval(b"[LoopFailureCondition value]");
-        assert_eq!(h.call(ordinary, b"kind", &[]), id.intern_name(b"nativeFailure").unwrap());
-        h.bind(b"LoopFailureCondition", c.nil);
-        c.failure.set(0);
-        c.condition_result.set(None);
-        c.calls.set(0);
-        c.limit.set(3);
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        // A direct native caller need not pin the input Objects itself.
-        let transient_cond = allocate(id, cvt, 0);
-        let token = retain(id, h.roots, transient_cond);
-        let transient_body = allocate(id, bvt, 0);
-        release(id, h.roots, token);
-        c.calls.set(0);
-        assert_eq!(
-            object(send(
-                id,
-                transient_cond,
-                b"loop:",
-                &[Operand::object(transient_body)]
-            )),
-            c.nil
-        );
-        collect(id, h.gc);
-        assert!(!present(id, transient_cond));
-        assert!(!present(id, transient_body));
-        transient_results(&h, cond, action, bvt, &c);
-        compiled(&h);
-        replacements(&h, cond, action, cvt, bvt, &c);
-        control(&h);
-    }
-}
-unsafe fn compiled(h: &H) {
-    unsafe {
-        let value = h.eval(b"let n := [Cell with: 0]; [n set: 0]; [[| [[n value] < 100]] whileTrue: [| [n set: [[n value] + 1]]]]; [n value]");
-        assert_eq!(h.number(value), 100);
-        let value = h.eval(b"let m := [Cell with: 0]; [m set: 0]; [[| [[m value] >= 7]] whileFalse: [| [System gc]; [m set: [[m value] + 1]]]]; [m value]");
-        assert_eq!(h.number(value), 7);
-        let error = h.eval(b"[[| 42] whileTrue: [| nil]]");
-        assert_eq!(
-            h.call(error, b"kind", &[]),
-            h.id.intern_name(b"mustBeBoolean").unwrap()
-        );
-        let error = h.eval(b"[[| true] whileTrue: [| [Error kind: #bodyError]]]");
-        assert_eq!(
-            h.call(error, b"kind", &[]),
-            h.id.intern_name(b"bodyError").unwrap()
-        );
-    }
-}
-struct Reply {
-    id: Protocol,
-    gc: Oop,
-    value: Operand,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn reply(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    (|| unsafe {
-        let c = &*c.cast::<Reply>();
-        c.calls.set(c.calls.get() + 1);
-        c.id.send_named(c.gc, b"collectPrecisely", &[])?;
-        Ok(c.value)
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-struct Mutate {
-    id: Protocol,
-    gc: Oop,
-    target: Oop,
-    entry: NativeEntry,
-    result: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn mutate(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    (|| unsafe {
-        let m = &*c.cast::<Mutate>();
-        m.calls.set(m.calls.get() + 1);
-        m.id.send_named(
-            m.target,
-            b"addMethod",
+        .unwrap_err();
+        q.keep(e).unwrap()
+    };
+    let probe = q.call(named(b"Object"), b"clone", &[]).unwrap();
+    let zero = size(0).unwrap();
+    let state = q
+        .call(
+            host.id.root,
+            b"sequence",
             &[
-                Operand::object(m.id.intern_name(b"value")?),
-                Operand::entry(m.entry),
+                gc,
+                named(b"true"),
+                named(b"false"),
+                named(b"nil"),
+                zero,
+                zero,
+                size(10000).unwrap(),
+                zero,
+                zero,
+                named(b"nil"),
+                zero,
+                named(b"nil"),
+                zero,
+                zero,
+                failure(881, 17),
+                failure(882, 19),
+                named(b"Object"),
+                zero,
+                probe,
+                host.roots,
             ],
-        )?;
-        m.id.send_named(m.gc, b"collectPrecisely", &[])?;
-        Ok(Operand::object(m.result))
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
+        )
+        .unwrap();
+    let h = H {
+        host: &host,
+        q,
+        fixture,
+        gc,
+        state,
+        probe,
+    };
+    let pvt = h.private(probe);
+    h.set(pvt, b"present:", h.native(b"present:", state));
+    h.set(
+        pvt,
+        b"allocation:bytes:identity:",
+        h.native(b"census", state),
+    );
+    let bvt = h.vt(h.named(b"Block"));
+    assert_eq!(h.call(host.id.root, b"ownerOf:", &[bvt]), h.named(b"Block"));
+    let while_true = h.method(bvt, b"whileTrue:");
+    let while_false = h.method(bvt, b"whileFalse:");
+    let cond = h.object();
+    let action = h.object();
+    let cvt = h.private(cond);
+    let avt = h.private(action);
+    h.set(cvt, b"value", h.native(b"condition", state));
+    h.set(avt, b"value", h.native(b"body", state));
+    h.set(cvt, b"loop:", while_true);
+    let nil = h.named(b"nil");
+    let truth = h.named(b"true");
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    assert_eq!((h.count(state, 5), h.count(state, 4)), (10001, 10000));
+    assert_eq!(h.call(cond, b"loop:", &[]), nil);
+    assert_eq!(h.call(cond, b"loop:", &[action, action]), nil);
+    assert_eq!(h.call(cond, b"loop:", &[nil]), nil);
+    h.word(7, 1);
+    h.word(4, 0);
+    h.word(5, 0);
+    h.word(6, 3);
+    h.set(cvt, b"loop:", while_false);
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    assert_eq!((h.count(state, 5), h.count(state, 4)), (4, 3));
+    h.word(7, 0);
+    h.set(cvt, b"loop:", while_true);
+    h.word(13, 1);
+    let error = h.error(b"testLoop");
+    h.override_value(true, Some(error));
+    h.word(4, 0);
+    assert_eq!(h.call(cond, b"loop:", &[action]), error);
+    assert_eq!(h.count(state, 4), 0);
+    h.override_value(true, Some(truth));
+    h.override_value(false, Some(error));
+    assert_eq!(h.call(cond, b"loop:", &[action]), error);
+    assert_eq!(h.count(state, 4), 1);
+    h.override_value(true, Some(nil));
+    let error = h.call(cond, b"loop:", &[action]);
+    assert_eq!(h.call(error, b"kind", &[]), h.key(b"mustBeBoolean"));
+    assert_eq!(
+        h.q.string_bytes(h.call(error, b"message", &[])).unwrap(),
+        b"while loop condition must answer true or false"
+    );
+    h.override_value(true, Some(truth));
+    h.override_value(false, None);
+    for which in [1, 2] {
+        h.word(12, which);
+        let failure = unsafe { host.id.send(cond, h.key(b"loop:"), &[action]) }.unwrap_err();
+        assert_eq!(failure, h.field(state, 13 + which));
+    }
+    h.bind(b"LoopFailureCondition", cond);
+    h.word(12, 1);
+    let ordinary = h.eval(b"[LoopFailureCondition value]");
+    assert_eq!(h.call(ordinary, b"kind", &[]), h.key(b"nativeFailure"));
+    h.bind(b"LoopFailureCondition", nil);
+    h.word(12, 0);
+    h.override_value(true, None);
+    h.word(4, 0);
+    h.word(6, 3);
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    let temporary = host.scope();
+    let transient_cond = temporary.call(cvt, b"allocate", &[zero]).unwrap();
+    let transient_body = temporary.call(avt, b"allocate", &[zero]).unwrap();
+    let ids = [transient_cond, transient_body].map(|v| h.identity(v));
+    let selector = h.key(b"loop:");
+    h.word(4, 0);
+    drop(temporary);
+    assert_eq!(
+        unsafe { host.id.send(transient_cond, selector, &[transient_body]) }.unwrap(),
+        nil
+    );
+    h.collect();
+    for id in ids {
+        assert!(!h.present(id));
+    }
+    transient_results(&h, cond, action, avt);
+    compiled(&h);
+    replacements(&h, cond, action, cvt, avt);
+    control(&h);
 }
-unsafe fn replacements(h: &H, cond: Oop, action: Oop, cvt: Oop, bvt: Oop, c: &Counter) {
-    unsafe {
-        let id = h.id;
-        let original_condition = binding(h, cvt, b"value");
-        let original_body = binding(h, bvt, b"value");
-        let stop = Reply {
-            id,
-            gc: h.gc,
-            value: Operand::object(c.falsity),
-            calls: Cell::new(0),
-        };
-        let stop_entry = NativeEntry::new(reply, (&stop as *const Reply).cast_mut().cast());
-        let m = Mutate {
-            id,
-            gc: h.gc,
-            target: cvt,
-            entry: stop_entry,
-            result: c.nil,
-            calls: Cell::new(0),
-        };
-        install(
-            id,
-            bvt,
-            b"value",
-            mutate,
-            (&m as *const Mutate).cast_mut().cast(),
-        );
-        c.calls.set(0);
-        c.limit.set(1);
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        assert_eq!(
-            (m.calls.get(), stop.calls.get()),
-            (1, 1),
-            "condition reselected after body mutation"
-        );
-        set(h, cvt, b"value", original_condition);
-        set(h, bvt, b"value", original_body);
-        let returned_error = h.error(b"replacedBody");
-        let answer = Reply {
-            id,
-            gc: h.gc,
-            value: Operand::object(returned_error),
-            calls: Cell::new(0),
-        };
-        let m = Mutate {
-            id,
-            gc: h.gc,
-            target: bvt,
-            entry: NativeEntry::new(reply, (&answer as *const Reply).cast_mut().cast()),
-            result: c.truth,
-            calls: Cell::new(0),
-        };
-        install(
-            id,
-            cvt,
-            b"value",
-            mutate,
-            (&m as *const Mutate).cast_mut().cast(),
-        );
-        assert_eq!(h.call(cond, b"loop:", &[action]), returned_error);
-        assert_eq!(
-            (m.calls.get(), answer.calls.get()),
-            (1, 1),
-            "body selected after condition mutation"
-        );
-        set(h, cvt, b"value", original_condition);
-        set(h, bvt, b"value", original_body);
-        // Keep exact-family error recognition; spoofing isError changes neither
-        // invalid-condition handling nor the treatment of an ordinary body value.
-        let spoof_vt = h.keep(behavior(id));
-        let truth = Reply {
-            id,
-            gc: h.gc,
-            value: Operand::object(c.truth),
-            calls: Cell::new(0),
-        };
-        install(
-            id,
-            spoof_vt,
-            b"isError",
-            reply,
-            (&truth as *const Reply).cast_mut().cast(),
-        );
-        let spoof = h.keep(allocate(id, spoof_vt, 0));
-        c.condition_result.set(Some(spoof));
-        assert_eq!(
-            h.call(h.call(cond, b"loop:", &[action]), b"kind", &[]),
-            id.intern_name(b"mustBeBoolean").unwrap()
-        );
-        c.condition_result.set(None);
-        c.body_result.set(Some(spoof));
-        c.calls.set(0);
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        assert_eq!(truth.calls.get(), 0);
-        c.body_result.set(None);
-        c.condition_result.set(Some(c.nil));
-        let error_factory = h.named(b"Error");
-        h.bind(b"Error", c.nil);
-        assert_eq!(
-            h.call(cond, b"loop:", &[action]),
-            c.nil,
-            "lazy missing Error factory"
-        );
-        h.bind(b"Error", error_factory);
-        let error_vt = behavior_of(h, error_factory);
-        let original_error = binding(h, error_vt, b"kind:message:");
-        // A source callable's context is collectible after replacement. Retain
-        // its Method while keeping the raw entry for later restoration.
-        let original_method=send(id,h.named(b"Execution"),b"methodOfEntry:",&[Operand::entry(original_error)]);
-        h.keep(object(original_method));
-        let answer = Reply {
-            id,
-            gc: h.gc,
-            value: Operand::object(returned_error),
-            calls: Cell::new(0),
-        };
-        install(
-            id,
-            error_vt,
-            b"kind:message:",
-            reply,
-            (&answer as *const Reply).cast_mut().cast(),
-        );
-        assert_eq!(h.call(cond, b"loop:", &[action]), returned_error);
-        let answer = Reply {
-            value: Operand::unit(),
-            ..answer
-        };
-        install(
-            id,
-            error_vt,
-            b"kind:message:",
-            reply,
-            (&answer as *const Reply).cast_mut().cast(),
-        );
-        // Native Unit from a replaced factory is language nil, as in ordinary
-        // compiled sends. The authored method returns that language value.
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        set(h, error_vt, b"kind:message:", original_error);
-        c.condition_result.set(None);
+fn compiled(h: &H<'_>) {
+    let target = h.object();
+    let vt = h.private(target);
+    let reply = h.native(
+        b"reply",
+        h.context(&[h.gc, std::ptr::null_mut(), size(0).unwrap()]),
+    );
+    h.set(vt, b"value", reply);
+    h.bind(b"LoopAbsent", target);
+    assert!(
+        unsafe { h.host.id.send(target, h.key(b"value"), &[]) }
+            .unwrap()
+            .is_null()
+    );
+    assert!(
+        unsafe { h.host.id.send(reply, h.key(b"invokeOn:"), &[target]) }
+            .unwrap()
+            .is_null()
+    );
+    assert_eq!(h.eval(b"[LoopAbsent value]"), h.named(b"nil"));
+    assert_eq!(
+        h.eval(b"[[| let result := [LoopAbsent value]; [result == nil]] value]"),
+        h.named(b"true")
+    );
+    h.bind(b"LoopAbsent", h.named(b"nil"));
+    let value=h.eval(b"let n := [Cell with: 0]; [n set: 0]; [[| [[n value] < 100]] whileTrue: [| [n set: [[n value] + 1]]]]; [n value]");
+    assert_eq!(h.number(value), 100);
+    let value=h.eval(b"let m := [Cell with: 0]; [m set: 0]; [[| [[m value] >= 7]] whileFalse: [| [System gc]; [m set: [[m value] + 1]]]]; [m value]");
+    assert_eq!(h.number(value), 7);
+    for (source, kind) in [
+        (
+            b"[[| 42] whileTrue: [| nil]]".as_slice(),
+            b"mustBeBoolean".as_slice(),
+        ),
+        (
+            b"[[| true] whileTrue: [| [Error kind: #bodyError]]]",
+            b"bodyError",
+        ),
+    ] {
+        let e = h.eval(source);
+        assert_eq!(h.call(e, b"kind", &[]), h.key(kind));
     }
 }
-unsafe fn control(h: &H) {
-    unsafe {
-        let id = h.id;
-        let machine = h.call(h.named(b"Machine"), b"new", &[]);
-        h.bind(b"LoopMachine", machine);
-        // Synchronous bootstrap loops retain the existing native barrier.
-        let blocked = h.eval(b"[| [[| true] whileTrue: [| [LoopMachine park]]]]");
-        let failure = id
-            .send_named(machine, b"runBlock:", &[Operand::object(blocked)])
-            .unwrap_err();
-        assert_eq!(failure.status, birnam_abi::id_protocol::INVALID_REQUEST);
-        assert_eq!(
-            h.call(machine, b"executionState", &[]),
-            id.intern_name(b"failed").unwrap()
-        );
-        h.call(machine, b"destroy", &[]);
-        let old_condition = h.eval(b"[| [LoopMachine park]; false]");
-        h.bind(b"OldLoopCondition", old_condition);
-        // Install the existing authored Boolean/while methods, without importing
-        // the unrelated scheduler/collection policy later in that source unit.
-        let authored = include_str!("../../../modules/stackless-control.birnam");
-        let start = authored.find("// Boolean is").unwrap();
-        let end = authored.find("// Integer iteration").unwrap();
-        let result = h.eval(authored[start..end].as_bytes());
-        assert_ne!(h.call(result, b"isError", &[]), h.named(b"true"));
-        let vt = behavior_of(h, h.named(b"Block"));
-        let installed = binding(h, vt, b"whileTrue:");
-        h.eval(b"[Module load: #blockLoop]");
-        let reloaded = binding(h, vt, b"whileTrue:");
-        assert_eq!(installed.context, reloaded.context);
-        assert_eq!(
-            installed.method.map(|f| f as usize),
-            reloaded.method.map(|f| f as usize)
-        );
-        let machine = h.call(h.named(b"Machine"), b"new", &[]);
-        h.bind(b"LoopMachine", machine);
-        let caller = h.eval(b"[| [OldLoopCondition whileTrue: [| nil]]]");
-        assert_eq!(h.call(machine, b"runBlock:", &[caller]), machine);
-        collect(id, h.gc);
-        assert_eq!(
-            h.call(machine, b"resumeWith:", &[h.named(b"nil")]),
-            h.named(b"nil")
-        );
-        let machine = h.call(h.named(b"Machine"), b"new", &[]);
-        h.bind(b"LoopMachine", machine);
-        let block = h.eval(b"[| let state := [Cell with: 0]; [state set: 0]; [[| [[state value] < 2]] whileTrue: [| [LoopMachine park]; [state set: [[state value] + 1]]]]; [state value]]");
-        assert_eq!(h.call(machine, b"runBlock:", &[block]), machine);
-        collect(id, h.gc);
-        assert_eq!(h.call(machine, b"resumeWith:", &[h.named(b"nil")]), machine);
-        collect(id, h.gc);
-        assert_eq!(
-            h.number(h.call(machine, b"resumeWith:", &[h.named(b"nil")])),
-            2
-        );
-    }
+fn transient_results(h: &H<'_>, cond: Oop, action: Oop, avt: Oop) {
+    let original = h.method(avt, b"value");
+    h.set(avt, b"value", h.native(b"fresh", h.state));
+    let vt = h.vt(h.host.namespace);
+    let prior = h.method(vt, b"valueAt:");
+    let alias = h.key(b"loopOriginalValueAt:");
+    h.set(vt, b"loopOriginalValueAt:", prior);
+    let state = h.context(&[h.gc, alias, h.key(b"ErrorVt"), size(0).unwrap()]);
+    h.set(vt, b"valueAt:", h.native(b"namespaceAt", state));
+    h.word(4, 0);
+    h.word(6, 3);
+    assert_eq!(h.call(cond, b"loop:", &[action]), h.named(b"nil"));
+    assert_eq!(h.count(h.state, 4), 3);
+    assert!(h.count(state, 3) > 0);
+    let previous = h.field(h.state, 17);
+    h.collect();
+    assert!(!h.present(previous));
+    h.set(vt, b"valueAt:", prior);
+    h.call(vt, b"removeMethod:", &[alias]);
+    h.set(avt, b"value", original);
 }
-
-struct Fresh {
-    counter: *const Counter,
-    prototype: Oop,
-    previous: Cell<Oop>,
+fn replacements(h: &H<'_>, cond: Oop, action: Oop, cvt: Oop, avt: Oop) {
+    let original_condition = h.method(cvt, b"value");
+    let original_body = h.method(avt, b"value");
+    let nil = h.named(b"nil");
+    let truth = h.named(b"true");
+    let stop = h.context(&[h.gc, h.named(b"false"), size(0).unwrap()]);
+    let mutation = h.context(&[h.gc, cvt, h.native(b"reply", stop), nil, size(0).unwrap()]);
+    h.set(avt, b"value", h.native(b"mutate", mutation));
+    h.word(4, 0);
+    h.word(6, 1);
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    assert_eq!((h.count(mutation, 4), h.count(stop, 2)), (1, 1));
+    h.set(cvt, b"value", original_condition);
+    h.set(avt, b"value", original_body);
+    let error = h.error(b"replacedBody");
+    let answer = h.context(&[h.gc, error, size(0).unwrap()]);
+    let mutation = h.context(&[
+        h.gc,
+        avt,
+        h.native(b"reply", answer),
+        truth,
+        size(0).unwrap(),
+    ]);
+    h.set(cvt, b"value", h.native(b"mutate", mutation));
+    assert_eq!(h.call(cond, b"loop:", &[action]), error);
+    assert_eq!((h.count(mutation, 4), h.count(answer, 2)), (1, 1));
+    h.set(cvt, b"value", original_condition);
+    h.set(avt, b"value", original_body);
+    let spoof = h.object();
+    let spoof_vt = h.private(spoof);
+    let checked = h.context(&[h.gc, truth, size(0).unwrap()]);
+    h.set(spoof_vt, b"isError", h.native(b"reply", checked));
+    h.override_value(true, Some(spoof));
+    let result = h.call(cond, b"loop:", &[action]);
+    assert_eq!(h.call(result, b"kind", &[]), h.key(b"mustBeBoolean"));
+    h.override_value(true, None);
+    h.override_value(false, Some(spoof));
+    h.word(4, 0);
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    assert_eq!(h.count(checked, 2), 0);
+    h.override_value(false, None);
+    h.override_value(true, Some(nil));
+    let factory = h.named(b"Error");
+    h.bind(b"Error", nil);
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    h.bind(b"Error", factory);
+    let fvt = h.vt(factory);
+    let original = h.method(fvt, b"kind:message:");
+    let value = h.context(&[h.gc, error, size(0).unwrap()]);
+    h.set(fvt, b"kind:message:", h.native(b"reply", value));
+    assert_eq!(h.call(cond, b"loop:", &[action]), error);
+    h.put(value, 1, std::ptr::null_mut());
+    assert_eq!(h.call(cond, b"loop:", &[action]), nil);
+    h.set(fvt, b"kind:message:", original);
+    h.override_value(true, None);
 }
-unsafe extern "C" fn fresh(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    (|| unsafe {
-        let f = &*c.cast::<Fresh>();
-        let c = &*f.counter;
-        c.id.send_named(c.gc, b"collectPrecisely", &[])?;
-        let previous = f.previous.get();
-        if !previous.is_null()
-            && c.id
-                .send_named(
-                    c.id.receiver,
-                    b"allocationAt:",
-                    &[Operand::word(previous.addr())],
-                )?
-                .as_object()
-                .is_some()
-        {
-            return Err(Outcome::failed(984, c.calls.get()));
-        }
-        c.calls.set(c.calls.get() + 1);
-        let value = c.id.send_named(f.prototype, b"clone", &[])?;
-        f.previous.set(object(value));
-        Ok(value)
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-struct NamespaceHook {
-    id: Protocol,
-    gc: Oop,
-    alias: Oop,
-    key: Oop,
-}
-unsafe extern "C" fn namespace_at(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let f = &*c.cast::<NamespaceHook>();
-        let args = borrowed_slice(a, n).unwrap();
-        if args.first().and_then(|v| v.as_object()) == Some(f.key) {
-            f.id.send_named(f.gc, b"collectPrecisely", &[])?;
-        }
-        f.id.send(r, f.alias, args)
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe fn transient_results(h: &H, cond: Oop, action: Oop, bvt: Oop, c: &Counter) {
-    unsafe {
-        let fresh_context = Fresh {
-            counter: c,
-            prototype: h.named(b"Object"),
-            previous: Cell::new(core::ptr::null_mut()),
-        };
-        let original = binding(h, bvt, b"value");
-        install(
-            h.id,
-            bvt,
-            b"value",
-            fresh,
-            (&fresh_context as *const Fresh).cast_mut().cast(),
-        );
-        let ns_vt = behavior_of(h, h.ns);
-        let ns_original = binding(h, ns_vt, b"at:");
-        let alias = h.keep(h.id.intern_name(b"loopOriginalAt:").unwrap());
-        set(h, ns_vt, b"loopOriginalAt:", ns_original);
-        let hook = NamespaceHook {
-            id: h.id,
-            gc: h.gc,
-            alias,
-            key: h.keep(h.id.intern_name(b"ErrorVt").unwrap()),
-        };
-        install(
-            h.id,
-            ns_vt,
-            b"at:",
-            namespace_at,
-            (&hook as *const NamespaceHook).cast_mut().cast(),
-        );
-        c.calls.set(0);
-        c.limit.set(3);
-        assert_eq!(h.call(cond, b"loop:", &[action]), c.nil);
-        assert_eq!(c.calls.get(), 3);
-        collect(h.id, h.gc);
-        assert!(!present(h.id, fresh_context.previous.get()));
-        set(h, ns_vt, b"at:", ns_original);
-        set(h, bvt, b"value", original);
-    }
+fn control(h: &H<'_>) {
+    let machine = h.call(h.named(b"Machine"), b"new", &[]);
+    h.bind(b"LoopMachine", machine);
+    let blocked = h.eval(b"[| [[| true] whileTrue: [| [LoopMachine park]]]]");
+    let failure = unsafe { h.host.id.send(machine, h.key(b"runBlock:"), &[blocked]) }.unwrap_err();
+    assert_eq!(
+        h.q.symbol_text(h.call(failure, b"faultKind", &[])).unwrap(),
+        "invalidRequest"
+    );
+    assert_eq!(h.call(machine, b"executionState", &[]), h.key(b"failed"));
+    h.call(machine, b"destroy", &[]);
+    let old_condition = h.eval(b"[| [LoopMachine park]; false]");
+    h.bind(b"OldLoopCondition", old_condition);
+    let authored = include_str!("../../../modules/stackless-control.birnam");
+    let start = authored.find("// Boolean is").unwrap();
+    let end = authored.find("// Integer iteration").unwrap();
+    let result = h.eval(authored[start..end].as_bytes());
+    h.q.check_result(result).unwrap();
+    let vt = h.vt(h.named(b"Block"));
+    let installed = h.method(vt, b"whileTrue:");
+    h.eval(b"[Module load: #blockLoop]");
+    assert_eq!(h.method(vt, b"whileTrue:"), installed);
+    let machine = h.call(h.named(b"Machine"), b"new", &[]);
+    h.bind(b"LoopMachine", machine);
+    let caller = h.eval(b"[| [OldLoopCondition whileTrue: [| nil]]]");
+    assert_eq!(h.call(machine, b"runBlock:", &[caller]), machine);
+    h.collect();
+    assert_eq!(
+        h.call(machine, b"resumeWith:", &[h.named(b"nil")]),
+        h.named(b"nil")
+    );
+    let machine = h.call(h.named(b"Machine"), b"new", &[]);
+    h.bind(b"LoopMachine", machine);
+    let block=h.eval(b"[| let state := [Cell with: 0]; [state set: 0]; [[| [[state value] < 2]] whileTrue: [| [LoopMachine park]; [state set: [[state value] + 1]]]]; [state value]]");
+    assert_eq!(h.call(machine, b"runBlock:", &[block]), machine);
+    h.collect();
+    assert_eq!(h.call(machine, b"resumeWith:", &[h.named(b"nil")]), machine);
+    h.collect();
+    assert_eq!(
+        h.number(h.call(machine, b"resumeWith:", &[h.named(b"nil")])),
+        2
+    );
 }

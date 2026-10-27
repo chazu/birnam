@@ -1,0 +1,83 @@
+{
+  "passed": true,
+  "scope": "Bootstrap/authored Block loop acceptance and native absence conversion at the language Machine call boundary",
+  "base_revision": "74bbc634e0e88add4e7666cb4b0882a031800063",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "ef59b2e24b831f0b5bd0ae5e897e80c0de74080b12e00ed8a3cbe13a0e644075",
+    "rust/birnam-siphon/tests/block_loop.rs": "adb330b054e106d1c8738d92e2412b56a65249b4480a3018470af36200b52e68",
+    "tests/fixtures/oop-host/block-loop.c": "2d557ab3ec59ff26d81f360b9a9c5f2b93aef28844fc7609b3cd16aada16c0b9"
+  },
+  "execution_library_sha256": "3835fde9278f35790abc6ce3244e87451fab1e03b47fe41cdfc78dc40778293d",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/block-loop-final.log",
+      "sha256": "d08d96f69e0932f13777a85e641ab852e84663af66275cb14049afde7baa820a",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/language-absence-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/language-absence-unit.log",
+      "sha256": "5b495a1de0f93519621b5ab3121ef160e1f224ba6c3f0a3f9cc6ec8bc33da2c1",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/language-absence-acceptance.log",
+      "sha256": "47be40239e3f368bbae4f724adb4b7c92f2074e889d75a92df614b6f6f070566",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/language-absence-retention.log",
+      "sha256": "a35ba73505afc1f858d29dd983fec249eee8906e184f9d6e8aa6d89bc71b8ce5",
+      "exit": 0
+    }
+  ],
+  "before": {
+    "log": ".cargo-target/oop-current-qualification/block-loop-oop.log",
+    "sha256": "690477e287b0b25b570e0f5fcef0634b4e823f5b53a3c14f071e5c81b2d6afd4",
+    "exit": 101,
+    "failure": "replaced Error factory returned native absence; language loop returned null instead of nil"
+  },
+  "execution_unit_tests": 26,
+  "native_targets": [
+    "block_loop",
+    "block_arity",
+    "execution_methods",
+    "execution_machines",
+    "pending_call_recovery",
+    "native_boundaries",
+    "trace_graphs",
+    "compiler_source",
+    "materialization",
+    "native_loader",
+    "method_binding"
+  ],
+  "retention_targets": [
+    "module_registry_retention",
+    "local_cell_retention",
+    "ordinary_record_retention",
+    "harness_retention"
+  ],
+  "retained_checks": [
+    "10000 iterations and whileFalse counts; non-Block receiver/body protocol; missing/extra arguments and false-first body avoidance",
+    "Condition/body Error identity, mustBeBoolean message, exact native failures and scoped language error conversion",
+    "Transient input and per-iteration result reclamation under collecting callbacks and current ErrorVt lookup",
+    "Condition and body replacement during each other; spoofed isError is not consulted by bootstrap exact-family policy",
+    "Current Error factory replacement, absence and missing-factory behavior",
+    "Bootstrap native barrier, authored replacement, no-clobber reload and condition/body suspension across GC",
+    "Raw absence remains raw on native send/captured Method invocation; normal/tail language calls receive nil",
+    "Mapped/rebuilt Method/native adapter images and exhaustive Trace return/cleanup cases",
+    "Four retention batches return to baseline allocations and facts after collection"
+  ],
+  "runtime_change": "Restore native absence to language nil in the existing Execution language_result handler",
+  "id_changes": false,
+  "new_public_operations": false,
+  "remaining": [
+    "Other native/compiler integration and automatic optimization scope decisions",
+    "Fresh cold qualification of current runtime corrections"
+  ]
+}
