@@ -2475,3 +2475,16 @@ The core Oop gate, 26 Execution unit tests, 11 native suites and all four retent
 suites pass. The latter return to their pre-call allocation counts after collection;
 native adapter and exhaustive Trace checks still preserve raw absence and exact
 failure behavior. [Receipt](../measurements/block-loop-oop-20261027.json).
+
+## Cold interaction and tasks after lifetime and Machine-entry fixes
+
+Cold revision `642e79e2` passed all six interaction checks and all six task checks.
+This covers its interactive/project sessions, compiled startup, Socket/REPL/LSP,
+task images, workers, concurrency cleanup and task control. Its worker-ready
+deadline remains 15 seconds. CLI and image groups remain in that queue.
+[Interaction receipt](../measurements/machine-interaction-oop-20261027.json),
+[task receipt](../measurements/machine-tasks-oop-20261027.json).
+
+Those results predate explicit candidate/numeric support, recovery ownership and
+language-absence conversion. A fresh clean cold build at `a3eaa227`, including all
+those corrections, is now running without Birnam on PATH or a build cache.

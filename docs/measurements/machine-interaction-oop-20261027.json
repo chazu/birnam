@@ -1,0 +1,93 @@
+{
+  "passed": true,
+  "scope": "Complete Host interaction group for cold 642e79e2; later explicit candidate/numeric, recovery ownership and language absence corrections remain unqualified",
+  "candidate_revision": "642e79e2fa5ed527d522bd23f9573308025d49f6",
+  "prefix": "/private/tmp/birnam-oop-machine-gyzvkzv9/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/socket-owner-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.eJ33DQ/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:socket-owner-test.py",
+      "started_unix_ns": 1793120521792488000,
+      "status": "passed",
+      "wall_ns": 250796265792
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/repl-owner-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.eJ33DQ/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:repl-owner-test.py",
+      "started_unix_ns": 1793120772636079000,
+      "status": "passed",
+      "wall_ns": 266559069375
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-machine-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "interaction:host-lib:startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse",
+      "started_unix_ns": 1793121039251706000,
+      "status": "passed",
+      "wall_ns": 29539247875
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/interaction-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.eJ33DQ/relocated"
+      ],
+      "exit_code": 0,
+      "label": "interaction:interaction-cli-test.py",
+      "started_unix_ns": 1793121068824176000,
+      "status": "passed",
+      "wall_ns": 795509254917
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/repl-golden.sh"
+      ],
+      "exit_code": 0,
+      "label": "interaction:repl-golden.sh",
+      "started_unix_ns": 1793121864402575000,
+      "status": "passed",
+      "wall_ns": 938757039875
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/lsp-project-smoke.sh"
+      ],
+      "exit_code": 0,
+      "label": "interaction:lsp-project-smoke.sh",
+      "started_unix_ns": 1793122803226700000,
+      "status": "passed",
+      "wall_ns": 24158442416
+    }
+  ],
+  "log": ".cargo-target/oop-machine-qualification/interaction.log",
+  "log_sha256": "b722b915fef22457698fc4c98ff03386136f635e978269f1ea0428cb15eab859",
+  "timings_sha256": "bd1f0793c3290ed664ba8cbfe85b3893af6186b5174b142c3e3c61bb8c2381e1",
+  "prepared_test_binaries_manifest": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-machine-qualification/test-binaries/manifest.json",
+  "prepared_test_binaries_manifest_sha256": "a9d066b1c25c228848f89a4cf964074dc3e82fc27e0869d322c9f626a6e4a859",
+  "remaining": [
+    "Complete CLI and image groups",
+    "Qualify current a3eaa227 cold build and later corrections",
+    "Remaining native/compiler integration and optimization scope decisions"
+  ]
+}
