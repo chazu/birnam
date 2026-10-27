@@ -1841,3 +1841,12 @@ obsolete v1 recovery fixture is removed.
 
 The migrated target and the broader pending-call recovery target pass. No runtime
 or Id change was needed. [Receipt](../measurements/compiler-source-oop-20261027.json).
+
+## Cold candidate generation acceptance
+
+All 17 installed Host generation checks passed on cold revision `9f638b73`,
+including source/description restoration, ordinary editing, adoption and rollback,
+mapped/rebuilt/resaved images, console/TCP activation and compiled-unit policy.
+Interaction, task, CLI and image groups remain in the serial queue. This receipt
+does not cover the subsequent native-loader and standalone-emitter corrections.
+[Receipt](../measurements/current-generation-oop-20261027.json).
