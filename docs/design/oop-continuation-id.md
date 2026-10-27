@@ -2678,3 +2678,12 @@ in 15.9 seconds, within the original 300/900-second limits. This does not establ
 the original timeout's cause or qualify relocation by itself. The original failed
 attempt is retained; a fresh relocated retry and remaining Host groups are running.
 [Replay receipt](../measurements/compiled-unit-timeout-replay-oop-20261027.json).
+
+## Current cold generation qualification after unchanged retry
+
+All 17 generation checks now pass across the initial attempt and the relocated
+retry. The retry used a fresh copy of the same cold candidate and the unchanged
+compiled-unit script, including its 300/900-second limits and all 62 assertions.
+It completed in 237.8 seconds total. The original timeout remains recorded; its
+cause is not established. The remaining Host groups continue separately.
+[Receipt](../measurements/language-generation-oop-20261027.json).
