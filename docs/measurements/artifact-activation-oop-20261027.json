@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "scope": "Durable artifact activation, collecting current owners, code lifetime and corruption refusal through Oops",
+  "base_revision": "d2b67a98ad70b3b881bbe69c7e80b774fe298520",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/artifact_activation.rs": "8c745c279b1b88482997bbe98b3ac3659894f376e8fda95f6f9c111ce8c1226a"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/artifact-activation-oop.log",
+      "sha256": "9f0bb295a36131ee6422308c3b05fec0cf079c4c0dbcaa84c2ddbe3e45054a72",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Reflect nameOf: accepts Symbols and rejects other objects with the retained error",
+    "Artifact load works after deleting source and embedded asset",
+    "Parser and TCC compiler replacements are never entered during artifact load",
+    "Current Artifact inspection and TCC relocation callbacks may collect",
+    "Exactly one additional native unit is retained by the loaded Block and released after its last root disappears",
+    "Returned binary payload survives code retirement independently",
+    "Current loadObject: failure propagates the exact native failure Oop",
+    "Compile failure preserves an existing artifact; altered source digest rejects before execution; valid load recovers afterward"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Generation ledger validation is still running",
+    "Other native/compiler integration and scope decisions",
+    "Full current-runtime cold Host qualification"
+  ]
+}

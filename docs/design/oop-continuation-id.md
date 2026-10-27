@@ -2557,3 +2557,17 @@ correct baseline recovery ownership and language nil conversion for absent nativ
 results. Subsequent commits so far change tests and documentation only. Remaining
 native/compiler integration is still open.
 [Receipt](../measurements/language-cold-install-oop-20261027.json).
+
+## Durable artifact activation and independent payload lifetime
+
+The artifact activation harness now uses Oop Methods and scoped roots. Loading
+works after deleting source and embedded assets, while failing parser/compiler
+replacements remain unentered. Current inspection and relocation methods collect
+before forwarding. The loaded Block retains one additional native unit; dropping
+its last root releases that code while an independently retained binary result
+remains valid.
+
+The checks also preserve Symbol-name validation, exact native load failure,
+unchanged artifacts after compilation failure, source-digest corruption refusal
+and successful loading after restoring valid bytes. The target passes without
+runtime or Id changes. [Receipt](../measurements/artifact-activation-oop-20261027.json).
