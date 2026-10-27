@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "scope": "Current collection owners retain detached snapshots and borrow caller input lifetimes through Oops",
+  "base_revision": "5755347ec1c2df0279ea5145b837304979eba9cb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/borrowed_read_inputs.rs": "77e40fb81bab23d041a3d5fde27705ce51f99a768ee8dcafe052ae5486ee1f10",
+    "tests/fixtures/oop-host/collection-inputs.c": "97ad64cbd9858c0395f4fc196a85e6804d0aff32bfa325df281544a3ec7f206c"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/collection-inputs-oop.log",
+      "sha256": "1d35b20ad5f50cb8097965adb6774f033a9597c3a285f79c0355cfa953b1e220",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Map lookup releases external input leases inside a collecting hash callback without re-registering inputs",
+    "Reentrant rehash detaches the old Map node; the active read keeps it alive, then releases it",
+    "Hash and reader native failures preserve exact identity",
+    "Reflect vtable lookup forwards to the current collecting query without redundant input Root registrations",
+    "Symbol hashing enters current nameHash without redundant input Root registrations",
+    "ObjectModel allocation permission forwards to current collecting GC policy and preserves failure",
+    "Synchronous and resumable Vector reads release external leases, retain detached tree and tail snapshots through conversion callbacks, then reclaim them",
+    "Vector native failure preserves identity and zero input Root registrations"
+  ],
+  "fixture_observation": "Weak inputs and detached nodes are represented by allocation identities, resolved through the allocated-object list only when needed. Contexts hold no input or old-node references. Explicit cleanup suppresses recursive instrumentation while retaining live owner forwarding.",
+  "current_protocols": "Symbol nameHash replaces the removed raw symbolBytesOf: carrier query. Vtable allocation receives the current explicit byte-count Oop.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Complete ongoing image resave and cold Host qualification",
+    "Other native/compiler harnesses",
+    "Pending conditional-undo and automatic-optimization contract decisions"
+  ]
+}

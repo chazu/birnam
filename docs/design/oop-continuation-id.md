@@ -2718,3 +2718,17 @@ numeric validation callbacks remain collecting and all assertions remain enabled
 the numeric harness passes in 5.8 seconds. This is a fixture correction, not a
 runtime speedup. No runtime or Id changes were needed.
 [Receipt](../measurements/native-numeric-inputs-oop-20261027.json).
+
+## Collection read input and snapshot lifetime
+
+The collection-input harness now uses Oop callbacks and weak allocation identities.
+Map lookup releases the caller's external leases from its hash callback; reentrant
+rehash and collection preserve the detached node until the active read finishes.
+Vector conversion similarly detaches its tree and tail during both synchronous
+and resumable reads. The tests verify survival during the callback and reclamation
+afterward, exact native failures and zero redundant input Root registrations.
+
+Reflect, Symbol hashing and allocation-permission forwarding retain their live,
+collecting owner checks. Symbol hashing now observes the current `nameHash`
+operation rather than the removed raw byte-carrier query. All checks pass without
+runtime or Id changes. [Receipt](../measurements/collection-inputs-oop-20261027.json).
