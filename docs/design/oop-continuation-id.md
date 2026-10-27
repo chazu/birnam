@@ -1278,3 +1278,14 @@ original Method exists. The obsolete Id `bindingOf:in:` assertion now uses the
 existing Execution `directMethodFor:in:` query. The exact failure and partial-load
 assertions remain intact; no runtime or Id operation was added or changed.
 [Receipt](../measurements/owned-globals-oop-20261026.json).
+
+## Integer policy through Oops
+
+The `integer_values` harness now uses scoped Oop calls on the corrected cold
+candidate. All 500 signed-boundary arithmetic cases pass, along with mixed Float
+dispatch, overflow/zero-division/type errors, Error identity, repeated policy
+loading and collection during arithmetic. Named Method reflection obtains the
+authored body through Codegen's existing `implementationOf:` query, then inspects
+that body's CodeObject. No native-entry carrier interface or runtime change was
+needed. Full corrected-candidate Host acceptance remains incomplete.
+[Receipt](../measurements/integer-values-oop-20261026.json).

@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "scope": "Authored Integer policy through Oops: 500 signed boundary cases and retained mixed/error/GC/reflection checks",
+  "base_revision": "f482ffafc8485f268c2ce2b682edf4e14a51dd8f",
+  "candidate_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
+  "prefix": "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/integer_values.rs": "7195eec76981cb205421fc443cd062fa5c924dc20dcf645b8e10564b50c4672a"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/integer-values.log",
+      "sha256": "b4ceb08df67ce3e1f1dbbc50869213da31a60c5e14a47b48f1703c5b25230730",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}
