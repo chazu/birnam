@@ -1,0 +1,55 @@
+{
+  "passed": true,
+  "scope": "Captured Block body semantics, current lookup/replacement and code lifetime across source and both materialization modes",
+  "base_revision": "e69ecfa86ca75192299632c5ef2e25429d307a8c",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-method-capture-iqsi2llh/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "d9edc6e9c03161df4deb59dfe390fc7d55ef7023cad9c246d82c3855e4bddc9d",
+    "rust/birnam-siphon/tests/block_method_capture.rs": "1850b5dd3c70502e702c56e29405cf3f888c29b86728a733746192861f5a781c",
+    "scripts/native-message-test.sh": "ca01402cc06ef17cb49e92ae7ed503c2e9938f6685fdabd5f13557eecf1a7a78"
+  },
+  "execution_sha256": "3dc2a4ce4c7d0a81e77be2434ea36ee7ef1fd536d98567d01ad6168eb896b465",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/block-method-capture.log",
+      "sha256": "4f6caa83a65b7def77885d53e462898ab14aa9e5751fa1f9d473f560ba87edc0",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/block-method-capture-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/block-method-capture-regressions.log",
+      "sha256": "11473bd0632d8294df3fd7dec248311812e6d4a1bd91b3b88fdddfc2edd32ce7",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/block-capture-fixed.log",
+      "sha256": "b75ecacde88f326fe65ffab7bff7df9e310c21b3fb7ae0c133a11892a8890434",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "probe": "docs/measurements/block-capture-pending-oop-20261027.json",
+    "test_log": ".cargo-target/oop-corrected-qualification/block-method-capture-before.log",
+    "test_log_sha256": "5a9ee40fd8c7d258b4a924989e65f7a02bfe79862c0fc44ec195dc49ec70e689"
+  },
+  "before_sequence": "methodFor performs current lookup and captures the shared value dispatcher, which later selects the new receiver body.",
+  "after_sequence": "methodFor performs current lookup. If an Execution-owned Block selected the standard value implementation, capture its stored body Method; otherwise capture the selected Method unchanged.",
+  "new_required_mechanisms": [
+    "One rooted context-bound snapshot of Execution own declared value implementation, compared through existing Id sameNativeMethod:as:"
+  ],
+  "id_changes": false,
+  "ordinary_dispatch_changes": false,
+  "retained_checks": [
+    "Captures invoke the original body on another compatible Block for source, synchronous and resumable bodies.",
+    "The captured Method owns code after the source Block and cache are released; an alias retains it until final removal.",
+    "Current global value replacement is captured without executing the handler; earlier captures keep their body.",
+    "Custom lookup is observed; foreign receivers with the same value handler are not interpreted as Block storage.",
+    "Inherited methodFor replacement remains live.",
+    "Complete core gate and Block arity, materialization errors, native boundaries and Method binding/image suites pass."
+  ],
+  "scope_limit": "The full old materialization harness and other native/compiler harnesses remain to migrate. Latest full installation qualification is still pending."
+}

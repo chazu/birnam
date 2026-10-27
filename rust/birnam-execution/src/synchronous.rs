@@ -34,6 +34,7 @@ struct State {
     native_value: Oop,
     native_answer: Oop,
     capture_seed: Oop,
+    block_value_seed: Oop,
     code_getter: Oop,
     binding_visitor_vt: Oop,
     ns: Oop,
@@ -342,6 +343,20 @@ unsafe extern "C" fn method_for(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize)
         if method.is_null() {
             Ok(s.nil)
         } else {
+            // The shared value handler implements this owner's Block representation.
+            // Capture its body, as before sharing that handler, only after current lookup.
+            let owned_block = r != s.block && s.storage.borrow().family_of(r) == Some(s.block_vt);
+            let method = if owned_block
+                && s.send(
+                    s.id.root,
+                    b"sameNativeMethod:as:",
+                    &[method, s.block_value_seed],
+                )? == abi::size(1).unwrap()
+            {
+                scope.keep(s.field(r, 0)?)
+            } else {
+                method
+            };
             let captured = scope.keep(s.send(method, b"captured", &[])?);
             Ok(captured)
         }
@@ -419,6 +434,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.native_value,
             s.native_answer,
             s.capture_seed,
+            s.block_value_seed,
             s.code_getter,
             s.binding_visitor_vt,
         ];
@@ -1551,6 +1567,8 @@ unsafe extern "C" fn initialize(
         let block_vt = keep(send(base, b"delegated", &[])?)?;
         let receiver = keep(send(behavior, b"allocate", &[abi::size(0).unwrap()])?)?;
         let block = keep(send(block_vt, b"allocate", &[abi::size(0).unwrap()])?)?;
+        let block_value = keep(send(image, b"methodAt:", &[names[b"value".as_slice()]])?)?;
+        let block_value_seed = keep(send(block_value, b"withContext:", &[*ns])?)?;
         let s = Box::leak(Box::new(State {
             id,
             control,
@@ -1564,6 +1582,7 @@ unsafe extern "C" fn initialize(
                 b"methodAt:",
                 &[names[b"nativeDeferredAnswer".as_slice()]],
             )?)?,
+            block_value_seed,
             capture_seed: keep(send(
                 send(id.root, b"methodBehavior", &[])?,
                 b"lookup",

@@ -1672,5 +1672,28 @@ A separate source-level probe reproduces a captured-Block compatibility gap:
 `methodFor: #value:` captures the new shared Block dispatcher rather than the
 original Block body. Invoking that Method on another compatible Block consequently
 runs the other body's code. The same source prints `73` before the refactor and
-`19` on the current staged runtime. This case remains pending.
+`19` on that staged runtime. The correction below supersedes this checkpoint.
 [Probe](../measurements/block-capture-pending-oop-20261027.json).
+
+## Capture a Block's body without bypassing current lookup
+
+Execution's `methodFor:` now preserves the pre-refactor Block capture behavior.
+Previously it captured the shared value dispatcher; invoking that Method on another
+Block ran the other receiver's body. Reflection now performs current lookup first.
+For Execution-owned Block storage whose selected Method is the standard value
+implementation, it captures the stored body Method. Otherwise it captures the
+selected Method unchanged.
+
+Execution retains one context-bound snapshot of its own declared value Method and
+compares it through the existing `sameNativeMethod:as:` message. It interprets only
+its own Block fields. No registry, inter-module private representation, new Id
+operation or ordinary-dispatch step is introduced. `methodFor:` remains inherited
+and replaceable; no Block-specific shadow is installed.
+
+The original source probe again prints `73`. The regression covers source and
+both materialization modes, code retention after the original Block/cache release,
+transfer to an alias, and retirement after final removal. Counterexamples cover
+current value replacement, custom lookup, foreign receivers using the same handler,
+and replacement of `methodFor:` itself. Core, arity, native-boundary, materialization
+error and mapped/rebuilt Method-binding checks pass. The prior failing probe remains
+as historical evidence. [Receipt](../measurements/block-method-capture-oop-20261027.json).

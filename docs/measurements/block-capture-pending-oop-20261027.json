@@ -18,5 +18,6 @@
   ],
   "passed": false,
   "scope": "Capturing value: from one Block and invoking it on another compatible Block",
-  "expected_stdout": "73\n"
+  "expected_stdout": "73\n",
+  "superseded_by": "docs/measurements/block-method-capture-oop-20261027.json"
 }
