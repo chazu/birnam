@@ -1,229 +1,162 @@
-//! Execution scope covers generated inputs and exact input aliases through GC.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use std::{cell::Cell, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct Checkpoint {
-    id: Protocol,
-    gc: Oop,
-    roots: Oop,
-    token: Cell<usize>,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<Checkpoint>() };
-    let args = unsafe { borrowed_slice(a, n) }.unwrap();
-    assert_eq!(args.len(), 2);
-    let t = s.token.replace(0);
-    if t != 0 {
-        unsafe { release(s.id, s.roots, t) }
-    }
-    unsafe {
-        collect(s.id, s.gc);
-        for arg in args {
-            assert!(
-                present(s.id, object(*arg)),
-                "invocation must cover input through callback"
-            );
-        }
-    }
-    s.calls.set(s.calls.get() + 1);
-    Outcome::loaded(args[1])
-}
-unsafe extern "C" fn fail(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe { checkpoint(c, r, a, n) };
-    Outcome::failed(811, 97)
-}
+//! Generated calls retain inputs and exact aliases across collection and failure.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 #[test]
-#[ignore = "production synchronous compiler and Execution scope required"]
+#[ignore = "requires production Oop modules and synchronous compiler"]
 fn generated_inputs_survive_reentry_collection_failure_aliases_and_new_results() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let gc = named(b"GC");
-        let b = behavior(id);
-        let h = allocate(id, b, 0);
-        let ht = retain(id, roots, h);
-        let mut check = Checkpoint {
-            id,
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let key = |n: &[u8]| q.keep(host.intern(n).unwrap()).unwrap();
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let gc = named(b"GC");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let failure = unsafe {
+        host.id.send(
+            named(b"Execution"),
+            key(b"failNative:detail:"),
+            &[size(811).unwrap(), size(97).unwrap()],
+        )
+    }
+    .unwrap_err();
+    q.keep(failure).unwrap();
+    let context = call(
+        host.id.root,
+        b"sequence",
+        &[
             gc,
-            roots,
-            token: Cell::new(0),
-            calls: Cell::new(0),
-        };
-        install(id, b, b"check:with:", checkpoint, (&raw mut check).cast());
-        install(id, b, b"fail:with:", fail, (&raw mut check).cast());
-        send(
-            id,
-            named(b"Globals"),
-            b"at:put:",
-            &[
-                Operand::object(id.intern_name(b"InputCheckpoint").unwrap()),
-                Operand::object(h),
-            ],
+            host.roots,
+            std::ptr::null_mut(),
+            size(0).unwrap(),
+            failure,
+        ],
+    );
+    let path = std::env::temp_dir().join(format!(
+        "birnam-invocation-inputs-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/invocation-inputs.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let checkpoint = call(named(b"Object"), b"clone", &[]);
+    let vt = call(host.id.root, b"ensurePrivateVtableFor:", &[checkpoint]);
+    for selector in [
+        b"check:with:".as_slice(),
+        b"fail:with:",
+        b"allocation:bytes:identity:",
+    ] {
+        let method = call(
+            call(fixture, b"methodAt:", &[key(selector)]),
+            b"withContext:",
+            &[context],
         );
-        let source=br#"let probe := [Object clone];
+        call(vt, b"addMethod", &[key(selector), method]);
+    }
+    call(
+        named(b"Globals"),
+        b"at:put:",
+        &[key(b"InputCheckpoint"), checkpoint],
+    );
+    let source=br#"let probe := [Object clone];
       [Reflect defineMethod: #echo: on: probe as: [Execution block: [:self :value | [InputCheckpoint check: self with: value]; value] withNativeSignature: "oO"]];
       [Reflect defineMethod: #nested: on: probe as: [Execution block: [:self :value | [self echo: value]] withNativeSignature: "oO"]];
       [Reflect defineMethod: #fresh: on: probe as: [Execution block: [:self :value | let result := [Execution wordResultOf: value selector: #word]; [InputCheckpoint check: self with: result]; result] withNativeSignature: "oO"]];
       [Reflect defineMethod: #failure: on: probe as: [Execution block: [:self :value | [InputCheckpoint fail: self with: value]] withNativeSignature: "oO"]];
       [Globals at: #InputScopeProbe put: probe]; true"#;
-        let text = object(send(
-            id,
-            named(b"String"),
-            b"fromBytes:",
-            &[Operand::bytes(source)],
-        ));
-        let tt = retain(id, roots, text);
-        let path =
-            std::env::temp_dir().join(format!("birnam-input-scope-{}.dylib", std::process::id()));
-        let output = object(send(
-            id,
-            named(b"String"),
-            b"fromBytes:",
-            &[Operand::bytes(path.as_os_str().as_bytes())],
-        ));
-        let ot = retain(id, roots, output);
-        let compile = object(send(
-            id,
-            named(b"Codegen"),
-            b"compile:output:from:synchronousBodies:",
-            &[
-                Operand::object(text),
-                Operand::object(output),
-                Operand::object(output),
-                Operand::object(named(b"true")),
-            ],
-        ));
-        assert_eq!(object(send(id, compile, b"isError", &[])), named(b"false"));
-        send(id, named(b"Codegen"), b"load:", &[Operand::object(output)]);
-        let probe = object(send(
-            id,
-            named(b"Globals"),
-            b"at:",
-            &[Operand::object(id.intern_name(b"InputScopeProbe").unwrap())],
-        ));
-        let pt = retain(id, roots, probe);
-        for selector in [b"echo:".as_slice(), b"nested:", b"fresh:", b"failure:"] {
-            let value = object(send(
-                id,
-                named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(123)],
-            ));
-            check.token.set(retain(id, roots, value));
-            let result = id.send_named(probe, selector, &[Operand::object(value)]);
-            assert_eq!(
-                check.token.get(),
-                0,
-                "callback relinquishes external token while Execution protects input"
-            );
-            if selector == b"failure:" {
-                let error = result.unwrap_err();
-                assert_eq!((error.status, error.detail), (811, 97));
-            } else {
-                let result = object(result.unwrap());
-                let rt = retain(id, roots, result);
-                if selector == b"fresh:" {
-                    assert_eq!(send(id, result, b"bits", &[]).as_word(), Some(123));
-                } else {
-                    assert_eq!(result, value);
-                }
-                collect(id, gc);
-                assert!(present(id, result));
-                release(id, roots, rt);
-            }
-        }
-        // Captured exact Method keeps the old implementation/code after replacement.
-        let original = send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(id.intern_name(b"echo:").unwrap()),
-                Operand::object(probe),
-            ],
-        )
-        .as_entry()
+    let text = q.string(source).unwrap();
+    let path =
+        std::env::temp_dir().join(format!("birnam-input-scope-{}.dylib", std::process::id()));
+    let output = q.string(path.as_os_str().as_encoded_bytes()).unwrap();
+    let result = call(
+        named(b"Codegen"),
+        b"compile:output:from:synchronousBodies:",
+        &[text, output, output, named(b"true")],
+    );
+    q.check_result(result).unwrap();
+    assert_ne!(result, named(b"nil"));
+    q.check_result(call(named(b"Codegen"), b"load:", &[output]))
         .unwrap();
-        let method = object(send(
-            id,
-            named(b"Execution"),
-            b"methodOfEntry:",
-            &[Operand::entry(original)],
-        ));
-        let mt = retain(id, roots, method);
-        let replacement = send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(id.intern_name(b"failure:").unwrap()),
-                Operand::object(probe),
-            ],
-        )
-        .as_entry()
-        .unwrap();
-        let pb = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(probe)],
-        ));
-        install(
-            id,
-            pb,
-            b"echo:",
-            replacement.method.unwrap(),
-            replacement.context,
-        );
-        let value = object(send(
-            id,
-            named(b"Integer"),
-            b"fromWord:",
-            &[Operand::word(55)],
-        ));
-        let vt = retain(id, roots, value);
-        let vector = object(send(id, named(b"Vector"), b"new", &[]));
-        let vector = object(send(id, vector, b"add:", &[Operand::object(value)]));
-        let at = retain(id, roots, vector);
-        let alias = object(send(
-            id,
-            method,
-            b"invokeOn:arguments:",
-            &[Operand::object(probe), Operand::object(vector)],
-        ));
-        assert_eq!(alias, value);
-        let error = id
-            .send_named(probe, b"echo:", &[Operand::object(value)])
-            .unwrap_err();
-        assert_eq!(error.status, 811);
-        // Required incoming type rejection happens before a checkpoint/body call.
-        let calls = check.calls.get();
+    let probe = host.global(&q, b"InputScopeProbe").unwrap();
+    for selector in [b"echo:".as_slice(), b"nested:", b"fresh:", b"failure:"] {
+        // The checkpoint releases this sole external token during the call.
+        let value = host
+            .send(named(b"Integer"), b"fromWord:", &[size(123).unwrap()])
+            .unwrap();
+        let token = host.send(host.roots, b"retain:", &[value]).unwrap();
+        call(context, b"at:put:", &[size(2).unwrap(), token]);
+        let result = unsafe { host.id.send(probe, key(selector), &[value]) };
+        // Retain a successful return before making another message send.
+        let output_token = result
+            .ok()
+            .map(|value| host.send(host.roots, b"retain:", &[value]).unwrap());
         assert!(
-            id.send_named(probe, b"nested:", &[Operand::word(1)])
-                .is_err()
+            call(context, b"at:", &[size(2).unwrap()]).is_null(),
+            "callback must release the external token"
         );
-        assert_eq!(check.calls.get(), calls);
-        for token in [at, vt, mt, pt, ot, tt, ht] {
-            release(id, roots, token);
+        if selector == b"failure:" {
+            assert_eq!(result.unwrap_err(), failure);
+        } else {
+            let result = result.unwrap();
+            let token = output_token.unwrap();
+            if selector == b"fresh:" {
+                assert_eq!(
+                    q.word_bits(host.send(result, b"bits", &[]).unwrap())
+                        .unwrap(),
+                    123
+                );
+            } else {
+                assert_eq!(result, value);
+            }
+            call(gc, b"collectPrecisely", &[]);
+            assert!(
+                as_size(host.send(host.id.root, b"identityOf:", &[result]).unwrap()).unwrap() > 0
+            );
+            host.send(host.roots, b"release:", &[token]).unwrap();
         }
-        std::fs::remove_file(path).unwrap();
     }
+    let original = call(host.id.root, b"bind:to:", &[key(b"echo:"), probe]);
+    let replacement = call(host.id.root, b"bind:to:", &[key(b"failure:"), probe]);
+    let vt = call(host.id.root, b"behaviorOf:", &[probe]);
+    call(vt, b"addMethod", &[key(b"echo:"), replacement]);
+    let value = call(named(b"Integer"), b"fromWord:", &[size(55).unwrap()]);
+    let args = call(call(named(b"Vector"), b"new", &[]), b"add:", &[value]);
+    assert_eq!(
+        call(original, b"invokeOn:arguments:", &[probe, args]),
+        value
+    );
+    assert_eq!(
+        unsafe { host.id.send(probe, key(b"echo:"), &[value]) }.unwrap_err(),
+        failure
+    );
+    // A required object is a non-null Oop, including a supported immediate.
+    let immediate = size(1).unwrap();
+    let args = call(host.id.root, b"sequence", &[immediate]);
+    assert_eq!(
+        call(original, b"invokeOn:arguments:", &[probe, args]),
+        immediate
+    );
+    let calls = as_size(call(context, b"at:", &[size(3).unwrap()])).unwrap();
+    assert!(
+        host.send(probe, b"nested:", &[std::ptr::null_mut()])
+            .is_err()
+    );
+    assert_eq!(
+        as_size(call(context, b"at:", &[size(3).unwrap()])).unwrap(),
+        calls,
+        "required non-null input must be rejected before the body"
+    );
+    std::fs::remove_file(path).unwrap();
 }

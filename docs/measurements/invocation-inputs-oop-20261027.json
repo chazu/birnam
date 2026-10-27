@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "scope": "Generated synchronous calls retain Oop inputs, exact aliases and fresh results across reentry and collection",
+  "base_revision": "ee0a19d542dbc26b416cb3ec5db57393a9d1fb38",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/invocation_inputs.rs": "7f09069e5afc5794663534df397baf68ab243b0e6ee3831eb9f5700e3c4c2156",
+    "tests/fixtures/oop-host/invocation-inputs.c": "3f2ad79c0608a7bf5a9099ba1fc84f926eb4f2d99bf132dd106469363fa57651"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/invocation-inputs-oop.log",
+      "sha256": "5005bfa91f9d53d86187728534703c5e6573311086913ec1e58ca7a6ff8ab461",
+      "exit": 0,
+      "targets": [
+        "invocation_inputs",
+        "native_incoming"
+      ]
+    }
+  ],
+  "retained_checks": [
+    "Callback releases the sole external input token, collects and observes both heap input identities in the allocated-object list",
+    "Direct and nested generated calls return the exact input alias",
+    "Fresh Word result remains alive across the collecting callback and after returning to a rooted caller",
+    "Native failure preserves exact object identity",
+    "Captured Method keeps its old implementation after replacement; future sends enter the replacement",
+    "Required non-null Oop rejection occurs before the body; supported immediate Oops are accepted"
+  ],
+  "representation_change": "The former invalid Operand::word input has no distinct carrier in the Oop-only interface. Required-object admission is checked with null rejection and positive supported-immediate acceptance, matching the existing native_incoming contract. No raw pointers to potentially reclaimed objects are queried.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Complete ongoing image roundtrip/resave qualification",
+    "Remaining native/compiler harnesses and optimization scope decisions",
+    "Remaining current cold Host groups"
+  ]
+}

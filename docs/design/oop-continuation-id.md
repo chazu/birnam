@@ -2687,3 +2687,18 @@ compiled-unit script, including its 300/900-second limits and all 62 assertions.
 It completed in 237.8 seconds total. The original timeout remains recorded; its
 cause is not established. The remaining Host groups continue separately.
 [Receipt](../measurements/language-generation-oop-20261027.json).
+
+## Generated call input lifetime
+
+The generated-input harness now uses declared Oop checkpoints. A checkpoint
+releases the caller's sole external input token, collects, and verifies both heap
+inputs by allocation identity. Direct and nested calls preserve exact aliases;
+fresh Word results and the original native failure retain their meanings.
+Captured Methods still enter their old implementation after dictionary replacement,
+while subsequent sends enter the replacement.
+
+Required-object admission now checks non-null Oops: null is rejected before the
+body, and a supported immediate is accepted. The old Operand word/object carrier
+distinction no longer exists. The generated-input and adjacent native incoming
+harnesses pass without runtime or Id changes.
+[Receipt](../measurements/invocation-inputs-oop-20261027.json).
