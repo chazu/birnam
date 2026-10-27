@@ -1,6 +1,6 @@
 {
   "passed": true,
-  "scope": "Fresh corrected-runtime cold installation and archive smoke; full installed Host groups still running",
+  "scope": "Fresh corrected-runtime cold installation and archive smoke; full installed Host acceptance incomplete",
   "source_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
   "source_identity": {
     "git_clean": true,
@@ -72,5 +72,6 @@
   "remaining": [
     "Complete corrected-candidate installed Host groups",
     "Remaining native harness and compiler optimization producer migration"
-  ]
+  ],
+  "host_acceptance_note": "Initial concurrent CLI and image attempts hit existing 300-second subprocess limits; retry at lower concurrency. Generation, interaction and tasks are still running."
 }

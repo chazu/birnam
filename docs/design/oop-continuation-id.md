@@ -1255,9 +1255,11 @@ Birnam on PATH. Its schema-4 receipt verifies all 817 installed files, Id protoc
 and exclusion of the build-only Lang seed. An archive of those exact bytes passes
 signature, relocation, source/GC/image and compiled-startup checks while both the
 original checkout and installed prefix are hidden. Both paths were restored after
-the check. The five complete installed Host groups are now running against this
-candidate; the cold/archive result does not substitute for those groups or the
-remaining native migration work.
+the check. Complete installed Host acceptance remains pending. Initial concurrent
+CLI and image runs hit existing 300-second subprocess limits; their failures are
+retained for retries at lower concurrency. The other three groups continue. The
+cold/archive result does not substitute for those groups or the remaining native
+migration work.
 [Receipt](../measurements/corrected-cold-install-oop-20261026.json).
 
 ## Globals ownership and partial image loads through Oops
