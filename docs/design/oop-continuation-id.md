@@ -2308,3 +2308,12 @@ compiler/materialization, pending recovery, strict Block/native arity and
 mapped/rebuilt Method/image checks. This is semantic and lifetime acceptance, not
 a performance claim. The cold `642e79e2` candidate predates this restoration.
 [Receipt](../measurements/execution-candidates-oop-20261027.json).
+
+## Cold interaction qualification after call-preparation integration
+
+All six interaction checks passed on cold revision `83737742`: Socket and REPL
+owners, parser/compiler-free published startup, interactive/project CLI, REPL
+goldens including image/native-wrapper behavior, and project LSP. The serial
+runner has advanced to tasks, followed by CLI and images. This receipt predates
+the later lifetime, Machine-entry and explicit candidate corrections.
+[Receipt](../measurements/latest-interaction-oop-20261027.json).
