@@ -265,7 +265,7 @@ span an outgoing send. Explicit Store publication preserves its MOP; executable 
 retain their Method/Unit owners. The deleted synchronous-evaluator and compiler
 state runners were not executing these tests in the current build. Production
 source/control/lifetime coverage is in `birnam-siphon/tests/compiler_source.rs`.
-The eight remaining compiler groups stay in `birnam-siphon/tests/compiler.rs`
+The seven remaining compiler groups stay in `birnam-siphon/tests/compiler.rs`
 and its child modules; that target still requires Oop migration. Both targets remain
 in the full native gate. Image
 acceptance is in `birnam-siphon/tests/image.rs` and its linked contract above.

@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "scope": "Compiled global binding, lexical scope, current replacement and explicit Store/Relational history through Oops",
+  "base_revision": "67777e455d798fd58493f93f212f59456159fcd6",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/globals.rs": "8a6eac130bfc0e115d265724e727b2d5a2c31e73eef546e3899c77f49aebe25f",
+    "rust/birnam-siphon/tests/compiler_source.rs": "4a400d0e5e4a4b7e887235b52c91bfd0605fb4207a75746d11ad693a94ec80e9",
+    "rust/birnam-siphon/tests/compiler.rs": "7d6299023efd94266c9a81a9640f2476755a6c2c3403c8596147351367b596d5",
+    "tests/fixtures/oop-host/compiler-globals.c": "aa16680dc523bb85bc610a127ee418e9f80f6c7ac9e5e583eb163ee02209a881"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-globals.log",
+      "sha256": "6fc561a03778bb50364b5c08c3ebb2490e303104cff6f5f2ef219430f9e1d96e",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Source bindings publish to Globals rather than Namespace; compiled reads see replacement and retain nil-to-Namespace fallback",
+    "Missing globals and explicit nil bindings; local variables and arguments do not leak into Globals",
+    "Explicit Store history preserves temporal values while ordinary source assignment changes the independent binding",
+    "Relational findAll query observes current explicit descriptions",
+    "Collecting getter replacement changes a previously compiled reader; native failure identity propagates unchanged",
+    "Collecting setters return exact Error or nil on refusal, preserve preceding writes and skip later effects",
+    "Native setter failure identity propagates unchanged",
+    "Successful global Block publication retains code through collection; removing its binding releases all native units and bytes"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Seven compiler groups and other native targets remain unported",
+    "Full latest cold/Host qualification remains incomplete"
+  ]
+}

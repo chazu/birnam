@@ -1867,3 +1867,22 @@ size of 8. The query remains a policy observation and the runtime is unchanged.
 Default physical-plus-external accounting, custom charges, collection inside a
 charge callback, and reset after collection all pass. Eight compiler groups remain
 pending. [Receipt](../measurements/compiler-accounting-oop-20261027.json).
+
+## Compiled global bindings and explicit Store history
+
+The global-binding group now runs through Oops in `compiler_source`. Its earlier
+source/control/lifetime phase runs without Store; this group explicitly loads
+Store and Relational. Checks retain Globals-first reads, nil-to-Namespace fallback,
+missing names, explicit nil bindings, top-level publication and lexical isolation.
+Already compiled readers see current bindings and collecting getter replacements.
+
+Source assignment remains independent of Store descriptions. Explicit history and
+relational queries preserve their values across later source assignments. Collecting
+setter replacements retain exact Error/nil refusal results and native failure
+identity, skip later effects and preserve preceding writes. A successfully published
+Block survives collection through its global binding; its mapping and native bytes
+are reclaimed when that binding is released.
+
+The complete source target passes with these checks included. No runtime or Id
+change was needed. Seven compiler groups remain pending.
+[Receipt](../measurements/compiler-globals-oop-20261027.json).

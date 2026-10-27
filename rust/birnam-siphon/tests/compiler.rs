@@ -1,4 +1,4 @@
-//! Retained compiler optimization acceptance; Oop migration remains pending.
+//! Retained compiler acceptance groups; Oop migration remains pending.
 //! General source/control/lifetime acceptance lives in compiler_source.rs.
 #[path = "compiler/discarded_clone.rs"]
 mod discarded_clone;
@@ -6,8 +6,6 @@ mod discarded_clone;
 mod dispatch;
 #[path = "compiler/frame_call.rs"]
 mod frame_call;
-#[path = "compiler/globals.rs"]
-mod globals;
 #[path = "compiler/inline_return.rs"]
 mod inline_return;
 #[path = "compiler/numeric_predicate.rs"]
@@ -194,7 +192,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
-        globals::check(&mut h);
         publication::check(&mut h);
         h.clear();
         h.collect();
