@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "scope": "Cold installation and archive relocation at the stated revision; later native-loader changes and full Host acceptance are not qualified by this receipt",
+  "source_revision": "9f638b7366e34a7c7032d7b3ff38a507a1bd5724",
+  "source_identity": {
+    "git_clean": true,
+    "git_commit": "9f638b7366e34a7c7032d7b3ff38a507a1bd5724"
+  },
+  "source_manifest_sha256": "45f5a3ab48553344fd25be606c39579e92e38a8d4a30b338529967570cca8080",
+  "prefix": "/private/tmp/birnam-oop-current-ntrebvab/prefix",
+  "receipt_sha256": "f15e46616351e3643bff26fe54e85a399adae0a2da9e4dffebaea85fd35baeab",
+  "staged_manifest_files": 820,
+  "staged_manifest_sha256": "1b9cf1551c078eb9259d4717ce221c2a416ae4f1f6db44cec16283ad32d21659",
+  "admission_contract": {
+    "host_commands": [
+      "source",
+      "image",
+      "worker",
+      "compile-module",
+      "artifact",
+      "check",
+      "build",
+      "run",
+      "fetch",
+      "install",
+      "test",
+      "repl",
+      "listen",
+      "lsp",
+      "doc",
+      "docgen",
+      "init",
+      "wrap",
+      "bake",
+      "rebuild",
+      "help",
+      "version"
+    ],
+    "id_protocol_version": 2,
+    "stdlib_loading": "compiled-image",
+    "target": "aarch64-macos"
+  },
+  "build_mode": "cold",
+  "build_seed": {
+    "grammar": "birnam-lang-seed",
+    "published": false
+  },
+  "install": [
+    "/opt/homebrew/bin/mise",
+    "exec",
+    "--",
+    "bash",
+    "scripts/rust-install.sh",
+    "install",
+    "--root",
+    "/private/tmp/birnam-oop-current-ntrebvab/source",
+    "--prefix",
+    "/private/tmp/birnam-oop-current-ntrebvab/prefix",
+    "--profile",
+    "release"
+  ],
+  "install_log": "/private/tmp/birnam-oop-current-ntrebvab/install.log",
+  "install_log_sha256": "86f768ca9c3f42f89644957c2a2563fa192bc7e38ef230e36b8655744eb75853",
+  "archive": "/private/tmp/birnam-oop-current-ntrebvab/candidate.tar.gz",
+  "archive_sha256": "b954aed59a8a9cd77be675fa2c578270d40d3a81ac3c7a2408d8f036ac5fdec0",
+  "archive_smoke_log": "/private/tmp/birnam-oop-current-ntrebvab/archive-smoke.log",
+  "archive_smoke_log_sha256": "323b9cde36d4d598308d2997dc4cec593ae564d21e93df1188032540825e0b0d",
+  "archive_smoke_build_paths_hidden": true,
+  "build_paths_restored": true,
+  "install_seconds": 713.412937,
+  "archive_smoke_seconds": 306.122627,
+  "remaining": [
+    "Complete serial Host acceptance for this candidate",
+    "Qualify subsequent native-loader changes in a new cold candidate",
+    "Remaining native harness and explicit compiler feature migration"
+  ]
+}

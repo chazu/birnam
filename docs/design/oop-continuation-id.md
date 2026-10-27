@@ -1781,3 +1781,13 @@ private representation. The old fixture-build step was removed from the native g
 the migrated test compiles its own Oop fixtures. Core dispatch and compiler/control
 checks, native loading, source loading and explicit Store invalidation pass.
 [Receipt](../measurements/native-loader-oop-20261027.json).
+
+## Cold installation checkpoint after materialization acceptance
+
+Revision `9f638b73` passed a fresh cold installation with no Birnam executable on
+PATH and no build cache, followed by archive relocation with its original source
+and installation paths hidden. The published layout contains exactly 820 recorded
+files plus its receipt, excludes the Lang build seed, and uses Id protocol 2.
+Serial Host acceptance is still running. This checkpoint predates the native-loader
+fixes above and does not qualify those fixes or the remaining explicit compiler
+features. [Receipt](../measurements/current-cold-install-oop-20261027.json).
