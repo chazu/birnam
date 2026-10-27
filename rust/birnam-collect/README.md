@@ -52,6 +52,7 @@ singletons still limit this prefix to one domain per process.
 | GC `precisePayloads` | none | Word 0/1. Owners query before scanning each object; no collection/allocation. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header, padded payload and reported external capacity. |
 | GC `chargeExternalAllocation:` | Word committed capacity bytes | Unit. Add owner-reported external allocation work while idle or inactive. Does not collect, reserve storage or change the budget. |
+| GC `allocationCount` | none | Current Id allocation count, obtained by a live Id message. System converts this Oop through the current Integer factory. |
 | GC `allocationBytes` | none | Word accumulated allocation charge. Readable during tracing/finalization; not a live-storage count. |
 | GC `rootsDo:` | Visitor Object | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
 | GC `roots` | none | The Roots Object used by this instance. |

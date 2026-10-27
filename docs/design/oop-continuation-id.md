@@ -1533,3 +1533,33 @@ module reloads. A contents callback mutates the earlier filename byte-provider
 Oop under collection; the write still uses its original filename snapshot. No
 runtime or Id change was needed.
 [Receipt](../measurements/system-services-oop-20261027.json).
+
+## System allocation queries and GC controls
+
+The migrated `system_gc` harness exposed a bare-Bootstrap regression before any
+test replacement: `System liveObjects` sent `allocationCount` to the language
+`Vtable` metatable, which is now distinct from the Id API receiver. The unchanged
+pre-Oop harness passes on installed revision `a271e4c5`.
+
+System now asks GC for `allocationCount`, alongside GC's existing accounting
+queries. That one new GC method sends the existing Id `allocationCount` message;
+System then sends `fromWord:` to the current Integer factory. The sequence changes
+from `System -> Vtable allocationCount -> Integer` to
+`System -> GC allocationCount -> Id allocationCount -> Integer`. Every lookup
+remains live. There is no new Id operation, global binding, payload interpretation,
+registry or cross-module implementation access.
+
+Acceptance checks default queries, replacements at both GC and Id, constructor
+selection after the query, full-width values, aliases and exact failures. The
+remaining GC matrix retains conservative/precise payload modes, missing layouts,
+numeric and Range references, tracing-time policy/layout changes, failure before
+sweep, native stack roots, automatic-collection accounting and finalizer reentry.
+The fixture writes ObjectModel slots through its public operations. String and
+builder handles now have zero payload bytes, so their obsolete mirror-word writes
+become rejected slot-write checks; native text bytes never retain address-shaped
+objects in either mode. Allocation identities replace queries on freed Oops.
+
+All three System suites and the complete Oop core gate pass on the updated staged
+prefix. The GC fixture uses pre-interned selectors for exact charge comparisons,
+so Host helper allocations cannot change the measured interval.
+[Receipt and baseline comparison](../measurements/system-gc-oop-20261027.json).

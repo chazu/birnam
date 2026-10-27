@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "scope": "Corrected bare-Bootstrap System liveObjects, restored GC control acceptance through Oops, and complete Oop core gate",
+  "base_revision": "a3f743325158280ff043269a66bbcc23a164c9e5",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/system-gc-g2s4ppiz/prefix",
+  "source_sha256": {
+    "modules/system-gc.birnam": "7ba1e40b351bf8c2950ede3d1499ede76e9fcd1bb4f7ef126c67d269f56a42b3",
+    "rust/birnam-collect/src/lib.rs": "377b429beacb27430a4bef79c182d500bf3abc97a551a9678d9c1c12e669e828",
+    "rust/birnam-siphon/tests/system_gc.rs": "b7a4a5b244248759160e1338c192bc4d9a5ec4581d0aea2adf55e26be7e1f79c",
+    "tests/fixtures/oop-host/system-gc.c": "183870a4a0b484c3c508cb985c226134bd5ff99c781dca6ddea993954fff16db"
+  },
+  "staged_sha256": {
+    "libbirnam_collect.dylib": "71bb090092c2b2ecaabc4e004b585e102f68c5da20e271ce4e2816177bce87d4",
+    "libbirnam_systemGc.dylib": "032917806e7eae185e4c9818ef6f9c8a1d05eeba1291225f4a0633d9cf5269a2"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/system-gc-final.log",
+      "sha256": "15c29e737615cb70142f16902e16d978aef6357a9d14b9ec7175a0373531a3c4",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/system-gc-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "log": ".cargo-target/oop-corrected-qualification/system-gc-before.log",
+    "sha256": "45040a61934d2b09ec78da4082e982b579ee5163c4dbbf0d556915df6f07b48e",
+    "failure": "System liveObjects fails in bare Bootstrap before any test method replacement: authored SystemGc asks the Vtable metatable for Id allocationCount."
+  },
+  "pre_oop_baseline": {
+    "prefix": "/Users/chazu/.local/opt/birnam",
+    "revision": "a271e4c5a7a0ad494fd58977a7638f47bba65467",
+    "log": ".cargo-target/oop-corrected-qualification/system-gc-prior.log",
+    "sha256": "c71999a9efcd3654c98389e8e6bb79fcff126dc8786e1b6e790eca0dd461d95f",
+    "exit": 0,
+    "scope": "Unchanged System GC native harness"
+  },
+  "new_owner_query": "GC allocationCount forwards through the current Id allocationCount method; System applies the current Integer constructor afterward.",
+  "id_changes": false,
+  "retained_checks": [
+    "Default count queries, current GC and Id replacement ordering, full-width counts, alias receivers and exact failure identity.",
+    "Conservative and precise owner payload tracing, missing layouts, private numeric behaviors and Range endpoint references.",
+    "Zero-payload String/builder handles reject slot writes; address-shaped native text bytes never retain an object.",
+    "Tracing changes mode and layout before a later object; recursive collection and allocation during tracing are refused.",
+    "Failure prevents sweep and charge reset; ordinary collection retains native stack roots.",
+    "Disabled automatic collection retains charges; enabling does not collect immediately; finalizers may set policy without recursive collection.",
+    "Module reload preserves replacement methods and settings."
+  ],
+  "qualification_limit": "Staged-runtime evidence, including earlier adapter and Block fixes. The cold 52c617fe candidate is separately qualified and predates these corrections."
+}

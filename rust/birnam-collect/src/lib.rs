@@ -195,6 +195,14 @@ unsafe extern "C" fn register_retirement(_id: Oop, c: Oop, _: Oop, a: *const Oop
 unsafe extern "C" fn manager(_id:Oop,c:Oop,_r:Oop,_a:*const Oop,n:usize)->Oop {
     match unsafe{memory(c)} { Ok(s)=>if n==0{s.receiver}else{s.invalid()}, Err(e) => abi::fault_reference(e) }
 }
+// Expose the current Id allocation count alongside GC's other accounting queries.
+unsafe extern "C" fn allocation_count(_id:Oop,c:Oop,_r:Oop,_a:*const Oop,n:usize)->Oop {
+    (|| unsafe {
+        let s=memory(c)?;
+        if n!=0 { return Err(s.invalid()); }
+        s.send(s.id.root,b"allocationCount",&[])
+    })().unwrap_or_else(abi::fault_reference)
+}
 unsafe extern "C" fn root_registry(_id:Oop,c:Oop,_r:Oop,_a:*const Oop,n:usize)->Oop {
     match unsafe{memory(c)} { Ok(s)=>if n==0{s.roots}else{s.invalid()}, Err(e) => abi::fault_reference(e) }
 }
@@ -261,6 +269,7 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec{name:index(b"canOmitAllocationFor:"),entry:Some(construction::can_omit)},
     MethodSpec{name:index(b"memoryManager"),entry:Some(manager)},
     MethodSpec{name:index(b"roots"),entry:Some(root_registry)},
+    MethodSpec{name:index(b"allocationCount"),entry:Some(allocation_count)},
     MethodSpec{name:index(b"managedAllocate"),entry:Some(construction::allocate)},
     MethodSpec{name:index(b"managedDelegated"),entry:Some(construction::delegated)},
     MethodSpec{name:index(b"managedIntern"),entry:Some(construction::intern)},

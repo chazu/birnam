@@ -2,12 +2,11 @@
 [Module named: #systemGc requires: #[]];
 let gcOwner := GC;
 let gcInteger := Integer;
-let gcId := Vtable;
 [Reflect defineMethod: #gc on: System as: [:self |
   [gcInteger fromWord: [gcOwner collect]]
 ]];
 [Reflect defineMethod: #liveObjects on: System as: [:self |
-  [gcInteger fromWord: [gcId allocationCount]]
+  [gcInteger fromWord: [gcOwner allocationCount]]
 ]];
 [Reflect defineMethod: #autoGc: on: System as: [:self :enabled |
   [[[enabled == true] | [enabled == false]] ifTrue: [|
