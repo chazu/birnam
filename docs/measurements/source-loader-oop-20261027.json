@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "scope": "Source loading, authored Module policy, source revision/registration and collecting replacement/reentry through Oops",
+  "base_revision": "9f638b7366e34a7c7032d7b3ff38a507a1bd5724",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/materialization-final-bucn25kx/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/source_loader.rs": "bf1ea8bd4078e3ba6e6171e6b5f28472bd1b073d238495b0d110c275ae7ea4f3",
+    "tests/fixtures/oop-host/source-loader.c": "a8d8ace7551d7daf858778e29d96d2df9bcfe9e142df1d9a81ea091c0e73eb67"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/source-loader.log",
+      "sha256": "6a1f00889b9b8611fba41a1e6be0fc6b8e98a739a9fee6ba4706b368ea0a3b79",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Authored Module registration/load order and artifact identity; Namespace absence remains separate from Globals.",
+    "Exact source-revision golden hashes, metadata shape, duplicate registration identity and nested declaration descriptions without execution.",
+    "Registration precedes evaluation; normal nil, syntax diagnostics, evaluated Errors, file errors and missing Codegen retain their ordering.",
+    "Registered source survives release of its caller root.",
+    "Collecting parse/construction/registration/evaluation callbacks; reentrant source equality preserves registration.",
+    "The loader snapshots filename bytes before source callbacks mutate the path byte provider, while Codegen receives the original path object.",
+    "Exact native failure identity; registration Error identity prevents evaluation; compiler construction refusal keeps nil/lastError.",
+    "Module reload preserves a current System load: replacement."
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

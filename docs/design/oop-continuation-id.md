@@ -1743,3 +1743,19 @@ anchor release without querying freed Oops.
 The Oop initializer returns its original CodeNode prototype rather than the removed
 Unit carrier. Reload still preserves an explicit Namespace replacement. No runtime
 or Id change was needed. [Receipt](../measurements/portable-code-oop-20261027.json).
+
+## Source loading and live registration dependencies
+
+The `source_loader` harness now uses Oop arguments/results and declared callbacks.
+It retains Module load-order/identity checks, exact source-revision hashes,
+descriptions of nested declarations without execution, duplicate-source identity,
+registration-before-evaluation, Namespace-only loaded notifications, diagnostic
+ordering and registered-source retention after caller-root release.
+
+Collecting callbacks cover parser, String construction, source revision,
+registration and evaluation. Reentrant equality preserves nested registration;
+mutating a path byte-provider during source inspection cannot redirect the earlier
+file read. Native failures and ordinary registration Errors retain their distinct
+results, and registration refusal prevents evaluation. Compiler construction
+refusal and Module reload/replacement checks pass. No runtime or Id change was
+needed. [Receipt](../measurements/source-loader-oop-20261027.json).

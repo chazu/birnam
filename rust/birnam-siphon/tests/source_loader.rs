@@ -1,793 +1,555 @@
-//! Source loading and the authored Module manager through production owners.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
+//! Source loading and authored Module policy through Oop owner messages.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, size};
+use birnam_host_support::{Context, Scope};
+use std::{os::unix::ffi::OsStrExt, path::Path, ptr};
+struct H<'a> {
+    host: &'a Context,
+    q: Scope<'a>,
     gc: Oop,
-    tokens: RefCell<Vec<usize>>,
+    hooks: oop::hooks::Hooks<'a>,
+    fixture: Oop,
 }
-impl H {
-    unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name).unwrap())],
-            ))
-        }
+impl H<'_> {
+    fn named(&self, n: &[u8]) -> Oop {
+        self.host.named(n).unwrap()
     }
-    unsafe fn keep(&self, o: Oop) -> Oop {
-        self.tokens
-            .borrow_mut()
-            .push(unsafe { retain(self.id, self.roots, o) });
-        o
+    fn key(&self, n: &[u8]) -> Oop {
+        self.hooks.symbol(n)
     }
-    unsafe fn string(&self, b: &[u8]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                self.named(b"String"),
-                b"fromBytes:",
-                &[Operand::bytes(b)],
-            )))
-        }
+    fn string(&self, b: &[u8]) -> Oop {
+        self.q.string(b).unwrap()
     }
-    unsafe fn call(&self, o: Oop, n: &[u8], a: &[Oop]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                o,
-                n,
-                &a.iter().copied().map(Operand::object).collect::<Vec<_>>(),
-            )))
-        }
+    fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
+        self.q.call(r, n, a).unwrap()
     }
-    unsafe fn error(&self, o: Oop, kind: &[u8], message: &[u8]) {
-        unsafe {
-            assert_eq!(
-                self.call(o, b"kind", &[]),
-                self.id.intern_name(kind).unwrap()
-            );
-            let m = self.call(o, b"message", &[]);
-            let b = send(self.id, m, b"bytes", &[]).as_bytes().unwrap();
-            assert_eq!(borrowed_bytes(b.pointer, b.length).unwrap(), message);
-        }
+    fn error(&self, v: Oop, k: &[u8], m: &[u8]) {
+        assert_eq!(self.call(v, b"kind", &[]), self.key(k));
+        assert_eq!(self.bytes(self.call(v, b"message", &[])), m);
     }
-}
-
-impl H {
-    unsafe fn eval(&self, source: &[u8]) -> Oop {
-        unsafe { self.call(self.named(b"Codegen"), b"eval:", &[self.string(source)]) }
+    fn eval(&self, b: &[u8]) -> Oop {
+        self.call(self.named(b"Codegen"), b"eval:", &[self.string(b)])
+    }
+    fn bytes(&self, v: Oop) -> Vec<u8> {
+        self.q.read_bytes(self.call(v, b"bytes", &[])).unwrap()
+    }
+    fn number(&self, v: Oop) -> usize {
+        self.q
+            .word_bits(self.call(self.named(b"Integer"), b"wordOf:", &[v]))
+            .unwrap()
+    }
+    fn at(&self, v: Oop, i: usize) -> Oop {
+        let index = self.call(self.named(b"Integer"), b"fromWord:", &[size(i).unwrap()]);
+        self.call(v, b"at:", &[index])
+    }
+    fn method(&self, n: &[u8], c: Oop) -> Oop {
+        self.call(
+            self.call(self.fixture, b"methodAt:", &[self.key(n)]),
+            b"withContext:",
+            &[c],
+        )
+    }
+    fn binding(&self, vt: Oop, n: &[u8]) -> Oop {
+        self.call(vt, b"lookup", &[self.key(n)])
+    }
+    fn set(&self, vt: Oop, n: &[u8], m: Oop) {
+        self.call(vt, b"addMethod", &[self.key(n), m]);
+    }
+    fn vt(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"behaviorOf:", &[v])
     }
 }
 #[test]
-#[ignore = "requires production native modules"]
+#[ignore = "requires production Oop modules"]
 fn source_loading_uses_live_owners() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let h = H {
-            id,
-            ns,
-            roots: named(b"Roots"),
-            gc: named(b"GC"),
-            tokens: RefCell::new(Vec::new()),
-        };
-        let codegen = h.named(b"Codegen");
-        let system = h.named(b"System");
-        let nil = h.named(b"nil");
-        let temp =
-            std::env::temp_dir().join(format!("birnam-source-loader-{}", std::process::id()));
-        std::fs::create_dir_all(&temp).unwrap();
-        let manager = temp.join("modules.birnam");
-        std::fs::write(&manager, include_bytes!("../../../modules/modules.birnam")).unwrap();
-        let result = h.call(
-            system,
-            b"load:",
-            &[h.string(manager.as_os_str().as_bytes())],
-        );
-        assert_ne!(h.call(result, b"isError", &[]), h.named(b"true"));
-        assert_eq!(h.eval(b"[Module isLoaded: #modules]"), h.named(b"true"));
-        assert_eq!(h.eval(b"[Module isLoaded: #cell]"), h.named(b"true"));
-        assert_eq!(h.eval(b"[Module kindOf: #cell]"), id.intern_name(b"selfHosted").unwrap());
-        let artifact_path = directory().join("libbirnam_modules.dylib");
-        let descriptor = h.call(h.named(b"Artifact"), b"inspect:",
-            &[h.string(artifact_path.as_os_str().as_bytes())]);
-        assert_eq!(h.call(descriptor, b"identity", &[]), id.intern_name(b"modules").unwrap());
-        h.eval(b"[Module named: #a requires: #[]]; [Module named: #b requires: #[#a]]");
-        let order = h.eval(b"[Module loadOrder: #[#b]]");
-        assert_eq!(
-            h.call(order, b"at:", &[h.eval(b"0")]),
-            id.intern_name(b"a").unwrap()
-        );
-        assert_eq!(
-            h.call(order, b"at:", &[h.eval(b"1")]),
-            id.intern_name(b"b").unwrap()
-        );
-        collect(id, h.gc);
-        assert_eq!(h.eval(b"[Module isRegistered: #b]"), h.named(b"true"));
-
-        let module = h.eval(b"Module");
-        assert_eq!(
-            send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(b"Module").unwrap())]
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let path = std::env::temp_dir().join(format!(
+        "birnam-source-loader-hooks-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/source-loader.c")
             )
-            .kind(),
-            native::UNIT
-        );
-        assert_ne!(
-            h.call(
-                codegen,
-                b"moduleSourceFor:",
-                &[id.intern_name(b"modules").unwrap()]
-            ),
-            nil
-        );
-        let gold = h.string(b"[Module named: #gold requires: #[#dep]]");
-        let revision = h.call(codegen, b"sourceRevisionOf:", &[gold]);
-        let metadata = h.call(codegen, b"moduleMetadataOf:", &[gold]);
-        assert_eq!(h.number(h.call(metadata, b"size", &[])), 5);
-        assert_eq!(
-            h.at(metadata, 0),
-            id.intern_name(b"moduleMetadata").unwrap()
-        );
-        assert_eq!(h.at(metadata, 1), id.intern_name(b"gold").unwrap());
-        assert_eq!(h.at(h.at(metadata, 2), 0), id.intern_name(b"dep").unwrap());
-        assert_eq!(h.bytes(h.at(metadata, 4)), h.bytes(h.at(revision, 6)));
-        assert_eq!(h.call(codegen, b"moduleMetadataOf:", &[nil]), nil);
-        let assets = h.call(codegen, b"embeddedFilesOf:", &[nil]);
-        assert_eq!(h.number(h.call(assets, b"size", &[])), 0);
-        assert_eq!(
-            h.call(codegen, b"moduleMetadataOf:", &[h.string(b"42")]),
-            nil
-        );
-        assert_eq!(h.number(h.call(revision, b"size", &[])), 8);
-        assert_eq!(
-            h.at(revision, 0),
-            id.intern_name(b"sourceRevision").unwrap()
-        );
-        assert_eq!(h.at(revision, 1), id.intern_name(b"gold").unwrap());
-        assert_eq!(h.at(h.at(revision, 2), 0), id.intern_name(b"dep").unwrap());
-        assert_eq!(h.at(revision, 3), gold);
-        assert_eq!(
-            h.bytes(h.at(revision, 4)),
-            b"c8c54eaf253655e27e4d4cee9b55fc09f044f3761c8c67ebcbbe4017768c1710"
-        );
-        assert_eq!(
-            h.bytes(h.at(revision, 5)),
-            b"14a1c4f166b7504907b76034d87e440d2c26d8498b8776f872fbeab3ada986ad"
-        );
-        assert_eq!(
-            h.bytes(h.at(revision, 6)),
-            b"92749bc6da04d6045dc5a0eb386d10ad952542a70ca6754c431c1d2b8bbeed9f"
-        );
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let h = H {
+        host: &host,
+        q,
+        gc: host.named(b"GC").unwrap(),
+        hooks: oop::hooks::Hooks::new(&host),
+        fixture,
+    };
+    h.call(h.gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let codegen = h.named(b"Codegen");
+    let system = h.named(b"System");
+    let nil = h.named(b"nil");
+    let temp = std::env::temp_dir().join(format!("birnam-source-loader-{}", std::process::id()));
+    std::fs::create_dir_all(&temp).unwrap();
+    let manager = temp.join("modules.birnam");
+    std::fs::write(&manager, include_bytes!("../../../modules/modules.birnam")).unwrap();
+    let result = h.call(
+        system,
+        b"load:",
+        &[h.string(manager.as_os_str().as_bytes())],
+    );
+    assert_ne!(h.call(result, b"isError", &[]), h.named(b"true"));
+    assert_eq!(h.eval(b"[Module isLoaded: #modules]"), h.named(b"true"));
+    assert_eq!(h.eval(b"[Module isLoaded: #cell]"), h.named(b"true"));
+    assert_eq!(h.eval(b"[Module kindOf: #cell]"), h.key(b"selfHosted"));
+    let artifact_path = host.resources.lib_dir.join("libbirnam_modules.dylib");
+    let descriptor = h.call(
+        h.named(b"Artifact"),
+        b"inspect:",
+        &[h.string(artifact_path.as_os_str().as_bytes())],
+    );
+    assert_eq!(h.call(descriptor, b"identity", &[]), h.key(b"modules"));
+    h.eval(b"[Module named: #a requires: #[]]; [Module named: #b requires: #[#a]]");
+    let order = h.eval(b"[Module loadOrder: #[#b]]");
+    assert_eq!(h.call(order, b"at:", &[h.eval(b"0")]), h.key(b"a"));
+    assert_eq!(h.call(order, b"at:", &[h.eval(b"1")]), h.key(b"b"));
+    h.call(h.gc, b"collectPrecisely", &[]);
+    assert_eq!(h.eval(b"[Module isRegistered: #b]"), h.named(b"true"));
 
-        for bad in [
+    let module = h.eval(b"Module");
+    assert!(
+        host.send(host.namespace, b"at:", &[h.key(b"Module")])
+            .unwrap()
+            .is_null()
+    );
+    assert_ne!(
+        h.call(codegen, b"moduleSourceFor:", &[h.key(b"modules")]),
+        nil
+    );
+    let gold = h.string(b"[Module named: #gold requires: #[#dep]]");
+    let revision = h.call(codegen, b"sourceRevisionOf:", &[gold]);
+    let metadata = h.call(codegen, b"moduleMetadataOf:", &[gold]);
+    assert_eq!(h.number(h.call(metadata, b"size", &[])), 5);
+    assert_eq!(h.at(metadata, 0), h.key(b"moduleMetadata"));
+    assert_eq!(h.at(metadata, 1), h.key(b"gold"));
+    assert_eq!(h.at(h.at(metadata, 2), 0), h.key(b"dep"));
+    assert_eq!(h.bytes(h.at(metadata, 4)), h.bytes(h.at(revision, 6)));
+    assert_eq!(h.call(codegen, b"moduleMetadataOf:", &[nil]), nil);
+    let assets = h.call(codegen, b"embeddedFilesOf:", &[nil]);
+    assert_eq!(h.number(h.call(assets, b"size", &[])), 0);
+    assert_eq!(
+        h.call(codegen, b"moduleMetadataOf:", &[h.string(b"42")]),
+        nil
+    );
+    assert_eq!(h.number(h.call(revision, b"size", &[])), 8);
+    assert_eq!(h.at(revision, 0), h.key(b"sourceRevision"));
+    assert_eq!(h.at(revision, 1), h.key(b"gold"));
+    assert_eq!(h.at(h.at(revision, 2), 0), h.key(b"dep"));
+    assert_eq!(h.at(revision, 3), gold);
+    assert_eq!(
+        h.bytes(h.at(revision, 4)),
+        b"c8c54eaf253655e27e4d4cee9b55fc09f044f3761c8c67ebcbbe4017768c1710"
+    );
+    assert_eq!(
+        h.bytes(h.at(revision, 5)),
+        b"14a1c4f166b7504907b76034d87e440d2c26d8498b8776f872fbeab3ada986ad"
+    );
+    assert_eq!(
+        h.bytes(h.at(revision, 6)),
+        b"92749bc6da04d6045dc5a0eb386d10ad952542a70ca6754c431c1d2b8bbeed9f"
+    );
+
+    for bad in [
             b"42".as_slice(),
             b"[Module named: #a requires: #[]]; [Module named: #b requires: #[]]",
             b"[Module named: #a requires: #[]]; [Reflect defineMethod: #foo on: Object as: [| 1]]",
             b"[Module named: #a requires: #[]]; [Reflect defineMethod: #foo on: Object as: [:s | 1]]; [Reflect removeMethod: #foo on: Object]",
         ] { assert_eq!(h.call(codegen, b"sourceRevisionOf:", &[h.string(bad)]), nil); }
-        assert_eq!(
-            h.call(
-                codegen,
-                b"recordModuleSource:named:",
-                &[gold, id.intern_name(b"wrong").unwrap()]
-            ),
-            nil
-        );
-        assert_eq!(
-            h.call(
-                codegen,
-                b"recordModuleSource:named:",
-                &[gold, id.intern_name(b"gold").unwrap()]
-            ),
-            gold
-        );
-        let docs = h.call(codegen, b"recordedMethodSources", &[]);
-        assert!(
-            h.bytes(h.at(docs, 0))
-                .starts_with(b"[Reflect defineMethod: #named:requires:")
-        );
-        // Descriptions include declarations inside initializer blocks, without
-        // executing them or treating quoted examples as declarations.
-        let nested = h.string(br#"[Module named: #nestedDocumentation requires: #[]];
+    assert_eq!(
+        h.call(
+            codegen,
+            b"recordModuleSource:named:",
+            &[gold, h.key(b"wrong")]
+        ),
+        nil
+    );
+    assert_eq!(
+        h.call(
+            codegen,
+            b"recordModuleSource:named:",
+            &[gold, h.key(b"gold")]
+        ),
+        gold
+    );
+    let docs = h.call(codegen, b"recordedMethodSources", &[]);
+    assert!(
+        h.bytes(h.at(docs, 0))
+            .starts_with(b"[Reflect defineMethod: #named:requires:")
+    );
+    // Descriptions include declarations inside initializer blocks, without
+    // executing them or treating quoted examples as declarations.
+    let nested = h.string(
+        br#"[Module named: #nestedDocumentation requires: #[]];
 [[| [Reflect defineMethod: #nestedDocumentationProbe on: Object as: [:self | 17]] ] value];
 let quoted := "[Reflect defineMethod: #quotedDocumentationProbe on: Object as: [:self | 23]]";
-let dynamic := [:selector | [Reflect defineMethod: selector on: Object as: [:self | 31]]];"#);
-        h.call(codegen, b"recordModuleSource:named:", &[nested, id.intern_name(b"nestedDocumentation").unwrap()]);
-        let descriptions = h.call(codegen, b"recordedMethodSources", &[]);
-        let count = h.number(h.call(descriptions, b"size", &[]));
-        let rows = (0..count).map(|i| h.bytes(h.at(descriptions, i as usize))).collect::<Vec<_>>();
-        assert_eq!(rows.iter().filter(|s| s.starts_with(b"[Reflect defineMethod: #nestedDocumentationProbe ")).count(), 1);
-        assert!(!rows.iter().any(|s| s.starts_with(b"[Reflect defineMethod: #quotedDocumentationProbe ")));
-        assert!(!rows.iter().any(|s| s.starts_with(b"[Reflect defineMethod: selector ")));
-        assert_eq!(h.call(h.named(b"Object"), b"methodFor:", &[id.intern_name(b"nestedDocumentationProbe").unwrap()]), nil);
+let dynamic := [:selector | [Reflect defineMethod: selector on: Object as: [:self | 31]]];"#,
+    );
+    h.call(
+        codegen,
+        b"recordModuleSource:named:",
+        &[nested, h.key(b"nestedDocumentation")],
+    );
+    let descriptions = h.call(codegen, b"recordedMethodSources", &[]);
+    let count = h.number(h.call(descriptions, b"size", &[]));
+    let rows = (0..count)
+        .map(|i| h.bytes(h.at(descriptions, i as usize)))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows.iter()
+            .filter(|s| s.starts_with(b"[Reflect defineMethod: #nestedDocumentationProbe "))
+            .count(),
+        1
+    );
+    assert!(
+        !rows
+            .iter()
+            .any(|s| s.starts_with(b"[Reflect defineMethod: #quotedDocumentationProbe "))
+    );
+    assert!(
+        !rows
+            .iter()
+            .any(|s| s.starts_with(b"[Reflect defineMethod: selector "))
+    );
+    assert_eq!(
+        h.call(
+            h.named(b"Object"),
+            b"methodFor:",
+            &[h.key(b"nestedDocumentationProbe")]
+        ),
+        nil
+    );
 
-        let equal = h.string(b"[Module named: #gold requires: #[#dep]]");
-        assert_ne!(equal, gold);
+    let equal = h.string(b"[Module named: #gold requires: #[#dep]]");
+    assert_ne!(equal, gold);
+    assert_eq!(
+        h.call(
+            codegen,
+            b"recordModuleSource:named:",
+            &[equal, h.key(b"gold")]
+        ),
+        equal
+    );
+
+    assert_eq!(
+        h.call(codegen, b"moduleSourceFor:", &[h.key(b"gold")]),
+        gold
+    );
+
+    let path = temp.join("example.birnam");
+    let path_object = h.string(path.as_os_str().as_bytes());
+    std::fs::write(
+        &path,
+        b"[Module named: #example requires: #[]]; let loadedAnswer := 42; [Object clone]",
+    )
+    .unwrap();
+    let loaded = h.call(system, b"load:", &[path_object]);
+    assert_ne!(loaded, nil);
+    assert_eq!(h.number(h.eval(b"loadedAnswer")), 42);
+    // The authored manager lives in Globals. The loader deliberately does
+    // not bridge Namespace and Globals to mark this module loaded.
+    assert_eq!(h.eval(b"[Module isLoaded: #example]"), h.named(b"false"));
+    let registered = h.call(codegen, b"moduleSourceFor:", &[h.key(b"example")]);
+    assert_eq!(h.bytes(registered), std::fs::read(&path).unwrap());
+    h.call(host.namespace, b"at:put:", &[h.key(b"Module"), module]);
+    h.call(system, b"load:", &[path_object]);
+    assert_eq!(h.eval(b"[Module isLoaded: #example]"), h.named(b"true"));
+    // A duplicate-source nil response still allows ordinary evaluation.
+    std::fs::write(
+        &path,
+        b"[Module named: #example requires: #[]]; let loadedAnswer := 43; 43",
+    )
+    .unwrap();
+    assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 43);
+    assert_eq!(
+        h.call(codegen, b"moduleSourceFor:", &[h.key(b"example")]),
+        registered
+    );
+    assert_eq!(h.call(codegen, b"lastError", &[]), nil);
+
+    std::fs::write(&path, b"nil").unwrap();
+    assert_eq!(h.call(system, b"load:", &[path_object]), nil);
+    assert_eq!(h.call(codegen, b"lastError", &[]), nil);
+    std::fs::write(&path, b"[").unwrap();
+    h.error(
+        h.call(system, b"load:", &[path_object]),
+        b"syntaxError",
+        b"source file failed to compile",
+    );
+    assert!(
+        String::from_utf8_lossy(&h.bytes(h.call(codegen, b"lastError", &[])))
+            .contains("syntax error")
+    );
+    std::fs::write(
+        &path,
+        b"[Module named: #failed requires: #[]]; [Error kind: #testFailure message: \"kept\"]",
+    )
+    .unwrap();
+    h.error(
+        h.call(system, b"load:", &[path_object]),
+        b"testFailure",
+        b"kept",
+    );
+    assert_ne!(
+        h.call(codegen, b"moduleSourceFor:", &[h.key(b"failed")]),
+        nil
+    );
+    assert_eq!(h.eval(b"[Module isLoaded: #failed]"), h.named(b"false"));
+    std::fs::remove_file(&path).unwrap();
+    h.error(
+        h.call(system, b"load:", &[path_object]),
+        b"ioError",
+        b"could not read source file",
+    );
+    assert_eq!(h.call(system, b"load:", &[]), nil);
+    assert_eq!(h.call(system, b"load:", &[nil]), nil);
+    h.error(
+        h.call(system, b"load:", &[h.string(b"\xff")]),
+        b"ioError",
+        b"could not read source file",
+    );
+
+    // Only SourceRegistry retains this text after the registration returns.
+    let retained = {
+        let transient = host.scope();
+        let text = transient
+            .string(b"[Module named: #retained requires: #[]]")
+            .unwrap();
         assert_eq!(
-            h.call(
+            host.send(
                 codegen,
                 b"recordModuleSource:named:",
-                &[equal, id.intern_name(b"gold").unwrap()]
-            ),
-            equal
+                &[text, h.key(b"retained")]
+            )
+            .unwrap(),
+            text
         );
-
-        assert_eq!(
-            h.call(
-                codegen,
-                b"moduleSourceFor:",
-                &[id.intern_name(b"gold").unwrap()]
-            ),
-            gold
-        );
-
-        let path = temp.join("example.birnam");
-        let path_object = h.string(path.as_os_str().as_bytes());
-        std::fs::write(
-            &path,
-            b"[Module named: #example requires: #[]]; let loadedAnswer := 42; [Object clone]",
-        )
-        .unwrap();
-        let loaded = h.call(system, b"load:", &[path_object]);
-        assert_ne!(loaded, nil);
-        assert_eq!(h.number(h.eval(b"loadedAnswer")), 42);
-        // The authored manager lives in Globals. The loader deliberately does
-        // not bridge Namespace and Globals to mark this module loaded.
-        assert_eq!(h.eval(b"[Module isLoaded: #example]"), h.named(b"false"));
-        let registered = h.call(
+        text
+    };
+    h.call(h.gc, b"collectPrecisely", &[]);
+    assert_eq!(
+        h.call(codegen, b"moduleSourceFor:", &[h.key(b"retained")]),
+        retained
+    );
+    exercise_callbacks(&h, &temp);
+    assert_eq!(
+        h.call(
             codegen,
-            b"moduleSourceFor:",
-            &[id.intern_name(b"example").unwrap()],
-        );
-        assert_eq!(h.bytes(registered), std::fs::read(&path).unwrap());
-        send(
-            id,
-            ns,
-            b"at:put:",
-            &[
-                Operand::object(id.intern_name(b"Module").unwrap()),
-                Operand::object(module),
-            ],
-        );
-        h.call(system, b"load:", &[path_object]);
-        assert_eq!(h.eval(b"[Module isLoaded: #example]"), h.named(b"true"));
-        // A duplicate-source nil response still allows ordinary evaluation.
-        std::fs::write(
-            &path,
-            b"[Module named: #example requires: #[]]; let loadedAnswer := 43; 43",
-        )
-        .unwrap();
-        assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 43);
+            b"recordModuleSource:named:",
+            &[gold, h.key(b"gold")]
+        ),
+        gold
+    );
+    let later = b"[Module named: #afterRegistration requires: #[]]; 99";
+    std::fs::write(&path, later).unwrap();
+    assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 99);
+    let registered = h.call(codegen, b"moduleSourceFor:", &[h.key(b"afterRegistration")]);
+    assert_eq!(h.bytes(registered), later);
+    std::fs::remove_dir_all(&temp).unwrap();
+}
+fn exercise_callbacks(h: &H<'_>, temp: &Path) {
+    let codegen = h.named(b"Codegen");
+    let system = h.named(b"System");
+    let nil = h.named(b"nil");
+    let lang_vt = h.vt(h.named(b"Lang"));
+    let string_vt = h.vt(h.named(b"String"));
+    let cg_vt = h.vt(codegen);
+    let system_vt = h.vt(system);
+    let mut wrappers = vec![];
+    for (vt, name, alias) in [
+        (
+            lang_vt,
+            b"parse:".as_slice(),
+            b"testSourceParse:".as_slice(),
+        ),
+        (string_vt, b"fromBytes:", b"testSourceString:"),
+        (cg_vt, b"sourceRevisionOf:", b"testSourceRevision:"),
+        (
+            cg_vt,
+            b"recordModuleSource:named:",
+            b"testSourceRecord:named:",
+        ),
+        (cg_vt, b"evalPersisting:from:", b"testSourceEval:from:"),
+    ] {
+        let original = h.binding(vt, name);
+        h.set(vt, alias, original);
+        let state = h
+            .hooks
+            .context(&[h.gc, h.key(alias), size(0).unwrap(), ptr::null_mut()]);
+        h.set(vt, name, h.method(b"forward", state));
+        wrappers.push((vt, name, alias, original, state));
+    }
+    let source = h.string(b"[Module named: #collected requires: #[]]; 67");
+    assert_eq!(
+        h.call(
+            codegen,
+            b"recordModuleSource:named:",
+            &[source, h.key(b"collected")]
+        ),
+        source
+    );
+    let revision = h.call(codegen, b"sourceRevisionOf:", &[source]);
+    assert_eq!(h.at(revision, 3), source);
+    let path = temp.join("collecting.birnam");
+    let file = b"[Module named: #loadedCollected requires: #[]]; 68";
+    std::fs::write(&path, file).unwrap();
+    let path_object = h.string(path.as_os_str().as_bytes());
+    assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 68);
+    let old = h.call(codegen, b"moduleSourceFor:", &[h.key(b"gold")]);
+    let equal = h.string(&h.bytes(old));
+    let nested = h.string(b"[Module named: #reentrant requires: #[]]");
+    let original_bytes = h.binding(string_vt, b"bytes");
+    h.set(string_vt, b"testSourceBytes", original_bytes);
+    let path_bytes = h.q.byte_values(path.as_os_str().as_bytes()).unwrap();
+    let state = h.hooks.context(&[
+        h.gc,
+        h.key(b"testSourceBytes"),
+        old,
+        codegen,
+        nested,
+        h.key(b"reentrant"),
+        size(0).unwrap(),
+        path_object,
+        path_bytes,
+        h.key(b"testSourceEquality:"),
+    ]);
+    h.set(string_vt, b"bytes", h.method(b"bytes", state));
+    let original_equal = h.binding(string_vt, b"=");
+    h.set(string_vt, b"testSourceEquality:", original_equal);
+    h.set(string_vt, b"=", h.method(b"equal", state));
+    assert_eq!(
+        h.call(
+            codegen,
+            b"recordModuleSource:named:",
+            &[equal, h.key(b"gold")]
+        ),
+        equal
+    );
+    h.set(string_vt, b"=", original_equal);
+    h.call(
+        string_vt,
+        b"removeMethod:",
+        &[h.key(b"testSourceEquality:")],
+    );
+    assert_eq!(h.hooks.count(state, 6), 1);
+    assert_eq!(
+        h.call(codegen, b"moduleSourceFor:", &[h.key(b"reentrant")]),
+        nested
+    );
+    h.hooks.put(state, 6, size(0).unwrap());
+    h.hooks.put(state, 2, source);
+    let original_factory = h.binding(string_vt, b"fromBytes:");
+    h.set(string_vt, b"testSuppliedSource:", original_factory);
+    let supply = h.hooks.context(&[
+        h.key(b"testSuppliedSource:"),
+        source,
+        h.q.byte_values(file).unwrap(),
+    ]);
+    h.set(string_vt, b"fromBytes:", h.method(b"supply", supply));
+    assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 67);
+    assert_eq!(h.hooks.count(state, 6), 1);
+    assert!(
+        h.q.read_bytes(path_bytes)
+            .unwrap()
+            .iter()
+            .all(|&b| b == b'x')
+    );
+    h.set(string_vt, b"fromBytes:", original_factory);
+    h.call(
+        string_vt,
+        b"removeMethod:",
+        &[h.key(b"testSuppliedSource:")],
+    );
+    h.set(string_vt, b"bytes", original_bytes);
+    h.call(string_vt, b"removeMethod:", &[h.key(b"testSourceBytes")]);
+    let failure = h.hooks.fault(883);
+    h.hooks.put(wrappers[0].4, 3, failure);
+    assert_eq!(
+        unsafe { h.host.id.send(system, h.key(b"load:"), &[path_object]) }.unwrap_err(),
+        failure
+    );
+    h.hooks.put(wrappers[0].4, 3, ptr::null_mut());
+    let rejected = h.eval(b"[Error kind: #registrationRefused message: \"stop\"]");
+    let record = h.binding(cg_vt, b"recordModuleSource:named:");
+    let before = h.hooks.count(wrappers[4].4, 2);
+    h.set(
+        cg_vt,
+        b"recordModuleSource:named:",
+        h.hooks.method(b"fixed", rejected),
+    );
+    assert_eq!(h.call(system, b"load:", &[path_object]), rejected);
+    assert_eq!(h.hooks.count(wrappers[4].4, 2), before);
+    h.set(cg_vt, b"recordModuleSource:named:", record);
+    for (vt, name, alias, original, state) in wrappers {
+        assert!(h.hooks.count(state, 2) > 0);
+        h.set(vt, name, original);
+        h.call(vt, b"removeMethod:", &[h.key(alias)]);
+    }
+    let tcc_vt = h.vt(h.named(b"TCC"));
+    let compile = h.binding(tcc_vt, b"compile:");
+    let input = h.string(b"42");
+    for result in [nil, rejected] {
+        h.set(tcc_vt, b"compile:", h.hooks.method(b"fixed", result));
         assert_eq!(
-            h.call(
-                codegen,
-                b"moduleSourceFor:",
-                &[id.intern_name(b"example").unwrap()]
-            ),
-            registered
-        );
-        assert_eq!(h.call(codegen, b"lastError", &[]), nil);
-
-        std::fs::write(&path, b"nil").unwrap();
-        assert_eq!(h.call(system, b"load:", &[path_object]), nil);
-        assert_eq!(h.call(codegen, b"lastError", &[]), nil);
-        std::fs::write(&path, b"[").unwrap();
-        h.error(
-            h.call(system, b"load:", &[path_object]),
-            b"syntaxError",
-            b"source file failed to compile",
-        );
-        assert!(
-            String::from_utf8_lossy(&h.bytes(h.call(codegen, b"lastError", &[])))
-                .contains("syntax error")
-        );
-        std::fs::write(
-            &path,
-            b"[Module named: #failed requires: #[]]; [Error kind: #testFailure message: \"kept\"]",
-        )
-        .unwrap();
-        h.error(
-            h.call(system, b"load:", &[path_object]),
-            b"testFailure",
-            b"kept",
-        );
-        assert_ne!(
-            h.call(
-                codegen,
-                b"moduleSourceFor:",
-                &[id.intern_name(b"failed").unwrap()]
-            ),
+            h.call(codegen, b"evalPersisting:from:", &[input, path_object]),
             nil
         );
-        assert_eq!(h.eval(b"[Module isLoaded: #failed]"), h.named(b"false"));
-        std::fs::remove_file(&path).unwrap();
-        h.error(
-            h.call(system, b"load:", &[path_object]),
-            b"ioError",
-            b"could not read source file",
-        );
-        assert_eq!(h.call(system, b"load:", &[]), nil);
-        assert_eq!(h.call(system, b"load:", &[nil]), nil);
-        h.error(
-            h.call(system, b"load:", &[h.string(b"\xff")]),
-            b"ioError",
-            b"could not read source file",
-        );
-
-        // No caller root survives this registration; Codegen traces the original.
-        let retained = object(send(
-            id,
-            h.named(b"String"),
-            b"fromBytes:",
-            &[Operand::bytes(b"[Module named: #retained requires: #[]]")],
-        ));
-        assert_eq!(
-            object(send(
-                id,
-                codegen,
-                b"recordModuleSource:named:",
-                &[
-                    Operand::object(retained),
-                    Operand::object(id.intern_name(b"retained").unwrap())
-                ]
-            )),
-            retained
-        );
-        collect(id, h.gc);
-        assert!(present(id, retained));
-        assert_eq!(
-            h.call(
-                codegen,
-                b"moduleSourceFor:",
-                &[id.intern_name(b"retained").unwrap()]
-            ),
-            retained
-        );
-        exercise_callbacks(&h, &temp);
-        assert_eq!(h.call(codegen, b"recordModuleSource:named:",
-            &[gold, id.intern_name(b"gold").unwrap()]), gold);
-        let later = b"[Module named: #afterRegistration requires: #[]]; 99";
-        std::fs::write(&path, later).unwrap();
-        assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 99);
-        let registered = h.call(codegen, b"moduleSourceFor:", &[id.intern_name(b"afterRegistration").unwrap()]);
-        assert_eq!(h.bytes(registered), later);
-        std::fs::remove_dir_all(&temp).unwrap();
-    }
-}
-
-impl H {
-    unsafe fn bytes(&self, o: Oop) -> Vec<u8> {
-        unsafe {
-            let b = send(self.id, o, b"bytes", &[]).as_bytes().unwrap();
-            borrowed_bytes(b.pointer, b.length).unwrap().to_vec()
-        }
-    }
-    unsafe fn number(&self, o: Oop) -> usize {
-        unsafe {
-            send(
-                self.id,
-                self.named(b"Integer"),
-                b"wordOf:",
-                &[Operand::object(o)],
-            )
-            .as_word()
-            .unwrap()
-        }
-    }
-    unsafe fn at(&self, o: Oop, i: usize) -> Oop {
-        unsafe {
-            let i = self.keep(object(send(
-                self.id,
-                self.named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(i)],
-            )));
-            self.call(o, b"at:", &[i])
-        }
-    }
-}
-
-unsafe fn binding(id: Protocol, vt: Oop, selector: &[u8]) -> NativeEntry {
-    unsafe {
-        send(
-            id,
-            id.receiver,
-            b"bindingOf:in:",
-            &[
-                Operand::object(id.intern_name(selector).unwrap()),
-                Operand::object(vt),
-            ],
-        )
-        .as_entry()
-        .unwrap()
-    }
-}
-unsafe fn set(id: Protocol, vt: Oop, selector: &[u8], entry: NativeEntry) {
-    unsafe {
-        send(
-            id,
-            vt,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(selector).unwrap()),
-                Operand::entry(entry),
-            ],
-        );
-    }
-}
-struct Forward {
-    roots: Oop,
-    id: Protocol,
-    gc: Oop,
-    alias: Oop,
-    fail: Cell<bool>,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn forward(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let hook = &*c.cast::<Forward>();
-        hook.calls.set(hook.calls.get() + 1);
-        let args = borrowed_slice(a, n).unwrap();
-        let mut tokens = vec![retain(hook.id, hook.roots, r)];
-        for value in args.iter().filter_map(|v| v.as_object()) {
-            tokens.push(retain(hook.id, hook.roots, value));
-        }
-        collect(hook.id, hook.gc);
-        let result = if hook.fail.get() {
-            Outcome::failed(native::INVALID_REQUEST, 883)
-        } else {
-            hook.id
-                .send(r, hook.alias, args)
-                .map_or_else(|e| e, Outcome::loaded)
-        };
-        for token in tokens {
-            release(hook.id, hook.roots, token);
-        }
-        result
-    }
-}
-struct BytesHook {
-    id: Protocol,
-    gc: Oop,
-    alias: Oop,
-    trigger: Oop,
-    codegen: Oop,
-    nested: Oop,
-    name: Oop,
-    once: Cell<bool>,
-    path: Oop,
-    path_bytes: RefCell<Vec<u8>>,
-}
-unsafe extern "C" fn bytes_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let hook = &*c.cast::<BytesHook>();
-        collect(hook.id, hook.gc);
-        if r == hook.path {
-            return Outcome::loaded(Operand::bytes(&hook.path_bytes.borrow()));
-        }
-        if r == hook.trigger && !hook.once.replace(true) {
-            hook.path_bytes.borrow_mut().fill(b'x');
-            let recorded = send(
-                hook.id,
-                hook.codegen,
-                b"recordModuleSource:named:",
-                &[Operand::object(hook.nested), Operand::object(hook.name)],
-            );
-            assert_eq!(object(recorded), hook.nested);
-        }
-        hook.id
-            .send(r, hook.alias, borrowed_slice(a, n).unwrap())
-            .map_or_else(|e| e, Outcome::loaded)
-    }
-}
-unsafe extern "C" fn source_equality_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let hook = &*c.cast::<BytesHook>();
-        collect(hook.id, hook.gc);
-        if r == hook.trigger && !hook.once.replace(true) {
-            let recorded = send(hook.id, hook.codegen, b"recordModuleSource:named:",
-                &[Operand::object(hook.nested), Operand::object(hook.name)]);
-            assert_eq!(object(recorded), hook.nested);
-        }
-        hook.id.send_named(r, b"testSourceEquality:", borrowed_slice(a,n).unwrap())
-            .map_or_else(|e|e,Outcome::loaded)
-    }
-}
-unsafe extern "C" fn reply(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(c))
-}
-unsafe fn exercise_callbacks(h: &H, temp: &std::path::Path) {
-    unsafe {
-        let id = h.id;
-        let codegen = h.named(b"Codegen");
-        let system = h.named(b"System");
-        let nil = h.named(b"nil");
-        let behavior_of = |o| object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(o)]));
-        let lang_vt = behavior_of(h.named(b"Lang"));
-        let string_factory_vt = behavior_of(h.named(b"String"));
-        let string_vt = h.named(b"StringVt");
-        let codegen_vt = behavior_of(codegen);
-        let system_vt = behavior_of(system);
-        let mut wrappers = Vec::new();
-        for (vt, selector, alias) in [
-            (
-                lang_vt,
-                b"parse:".as_slice(),
-                b"testSourceParse:".as_slice(),
-            ),
-            (string_factory_vt, b"fromBytes:", b"testSourceString:"),
-            (codegen_vt, b"sourceRevisionOf:", b"testSourceRevision:"),
-            (
-                codegen_vt,
-                b"recordModuleSource:named:",
-                b"testSourceRecord:named:",
-            ),
-            (codegen_vt, b"evalPersisting:from:", b"testSourceEval:from:"),
-        ] {
-            let entry = binding(id, vt, selector);
-            set(id, vt, alias, entry);
-            let mut hook = Box::new(Forward {
-                roots: h.roots,
-                id,
-                gc: h.gc,
-                alias: id.intern_name(alias).unwrap(),
-                fail: Cell::new(false),
-                calls: Cell::new(0),
-            });
-            set(
-                id,
-                vt,
-                selector,
-                NativeEntry::new(forward, (&mut *hook as *mut Forward).cast()),
-            );
-            wrappers.push((vt, selector, alias, entry, hook));
-        }
-        let source = h.string(b"[Module named: #collected requires: #[]]; 67");
-        assert_eq!(
-            h.call(
-                codegen,
-                b"recordModuleSource:named:",
-                &[source, id.intern_name(b"collected").unwrap()]
-            ),
-            source
-        );
-        let revision = h.call(codegen, b"sourceRevisionOf:", &[source]);
-        assert_eq!(h.at(revision, 3), source);
-        let path = temp.join("collecting.birnam");
-        std::fs::write(&path, b"[Module named: #loadedCollected requires: #[]]; 68").unwrap();
-        let path_object = h.string(path.as_os_str().as_bytes());
-        assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 68);
-        // The authored owner compares retained text through current String =.
-        // Reentry must not suppress GC or duplicate registration. Bytes remains
-        // the separate compiler/loader borrow boundary exercised below.
-        let old = h.call(
-            codegen,
-            b"moduleSourceFor:",
-            &[id.intern_name(b"gold").unwrap()],
-        );
-        let equal = h.string(&h.bytes(old));
-        let nested = h.string(b"[Module named: #reentrant requires: #[]]");
-        let original_bytes = binding(id, string_vt, b"bytes");
-        set(id, string_vt, b"testSourceBytes", original_bytes);
-        let mut bytes = BytesHook {
-            id,
-            gc: h.gc,
-            alias: id.intern_name(b"testSourceBytes").unwrap(),
-            trigger: old,
-            codegen,
-            nested,
-            name: h.keep(id.intern_name(b"reentrant").unwrap()),
-            once: Cell::new(false),
-            path: path_object,
-            path_bytes: RefCell::new(path.as_os_str().as_bytes().to_vec()),
-        };
-        set(
-            id,
-            string_vt,
-            b"bytes",
-            NativeEntry::new(bytes_hook, (&mut bytes as *mut BytesHook).cast()),
-        );
-        let original_equal = binding(id, string_vt, b"=");
-        set(id,string_vt,b"testSourceEquality:",original_equal);
-        set(id,string_vt,b"=",NativeEntry::new(source_equality_hook,(&mut bytes as *mut BytesHook).cast()));
-        assert_eq!(
-            h.call(
-                codegen,
-                b"recordModuleSource:named:",
-                &[equal, id.intern_name(b"gold").unwrap()]
-            ),
-            equal
-        );
-        set(id,string_vt,b"=",original_equal);
-        send(id,string_vt,b"removeMethod:",&[Operand::object(id.intern_name(b"testSourceEquality:").unwrap())]);
-        assert!(bytes.once.get());
-        assert_eq!(h.call(codegen, b"moduleSourceFor:", &[bytes.name]), nested);
-        // Mutate the path during source inspection, after the loader copied it.
-        // The original path Object still goes to Codegen; only the borrow changes.
-        bytes.once.set(false);
-        bytes
-            .path_bytes
-            .replace(path.as_os_str().as_bytes().to_vec());
-        bytes.trigger = source;
-        // Supply a selected source only for the file read; other String
-        // construction still forwards through a send.
-        let factory_entry = binding(id, string_factory_vt, b"fromBytes:");
-        set(id, string_factory_vt, b"testSuppliedSource:", factory_entry);
-        let mut supply = Supply {
-            id,
-            alias: id.intern_name(b"testSuppliedSource:").unwrap(),
-            source,
-            bytes: std::fs::read(&path).unwrap(),
-        };
-        set(
-            id,
-            string_factory_vt,
-            b"fromBytes:",
-            NativeEntry::new(supply_source, (&mut supply as *mut Supply).cast()),
-        );
-        assert_eq!(h.number(h.call(system, b"load:", &[path_object])), 67);
-        assert!(bytes.once.get());
-        set(id, string_factory_vt, b"fromBytes:", factory_entry);
-        send(
-            id,
-            string_factory_vt,
-            b"removeMethod:",
-            &[Operand::object(
-                id.intern_name(b"testSuppliedSource:").unwrap(),
-            )],
-        );
-        set(id, string_vt, b"bytes", original_bytes);
-        send(
-            id,
-            string_vt,
-            b"removeMethod:",
-            &[Operand::object(id.intern_name(b"testSourceBytes").unwrap())],
-        );
-        // Native dependency failures propagate without becoming language nil.
-        wrappers[0].4.fail.set(true);
-        let failure = id
-            .send_named(system, b"load:", &[Operand::object(path_object)])
-            .unwrap_err();
-        assert_eq!(
-            (failure.status, failure.detail),
-            (native::INVALID_REQUEST, 883)
-        );
-        wrappers[0].4.fail.set(false);
-        // An Error returned by registration is propagated by identity and prevents eval.
-        let rejected = h.eval(b"[Error kind: #registrationRefused message: \"stop\"]");
-        let record_entry = binding(id, codegen_vt, b"recordModuleSource:named:");
-        let before = wrappers[4].4.calls.get();
-        set(
-            id,
-            codegen_vt,
-            b"recordModuleSource:named:",
-            NativeEntry::new(reply, rejected),
-        );
-        assert_eq!(h.call(system, b"load:", &[path_object]), rejected);
-        assert_eq!(wrappers[4].4.calls.get(), before);
-        set(id, codegen_vt, b"recordModuleSource:named:", record_entry);
-        for (vt, selector, alias, entry, hook) in wrappers {
-            assert!(hook.calls.get() > 0);
-            set(id, vt, selector, entry);
-            send(
-                id,
-                vt,
-                b"removeMethod:",
-                &[Operand::object(id.intern_name(alias).unwrap())],
-            );
-        }
-        // Compiler construction rejection stays distinct from an evaluated Error.
-        let tcc_vt = behavior_of(h.named(b"TCC"));
-        let compile_entry = binding(id, tcc_vt, b"compile:");
-        let input = h.string(b"42");
-        for result in [nil, rejected] {
-            set(id, tcc_vt, b"compile:", NativeEntry::new(reply, result));
-            assert_eq!(
-                h.call(codegen, b"evalPersisting:from:", &[input, path_object]),
-                nil
-            );
-            assert_eq!(
-                h.bytes(h.call(codegen, b"lastError", &[])),
-                b"RustCodegen generated C failed to compile"
-            );
-        }
-        set(id, tcc_vt, b"compile:", compile_entry);
-        assert_eq!(h.call(codegen, b"evalPersisting:from:", &[input, nil]), nil);
         assert_eq!(
             h.bytes(h.call(codegen, b"lastError", &[])),
-            b"RustCodegen source path was not a String"
+            b"RustCodegen generated C failed to compile"
         );
-        send(
-            id,
-            h.ns,
-            b"at:put:",
-            &[
-                Operand::object(id.intern_name(b"Codegen").unwrap()),
-                Operand::object(nil),
-            ],
-        );
-        h.error(
-            h.call(system, b"load:", &[path_object]),
-            b"noCodegen",
-            b"Codegen module is not loaded",
-        );
-        // File errors precede the missing-Codegen check.
-        h.error(
-            h.call(
-                system,
-                b"load:",
-                &[h.string(temp.join("absent.birnam").as_os_str().as_bytes())],
-            ),
-            b"ioError",
-            b"could not read source file",
-        );
-        send(
-            id,
-            h.ns,
-            b"at:put:",
-            &[
-                Operand::object(id.intern_name(b"Codegen").unwrap()),
-                Operand::object(codegen),
-            ],
-        );
-        // Reinitialization must not overwrite an installed method replacement.
-        let original = binding(id, system_vt, b"load:");
-        set(id, system_vt, b"load:", NativeEntry::new(reply, nil));
-        let manager = h.eval(b"Module");
-        let loader = h.string(directory().join("libbirnam_sourceLoader.dylib").as_os_str().as_bytes());
-        let loaded = h.call(manager, b"load:path:", &[id.intern_name(b"sourceLoader").unwrap(), loader]);
-        assert_eq!(h.call(loaded, b"isError", &[]), h.named(b"false"));
-        assert_eq!(h.call(system, b"load:", &[path_object]), nil);
-        set(id, system_vt, b"load:", original);
-        h.call(codegen, b"evalPersisting:", &[h.string(b"nil")]);
     }
-}
-
-struct Supply {
-    id: Protocol,
-    alias: Oop,
-    source: Oop,
-    bytes: Vec<u8>,
-}
-unsafe extern "C" fn supply_source(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let s = &*c.cast::<Supply>();
-        let args = borrowed_slice(a, n).unwrap();
-        let bytes = args[0].as_bytes().unwrap();
-        if borrowed_bytes(bytes.pointer, bytes.length).unwrap() == s.bytes {
-            return Outcome::loaded(Operand::object(s.source));
-        }
-        s.id.send(r, s.alias, args)
-            .map_or_else(|e| e, Outcome::loaded)
-    }
+    h.set(tcc_vt, b"compile:", compile);
+    assert_eq!(h.call(codegen, b"evalPersisting:from:", &[input, nil]), nil);
+    assert_eq!(
+        h.bytes(h.call(codegen, b"lastError", &[])),
+        b"RustCodegen source path was not a String"
+    );
+    h.call(h.host.namespace, b"at:put:", &[h.key(b"Codegen"), nil]);
+    h.error(
+        h.call(system, b"load:", &[path_object]),
+        b"noCodegen",
+        b"Codegen module is not loaded",
+    );
+    h.error(
+        h.call(
+            system,
+            b"load:",
+            &[h.string(temp.join("absent.birnam").as_os_str().as_bytes())],
+        ),
+        b"ioError",
+        b"could not read source file",
+    );
+    h.call(h.host.namespace, b"at:put:", &[h.key(b"Codegen"), codegen]);
+    let original = h.binding(system_vt, b"load:");
+    h.set(system_vt, b"load:", h.hooks.method(b"fixed", nil));
+    let manager = h.eval(b"Module");
+    let loader = h.string(
+        h.host
+            .resources
+            .lib_dir
+            .join("libbirnam_sourceLoader.dylib")
+            .as_os_str()
+            .as_bytes(),
+    );
+    let loaded = h.call(manager, b"load:path:", &[h.key(b"sourceLoader"), loader]);
+    assert_eq!(h.call(loaded, b"isError", &[]), h.named(b"false"));
+    assert_eq!(h.call(system, b"load:", &[path_object]), nil);
+    h.set(system_vt, b"load:", original);
+    h.call(codegen, b"evalPersisting:", &[h.string(b"nil")]);
 }
