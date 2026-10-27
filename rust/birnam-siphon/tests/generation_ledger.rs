@@ -1,590 +1,359 @@
-//! Current-generation drift and Method retention through real Id owners.
+//! Read-only generation drift and retained Methods through current Oop owners.
+#[path = "support/generation.rs"]
+#[allow(dead_code)]
 mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{cell::Cell, ffi::c_void};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-unsafe extern "C" fn raw(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(1, 91)
-}
-struct DuringSave {
-    id: Protocol,
-    original: NativeEntry,
-    roots: Oop,
-    db: Oop,
-    selector: Oop,
-    behavior: Oop,
-    fired: Cell<bool>,
-}
-unsafe extern "C" fn edit_during_save(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<DuringSave>();
-        let answer = p.original.method.unwrap()(p.original.context, r, a, n);
-        let root = answer.value.as_object().map(|o| retain(p.id, p.roots, o));
-        p.fired.set(true);
-        send(
-            p.id,
-            p.db,
-            b"removeMethod:on:",
-            &[Operand::object(p.selector), Operand::object(p.behavior)],
-        );
-        if let Some(root) = root {
-            release(p.id, p.roots, root);
-        }
-        answer
-    }
-}
-struct RejectDrift {
-    id: Protocol,
-    original: NativeEntry,
-    generation: Oop,
-    drifted: Oop,
-    error: Oop,
-    gc: Oop,
-    armed: Cell<bool>,
-}
-unsafe extern "C" fn reject_first_drift(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<RejectDrift>();
-        let args = borrowed_slice(a, n).unwrap();
-        if r == p.generation
-            && args[0].as_object() == Some(p.drifted)
-            && p.armed.replace(false)
-        {
-            collect(p.id, p.gc);
-            return Outcome::loaded(Operand::object(p.error));
-        }
-        p.original.method.unwrap()(p.original.context, r, a, n)
-    }
-}
+use birnam_abi::size;
 #[test]
-#[ignore = "scripts/native-message-test.sh builds production native modules"]
+#[ignore = "requires production Oop modules"]
 fn ledger_validation_preserves_state_and_reports_current_agreement() {
     if std::env::var_os("BIRNAM_LEDGER_DRIFT_CASE").is_none() {
-        for case in ["raw", "store", "source", "metadata", "save", "retry", "opaque"] {
-            let status = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--ignored",
-                    "--exact",
-                    "ledger_validation_preserves_state_and_reports_current_agreement",
-                    "--nocapture",
-                ])
-                .env("BIRNAM_LEDGER_DRIFT_CASE", case)
-                .status()
-                .unwrap();
-            assert!(status.success(), "{case}");
+        for case in [
+            "raw", "store", "source", "metadata", "save", "retry", "opaque",
+        ] {
+            assert!(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--ignored",
+                        "--exact",
+                        "ledger_validation_preserves_state_and_reports_current_agreement",
+                        "--nocapture"
+                    ])
+                    .env("BIRNAM_LEDGER_DRIFT_CASE", case)
+                    .status()
+                    .unwrap()
+                    .success(),
+                "{case}"
+            );
         }
         return;
     }
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        optional_modules(id, ns, &["store"]);
-        lifecycle_records(id, ns);
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let keep = |o: Oop| {
-            retain(id, named(b"Roots"), o);
-            o
-        };
-        let sym = |name: &[u8]| keep(id.intern_name(name).unwrap());
-        let call = |r: Oop, name: &[u8], args: &[Oop]| {
-            keep(object(send(
-                id,
-                r,
-                name,
-                &args
-                    .iter()
-                    .copied()
-                    .map(Operand::object)
-                    .collect::<Vec<_>>(),
-            )))
-        };
-        let text = |bytes: &[u8]| {
-            keep(object(send(
-                id,
-                named(b"String"),
-                b"fromBytes:",
-                &[Operand::bytes(bytes)],
-            )))
-        };
-        let integer = |n| {
-            keep(object(send(
-                id,
-                named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(n)],
-            )))
-        };
-        let at = |v, i| call(v, b"at:", &[integer(i)]);
-        let prototype = |name: &[u8]| call(named(b"Globals"), b"at:", &[sym(name)]);
-        let record = |name: &[u8]| call(prototype(name), b"clone", &[]);
-        let cg = named(b"Codegen");
-        let db = named(b"db");
-        let yes = named(b"true");
-        let no = named(b"false");
-        let body = b"let ledgerHelper := [| 17]; let ledgerProjected := [| 1]; [Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | [ledgerHelper value]]]; [Reflect defineMethod: #ledgerOverride on: Integer as: [:self | 1]]";
-        let evaluated = call(cg, b"evalPersisting:", &[text(body)]);
-        assert_eq!(call(evaluated, b"isError", &[]), no);
-        let mut source = b"[Module named: #ledgerFixture requires: #[]]; ".to_vec();
-        source.extend_from_slice(body);
-        source.extend_from_slice(b"; [Reflect removeMethod: #ledgerRemoved on: Integer]");
-        let source = text(&source);
-        assert_eq!(
-            call(
-                cg,
-                b"recordModuleSource:named:",
-                &[source, sym(b"ledgerFixture")]
-            ),
-            source
-        );
-        // An alias and a later dependent module deliberately replace the first
-        // definition. Adoption compares the final dictionary writer, not both.
-        call(
-            named(b"Globals"),
-            b"at:put:",
-            &[sym(b"LedgerIntegerAlias"), named(b"Integer")],
-        );
-        let override_body =
-            b"let ledgerProjected := [| 2]; [Reflect defineMethod: #ledgerOverride on: LedgerIntegerAlias as: [:self | 2]]; let System := System; [Reflect defineMethod: #ledgerLexicalEmbed on: LedgerIntegerAlias as: [:self | [System embedFile: \"never-created.bin\"]]]";
-        call(cg, b"evalPersisting:", &[text(override_body)]);
-        let mut override_source =
-            b"[Module named: #ledgerOverride requires: #[#ledgerFixture]]; ".to_vec();
-        override_source.extend_from_slice(override_body);
-        call(
+    let host = support::bootstrap();
+    let h = support::H::new(&host);
+    h.lifecycle();
+    let case = std::env::var("BIRNAM_LEDGER_DRIFT_CASE").unwrap();
+    let cg = h.named(b"Codegen");
+    let g = h.named(b"Generation");
+    let db = h.named(b"db");
+    let globals = h.named(b"Globals");
+    let yes = h.named(b"true");
+    let nil = h.named(b"nil");
+    let body=b"let ledgerHelper := [| 17]; let ledgerProjected := [| 1]; [Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | [ledgerHelper value]]]; [Reflect defineMethod: #ledgerOverride on: Integer as: [:self | 1]]";
+    h.eval(body);
+    let mut source = b"[Module named: #ledgerFixture requires: #[]]; ".to_vec();
+    source.extend_from_slice(body);
+    source.extend_from_slice(b"; [Reflect removeMethod: #ledgerRemoved on: Integer]");
+    let source = h.text(&source);
+    assert_eq!(
+        h.call(
             cg,
             b"recordModuleSource:named:",
-            &[text(&override_source), sym(b"ledgerOverride")],
-        );
-        // Generation adoption must remain inert after assets and source files
-        // are removed. The compiled method retains the embedded binary payload.
-        let temp = std::env::temp_dir().join(format!("birnam-ledger-embed-{}", std::process::id()));
-        std::fs::create_dir_all(&temp).unwrap();
-        std::fs::write(temp.join("asset.bin"), b"\0\xffasset").unwrap();
-        let embedded_body = b"let ledgerEmbeddedGlobal := [| [System embedFile: \"asset.bin\"]]; [Reflect defineMethod: #ledgerEmbedded on: Integer as: [:self | [System embedFile: \"asset.bin\"]]]";
-        let file = temp.join("embedded.birnam");
-        std::fs::write(&file, embedded_body).unwrap();
-        let loaded = call(
-            named(b"System"),
-            b"load:",
-            &[text(file.as_os_str().as_bytes())],
-        );
-        assert_eq!(call(loaded, b"isError", &[]), no);
-        std::fs::remove_dir_all(&temp).unwrap();
-        let mut embedded_source = b"[Module named: #ledgerEmbedded requires: #[]]; ".to_vec();
-        embedded_source.extend_from_slice(embedded_body);
-        call(
-            cg,
-            b"recordModuleSource:named:",
-            &[text(&embedded_source), sym(b"ledgerEmbedded")],
-        );
-        let projection = call(cg, b"initialGenerationProjection", &[]);
-        let generation = record(b"DispatchGeneration");
-        for (attr, value) in [
-            (b"sourceMap".as_slice(), at(projection, 1)),
-            (b"baseDigest", at(projection, 2)),
-            (b"generationSelection", at(projection, 3)),
-        ] {
-            call(named(b"Reflect"), b"slot:in:put:", &[sym(attr), generation, value]);
-        }
-        call(prototype(b"DispatchGeneration"), b"current:", &[generation]);
-        let rejected = call(cg, b"beginPortableImageApplication", &[]);
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"imageApplicationRequired"));
-        let vt = named(b"IntegerVt");
-        let selector = sym(b"ledgerAnswer");
-        // A first-class Method capture remains portable when installed again.
-        // Do not root the captured Method in this test: after installation, only
-        // dictionary ownership and then the adopted ledger keep it alive.
-        let captured = object(send(
-            id,
-            named(b"Integer"),
-            b"methodFor:",
-            &[Operand::object(selector)],
-        ));
-        send(
-            id,
-            db,
-            b"addMethod:on:with:",
-            &[
-                Operand::object(selector),
-                Operand::object(vt),
-                Operand::object(captured),
-            ],
-        );
-        let prior = send(
-            id,
-            id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(selector), Operand::object(vt)],
-        )
-        .as_entry()
-        .unwrap();
-        // Merely claiming portable source cannot adopt a native entry with no
-        // image-rebuildable implementation. Keep its displaced Method only until
-        // restoring the binding, then let the ledger supply the ownership.
-        let method = object(send(
-            id,
-            named(b"Execution"),
-            b"methodOfEntry:",
-            &[Operand::entry(prior)],
-        ));
-        let method_root = retain(id, named(b"Roots"), method);
-        install(id, vt, b"ledgerAnswer", raw, core::ptr::null_mut());
-        let rejected = call(
-            named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"nonPortableGeneration"));
-        send(
-            id,
-            vt,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(prior)],
-        );
-        // A portable Method alone is insufficient: its body must agree with the
-        // recorded source, and an install declaration must have a live binding.
-        let wrong = call(
-            cg,
-            b"evalPersisting:",
-            &[text(
-                b"[Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | 99]]",
-            )],
-        );
-        assert_eq!(call(wrong, b"isError", &[]), no);
-        let rejected = call(
-            named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
-        call(db, b"removeMethod:on:", &[selector, vt]);
-        let rejected = call(
-            named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
-        send(
-            id,
-            vt,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(prior)],
-        );
-        call(
-            cg,
-            b"evalPersisting:",
-            &[text(
-                b"[Reflect defineMethod: #ledgerRemoved on: Integer as: [:self | 3]]",
-            )],
-        );
-        let rejected = call(
-            named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
-        call(db, b"removeMethod:on:", &[sym(b"ledgerRemoved"), vt]);
-        call(
-            named(b"Globals"),
-            b"at:put:",
-            &[sym(b"LedgerIntegerAlias"), named(b"nil")],
-        );
-        let rejected = call(
-            named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
-        call(
-            named(b"Globals"),
-            b"at:put:",
-            &[sym(b"LedgerIntegerAlias"), named(b"Integer")],
-        );
-        // Source authority includes the final capture-free global Block body.
-        // The dependent module's ledgerProjected overrides the earlier module.
-        let globals = named(b"Globals");
-        let helper_name = sym(b"ledgerHelper");
-        let helper = call(globals, b"at:", &[helper_name]);
-        let wrong_helper = call(cg, b"eval:", &[text(b"[| 99]")]);
-        for replacement in [wrong_helper, integer(17), named(b"nil")] {
-            call(globals, b"at:put:", &[helper_name, replacement]);
-            let rejected = call(
-                named(b"Generation"),
-                b"adoptInitialGeneration:",
-                &[generation],
-            );
-            assert_eq!(call(rejected, b"kind", &[]), sym(b"sourceBindingMismatch"));
-        }
-        call(globals, b"at:put:", &[helper_name, helper]);
-        release(id, named(b"Roots"), method_root);
-        assert_eq!(
-            call(
-                named(b"Generation"),
-                b"adoptInitialGeneration:",
-                &[generation]
-            ),
-            generation
-        );
-        assert_eq!(
-            call(
-                named(b"Generation"),
-                b"adoptInitialGeneration:",
-                &[generation]
-            ),
-            generation
-        );
-        call(
-            db,
-            b"assert:attr:value:",
-            &[sym(b"unrelated"), sym(b"note"), yes],
-        );
-        assert_eq!(
-            call(named(b"Generation"), b"reconcileCandidate:", &[generation]),
-            generation
-        );
-        // An unrelated tracked publication must not invalidate this ledger.
-        call(
-            cg,
-            b"evalPersisting:",
-            &[text(
-                b"[Reflect defineMethod: #unmanagedAnswer on: Integer as: [:self | 23]]",
-            )],
-        );
-        assert_eq!(
-            call(named(b"Generation"), b"reconcileCandidate:", &[generation]),
-            generation
-        );
-        let removed = call(
-            cg,
-            b"evalPersisting:",
-            &[text(
-                b"[Reflect removeMethod: #unmanagedAnswer on: Integer]",
-            )],
-        );
-        assert_eq!(removed, named(b"Integer"));
-        assert_eq!(
-            send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[
-                    Operand::object(sym(b"unmanagedAnswer")),
-                    Operand::object(vt)
-                ]
-            )
-            .kind(),
-            birnam_abi::id_protocol::UNIT
-        );
-        assert_eq!(
-            call(named(b"Generation"), b"reconcileCandidate:", &[generation]),
-            generation
-        );
-        let path = std::env::temp_dir().join(format!("birnam-drift-image-{}", std::process::id()));
-        std::fs::write(&path, b"previous image").unwrap();
-        let filename = text(path.as_os_str().as_bytes());
-        let mut during_save = DuringSave {
-            id,
-            original: prior,
-            roots: named(b"Roots"),
-            db,
-            selector,
-            behavior: vt,
-            fired: Cell::new(false),
-        };
-        let cg_vt = named(b"CodegenVt");
-        let save_selector = sym(b"compilePortableImageCode:bindings:selection:");
-        let case = std::env::var("BIRNAM_LEDGER_DRIFT_CASE").unwrap();
-        let assert_selector = sym(b"state:");
-        let store_vt = object(send(id, id.receiver, b"behaviorOf:", &[Operand::object(prototype(b"DispatchGeneration"))]));
-        let original_assert = send(
-            id,
-            id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(assert_selector), Operand::object(store_vt)],
-        )
-        .as_entry()
-        .unwrap();
-        if let Some(method) = send(id, named(b"Execution"), b"methodOfEntry:", &[Operand::entry(original_assert)]).as_object() { keep(method); }
-        let mut reject = RejectDrift {
-            id,
-            original: original_assert,
-            generation,
-            drifted: sym(b"drifted"),
-            error: call(named(b"Error"), b"kind:", &[sym(b"injectedDriftFailure")]),
-            gc: named(b"GC"),
-            armed: Cell::new(true),
-        };
-        let recorded_state = call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]);
-        match case.as_str() {
-            "retry" => {
-                let before = call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]);
-                install(
-                    id,
-                    store_vt,
-                    b"state:",
-                    reject_first_drift,
-                    core::ptr::from_mut(&mut reject).cast(),
-                );
-                call(db, b"removeMethod:on:", &[selector, vt]);
-                let failed = call(named(b"Generation"), b"reconcileCandidate:", &[generation]);
-                assert_eq!(call(failed, b"kind", &[]), sym(b"staleGeneration"));
-                send(
-                    id,
-                    store_vt,
-                    b"addMethod",
-                    &[
-                        Operand::object(assert_selector),
-                        Operand::entry(original_assert),
-                    ],
-                );
-                assert!(reject.armed.get(), "validation called the state setter");
-                assert_eq!(
-                    call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
-                    before
-                );
-            }
-
-            "metadata" => {
-                let registry=call(prototype(b"SourceRegistry"),b"sourceRegistry",&[]);
-                let row=at(registry,1);let name=at(row,0);let record=at(row,1);
-                let mut replacement=call(named(b"Vector"),b"new",&[]);
-                for i in 0..3 {replacement=call(replacement,b"add:",&[at(record,i)]);}
-                let source=call(cg,b"sourceTextOf:",&[record]);
-                assert_eq!(call(cg,b"replaceCompiledSource:named:",&[replacement,name]),source);
-                assert_eq!(call(cg,b"replaceCompiledSource:named:",&[record,name]),source);
-                // Even A -> B -> A changes the owner revision observed by the ledger.
-            }
-            "store" => {
-                call(db, b"removeMethod:on:", &[selector, vt]);
-            }
-            "source" => {
-                call(
-                    cg,
-                    b"evalPersisting:",
-                    &[text(
-                        b"[Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | 19]]",
-                    )],
-                );
-            }
-            "opaque" => {
-                install(id, vt, b"ledgerAnswer", raw, core::ptr::null_mut());
-            }
-            "save" => {
-                during_save.original = send(
-                    id,
-                    id.receiver,
-                    b"bindingOf:in:",
-                    &[Operand::object(save_selector), Operand::object(cg_vt)],
-                )
-                .as_entry()
-                .unwrap();
-                install(
-                    id,
-                    cg_vt,
-                    b"compilePortableImageCode:bindings:selection:",
-                    edit_during_save,
-                    core::ptr::from_mut(&mut during_save).cast(),
-                );
-            }
-            _ => {
-                send(id, vt, b"removeMethod:", &[Operand::object(selector)]);
-            }
-        }
-        if case == "store" {
-            // No implicit observer updates descriptions. Reconciliation is explicit.
-            assert_ne!(
-                call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
-                sym(b"drifted")
-            );
-        }
-        let saved = call(named(b"System"), b"saveImage:", &[filename]);
-        if case == "save" {
-            send(
-                id,
-                cg_vt,
-                b"addMethod",
-                &[
-                    Operand::object(save_selector),
-                    Operand::entry(during_save.original),
-                ],
-            );
-            assert!(during_save.fired.get());
-        }
-        if case == "opaque" {
-            assert_eq!(call(saved, b"kind", &[]), sym(b"nonPortableGeneration"));
-            assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
-        } else if case == "save" {
-            assert_eq!(saved, named(b"nil"));
-            assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
-        } else {
-            assert_eq!(saved, yes, "an edited live world can be snapshotted without certification");
-            assert_ne!(std::fs::read(&path).unwrap(), b"previous image");
-        }
-        std::fs::remove_file(path).unwrap();
-        // The inverse Method remains alive after every form of divergence.
-        collect(id, named(b"GC"));
-        let result = call(method, b"invokeOn:", &[integer(2)]);
-        assert_eq!(
-            send(
-                id,
-                named(b"Integer"),
-                b"wordOf:",
-                &[Operand::object(result)]
-            )
-            .as_word(),
-            Some(17)
-        );
-        let drift = call(named(b"Generation"), b"reconcileCandidate:", &[generation]);
-        assert_eq!(call(drift, b"kind", &[]), sym(b"staleGeneration"));
-        assert_eq!(
-            call(named(b"Reflect"), b"slot:in:", &[sym(b"state"), generation]),
-            recorded_state
-        );
-        // Restoring the exact Method restores agreement, unless the source
-        // registry's explicit content revision changed independently.
-        send(
-            id,
-            vt,
-            b"addMethod",
-            &[Operand::object(selector), Operand::entry(prior)],
-        );
-        let readoption = call(
-            named(b"Generation"),
-            b"adoptInitialGeneration:",
-            &[generation],
-        );
-        // Explicit re-certification may renew even a changed content revision.
-        assert_eq!(readoption, generation);
-        // Keep the authored lifecycle facade parseable as its initial adoption
-        // is connected to this native mechanism.
-        let facade = text(&std::fs::read("../../modules/compiled-unit.birnam").unwrap());
-        assert_eq!(
-            call(call(named(b"Lang"), b"parse:", &[facade]), b"isError", &[]),
-            no
+            &[source, h.key(b"ledgerFixture")]
+        ),
+        source
+    );
+    h.call(
+        globals,
+        b"at:put:",
+        &[h.key(b"LedgerIntegerAlias"), h.named(b"Integer")],
+    );
+    let override_body=b"let ledgerProjected := [| 2]; [Reflect defineMethod: #ledgerOverride on: LedgerIntegerAlias as: [:self | 2]]; let System := System; [Reflect defineMethod: #ledgerLexicalEmbed on: LedgerIntegerAlias as: [:self | [System embedFile: \"never-created.bin\"]]]";
+    h.eval(override_body);
+    let mut override_source =
+        b"[Module named: #ledgerOverride requires: #[#ledgerFixture]]; ".to_vec();
+    override_source.extend_from_slice(override_body);
+    h.call(
+        cg,
+        b"recordModuleSource:named:",
+        &[h.text(&override_source), h.key(b"ledgerOverride")],
+    );
+    let temp = std::env::temp_dir().join(format!("birnam-ledger-embed-{}", std::process::id()));
+    std::fs::create_dir_all(&temp).unwrap();
+    std::fs::write(temp.join("asset.bin"), b"\0\xffasset").unwrap();
+    let embedded_body=b"let ledgerEmbeddedGlobal := [| [System embedFile: \"asset.bin\"]]; [Reflect defineMethod: #ledgerEmbedded on: Integer as: [:self | [System embedFile: \"asset.bin\"]]]";
+    let file = temp.join("embedded.birnam");
+    std::fs::write(&file, embedded_body).unwrap();
+    let loaded = h.call(
+        h.named(b"System"),
+        b"load:",
+        &[h.text(file.as_os_str().as_encoded_bytes())],
+    );
+    h.q.check_result(loaded).unwrap();
+    std::fs::remove_dir_all(temp).unwrap();
+    let mut embedded = b"[Module named: #ledgerEmbedded requires: #[]]; ".to_vec();
+    embedded.extend_from_slice(embedded_body);
+    h.call(
+        cg,
+        b"recordModuleSource:named:",
+        &[h.text(&embedded), h.key(b"ledgerEmbedded")],
+    );
+    let projection = h.call(cg, b"initialGenerationProjection", &[]);
+    let generation = h.record(b"DispatchGeneration");
+    for (attr, value) in [
+        (b"sourceMap".as_slice(), h.at(projection, 1)),
+        (b"baseDigest", h.at(projection, 2)),
+        (b"generationSelection", h.at(projection, 3)),
+    ] {
+        h.call(
+            h.named(b"Reflect"),
+            b"slot:in:put:",
+            &[h.key(attr), generation, value],
         );
     }
+    h.call(
+        h.prototype(b"DispatchGeneration"),
+        b"current:",
+        &[generation],
+    );
+    assert_eq!(
+        h.call(
+            h.call(cg, b"beginPortableImageApplication", &[]),
+            b"kind",
+            &[]
+        ),
+        h.key(b"imageApplicationRequired")
+    );
+    let vt = h.named(b"IntegerVt");
+    let selector = h.key(b"ledgerAnswer");
+    // The captured Method is not retained by the test after restoration/adoption.
+    let captured = host
+        .send(h.named(b"Integer"), b"methodFor:", &[selector])
+        .unwrap();
+    host.send(db, b"addMethod:on:with:", &[selector, vt, captured])
+        .unwrap();
+    let prior = host.send(vt, b"lookup", &[selector]).unwrap();
+    let pin = host.scope();
+    pin.keep(prior).unwrap();
+    let restore = || {
+        host.send(vt, b"addMethod", &[selector, prior]).unwrap();
+    };
+    let native_fault = unsafe {
+        host.id.send(
+            h.named(b"Execution"),
+            h.key(b"failNative:detail:"),
+            &[size(1).unwrap(), size(91).unwrap()],
+        )
+    }
+    .unwrap_err();
+    h.keep(native_fault);
+    let raw = h.method(b"reject", h.context(&[native_fault, size(0).unwrap()]));
+    h.bind(vt, b"ledgerAnswer", raw);
+    let rejected = h.call(g, b"adoptInitialGeneration:", &[generation]);
+    assert_eq!(
+        h.call(rejected, b"kind", &[]),
+        h.key(b"nonPortableGeneration")
+    );
+    restore();
+    h.eval(b"[Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | 99]]");
+    let rejected = h.call(g, b"adoptInitialGeneration:", &[generation]);
+    assert_eq!(
+        h.call(rejected, b"kind", &[]),
+        h.key(b"sourceBindingMismatch")
+    );
+    h.call(db, b"removeMethod:on:", &[selector, vt]);
+    let rejected = h.call(g, b"adoptInitialGeneration:", &[generation]);
+    assert_eq!(
+        h.call(rejected, b"kind", &[]),
+        h.key(b"sourceBindingMismatch")
+    );
+    restore();
+    h.eval(b"[Reflect defineMethod: #ledgerRemoved on: Integer as: [:self | 3]]");
+    let rejected = h.call(g, b"adoptInitialGeneration:", &[generation]);
+    assert_eq!(
+        h.call(rejected, b"kind", &[]),
+        h.key(b"sourceBindingMismatch")
+    );
+    h.call(db, b"removeMethod:on:", &[h.key(b"ledgerRemoved"), vt]);
+    h.call(globals, b"at:put:", &[h.key(b"LedgerIntegerAlias"), nil]);
+    let rejected = h.call(g, b"adoptInitialGeneration:", &[generation]);
+    assert_eq!(
+        h.call(rejected, b"kind", &[]),
+        h.key(b"sourceBindingMismatch")
+    );
+    h.call(
+        globals,
+        b"at:put:",
+        &[h.key(b"LedgerIntegerAlias"), h.named(b"Integer")],
+    );
+    let helper_name = h.key(b"ledgerHelper");
+    let helper = h.call(globals, b"at:", &[helper_name]);
+    let wrong = h.call(cg, b"eval:", &[h.text(b"[| 99]")]);
+    for replacement in [wrong, h.integer(17), nil] {
+        h.call(globals, b"at:put:", &[helper_name, replacement]);
+        let rejected = h.call(g, b"adoptInitialGeneration:", &[generation]);
+        assert_eq!(
+            h.call(rejected, b"kind", &[]),
+            h.key(b"sourceBindingMismatch")
+        );
+    }
+    h.call(globals, b"at:put:", &[helper_name, helper]);
+    drop(pin);
+    for _ in 0..2 {
+        assert_eq!(
+            h.call(g, b"adoptInitialGeneration:", &[generation]),
+            generation
+        );
+    }
+    // Explicit invalidation prevents a Store mirror from masking ledger ownership.
+    h.call(db, b"methodChanged:on:", &[selector, vt]);
+    h.call(
+        db,
+        b"assert:attr:value:",
+        &[h.key(b"unrelated"), h.key(b"note"), yes],
+    );
+    assert_eq!(h.call(g, b"reconcileCandidate:", &[generation]), generation);
+    h.eval(b"[Reflect defineMethod: #unmanagedAnswer on: Integer as: [:self | 23]]");
+    assert_eq!(h.call(g, b"reconcileCandidate:", &[generation]), generation);
+    assert_eq!(
+        h.eval(b"[Reflect removeMethod: #unmanagedAnswer on: Integer]"),
+        h.named(b"Integer")
+    );
+    assert!(h.binding(vt, b"unmanagedAnswer").is_null());
+    assert_eq!(h.call(g, b"reconcileCandidate:", &[generation]), generation);
+    let path = std::env::temp_dir().join(format!("birnam-drift-image-{}", std::process::id()));
+    std::fs::write(&path, b"previous image").unwrap();
+    let filename = h.text(path.as_os_str().as_encoded_bytes());
+    let gv = h.vt(h.prototype(b"DispatchGeneration"));
+    let state_method = h.binding(gv, b"state:");
+    let state_alias = h.key(b"ledgerOriginalState:");
+    let error = h.call(
+        h.named(b"Error"),
+        b"kind:",
+        &[h.key(b"injectedDriftFailure")],
+    );
+    let reject = h.context(&[
+        h.gc,
+        state_alias,
+        h.key(b"drifted"),
+        error,
+        size(1).unwrap(),
+        size(0).unwrap(),
+        size(0).unwrap(),
+        size(0).unwrap(),
+        nil,
+    ]);
+    let recorded = h.call(
+        h.named(b"Reflect"),
+        b"slot:in:",
+        &[h.key(b"state"), generation],
+    );
+    let cgvt = h.vt(cg);
+    let save_name = b"compilePortableImageCode:bindings:selection:";
+    let save_original = h.binding(cgvt, save_name);
+    let save_alias = h.key(b"ledgerOriginalImageCode:bindings:selection:");
+    let during = h.context(&[save_alias, host.roots, db, selector, vt, size(0).unwrap()]);
+    match case.as_str() {
+        "retry" => {
+            h.bind(gv, b"ledgerOriginalState:", state_method);
+            h.bind(gv, b"state:", h.method(b"fault", reject));
+            h.call(db, b"removeMethod:on:", &[selector, vt]);
+            let failed = h.call(g, b"reconcileCandidate:", &[generation]);
+            assert_eq!(h.call(failed, b"kind", &[]), h.key(b"staleGeneration"));
+            h.bind(gv, b"state:", state_method);
+            h.call(gv, b"removeMethod:", &[state_alias]);
+            assert_eq!(h.count(reject, 4), 1, "validation called the state setter");
+            assert_eq!(h.count(reject, 5), 0);
+            assert_eq!(
+                h.call(
+                    h.named(b"Reflect"),
+                    b"slot:in:",
+                    &[h.key(b"state"), generation]
+                ),
+                recorded
+            );
+        }
+        "metadata" => {
+            let registry = h.call(h.prototype(b"SourceRegistry"), b"sourceRegistry", &[]);
+            let row = h.at(registry, 1);
+            let name = h.at(row, 0);
+            let record = h.at(row, 1);
+            let replacement = h.vector(&(0..3).map(|i| h.at(record, i)).collect::<Vec<_>>());
+            let source = h.call(cg, b"sourceTextOf:", &[record]);
+            assert_eq!(
+                h.call(cg, b"replaceCompiledSource:named:", &[replacement, name]),
+                source
+            );
+            assert_eq!(
+                h.call(cg, b"replaceCompiledSource:named:", &[record, name]),
+                source
+            );
+        }
+        "store" => {
+            h.call(db, b"removeMethod:on:", &[selector, vt]);
+        }
+        "source" => {
+            h.eval(b"[Reflect defineMethod: #ledgerAnswer on: Integer as: [:self | 19]]");
+        }
+        "opaque" => {
+            h.bind(vt, b"ledgerAnswer", raw);
+        }
+        "save" => {
+            h.bind(
+                cgvt,
+                b"ledgerOriginalImageCode:bindings:selection:",
+                save_original,
+            );
+            h.bind(cgvt, save_name, h.method(b"duringSave", during));
+        }
+        _ => {
+            host.send(vt, b"removeMethod:", &[selector]).unwrap();
+        }
+    }
+    if case == "store" {
+        assert_ne!(
+            h.call(
+                h.named(b"Reflect"),
+                b"slot:in:",
+                &[h.key(b"state"), generation]
+            ),
+            h.key(b"drifted")
+        );
+    }
+    let saved = h.call(h.named(b"System"), b"saveImage:", &[filename]);
+    if case == "save" {
+        h.bind(cgvt, save_name, save_original);
+        h.call(cgvt, b"removeMethod:", &[save_alias]);
+        assert!(h.count(during, 5) > 0);
+    }
+    match case.as_str() {
+        "opaque" => {
+            assert_eq!(h.call(saved, b"kind", &[]), h.key(b"nonPortableGeneration"));
+            assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
+        }
+        "save" => {
+            assert_eq!(saved, nil);
+            assert_eq!(std::fs::read(&path).unwrap(), b"previous image");
+        }
+        _ => {
+            assert_eq!(
+                saved, yes,
+                "edited live worlds can be snapshotted without certification"
+            );
+            assert_ne!(std::fs::read(&path).unwrap(), b"previous image");
+        }
+    }
+    std::fs::remove_file(path).unwrap();
+    h.call(h.gc, b"collectPrecisely", &[]);
+    assert_eq!(
+        h.number(h.call(prior, b"invokeOn:", &[h.integer(2)])),
+        17,
+        "ledger lost its retained Method"
+    );
+    let drift = h.call(g, b"reconcileCandidate:", &[generation]);
+    assert_eq!(h.call(drift, b"kind", &[]), h.key(b"staleGeneration"));
+    assert_eq!(
+        h.call(
+            h.named(b"Reflect"),
+            b"slot:in:",
+            &[h.key(b"state"), generation]
+        ),
+        recorded
+    );
+    restore();
+    assert_eq!(
+        h.call(g, b"adoptInitialGeneration:", &[generation]),
+        generation
+    );
+    let facade = h.text(include_bytes!("../../../modules/compiled-unit.birnam"));
+    h.q.check_result(h.call(h.named(b"Lang"), b"parse:", &[facade]))
+        .unwrap();
 }

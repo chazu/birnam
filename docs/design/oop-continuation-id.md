@@ -2586,3 +2586,29 @@ Embedded NUL handling, descriptor cloning, authored publication, live method
 replacement, repeated module loading and compiled inspection all pass. No runtime
 or Id change was needed.
 [Receipt](../measurements/artifact-inspection-oop-20261027.json).
+
+## Generation ledger drift and captured Method ownership
+
+The generation-ledger harness now uses Oop Methods and declared save callbacks.
+Adoption rejects opaque native implementations, source/body disagreement, missing
+or wrongly present methods, changed target aliases and wrong global Block bodies.
+It remains inert after source files and embedded assets are removed, and validates
+the final writer across dependent modules rather than an overwritten definition.
+
+The seven isolated cases cover direct dictionary edits, explicit Store removal,
+source replacement, metadata A-to-B-to-A replacement, mutation during image-code
+construction, read-only validation with a rejecting state setter, and nonportable
+native replacement. Edited portable worlds remain snapshot-capable without
+certification; nonportable or mid-save changes preserve the previous file.
+Reconciliation reports drift without rewriting descriptions, and explicit
+re-adoption can renew agreement after exact restoration.
+
+The fixture uses explicit Store invalidation to remove descriptive mirrors before
+testing the ledger's captured-Method ownership. It also avoids retaining the
+Method returned by raw dictionary removal. No universal observer or removed Id
+undo operation was introduced.
+
+All seven cases pass. The raw-edit case was rerun after removing the fixture's
+extra Method root; the six other cases were unchanged. Adjacent projection,
+transaction, candidate and retirement suites also pass. No runtime or Id change
+was needed. [Receipt](../measurements/generation-ledger-oop-20261027.json).

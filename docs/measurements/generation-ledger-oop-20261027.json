@@ -1,0 +1,59 @@
+{
+  "passed": true,
+  "scope": "Generation ledger validation, drift reporting, image-save boundaries and captured Method ownership through Oops",
+  "base_revision": "298fe4de525ecb761ac1e6edd2a3d9d02e4ea645",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/generation_ledger.rs": "627db6e5df43b8a7bfef5391d5af88adbf67b74f13174210ab68355d4e4785bb",
+    "tests/fixtures/oop-host/generation.c": "01797c8f10410b4233625d727538f0c41713b589d932ba314731d979dec5a9d4"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-ledger-oop.log",
+      "sha256": "ca2ce1b61bdaacb55c1dab0936996d610e57f704f32d0d49bbd3967b4270840f",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-ledger-raw-final.log",
+      "sha256": "e3d239d0038d963bbc0fae8e237867d7a6f8b9f2ed863e4892a772197ded19b0",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/ledger-adjacent.log",
+      "sha256": "f5d8983bb4a7c85a577e0250d1f8b5dc62a6d1201d36fb3aa25ba7b9853fcbee",
+      "exit": 0
+    }
+  ],
+  "isolated_cases": [
+    "raw",
+    "store",
+    "source",
+    "metadata",
+    "save",
+    "retry",
+    "opaque"
+  ],
+  "validation_note": "Seven-case matrix passed. The final raw-edit case was rerun after replacing H.call removal with unretained host.send; the six other cases were unchanged. Adjacent generation, transaction, candidate and retirement suites also passed.",
+  "retained_checks": [
+    "Adoption is inert after source/assets are deleted and validates the final definition across dependent modules",
+    "Opaque native bindings, wrong/missing methods, wrong target aliases and wrong global Block bodies reject adoption",
+    "Unrelated Store facts and method edits do not invalidate scoped agreement",
+    "Raw/Store/source/metadata drift reports staleGeneration without rewriting descriptive state",
+    "Metadata A-to-B-to-A changes the explicit source revision",
+    "Mutation during image-code construction preserves the previous file",
+    "Nonportable replacement preserves the previous file; other edited portable worlds can be snapshotted without certification",
+    "Captured Method remains callable after divergence and collection; exact restoration permits explicit re-adoption"
+  ],
+  "ownership_adjustments": [
+    "Explicit Store invalidation removes descriptive mirrors before ledger lifetime checks",
+    "Captured Method and dictionary-removal results are not accidentally retained by fixture convenience helpers",
+    "Declared callbacks retain compiler results across reentrant edits using existing Root operations"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native/compiler harnesses and obsolete contract audit",
+    "Automatic alias-return and numeric interception scope decisions",
+    "Complete full current-runtime cold Host qualification"
+  ]
+}
