@@ -1,1170 +1,822 @@
-//! Production Store, real source consumers, and callbacks that erase their own
-//! original roots. The snapshot oracle in birnam-store remains independent.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-};
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
+//! Explicit Store facts, history, snapshots and source through production Oops.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
+use birnam_host_support::{Context, Scope};
+use std::{cell::RefCell, path::Path, ptr};
+struct H<'a> {
+    host: &'a Context,
+    _floor: Scope<'a>,
+    hooks: oop::hooks::Hooks<'a>,
+    tokens: RefCell<Vec<Oop>>,
+    retain: Oop,
+    release: Oop,
     gc: Oop,
-    tokens: RefCell<Vec<usize>>,
+    fixture: Oop,
+    probe: Oop,
 }
-impl H {
-    unsafe fn new() -> Self {
-        unsafe {
-            let id = id();
-            let ns = if std::env::var_os("BIRNAM_STORE_TEST_LIMIT").is_some() {
-                // The 256-byte fixture exercises Store's own budget, below the
-                // compiled language bootstrap which requires metadata facts.
-                let roots=load(id,"root_registry",&[]);
-                let ns=load(id,"namespace",&[Operand::object(roots)]);
-                let prototype=object(send(id,id.receiver,b"objectPrototype",&[]));
-                let parent=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(prototype)]));
-                for (name,value) in [(b"Object".as_slice(),prototype),(b"ObjectVt",parent)] {
-                    send(id,ns,b"at:put:",&[Operand::object(id.intern_name(name).unwrap()),Operand::object(value)]);
-                }
-                for name in ["boolean","nil"] {
-                    id.send(id.receiver,id.load,&[
-                        Operand::bytes(directory().join(format!("libbirnam_{name}.dylib")).as_os_str().as_bytes()),
-                        Operand::object(ns)]).unwrap();
-                }
-                let gc=load(id,"collect",&[Operand::object(roots)]);
-                send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"GC").unwrap()),Operand::object(gc)]);
-                send(id,gc,b"activate",&[]);
-                for name in ["object_model","word","bytes","string","integer","store"] {
-                    load(id,name,&[Operand::object(ns)]);
-                }
-                // This deliberately sub-bootstrap budget cannot host compiler
-                // metadata. A fixture-only error sink isolates Store's refusal
-                // semantics; the production Error artifact is checked separately.
-                let factory_vt=behavior(id);
-                let factory=allocate(id,factory_vt,0);
-                install(id,factory_vt,b"kind:",limit_error,core::ptr::null_mut());
-                send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"Error").unwrap()),Operand::object(factory)]);
-                send(id,roots,b"retain:",&[Operand::object(factory)]);
-                ns
-            } else {
-                let ns = load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
-                optional_modules(id, ns, &["store"]);
-                ns
-            };
-            let named = |n: &[u8]| {
-                object(send(
-                    id,
-                    ns,
-                    b"at:",
-                    &[Operand::object(id.intern_name(n).unwrap())],
-                ))
-            };
-            Self {
-                id,
-                ns,
-                roots: named(b"Roots"),
-                gc: named(b"GC"),
-                tokens: RefCell::new(vec![]),
-            }
+impl<'a> H<'a> {
+    fn new(host: &'a Context) -> Self {
+        let q = host.scope();
+        let gc = host.named(b"GC").unwrap();
+        q.call(gc, b"precisePayloads:", &[size(1).unwrap()])
+            .unwrap();
+        host.load_native(
+            &q,
+            &host.resources.lib_dir.join("native/libbirnam_store.dylib"),
+            &[host.namespace],
+        )
+        .unwrap();
+        let path = std::env::temp_dir().join(format!("birnam-store-{}.dylib", std::process::id()));
+        assert!(
+            std::process::Command::new("clang")
+                .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+                .arg(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../tests/fixtures/oop-host/store.c")
+                )
+                .arg("-o")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let fixture = host.load_native(&q, &path, &[]).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let probe = q
+            .call(host.named(b"Object").unwrap(), b"clone", &[])
+            .unwrap();
+        let h = Self {
+            host,
+            _floor: q,
+            hooks: oop::hooks::Hooks::new(host),
+            tokens: RefCell::new(vec![]),
+            retain: host.intern(b"retain:").unwrap(),
+            release: host.intern(b"release:").unwrap(),
+            gc,
+            fixture,
+            probe,
+        };
+        let vt = h.call(host.id.root, b"ensurePrivateVtableFor:", &[probe]);
+        for n in [
+            b"watch".as_slice(),
+            b"allocation:bytes:identity:",
+            b"mask",
+            b"seen",
+        ] {
+            h.bind(vt, n, h.method(n, probe));
         }
+        h
     }
-    unsafe fn keep(&self, o: Oop) -> Oop {
+    fn named(&self, n: &[u8]) -> Oop {
+        self.host.named(n).unwrap()
+    }
+    fn symbol(&self, n: &[u8]) -> Oop {
+        self.keep(self.host.intern(n).unwrap())
+    }
+    fn keep(&self, o: Oop) -> Oop {
         self.tokens
             .borrow_mut()
-            .push(unsafe { retain(self.id, self.roots, o) });
+            .push(unsafe { self.host.id.send(self.host.roots, self.retain, &[o]) }.unwrap());
         o
     }
-    unsafe fn named(&self, n: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(n).unwrap())],
-            ))
-        }
+    fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
+        self.keep(self.host.send(r, n, a).unwrap())
     }
-    unsafe fn symbol(&self, n: &[u8]) -> Oop {
-        unsafe { self.keep(self.id.intern_name(n).unwrap()) }
+    fn i(&self, n: i64) -> Oop {
+        let q = self.host.scope();
+        self.call(
+            self.named(b"Integer"),
+            b"fromWord:",
+            &[q.word(n as usize).unwrap()],
+        )
     }
-    unsafe fn call(&self, r: Oop, n: &[u8], a: &[Oop]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                r,
-                n,
-                &a.iter().map(|o| Operand::object(*o)).collect::<Vec<_>>(),
-            )))
-        }
-    }
-    unsafe fn i(&self, n: i64) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                self.named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(n as usize)],
-            )))
-        }
-    }
-    unsafe fn number(&self, o: Oop) -> i64 {
-        unsafe {
-            send(
-                self.id,
-                self.named(b"Integer"),
-                b"wordOf:",
-                &[Operand::object(o)],
-            )
-            .as_word()
+    fn number(&self, o: Oop) -> i64 {
+        self.host
+            .scope()
+            .word_bits(self.call(self.named(b"Integer"), b"wordOf:", &[o]))
             .unwrap() as i64
+    }
+    fn metric(&self, r: Oop, n: &[u8]) -> i64 {
+        self.number(self.call(r, n, &[]))
+    }
+    fn fresh(&self) -> Oop {
+        self.call(self.named(b"Object"), b"clone", &[])
+    }
+    fn clear_to(&self, mark: usize) {
+        for t in self.tokens.borrow_mut().split_off(mark).into_iter().rev() {
+            unsafe { self.host.id.send(self.host.roots, self.release, &[t]) }.unwrap();
         }
     }
-    unsafe fn metric(&self, r: Oop, n: &[u8]) -> i64 {
-        unsafe { self.number(self.call(r, n, &[])) }
+    fn clear(&self) {
+        self.clear_to(0)
     }
-    unsafe fn fresh(&self) -> Oop {
-        unsafe { self.call(self.named(b"Object"), b"clone", &[]) }
+    fn collect(&self) {
+        self.call(self.gc, b"collectPrecisely", &[]);
     }
-    unsafe fn clear(&self) {
-        for t in self.tokens.take() {
-            unsafe { release(self.id, self.roots, t) }
-        }
+    fn eval(&self, s: &[u8]) -> Oop {
+        let q = self.host.scope();
+        let text = q.string(s).unwrap();
+        let result = self.call(self.named(b"Codegen"), b"eval:", &[text]);
+        q.check_result(result).unwrap();
+        result
     }
-    unsafe fn eval(&self, source: &[u8]) -> Oop {
-        unsafe {
-            let text = self.keep(object(send(
-                self.id,
-                self.named(b"String"),
-                b"fromBytes:",
-                &[Operand::bytes(source)],
-            )));
-            let result = self.call(self.named(b"Codegen"), b"eval:", &[text]);
-            if self.call(result, b"isError", &[]) == self.named(b"true") {
-                let message = self.call(result, b"message", &[]);
-                let bytes = send(self.id, message, b"bytes", &[]).as_bytes().unwrap();
-                panic!(
-                    "source {}: {}",
-                    String::from_utf8_lossy(source),
-                    String::from_utf8_lossy(
-                        birnam_abi::borrowed_bytes(bytes.pointer, bytes.length).unwrap()
-                    )
-                );
-            }
-            result
-        }
+    fn context(&self, a: &[Oop]) -> Oop {
+        self.call(self.host.id.root, b"sequence", a)
     }
-    unsafe fn callback(&self, selector: &[u8], method: native::Method, c: *mut c_void) -> Oop {
-        unsafe {
-            let vt = self.keep(behavior(self.id));
-            install(self.id, vt, selector, method, c);
-            self.keep(allocate(self.id, vt, 0))
-        }
+    fn field(&self, c: Oop, i: usize) -> Oop {
+        self.call(c, b"at:", &[size(i).unwrap()])
     }
-    unsafe fn assert(&self, st: Oop, e: Oop, a: Oop, v: Oop) {
-        assert_eq!(
-            unsafe { self.call(st, b"assert:attr:value:", &[e, a, v]) },
-            st
-        );
+    fn count(&self, c: Oop, i: usize) -> usize {
+        as_size(self.field(c, i)).unwrap()
     }
-    unsafe fn read(&self, st: Oop, e: Oop, a: Oop) -> Oop {
-        unsafe { self.call(st, b"currentValue:attr:", &[e, a]) }
+    fn put(&self, c: Oop, i: usize, v: Oop) {
+        self.call(c, b"at:put:", &[size(i).unwrap(), v]);
+    }
+    fn method(&self, n: &[u8], c: Oop) -> Oop {
+        self.call(
+            self.call(self.fixture, b"methodAt:", &[self.symbol(n)]),
+            b"withContext:",
+            &[c],
+        )
+    }
+    fn vt(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"behaviorOf:", &[v])
+    }
+    fn bind(&self, vt: Oop, n: &[u8], m: Oop) {
+        self.call(vt, b"addMethod", &[self.symbol(n), m]);
+    }
+    fn callback(&self, selector: &[u8], n: &[u8], c: Oop) -> Oop {
+        let r = self.fresh();
+        let vt = self.call(self.host.id.root, b"ensurePrivateVtableFor:", &[r]);
+        self.bind(vt, selector, self.method(n, c));
+        r
+    }
+    fn assert(&self, st: Oop, e: Oop, a: Oop, v: Oop) {
+        assert_eq!(self.call(st, b"assert:attr:value:", &[e, a, v]), st);
+    }
+    fn read(&self, st: Oop, e: Oop, a: Oop) -> Oop {
+        self.call(st, b"currentValue:attr:", &[e, a])
+    }
+    fn watch(&self, a: &[Oop]) {
+        self.host.send(self.probe, b"watch", a).unwrap();
+    }
+    fn mask(&self) -> usize {
+        as_size(self.call(self.probe, b"mask", &[])).unwrap()
+    }
+    fn identity(&self, v: Oop) -> Oop {
+        self.call(self.host.id.root, b"identityOf:", &[v])
+    }
+    fn load(&self) -> Oop {
+        let q = self.host.scope();
+        self.keep(
+            self.host
+                .load_native(
+                    &q,
+                    &self
+                        .host
+                        .resources
+                        .lib_dir
+                        .join("native/libbirnam_store.dylib"),
+                    &[self.host.namespace],
+                )
+                .unwrap(),
+        )
+    }
+    fn save(&self, vt: Oop, n: &[u8], alias: &[u8]) -> Oop {
+        let m = self.call(vt, b"lookup", &[self.symbol(n)]);
+        self.bind(vt, alias, m);
+        m
+    }
+    fn restore(&self, vt: Oop, n: &[u8], alias: &[u8], m: Oop) {
+        self.bind(vt, n, m);
+        self.call(vt, b"removeMethod:", &[self.symbol(alias)]);
+    }
+    fn forwarding(&self, alias: &[u8]) -> Oop {
+        self.context(&[
+            self.gc,
+            self.symbol(alias),
+            size(0).unwrap(),
+            size(0).unwrap(),
+        ])
     }
 }
-// Limit errors are Symbols in this minimal fixture, carrying their own kind.
-// No production Error implementation or foreign value layout is involved.
-unsafe extern "C" fn limit_error(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let _ = c;
-    let Some([kind]) = (unsafe { borrowed_slice(a,n) }) else { return Outcome::failed(native::INVALID_REQUEST,0); };
-    Outcome::loaded(*kind)
+impl Drop for H<'_> {
+    fn drop(&mut self) {
+        self.clear();
+    }
 }
 fn isolated_case(name: &str) -> bool {
-    if std::env::var("BIRNAM_STORE_CASE").as_deref() == Ok(name) { return false; }
-    let result = std::process::Command::new(std::env::current_exe().unwrap())
+    if std::env::var("BIRNAM_STORE_CASE").as_deref() == Ok(name) {
+        return false;
+    }
+    let r = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", name, "--ignored", "--nocapture"])
         .env("BIRNAM_STORE_CASE", name)
-        .output().unwrap();
-    assert!(result.status.success(), "{}\n{}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+        .output()
+        .unwrap();
+    assert!(
+        r.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&r.stdout),
+        String::from_utf8_lossy(&r.stderr)
+    );
     true
 }
-
-struct Visitor {
-    h: *const H,
-    store: Oop,
-    calls: Cell<usize>,
-    seen: RefCell<Vec<[Oop; 3]>>,
-    fail: bool,
+fn collecting_construction(h: &H<'_>) {
+    let original_store = h.named(b"Store");
+    let key = h.symbol(b"Store");
+    h.call(h.host.namespace, b"at:put:", &[key, ptr::null_mut()]);
+    let vt = h.vt(h.host.id.root);
+    let original = h.save(vt, b"allocationSizeOf:", b"storeOriginalExtent:");
+    let c = h.forwarding(b"storeOriginalExtent:");
+    h.bind(vt, b"allocationSizeOf:", h.method(b"forward", c));
+    let new = h.call(original_store, b"new", &[]);
+    h.restore(vt, b"allocationSizeOf:", b"storeOriginalExtent:", original);
+    assert!(h.count(c, 2) >= 2);
+    assert_ne!(new, original_store);
+    assert_eq!(h.metric(new, b"basis"), 3);
+    assert_eq!(h.load(), original_store);
+    assert!(h.call(h.host.namespace, b"at:", &[key]).is_null());
+    h.call(h.host.namespace, b"at:put:", &[key, original_store]);
 }
-unsafe extern "C" fn snapshot_visitor(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Visitor>();
-        let h = &*c.h;
-        let a = borrowed_slice(a, n).unwrap();
-        assert_eq!(a.len(), 3);
-        if c.calls.get() == 0 {
-            send(h.id, c.store, b"imageLoadBegin", &[]);
-        }
-        collect(h.id, h.gc);
-        let row = [object(a[0]), object(a[1]), object(a[2])];
-        for o in row {
-            assert!(present(h.id, o));
-        }
-        c.seen.borrow_mut().push(row);
-        c.calls.set(c.calls.get() + 1);
-        if c.fail {
-            Outcome::failed(native::INVALID_REQUEST, 71)
-        } else {
-            Outcome::loaded(Operand::object(c.store))
-        }
-    }
+fn semantics(h: &H<'_>) {
+    let st = h.call(h.named(b"Store"), b"new", &[]);
+    let e = h.symbol(b"entity");
+    let a = h.symbol(b"attribute");
+    let v = h.i(41);
+    let w = h.i(42);
+    let nil = h.named(b"nil");
+    assert_eq!(h.read(st, e, a), nil);
+    assert!(h.call(st, b"rawCurrentValue:attr:", &[e, a]).is_null());
+    h.assert(st, e, a, nil);
+    assert_eq!(h.call(st, b"hasValue:attr:", &[e, a]), h.named(b"true"));
+    assert_eq!(
+        h.call(st, b"currentValue:attr:ifAbsent:", &[e, a, h.fresh()]),
+        nil
+    );
+    let before = h.metric(st, b"basis");
+    h.assert(st, e, a, nil);
+    assert_eq!(h.metric(st, b"basis"), before);
+    h.assert(st, e, a, v);
+    h.assert(st, e, a, w);
+    assert_eq!(h.read(st, e, a), w);
+    assert_eq!(h.number(h.call(st, b"history:attr:", &[e, a])), 1);
+    h.call(st, b"retract:attr:value:", &[e, a, w]);
+    assert_eq!(h.read(st, e, a), nil);
+    h.assert(st, a, h.symbol(b"history"), h.named(b"true"));
+    h.assert(st, e, a, v);
+    let basis = h.call(st, b"basis", &[]);
+    h.call(st, b"retainSince:", &[basis]);
+    h.assert(st, e, a, w);
+    assert_eq!(h.call(st, b"valueOf:attr:asOf:", &[e, a, basis]), v);
+    h.call(st, b"compact", &[]);
+    assert_eq!(h.call(st, b"valueOf:attr:asOf:", &[e, a, basis]), v);
+    h.call(st, b"retainCurrentOnly", &[]);
+    h.call(st, b"compact", &[]);
+    let error = h.call(st, b"valueOf:attr:asOf:", &[e, a, basis]);
+    assert_eq!(h.call(error, b"kind", &[]), h.symbol(b"historyNotRetained"));
+    let many = h.symbol(b"many");
+    let tags = h.symbol(b"tags");
+    h.assert(st, tags, h.symbol(b"cardinality"), many);
+    h.assert(st, e, tags, v);
+    h.assert(st, e, tags, w);
+    h.assert(st, e, tags, w);
+    assert_eq!(h.number(h.call(st, b"count:attr:", &[e, tags])), 2);
+    h.call(st, b"retract:attr:value:", &[e, tags, v]);
+    assert_eq!(h.number(h.call(st, b"count:attr:", &[e, tags])), 1);
+    assert_eq!(h.call(st, b"cardinality:", &[tags]), many);
+    assert!(h.host.send(st, b"assert:attr:value:", &[]).is_err());
+    assert!(
+        h.host
+            .send(st, b"retainLast:", &[size(4).unwrap()])
+            .is_err()
+    );
+    let cloned = h.call(st, b"clone", &[]);
+    assert!(h.host.send(cloned, b"basis", &[]).is_err());
+    assert_eq!(h.load(), h.named(b"Store"));
 }
-struct Replacement {
-    h: *const H,
-    calls: Cell<usize>,
-    entry: NativeEntry,
+fn cells_and_dispatch(h: &H<'_>) {
+    let st = h.call(h.named(b"Store"), b"new", &[]);
+    let e = h.fresh();
+    let a = h.symbol(b"cell-key");
+    let value = h.fresh();
+    let cell = h.call(st, b"cellFor:attr:", &[e, a]);
+    h.call(cell, b"set:", &[value]);
+    h.watch(&[st, e, a, value, cell]);
+    h.clear();
+    h.keep(cell);
+    h.collect();
+    assert_eq!(h.mask(), 31);
+    assert_eq!(h.call(cell, b"value", &[]), value);
+    let vt = h.named(b"StoreVt");
+    let old = h.save(vt, b"currentValue:attr:", b"storeOriginalRead:attr:");
+    let c = h.forwarding(b"storeOriginalRead:attr:");
+    h.bind(vt, b"currentValue:attr:", h.method(b"forward", c));
+    assert_eq!(h.call(cell, b"value", &[]), value);
+    assert_eq!(h.count(c, 2), 1);
+    h.restore(vt, b"currentValue:attr:", b"storeOriginalRead:attr:", old);
+    let ivt = h.vt(h.named(b"Integer"));
+    let old = h.save(ivt, b"fromWord:", b"storeOriginalInteger:");
+    let c = h.forwarding(b"storeOriginalInteger:");
+    h.bind(ivt, b"fromWord:", h.method(b"forward", c));
+    assert!(h.metric(st, b"basis") > 3);
+    assert_eq!(h.count(c, 2), 1);
+    h.restore(ivt, b"fromWord:", b"storeOriginalInteger:", old);
+    h.clear();
+    h.collect();
+    assert_eq!(h.mask(), 0);
 }
-struct ConstructionProbe {
-    h: *const H,
-    entry: NativeEntry,
-    inside: Cell<bool>,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn collecting_allocation_query(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<ConstructionProbe>();
-        if !c.inside.replace(true) {
-            let h = &*c.h;
-            c.calls.set(c.calls.get() + 1);
-            collect(h.id, h.gc);
-            c.inside.set(false);
-        }
-        c.entry.method.unwrap()(c.entry.context, r, a, n)
-    }
-}
-unsafe fn collecting_construction(h: &H) {
-    unsafe {
-        // Deliberately remove publication, then construct another complete
-        // instance. The old instance remains registered with its own state.
-        let store = h.symbol(b"Store");
-        send(
-            h.id,
-            h.ns,
-            b"at:put:",
-            &[Operand::object(store), Operand::unit()],
-        );
-        let query = h.symbol(b"allocationSizeOf:");
-        let entry = send(
-            h.id,
-            h.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(query), Operand::object(h.id.receiver)],
-        )
-        .as_entry()
-        .unwrap();
-        let mut c = ConstructionProbe {
-            h,
-            entry,
-            inside: Cell::new(false),
-            calls: Cell::new(0),
-        };
-        install(
-            h.id,
-            h.id.receiver,
-            b"allocationSizeOf:",
-            collecting_allocation_query,
-            (&mut c as *mut ConstructionProbe).cast(),
-        );
-        let new = load(h.id, "store", &[Operand::object(h.ns)]);
-        send(
-            h.id,
-            h.id.receiver,
-            b"addMethod",
-            &[Operand::object(query), Operand::entry(entry)],
-        );
-        assert!(c.calls.get() >= 2);
-        assert_eq!(new, h.named(b"Store"));
-        assert_eq!(h.metric(new, b"basis"), 3);
-    }
-}
-unsafe extern "C" fn replacement(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<Replacement>();
-        let h = &*c.h;
-        c.calls.set(c.calls.get() + 1);
-        collect(h.id, h.gc);
-        c.entry.method.unwrap()(c.entry.context, r, a, n)
-    }
-}
-struct ImageCopy {
-    h: *const H,
-    target: Oop,
-    count: Cell<usize>,
-}
-unsafe extern "C" fn image_copy(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<ImageCopy>();
-        let h = &*c.h;
-        let a = borrowed_slice(a, n).unwrap();
-        assert_eq!(a.len(), 6);
-        collect(h.id, h.gc);
-        c.count.set(c.count.get() + 1);
-        h.id.send_named(c.target, b"imageAddFact:attr:value:tx:op:historied:", a)
-            .map_or_else(|e| e, Outcome::loaded)
-    }
-}
-
-unsafe fn semantics(h: &H) {
-    unsafe {
-        let st = h.call(h.named(b"Store"), b"new", &[]);
-        let e = h.symbol(b"entity");
-        let a = h.symbol(b"attribute");
-        let v = h.i(41);
-        let w = h.i(42);
-        let nil = h.named(b"nil");
-        assert_eq!(h.read(st, e, a), nil);
-        assert_eq!(
-            send(
-                h.id,
-                st,
-                b"rawCurrentValue:attr:",
-                &[Operand::object(e), Operand::object(a)]
-            )
-            .kind(),
-            native::UNIT
-        );
-        h.assert(st, e, a, nil);
-        assert_eq!(h.call(st, b"hasValue:attr:", &[e, a]), h.named(b"true"));
-        assert_eq!(
-            h.call(st, b"currentValue:attr:ifAbsent:", &[e, a, h.fresh()]),
-            nil
-        );
-        let before = h.metric(st, b"basis");
-        h.assert(st, e, a, nil);
-        assert_eq!(h.metric(st, b"basis"), before);
+fn snapshots(h: &H<'_>, fail: bool) {
+    let st = h.call(h.named(b"Store"), b"new", &[]);
+    let e = h.fresh();
+    let a = h.symbol(b"snapshot-many");
+    h.assert(st, a, h.symbol(b"cardinality"), h.symbol(b"many"));
+    let values = (0..8).map(|_| h.fresh()).collect::<Vec<_>>();
+    for &v in &values {
         h.assert(st, e, a, v);
-        h.assert(st, e, a, w);
-        assert_eq!(h.read(st, e, a), w);
-        assert_eq!(h.number(h.call(st, b"history:attr:", &[e, a])), 1);
-        h.call(st, b"retract:attr:value:", &[e, a, w]);
-        assert_eq!(h.read(st, e, a), nil);
-        // Prospective history and exact as-of watermarks, retained across compaction.
-        let history = h.symbol(b"history");
-        h.assert(st, a, history, h.named(b"true"));
-        h.assert(st, e, a, v);
-        let basis = h.call(st, b"basis", &[]);
-        h.call(st, b"retainSince:", &[basis]);
-        h.assert(st, e, a, w);
-        assert_eq!(h.call(st, b"valueOf:attr:asOf:", &[e, a, basis]), v);
-        h.call(st, b"compact", &[]);
-        assert_eq!(h.call(st, b"valueOf:attr:asOf:", &[e, a, basis]), v);
-        h.call(st, b"retainCurrentOnly", &[]);
-        h.call(st, b"compact", &[]);
-        let error = h.call(st, b"valueOf:attr:asOf:", &[e, a, basis]);
-        assert_eq!(h.call(error, b"kind", &[]), h.symbol(b"historyNotRetained"));
-        let many = h.symbol(b"many");
-        let cardinality = h.symbol(b"cardinality");
-        let tags = h.symbol(b"tags");
-        h.assert(st, tags, cardinality, many);
-        h.assert(st, e, tags, v);
-        h.assert(st, e, tags, w);
-        h.assert(st, e, tags, w);
-        assert_eq!(h.number(h.call(st, b"count:attr:", &[e, tags])), 2);
-        h.call(st, b"retract:attr:value:", &[e, tags, v]);
-        assert_eq!(h.number(h.call(st, b"count:attr:", &[e, tags])), 1);
-        assert_eq!(h.call(st, b"cardinality:", &[tags]), many);
-        // Typed arity and receiver checks, including unsupported empty clones.
-        assert!(h.id.send_named(st, b"assert:attr:value:", &[]).is_err());
-        assert!(
-            h.id.send_named(st, b"retainLast:", &[Operand::word(4)])
-                .is_err()
-        );
-        let clone = h.call(st, b"clone", &[]);
-        assert!(h.id.send_named(clone, b"basis", &[]).is_err());
-        assert_eq!(
-            load(h.id, "store", &[Operand::object(h.ns)]),
-            h.named(b"Store")
-        );
     }
-}
-
-unsafe fn cells_and_dispatch(h: &H) {
-    unsafe {
-        let st = h.call(h.named(b"Store"), b"new", &[]);
-        let e = h.fresh();
-        let attr = h.symbol(b"cell-key");
-        let value = h.fresh();
-        let cell = h.call(st, b"cellFor:attr:", &[e, attr]);
-        h.call(cell, b"set:", &[value]);
-        h.clear();
-        h.keep(cell);
-        collect(h.id, h.gc);
-        for o in [st, e, attr, value, cell] {
-            assert!(present(h.id, o));
-        }
-        assert_eq!(h.call(cell, b"value", &[]), value);
-        let vt = h.named(b"StoreVt");
-        let key = h.symbol(b"currentValue:attr:");
-        let entry = send(
-            h.id,
-            h.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(key), Operand::object(vt)],
-        )
-        .as_entry()
-        .unwrap();
-        let mut c = Replacement {
-            h,
-            calls: Cell::new(0),
-            entry,
-        };
-        install(
-            h.id,
-            vt,
-            b"currentValue:attr:",
-            replacement,
-            (&mut c as *mut Replacement).cast(),
-        );
-        assert_eq!(h.call(cell, b"value", &[]), value);
-        assert_eq!(c.calls.get(), 1);
-        send(
-            h.id,
-            vt,
-            b"addMethod",
-            &[Operand::object(key), Operand::entry(entry)],
-        );
-        // Fact result construction must use the current Integer factory too.
-        let integer = h.named(b"Integer");
-        let ivt = object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(integer)],
-        ));
-        let key = h.symbol(b"fromWord:");
-        let entry = send(
-            h.id,
-            h.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(key), Operand::object(ivt)],
-        )
-        .as_entry()
-        .unwrap();
-        let mut factory = Replacement {
-            h,
-            calls: Cell::new(0),
-            entry,
-        };
-        install(
-            h.id,
-            ivt,
-            b"fromWord:",
-            replacement,
-            (&mut factory as *mut Replacement).cast(),
-        );
-        assert!(h.metric(st, b"basis") > 3);
-        assert_eq!(factory.calls.get(), 1);
-        send(
-            h.id,
-            ivt,
-            b"addMethod",
-            &[Operand::object(key), Operand::entry(entry)],
-        );
-        h.clear();
-        collect(h.id, h.gc);
-        for o in [st, e, attr, value, cell] {
-            assert!(!present(h.id, o), "Store or Cell retained a dead edge");
+    let ids = values
+        .iter()
+        .map(|&v| [h.identity(e), h.identity(a), h.identity(v)])
+        .collect::<Vec<_>>();
+    let fault = h.hooks.fault(71);
+    let c = h.context(&[
+        h.gc,
+        st,
+        size(0).unwrap(),
+        if fail { fault } else { ptr::null_mut() },
+    ]);
+    let visitor = h.callback(b"value:value:value:", b"snapshot", c);
+    h.watch(&values);
+    h.clear();
+    h.keep(st);
+    h.keep(visitor);
+    let result = unsafe { h.host.id.send(st, h.symbol(b"liveTriplesDo:"), &[visitor]) };
+    if fail {
+        assert_eq!(result.unwrap_err(), fault);
+    } else {
+        assert!(result.is_ok());
+        for row in ids {
+            assert_eq!(as_size(h.call(h.probe, b"seen", &row)), Some(1));
         }
     }
+    h.collect();
+    assert_eq!(
+        h.mask(),
+        0,
+        "snapshot references released after completion or failure"
+    );
+    h.clear();
+    h.collect();
 }
-
-unsafe fn snapshots(h: &H, fail: bool) {
-    unsafe {
-        let st = h.call(h.named(b"Store"), b"new", &[]);
-        let e = h.fresh();
-        let attr = h.symbol(b"snapshot-many");
-        h.assert(st, attr, h.symbol(b"cardinality"), h.symbol(b"many"));
-        let values = (0..8).map(|_| h.fresh()).collect::<Vec<_>>();
-        for &v in &values {
-            h.assert(st, e, attr, v);
-        }
-        let mut visitor = Visitor {
-            h,
-            store: st,
-            calls: Cell::new(0),
-            seen: RefCell::new(vec![]),
-            fail,
-        };
-        let block = h.callback(
-            b"value:value:value:",
-            snapshot_visitor,
-            (&mut visitor as *mut Visitor).cast(),
-        );
-        h.clear();
-        h.keep(st);
-        h.keep(block);
-        let result =
-            h.id.send_named(st, b"liveTriplesDo:", &[Operand::object(block)]);
-        if fail {
-            assert_eq!(result.unwrap_err().detail, 71);
-        } else {
-            assert!(result.is_ok());
-            let seen = visitor.seen.borrow();
-            for &v in &values {
-                assert!(seen.contains(&[e, attr, v]));
-            }
-        }
-        collect(h.id, h.gc);
-        for v in values {
-            assert!(
-                !present(h.id, v),
-                "snapshot leaked after callback completion/failure"
-            );
-        }
-        h.clear();
-        collect(h.id, h.gc);
-    }
-}
-
-unsafe fn image_transfer(h: &H) {
-    unsafe {
-        let st = h.call(h.named(b"Store"), b"new", &[]);
-        let target = h.call(h.named(b"Store"), b"new", &[]);
-        let e = h.fresh();
-        let a = h.symbol(b"durable");
-        let v = h.fresh();
-        h.assert(st, e, a, v);
-        let transient = h.symbol(b"temporary");
-        h.assert(st, transient, h.symbol(b"imageTransient"), h.named(b"true"));
-        h.assert(st, e, transient, h.fresh());
-        h.call(target, b"imageLoadBegin", &[]);
-        let mut copy = ImageCopy {
-            h,
-            target,
-            count: Cell::new(0),
-        };
-        let collector = h.callback(
-            b"e:a:v:tx:op:historied:",
-            image_copy,
-            (&mut copy as *mut ImageCopy).cast(),
-        );
-        h.call(st, b"imageFactsInto:", &[collector]);
-        assert!(copy.count.get() >= 4);
-        let metadata = [
-            h.call(st, b"basis", &[]),
-            h.named(b"false"),
-            h.call(st, b"oldestRetainedBasis", &[]),
-            h.call(st, b"retentionPolicyCode", &[]),
-            h.call(st, b"retentionPolicyArgument", &[]),
-        ];
-        h.call(
-            target,
-            b"imageLoadEnd:raw:oldest:policy:argument:",
-            &metadata,
-        );
-        assert_eq!(h.read(target, e, a), v);
-        assert_eq!(h.read(target, e, transient), h.named(b"nil"));
-        assert_eq!(h.metric(st, b"basis"), h.metric(target, b"basis"));
-        assert!(
-            h.id.send_named(
+fn image_transfer(h: &H<'_>) {
+    let st = h.call(h.named(b"Store"), b"new", &[]);
+    let target = h.call(h.named(b"Store"), b"new", &[]);
+    let e = h.fresh();
+    let a = h.symbol(b"durable");
+    let v = h.fresh();
+    h.assert(st, e, a, v);
+    let temporary = h.symbol(b"temporary");
+    h.assert(st, temporary, h.symbol(b"imageTransient"), h.named(b"true"));
+    h.assert(st, e, temporary, h.fresh());
+    h.call(target, b"imageLoadBegin", &[]);
+    let c = h.context(&[h.gc, target, size(0).unwrap()]);
+    let visitor = h.callback(b"e:a:v:tx:op:historied:", b"imageCopy", c);
+    h.call(st, b"imageFactsInto:", &[visitor]);
+    assert!(h.count(c, 2) >= 4);
+    let metadata = [
+        h.call(st, b"basis", &[]),
+        h.named(b"false"),
+        h.call(st, b"oldestRetainedBasis", &[]),
+        h.call(st, b"retentionPolicyCode", &[]),
+        h.call(st, b"retentionPolicyArgument", &[]),
+    ];
+    h.call(
+        target,
+        b"imageLoadEnd:raw:oldest:policy:argument:",
+        &metadata,
+    );
+    assert_eq!(h.read(target, e, a), v);
+    assert_eq!(h.read(target, e, temporary), h.named(b"nil"));
+    assert_eq!(h.metric(st, b"basis"), h.metric(target, b"basis"));
+    assert!(
+        h.host
+            .send(
                 target,
                 b"imageAddFact:attr:value:tx:op:historied:",
-                &[
-                    Operand::object(e),
-                    Operand::object(a),
-                    Operand::object(v),
-                    Operand::object(h.i(-1)),
-                    Operand::object(h.i(0)),
-                    Operand::object(h.named(b"true"))
-                ]
+                &[e, a, v, h.i(-1), h.i(0), h.named(b"true")]
             )
             .is_err()
-        );
+    );
+}
+fn globals_are_independent(h: &H<'_>) {
+    let globals = h.named(b"Globals");
+    let st = h.named(b"Store");
+    let e = h.symbol(b"__globals__");
+    let key = h.symbol(b"historied-global");
+    h.assert(st, key, h.symbol(b"history"), h.named(b"true"));
+    let a = h.i(11);
+    let b = h.i(22);
+    h.call(globals, b"at:put:", &[key, a]);
+    assert_eq!(h.read(st, e, key), h.named(b"nil"));
+    h.assert(st, e, key, a);
+    let basis = h.call(st, b"basis", &[]);
+    h.call(st, b"retainSince:", &[basis]);
+    h.call(globals, b"at:put:", &[key, b]);
+    assert_eq!(h.read(st, e, key), a);
+    h.assert(st, e, key, b);
+    assert_eq!(h.call(st, b"valueOf:attr:asOf:", &[e, key, basis]), a);
+    h.assert(st, e, key, a);
+    assert_eq!(h.call(globals, b"at:", &[key]), b);
+    let missing = h.symbol(b"absent-global");
+    assert_eq!(h.call(globals, b"includes:", &[missing]), h.named(b"false"));
+    h.call(globals, b"at:put:", &[missing, h.named(b"nil")]);
+    assert_eq!(h.call(globals, b"includes:", &[missing]), h.named(b"true"));
+    let vt = h.named(b"StoreVt");
+    let old = h.save(vt, b"currentValue:attr:", b"storeOriginalRead:attr:");
+    let c = h.forwarding(b"storeOriginalRead:attr:");
+    h.bind(vt, b"currentValue:attr:", h.method(b"forward", c));
+    assert_eq!(h.call(globals, b"at:", &[key]), b);
+    assert_eq!(h.count(c, 2), 0);
+    assert_eq!(h.read(st, e, key), a);
+    assert_eq!(h.count(c, 2), 1);
+    h.restore(vt, b"currentValue:attr:", b"storeOriginalRead:attr:", old);
+    assert!(h.call(h.host.namespace, b"at:", &[key]).is_null());
+}
+fn mop_hooks(h: &H<'_>) {
+    let st = h.named(b"Store");
+    let target = h.fresh();
+    let vt = h.call(h.host.id.root, b"ensurePrivateVtableFor:", &[target]);
+    let selector = h.symbol(b"mopProbe");
+    let value = h.i(17);
+    let method = h.hooks.method(b"fixed", value);
+    let c = h.context(&[
+        h.gc,
+        st,
+        h.named(b"false"),
+        size(0).unwrap(),
+        size(0).unwrap(),
+        method,
+    ]);
+    let auth = h.callback(b"value", b"authorize", c);
+    let observer = h.callback(b"managedMethodChanged:on:", b"observe", c);
+    for _ in 0..2 {
+        assert_eq!(h.call(st, b"setMethodMutationAuthorizer:", &[auth]), st);
+        assert_eq!(h.call(st, b"setMethodMutationObserver:", &[observer]), st);
     }
-}
-
-unsafe fn source(h: &H) {
-    unsafe {
-        let answer=h.eval(b"let storeSample := [Store new]; let storeCell := [storeSample cellFor: #sample attr: #value]; [storeCell set: 41]; [[storeCell value] + 1]");
-        assert_eq!(h.number(answer), 42);
-        assert_eq!(
-            h.number(h.eval(b"[Globals at: #sourceGlobal put: 73]; [Globals at: #sourceGlobal]")),
-            73
-        );
-        assert_eq!(
-            h.number(h.eval(b"let declaredGlobal := 91; [Globals at: #declaredGlobal]")),
-            91
-        );
-        assert_eq!(
-            h.eval(b"[Globals at: #boundNil put: nil]; [Globals at: #boundNil ifAbsent: [| 99]]"),
-            h.named(b"nil")
-        );
-        assert_eq!(
-            h.number(h.eval(b"[Globals at: #missingStoreGlobal ifAbsent: [| 99]]")),
-            99
-        );
-        assert_eq!(
-            h.eval(b"[[db cellFor: #sample attr: #unset] value]"),
-            h.named(b"nil")
-        );
+    for (setter, kind) in [
+        (
+            b"setMethodMutationObserver:".as_slice(),
+            b"methodMutationObserverAlreadySet".as_slice(),
+        ),
+        (
+            b"setMethodMutationAuthorizer:",
+            b"methodMutationAuthorizerAlreadySet",
+        ),
+    ] {
+        let err = h.call(st, setter, &[h.fresh()]);
+        assert_eq!(h.call(err, b"kind", &[]), h.symbol(kind));
     }
-}
-
-unsafe fn globals_are_independent(h: &H) {
-    unsafe {
-        let globals = h.named(b"Globals");
-        let store = h.named(b"Store");
-        let entity = h.symbol(b"__globals__");
-        let key = h.symbol(b"historied-global");
-        h.assert(store, key, h.symbol(b"history"), h.named(b"true"));
-        let a = h.i(11);
-        let b = h.i(22);
-        h.call(globals, b"at:put:", &[key, a]);
-        assert_eq!(h.read(store, entity, key),h.named(b"nil"));
-        h.assert(store,entity,key,a);
-        let basis=h.call(store,b"basis",&[]);
-        h.call(store,b"retainSince:",&[basis]);
-        h.call(globals,b"at:put:",&[key,b]);
-        assert_eq!(h.read(store,entity,key),a);
-        h.assert(store,entity,key,b);
-        assert_eq!(h.call(store,b"valueOf:attr:asOf:",&[entity,key,basis]),a);
-        h.assert(store,entity,key,a);
-        assert_eq!(h.call(globals,b"at:",&[key]),b);
-        let missing = h.symbol(b"absent-global");
-        assert_eq!(h.call(globals, b"includes:", &[missing]), h.named(b"false"));
-        h.call(globals, b"at:put:", &[missing, h.named(b"nil")]);
-        assert_eq!(h.call(globals, b"includes:", &[missing]), h.named(b"true"));
-        // Explicit Store reads remain replaceable; ordinary Globals does not read facts.
-        let vt = h.named(b"StoreVt");
-        let read = h.symbol(b"currentValue:attr:");
-        let entry = send(
-            h.id,
-            h.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(read), Operand::object(vt)],
-        )
-        .as_entry()
-        .unwrap();
-        let mut c = Replacement {
-            h,
-            calls: Cell::new(0),
-            entry,
-        };
-        install(
-            h.id,
-            vt,
-            b"currentValue:attr:",
-            replacement,
-            (&mut c as *mut Replacement).cast(),
-        );
-        assert_eq!(h.call(globals, b"at:", &[key]), b);
-        assert_eq!(c.calls.get(), 0);
-        assert_eq!(h.read(store,entity,key),a);
-        assert_eq!(c.calls.get(), 1);
-        send(
-            h.id,
-            vt,
-            b"addMethod",
-            &[Operand::object(read), Operand::entry(entry)],
-        );
-        assert_eq!(
-            send(h.id, h.ns, b"at:", &[Operand::object(key)]).kind(),
-            native::UNIT
-        );
+    h.watch(&[auth, observer]);
+    h.clear();
+    for v in [target, vt, selector, method] {
+        h.keep(v);
     }
+    h.collect();
+    assert_eq!(h.mask(), 3);
+    assert_eq!(
+        h.call(st, b"addMethod:on:with:", &[selector, vt, method]),
+        h.named(b"false")
+    );
+    assert!(h.call(vt, b"lookup", &[selector]).is_null());
+    assert_eq!(h.count(c, 4), 0);
+    h.put(c, 2, h.named(b"true"));
+    assert_eq!(
+        h.call(st, b"addMethod:on:with:", &[selector, vt, method]),
+        st
+    );
+    assert_eq!(h.call(target, b"mopProbe", &[]), value);
+    assert_eq!(h.read(st, vt, selector), method);
+    assert_eq!(h.count(c, 4), 1);
+    let target_store = h.call(st, b"new", &[]);
+    h.call(target_store, b"imageLoadBegin", &[]);
+    let copy = h.context(&[h.gc, target_store, size(0).unwrap()]);
+    let visitor = h.callback(b"e:a:v:tx:op:historied:", b"imageCopy", copy);
+    h.call(st, b"imageFactsInto:", &[visitor]);
+    assert_eq!(h.read(target_store, vt, selector), h.named(b"nil"));
+    let global = h.symbol(b"historied-global");
+    assert_eq!(
+        h.number(h.read(target_store, h.symbol(b"__globals__"), global)),
+        11
+    );
+    let store_vt = h.named(b"StoreVt");
+    let changed = h.symbol(b"methodChanged:on:");
+    let original = h.call(store_vt, b"lookup", &[changed]);
+    let ignored = h.context(&[h.named(b"nil"), size(0).unwrap()]);
+    h.bind(
+        store_vt,
+        b"methodChanged:on:",
+        h.hooks.method(b"fixedCount", ignored),
+    );
+    let raw = h.hooks.method(b"fixed", value);
+    h.bind(vt, b"mopProbe", raw);
+    assert_eq!(h.count(ignored, 1), 0);
+    h.call(st, b"methodChanged:on:", &[selector, vt]);
+    assert_eq!(h.count(ignored, 1), 1);
+    assert_eq!(h.read(st, vt, selector), method);
+    h.bind(store_vt, b"methodChanged:on:", original);
+    h.bind(vt, b"mopProbe", raw);
+    assert_eq!(h.read(st, vt, selector), method);
+    h.call(st, b"methodChanged:on:", &[selector, vt]);
+    assert_eq!(h.read(st, vt, selector), h.named(b"nil"));
+    assert_eq!(h.count(c, 4), 1);
+    h.call(st, b"addMethod:on:with:", &[selector, vt, method]);
+    h.put(c, 5, ptr::null_mut());
+    h.call(st, b"removeMethod:on:", &[selector, vt]);
+    assert_eq!(h.read(st, vt, selector), h.named(b"nil"));
+    assert_eq!(h.count(c, 4), 3);
+    let error = h.call(st, b"removeMethod:on:", &[selector, vt]);
+    assert_eq!(
+        h.call(error, b"kind", &[]),
+        h.symbol(b"missingDirectMethod")
+    );
+    h.bind(vt, b"mopProbe", raw);
+    let before = h.metric(st, b"basis");
+    h.call(st, b"backfillMirror", &[]);
+    assert_eq!(h.metric(st, b"basis"), before);
+    assert_eq!(h.read(st, vt, selector), h.symbol(b"primitive"));
+    h.call(vt, b"removeMethod:", &[selector]);
+    assert_eq!(h.read(st, vt, selector), h.symbol(b"primitive"));
+    h.call(st, b"methodChanged:on:", &[selector, vt]);
+    assert_eq!(h.read(st, vt, selector), h.named(b"nil"));
+    // Captured dictionary operations still require explicit invalidation.
+    h.put(c, 5, method);
+    h.call(st, b"addMethod:on:with:", &[selector, vt, method]);
+    let add = h.call(h.host.id.root, b"bind:to:", &[h.symbol(b"addMethod"), vt]);
+    let remove = h.call(
+        h.host.id.root,
+        b"bind:to:",
+        &[h.symbol(b"removeMethod:"), vt],
+    );
+    h.call(
+        add,
+        b"invokeOn:arguments:",
+        &[vt, h.context(&[selector, raw])],
+    );
+    h.call(st, b"methodChanged:on:", &[selector, vt]);
+    assert_eq!(h.read(st, vt, selector), h.named(b"nil"));
+    h.call(st, b"backfillMirror", &[]);
+    h.call(
+        remove,
+        b"invokeOn:arguments:",
+        &[vt, h.context(&[selector])],
+    );
+    h.call(st, b"methodChanged:on:", &[selector, vt]);
+    assert_eq!(h.read(st, vt, selector), h.named(b"nil"));
 }
-
-struct MopProbe {
-    h: *const H,
-    store: Oop,
-    allow: Cell<bool>,
-    authorizations: Cell<usize>,
-    notifications: Cell<usize>,
-    expected: Cell<Oop>,
+fn phase_safety(h: &H<'_>) {
+    let st = h.call(h.named(b"Store"), b"new", &[]);
+    let c = h.context(&[
+        st,
+        h.fresh(),
+        h.symbol(b"during-mark"),
+        h.fresh(),
+        size(0).unwrap(),
+    ]);
+    let owner = h.callback(b"referencesOf:do:", b"phase", c);
+    let vt = h.call(h.named(b"ObjectVt"), b"delegated", &[]);
+    h.call(vt, b"allocate", &[size(0).unwrap()]);
+    h.call(h.gc, b"trace:with:", &[vt, owner]);
+    let before = h.metric(st, b"basis");
+    h.collect();
+    assert_eq!(h.count(c, 4), 1);
+    assert_eq!(h.metric(st, b"basis"), before);
+    h.call(h.gc, b"trace:with:", &[vt, ptr::null_mut()]);
 }
-unsafe extern "C" fn authorize_mop(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        assert_eq!(n, 0);
-        let c = &*c.cast::<MopProbe>();
-        let h = &*c.h;
-        collect(h.id, h.gc);
-        c.authorizations.set(c.authorizations.get() + 1);
-        Outcome::loaded(Operand::object(h.named(if c.allow.get() {
-            b"true"
-        } else {
-            b"false"
-        })))
-    }
-}
-unsafe extern "C" fn observe_mop(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let c = &*c.cast::<MopProbe>();
-        let h = &*c.h;
-        let a = borrowed_slice(a, n).unwrap();
-        assert_eq!(n, 2);
-        collect(h.id, h.gc);
-        let row = send(h.id, c.store, b"rawCurrentValue:attr:", &[a[1], a[0]]);
-        if c.expected.get().is_null() {
-            assert_eq!(row.kind(), native::UNIT);
-        } else {
-            assert_eq!(row.as_object(), Some(c.expected.get()));
-        }
-        c.notifications.set(c.notifications.get() + 1);
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe extern "C" fn method_answer(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
-    assert_eq!(n, 0);
-    Outcome::loaded(Operand::object(c))
-}
-unsafe extern "C" fn ignore_dictionary_change(
-    c: *mut c_void,
-    _: Oop,
-    _: *const Operand,
-    n: usize,
-) -> Outcome {
-    assert_eq!(n, 2);
-    let calls = unsafe { &*c.cast::<Cell<usize>>() };
-    calls.set(calls.get() + 1);
-    Outcome::loaded(Operand::unit())
-}
-unsafe fn mop_hooks(h: &H) {
-    unsafe {
-        let store = h.named(b"Store");
-        let target = h.fresh();
-        let vt = object(send(
-            h.id,
-            h.id.receiver,
-            b"ensurePrivateVtableFor:",
-            &[Operand::object(target)],
-        ));
-        h.keep(vt);
-        let selector = h.symbol(b"mopProbe");
-        let value = h.i(17);
-        let method = h.keep(object(send(
-            h.id,
-            h.named(b"Method"),
-            b"fromNative:owner:",
-            &[
-                Operand::entry(NativeEntry::new(method_answer, value)),
-                Operand::object(value),
-            ],
-        )));
-        let c = Box::leak(Box::new(MopProbe {
-            h,
-            store,
-            allow: Cell::new(false),
-            authorizations: Cell::new(0),
-            notifications: Cell::new(0),
-            expected: Cell::new(method),
-        }));
-        let context = (c as *mut MopProbe).cast();
-        let authorizer = h.callback(b"value", authorize_mop, context);
-        let observer = h.callback(b"managedMethodChanged:on:", observe_mop, context);
-        h.call(store, b"setMethodMutationAuthorizer:", &[authorizer]);
-        h.call(store, b"setMethodMutationObserver:", &[observer]);
-        h.call(store, b"setMethodMutationAuthorizer:", &[authorizer]);
-        h.call(store, b"setMethodMutationObserver:", &[observer]);
-        let err = h.call(store, b"setMethodMutationObserver:", &[h.fresh()]);
-        assert_eq!(
-            h.call(err, b"kind", &[]),
-            h.symbol(b"methodMutationObserverAlreadySet")
-        );
-        let err = h.call(store, b"setMethodMutationAuthorizer:", &[h.fresh()]);
-        assert_eq!(
-            h.call(err, b"kind", &[]),
-            h.symbol(b"methodMutationAuthorizerAlreadySet")
-        );
-        h.clear();
-        for o in [target, vt, selector, method] {
-            h.keep(o);
-        }
-        collect(h.id, h.gc);
-        assert!(present(h.id, authorizer));
-        assert!(present(h.id, observer));
-        assert_eq!(
-            h.call(store, b"addMethod:on:with:", &[selector, vt, method]),
-            h.named(b"false")
-        );
-        assert_eq!(
-            send(
-                h.id,
-                h.id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(selector), Operand::object(vt)]
-            )
-            .kind(),
-            native::UNIT
-        );
-        assert_eq!(c.notifications.get(), 0);
-        c.allow.set(true);
-        assert_eq!(
-            h.call(store, b"addMethod:on:with:", &[selector, vt, method]),
-            store
-        );
-        assert_eq!(h.call(target, b"mopProbe", &[]), value);
-        assert_eq!(h.read(store, vt, selector), method);
-        assert_eq!(c.notifications.get(), 1);
-        // Derived method-mirror rows remain nondurable; global facts persist.
-        let target_store = h.call(store, b"new", &[]);
-        h.call(target_store, b"imageLoadBegin", &[]);
-        let mut copy = ImageCopy {
-            h,
-            target: target_store,
-            count: Cell::new(0),
-        };
-        let collector = h.callback(
-            b"e:a:v:tx:op:historied:",
-            image_copy,
-            (&mut copy as *mut ImageCopy).cast(),
-        );
-        h.call(store, b"imageFactsInto:", &[collector]);
-        assert_eq!(h.read(target_store, vt, selector), h.named(b"nil"));
-        let global = h.symbol(b"historied-global");
-        assert_eq!(
-            h.number(h.read(target_store, h.symbol(b"__globals__"), global)),
-            11
-        );
-        // Mirror invalidation is an explicit current message. Raw dictionary
-        // writes do not invoke Store or subscribe on the user's behalf.
-        let store_vt = h.named(b"StoreVt");
-        let changed = h.symbol(b"methodChanged:on:");
-        let original = send(
-            h.id,
-            h.id.receiver,
-            b"bindingOf:in:",
-            &[Operand::object(changed), Operand::object(store_vt)],
-        )
-        .as_entry()
-        .unwrap();
-        let mut calls = Cell::new(0usize);
-        install(
-            h.id,
-            store_vt,
-            b"methodChanged:on:",
-            ignore_dictionary_change,
-            (&mut calls as *mut Cell<usize>).cast(),
-        );
-        install(h.id, vt, b"mopProbe", method_answer, value);
-        assert_eq!(calls.get(), 0);
-        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
-        assert_eq!(calls.get(), 1);
-        assert_eq!(h.read(store, vt, selector), method);
-        send(
-            h.id,
-            store_vt,
-            b"addMethod",
-            &[Operand::object(changed), Operand::entry(original)],
-        );
-        // Explicit invalidation removes the snapshot after a raw edit.
-        install(h.id, vt, b"mopProbe", method_answer, value);
-        assert_eq!(h.read(store, vt, selector), method);
-        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
-        assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
-        assert_eq!(c.notifications.get(), 1);
-        h.call(store, b"addMethod:on:with:", &[selector, vt, method]);
-        c.expected.set(core::ptr::null_mut());
-        h.call(store, b"removeMethod:on:", &[selector, vt]);
-        assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
-        assert_eq!(c.notifications.get(), 3);
-        let err = h.call(store, b"removeMethod:on:", &[selector, vt]);
-        assert_eq!(h.call(err, b"kind", &[]), h.symbol(b"missingDirectMethod"));
-        install(h.id, vt, b"mopProbe", method_answer, value);
-        let before = h.metric(store, b"basis");
-        h.call(store, b"backfillMirror", &[]);
-        assert_eq!(h.metric(store, b"basis"), before);
-        assert_eq!(h.read(store, vt, selector), h.symbol(b"primitive"));
-        send(h.id, vt, b"removeMethod:", &[Operand::object(selector)]);
-        assert_eq!(h.read(store, vt, selector), h.symbol(b"primitive"));
-        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
-        assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
-        // Alternate dictionary edits also require explicit invalidation.
-        c.expected.set(method);
-        h.call(store, b"addMethod:on:with:", &[selector, vt, method]);
-        send(
-            h.id,
-            h.id.receiver,
-            b"addMethod:to:as:",
-            &[
-                Operand::object(selector),
-                Operand::word(vt.addr()),
-                Operand::entry(NativeEntry::new(method_answer, value)),
-            ],
-        );
-        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
-        assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
-        h.call(store, b"backfillMirror", &[]);
-        send(
-            h.id,
-            h.id.receiver,
-            b"removeMethod:from:",
-            &[Operand::object(selector), Operand::word(vt.addr())],
-        );
-        send(h.id, store, b"methodChanged:on:", &[Operand::object(selector), Operand::object(vt)]);
-        assert_eq!(h.read(store, vt, selector), h.named(b"nil"));
-    }
-}
-
-unsafe fn resource_limit(h: &H) {
-    unsafe {
-        let st = h.call(h.named(b"Store"), b"new", &[]);
-        h.call(st, b"retainSince:", &[h.i(0)]);
-        let e = h.symbol(b"limited-entity");
-        let a = h.symbol(b"limited-history");
-        let mut rejected = false;
-        for n in 0..20 {
-            let before = h.metric(st, b"basis");
-            let value = h.i(n);
-            let result = h.call(st, b"rawAssert:attr:value:", &[e, a, value]);
-            if result != st {
-                assert_eq!(
-                    result,
-                    h.symbol(b"historyResourceLimit")
-                );
-                assert_eq!(h.metric(st, b"basis"), before);
-                rejected = true;
-                break;
-            }
-        }
-        assert!(rejected);
-        assert!(h.metric(st, b"retainedFactBytes") <= h.metric(st, b"factBytesLimit"));
-        h.call(st, b"retainCurrentOnly", &[]);
-        h.call(st, b"compact", &[]);
-        h.assert(st, e, a, h.i(99));
-        assert_eq!(h.number(h.read(st, e, a)), 99);
-    }
-}
-
-struct PhaseProbe {
-    h: *const H,
-    store: Oop,
-    args: [Oop; 3],
-    rejected: Cell<bool>,
-}
-unsafe extern "C" fn tracing_probe(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        assert_eq!(n, 2);
-        let c = &*c.cast::<PhaseProbe>();
-        let h = &*c.h;
-        c.rejected.set(
-            h.id.send_named(c.store, b"assert:attr:value:", &c.args.map(Operand::object))
-                .is_err(),
-        );
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe fn phase_safety(h: &H) {
-    unsafe {
-        let st = h.call(h.named(b"Store"), b"new", &[]);
-        let mut probe = PhaseProbe {
-            h,
-            store: st,
-            args: [h.fresh(), h.symbol(b"during-mark"), h.fresh()],
-            rejected: Cell::new(false),
-        };
-        let owner = h.callback(
-            b"referencesOf:do:",
-            tracing_probe,
-            (&mut probe as *mut PhaseProbe).cast(),
-        );
-        let vt = h.keep(behavior(h.id));
-        h.keep(allocate(h.id, vt, 0));
-        send(
-            h.id,
-            h.gc,
-            b"trace:with:",
-            &[Operand::object(vt), Operand::object(owner)],
-        );
+fn resource_limit(h: &H<'_>) {
+    let st = h.call(h.named(b"Store"), b"new", &[]);
+    h.call(st, b"retainSince:", &[h.i(0)]);
+    let e = h.symbol(b"limited-entity");
+    let a = h.symbol(b"limited-history");
+    let mut rejected = false;
+    for n in 0..20 {
         let before = h.metric(st, b"basis");
-        collect(h.id, h.gc);
-        assert!(probe.rejected.get());
-        assert_eq!(h.metric(st, b"basis"), before);
-        send(
-            h.id,
-            h.gc,
-            b"trace:with:",
-            &[Operand::object(vt), Operand::unit()],
-        );
+        let result = h.call(st, b"rawAssert:attr:value:", &[e, a, h.i(n)]);
+        if result != st {
+            assert_eq!(
+                h.call(result, b"kind", &[]),
+                h.symbol(b"historyResourceLimit")
+            );
+            assert_eq!(h.metric(st, b"basis"), before);
+            rejected = true;
+            break;
+        }
     }
+    assert!(rejected);
+    assert!(h.metric(st, b"retainedFactBytes") <= h.metric(st, b"factBytesLimit"));
+    h.call(st, b"retainCurrentOnly", &[]);
+    h.call(st, b"compact", &[]);
+    h.assert(st, e, a, h.i(99));
+    assert_eq!(h.number(h.read(st, e, a)), 99);
+}
+fn source(h: &H<'_>) {
+    let answer=h.eval(b"let storeSample := [Store new]; let storeCell := [storeSample cellFor: #sample attr: #value]; [storeCell set: 41]; [[storeCell value] + 1]");
+    assert_eq!(h.number(answer), 42);
+    assert_eq!(
+        h.number(h.eval(b"[Globals at: #sourceGlobal put: 73]; [Globals at: #sourceGlobal]")),
+        73
+    );
+    assert_eq!(
+        h.number(h.eval(b"let declaredGlobal := 91; [Globals at: #declaredGlobal]")),
+        91
+    );
+    assert_eq!(
+        h.eval(b"[Globals at: #boundNil put: nil]; [Globals at: #boundNil ifAbsent: [| 99]]"),
+        h.named(b"nil")
+    );
+    assert_eq!(
+        h.number(h.eval(b"[Globals at: #missingStoreGlobal ifAbsent: [| 99]]")),
+        99
+    );
+    assert_eq!(
+        h.eval(b"[[db cellFor: #sample attr: #unset] value]"),
+        h.named(b"nil")
+    );
 }
 
-#[test]
-#[ignore = "requires production module directory"]
-fn store_history_cells_snapshots_and_source_use_id_messages() {
-    if isolated_case("store_history_cells_snapshots_and_source_use_id_messages") { return; }
-    unsafe {
-        let h = H::new();
-        if std::env::var_os("BIRNAM_STORE_TEST_LIMIT").is_some() {
-            resource_limit(&h);
-            return;
-        }
-        collecting_construction(&h);
-        semantics(&h);
-        history_plateaus(&h);
-        h.clear();
-        collect(h.id, h.gc);
-        cells_and_dispatch(&h);
-        snapshots(&h, false);
-        snapshots(&h, true);
-        image_transfer(&h);
-        phase_safety(&h);
-        source(&h);
-        globals_are_independent(&h);
-        mop_hooks(&h);
-        h.clear();
-        collect(h.id, h.gc);
-        let child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                "store_history_cells_snapshots_and_source_use_id_messages",
-                "--include-ignored",
-            ])
-            .env("BIRNAM_STORE_TEST_LIMIT", "1")
-            .env("BIRNAM_STORE_FACT_BYTES_LIMIT", "256")
-            .output()
-            .unwrap();
-        assert!(
-            child.status.success(),
-            "{}\n{}",
-            String::from_utf8_lossy(&child.stdout),
-            String::from_utf8_lossy(&child.stderr)
-        );
-    }
-}
-
-unsafe fn history_plateaus(h: &H) {
-    unsafe {
-        for policy in [
-            b"retainCurrentOnly".as_slice(),
-            b"retainSince:",
-            b"retainLast:",
-        ] {
-            let store = h.call(h.named(b"Store"), b"new", &[]);
-            let entity = h.fresh();
-            let attribute = h.symbol(b"churnHistory");
-            h.assert(store, attribute, h.symbol(b"history"), h.named(b"true"));
-            let mut baseline = None;
-            for batch in 0..3 {
-                match policy {
-                    b"retainSince:" => {
-                        let basis = h.call(store, b"basis", &[]);
-                        h.call(store, policy, &[basis]);
-                    }
-                    b"retainLast:" => {
-                        h.call(store, policy, &[h.i(128)]);
-                    }
-                    _ => {
-                        h.call(store, policy, &[]);
-                    }
-                }
-                let mark = h.tokens.borrow().len();
-                for value in 0..5000 {
-                    h.assert(store, entity, attribute, h.i(value));
-                    let temporary = h.tokens.borrow_mut().split_off(mark);
-                    for token in temporary {
-                        release(h.id, h.roots, token);
-                    }
-                }
-                h.call(store, b"compact", &[]);
-                collect(h.id, h.gc);
-                assert_eq!(h.number(h.read(store, entity, attribute)), 4999);
-                let row = (
-                    h.metric(store, b"retainedFactCount"),
-                    h.metric(store, b"retainedFactBytes"),
-                );
-                assert!(row.0 > 0 && row.1 > 0);
-                if batch > 0 {
-                    if let Some(expected) = baseline {
-                        assert_eq!(row, expected, "retained history grew for {:?}", policy);
-                    } else {
-                        baseline = Some(row);
-                    }
-                }
-            }
-        }
-        // A retained-history control must grow, so a counter stuck at zero or
-        // an implementation that always discards history cannot pass the oracle.
+fn history_plateaus(h: &H<'_>) {
+    for policy in [
+        b"retainCurrentOnly".as_slice(),
+        b"retainSince:",
+        b"retainLast:",
+    ] {
         let store = h.call(h.named(b"Store"), b"new", &[]);
         let entity = h.fresh();
-        let attribute = h.symbol(b"retainedControl");
+        let attribute = h.symbol(b"churnHistory");
         h.assert(store, attribute, h.symbol(b"history"), h.named(b"true"));
-        h.call(store, b"retainSince:", &[h.i(0)]);
-        let mut previous = (0, 0);
-        let mark = h.tokens.borrow().len();
+        let mut baseline = None;
         for batch in 0..3 {
-            for value in 0..1000 {
+            match policy {
+                b"retainSince:" => {
+                    let basis = h.call(store, b"basis", &[]);
+                    h.call(store, policy, &[basis]);
+                }
+                b"retainLast:" => {
+                    h.call(store, policy, &[h.i(128)]);
+                }
+                _ => {
+                    h.call(store, policy, &[]);
+                }
+            }
+            let mark = h.tokens.borrow().len();
+            for value in 0..5000 {
                 h.assert(store, entity, attribute, h.i(value));
                 let temporary = h.tokens.borrow_mut().split_off(mark);
                 for token in temporary {
-                    release(h.id, h.roots, token);
+                    unsafe { h.host.id.send(h.host.roots, h.release, &[token]) }.unwrap();
                 }
             }
             h.call(store, b"compact", &[]);
-            let current = (
+            h.collect();
+            assert_eq!(h.number(h.read(store, entity, attribute)), 4999);
+            let row = (
                 h.metric(store, b"retainedFactCount"),
                 h.metric(store, b"retainedFactBytes"),
             );
-            assert!(
-                current.0 > previous.0 && current.1 > previous.1,
-                "retained control batch {batch}"
-            );
-            previous = current;
+            assert!(row.0 > 0 && row.1 > 0);
+            if batch > 0 {
+                if let Some(expected) = baseline {
+                    assert_eq!(row, expected, "retained history grew for {:?}", policy);
+                } else {
+                    baseline = Some(row);
+                }
+            }
         }
-        h.call(store, b"retainCurrentOnly", &[]);
-        h.call(store, b"compact", &[]);
-        assert_eq!(h.number(h.read(store, entity, attribute)), 999);
-        assert!(h.metric(store, b"retainedFactCount") < previous.0);
     }
+    // A retained-history control must grow, so a counter stuck at zero or
+    // an implementation that always discards history cannot pass the oracle.
+    let store = h.call(h.named(b"Store"), b"new", &[]);
+    let entity = h.fresh();
+    let attribute = h.symbol(b"retainedControl");
+    h.assert(store, attribute, h.symbol(b"history"), h.named(b"true"));
+    h.call(store, b"retainSince:", &[h.i(0)]);
+    let mut previous = (0, 0);
+    let mark = h.tokens.borrow().len();
+    for batch in 0..3 {
+        for value in 0..1000 {
+            h.assert(store, entity, attribute, h.i(value));
+            let temporary = h.tokens.borrow_mut().split_off(mark);
+            for token in temporary {
+                unsafe { h.host.id.send(h.host.roots, h.release, &[token]) }.unwrap();
+            }
+        }
+        h.call(store, b"compact", &[]);
+        let current = (
+            h.metric(store, b"retainedFactCount"),
+            h.metric(store, b"retainedFactBytes"),
+        );
+        assert!(
+            current.0 > previous.0 && current.1 > previous.1,
+            "retained control batch {batch}"
+        );
+        previous = current;
+    }
+    h.call(store, b"retainCurrentOnly", &[]);
+    h.call(store, b"compact", &[]);
+    assert_eq!(h.number(h.read(store, entity, attribute)), 999);
+    assert!(h.metric(store, b"retainedFactCount") < previous.0);
 }
 
 #[test]
-#[ignore = "requires production modules"]
-fn fact_cells_restore_owner_aliases_and_reject_removed_store_apis() {
-    if isolated_case("fact_cells_restore_owner_aliases_and_reject_removed_store_apis") { return; }
-    unsafe {
-        let h = H::new();
-        let _floor = CompiledFloor::pin(h.id, h.ns, h.roots);
-        let store = h.call(h.named(b"Store"), b"new", &[]);
-        let one = h.i(1); let two = h.i(2); let nil = h.named(b"nil");
-        let entity = h.fresh(); let attr = h.symbol(b"cellAmount");
-        let cell = h.call(store, b"cellFor:attr:", &[entity, attr]);
-        assert_eq!(h.call(cell, b"set:", &[one]), cell);
-        let fields = [h.call(cell, b"imageFieldAt:", &[h.i(0)]),
-                      h.call(cell, b"imageFieldAt:", &[h.i(1)]),
-                      h.call(cell, b"imageFieldAt:", &[h.i(2)])];
-        assert_eq!(fields, [store, entity, attr]);
-        let restored = h.call(store, b"cellFor:attr:", &[nil, nil]);
-        h.call(restored, b"restoreImageStore:entity:attr:", &fields);
-        collect(h.id, h.gc);
-        assert_eq!(h.call(restored, b"value", &[]), one);
-        assert_eq!(h.call(restored, b"set:", &[two]), restored);
-        assert_eq!(h.call(cell, b"value", &[]), two);
-        // The removed tag must fail without changing the live handle.
-        assert!(h.id.send_named(restored, b"restoreImageStore:entity:attr:", &[
-            Operand::object(h.symbol(b"localCell")), Operand::object(one), Operand::object(nil)
-        ]).is_err());
-        assert_eq!(h.call(restored, b"value", &[]), two);
-        let behavior = object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(store)]));
-        for selector in [b"localCell:".as_slice(), b"localCell:prototype:", b"swapImageStateWith:atRevision:stagedRevision:"] {
-            assert!(send(h.id, h.id.receiver, b"bindingOf:in:", &[
-                Operand::object(h.symbol(selector)), Operand::object(behavior)
-            ]).as_entry().is_none());
-        }
-        h.clear();
+#[ignore = "requires production Oop modules"]
+fn store_history_cells_snapshots_and_source_use_id_messages() {
+    if isolated_case("store_history_cells_snapshots_and_source_use_id_messages") {
+        return;
     }
+    let host = oop::bootstrap();
+    let h = H::new(&host);
+    if std::env::var_os("BIRNAM_STORE_TEST_LIMIT").is_some() {
+        resource_limit(&h);
+        return;
+    }
+    collecting_construction(&h);
+    semantics(&h);
+    history_plateaus(&h);
+    h.clear();
+    h.collect();
+    cells_and_dispatch(&h);
+    snapshots(&h, false);
+    snapshots(&h, true);
+    image_transfer(&h);
+    phase_safety(&h);
+    source(&h);
+    globals_are_independent(&h);
+    mop_hooks(&h);
+    h.clear();
+    h.collect();
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "store_history_cells_snapshots_and_source_use_id_messages",
+            "--include-ignored",
+            "--nocapture",
+        ])
+        .env("BIRNAM_STORE_TEST_LIMIT", "1")
+        .env("BIRNAM_STORE_FACT_BYTES_LIMIT", "256")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+#[test]
+#[ignore = "requires production Oop modules"]
+fn fact_cells_restore_owner_aliases_and_reject_removed_store_apis() {
+    if isolated_case("fact_cells_restore_owner_aliases_and_reject_removed_store_apis") {
+        return;
+    }
+    let host = oop::bootstrap();
+    let h = H::new(&host);
+    let store = h.call(h.named(b"Store"), b"new", &[]);
+    let one = h.i(1);
+    let two = h.i(2);
+    let nil = h.named(b"nil");
+    let entity = h.fresh();
+    let attr = h.symbol(b"cellAmount");
+    let cell = h.call(store, b"cellFor:attr:", &[entity, attr]);
+    assert_eq!(h.call(cell, b"set:", &[one]), cell);
+    let fields = [
+        h.call(cell, b"imageFieldAt:", &[h.i(0)]),
+        h.call(cell, b"imageFieldAt:", &[h.i(1)]),
+        h.call(cell, b"imageFieldAt:", &[h.i(2)]),
+    ];
+    assert_eq!(fields, [store, entity, attr]);
+    let restored = h.call(store, b"cellFor:attr:", &[nil, nil]);
+    h.call(restored, b"restoreImageStore:entity:attr:", &fields);
+    h.collect();
+    assert_eq!(h.call(restored, b"value", &[]), one);
+    assert_eq!(h.call(restored, b"set:", &[two]), restored);
+    assert_eq!(h.call(cell, b"value", &[]), two);
+    assert!(
+        host.send(
+            restored,
+            b"restoreImageStore:entity:attr:",
+            &[h.symbol(b"localCell"), one, nil]
+        )
+        .is_err()
+    );
+    assert_eq!(h.call(restored, b"value", &[]), two);
+    let vt = h.vt(store);
+    for selector in [
+        b"localCell:".as_slice(),
+        b"localCell:prototype:",
+        b"swapImageStateWith:atRevision:stagedRevision:",
+    ] {
+        assert!(h.call(vt, b"lookup", &[h.symbol(selector)]).is_null());
+    }
+    h.clear();
 }

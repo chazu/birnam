@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "scope": "Full native Store facts/history/Cell/snapshot/source/MOP acceptance through Oops, with independent projection/retention oracles",
+  "base_revision": "8328cd1bfc818cedeafc0549e7b5d0fac208aacd",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/activation-wmlwn0vv/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/store.rs": "1d99fc6d62b2aaf945bad4223498d18af6e787d7a546d404cb26d757e8fbf5b4",
+    "tests/fixtures/oop-host/store.c": "644aa70e6cc34c35eec66c9cd236bc033ebadde42459308b6666f89404f50664"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/store-final.log",
+      "sha256": "734c7320cfc9611f0086ff55747c7d60200f8fce2df0815fb94e43c36c7853d4",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/store-unit.log",
+      "sha256": "326230a8bf05be54a5d0dd4ddb403b728e0660f672b45ebda906b9100107d188",
+      "exit": 0
+    }
+  ],
+  "unit_results": {
+    "passed": 13,
+    "ignored_manual_scaling": 2
+  },
+  "retained_checks": [
+    "Nil/absence, idempotent assertions, cardinality, history watermarks, retention refusal and compaction",
+    "Three 5000-update batches under each retention policy plateau; retained-history control grows and later compacts",
+    "Fact Cells keep Store/entity/attribute/value alive and release them with the last handle",
+    "Collecting current Store reads, Integer construction and allocation validation",
+    "Snapshot callbacks erase original facts then collect; exact allocation identities survive delivery and release afterward, including failure",
+    "Image fact/metadata transfer excludes transient facts and rejects negative transactions",
+    "Mutation during tracing refuses without advancing basis",
+    "Ordinary source/Globals bindings remain independent of explicit Store history",
+    "Explicit authorization and notifications, nondurable method descriptions, backfill and current invalidation including captured dictionary edits",
+    "Fact-Cell image restoration preserves aliases and rejects removed Store operations",
+    "256-byte limit refusal preserves basis and later compaction permits another assertion using production Error objects"
+  ],
+  "representation_adjustments": [
+    "Declared Methods and Oop contexts replace raw native entries and Rust callback pointers",
+    "Allocation identities replace post-free object queries",
+    "Explicit Store new tests collecting construction while Namespace publication is absent; repeated native initialization preserves the current Namespace",
+    "The optional Store loads after normal bootstrap, so no synthetic error factory or sub-bootstrap assembly is needed"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native targets and compiler groups remain unported",
+    "Automatic alias-return scope decision remains pending",
+    "Latest installed Host qualification is running"
+  ]
+}

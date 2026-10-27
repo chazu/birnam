@@ -2157,3 +2157,27 @@ This candidate includes the native-loader, standalone-emitter, call-preparation
 and failed-activation corrections. Its full serial Host qualification is now
 running. Remaining native/compiler migration and the alias-return scope decision
 are still open. [Receipt](../measurements/latest-cold-install-oop-20261027.json).
+
+## Store facts, history, snapshots and Cells
+
+The full `store` harness now uses Oops and declared collecting callbacks. It
+retains nil/absence distinction, cardinality, prospective history and exact as-of
+retention, compaction plateaus with a growing-history control, fact-Cell ownership,
+current accessors/factories, image transfer and transient exclusion. Snapshot
+callbacks erase the original facts and collect; all rows remain valid during
+delivery and are reclaimed after completion or failure. Phase checks still reject
+Store mutation during tracing.
+
+Source Globals remain independent of explicit Store facts. Authorization,
+notification, nondurable method descriptions, backfill and explicit invalidation
+retain their checks, including edits through captured dictionary Methods. No
+universal mutation subscription is installed. Fact-Cell image restoration keeps
+owner aliases and rejects removed Store APIs.
+
+The 256-byte resource-limit case now runs on the normal Store-independent bootstrap
+with production Error objects, removing the old fixture-only error sink. Collecting
+construction uses explicit `Store new` while its Namespace name is absent; native
+reloading preserves that absence and returns the original module receiver. No
+runtime or Id change was needed. The Store harness, adjacent contract suites and
+13 independent unit oracles pass; two manual scaling investigations remain skipped.
+[Receipt](../measurements/store-oop-20261027.json).
