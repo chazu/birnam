@@ -2784,3 +2784,14 @@ Store's authored image-provider registration. The real bootstrap composition is
 retained instead, with participation asserted. Direct binding observations use
 Execution's current protocol. No runtime or Id changes were needed.
 [Receipt](../measurements/image-roundtrip-resaves-oop-20261027.json).
+
+## Global resolution through Oop getters
+
+The global-resolution harness now uses declared Oop callbacks. It preserves
+Globals-first precedence, nil fallback, getter order, temporary owner lifetime
+across rebinding/collection, scope cleanup and exact native failure identities.
+The observations retain allocation identities rather than the temporary owners.
+Supported immediate owners dispatch through their current `at:` method, and
+immediate results remain Oops; the old carrier distinction is not recreated.
+Ordinary source-global owners still reject non-Symbol keys. No runtime or Id
+change was needed. [Receipt](../measurements/global-resolution-oop-20261027.json).

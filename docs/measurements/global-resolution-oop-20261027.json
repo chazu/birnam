@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "scope": "Oop global resolution precedence, live getter order, rebinding, collection and failures",
+  "base_revision": "e9e7a9b3d7172e9cf083aead9bc3e3a3e31e3e40",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/global_resolution.rs": "11356f0259aa5d54b962bafbac4207fd2b1bf8d6a725a2e6e3a8d883a1ab35d0",
+    "tests/fixtures/oop-host/global-resolution.c": "cf040877b52e17abeca7eb200082ff43a108be55ba3b33e51925e1126df3a0e4"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/global-resolution-oop.log",
+      "sha256": "233641863f2eafb5f22647ce726e2bb57d7bbbe720d9cc34d67b53045b81e859",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Globals overrides Namespace; nil-valued Globals falls back; missing names return nil",
+    "Getter order remains nil, Globals, current Globals getter, then Namespace fallback",
+    "Fetched nil and Globals survive rebinding and collection, then are reclaimed after resolution returns",
+    "Absent Globals falls back without a getter call",
+    "Namespace key, Namespace Globals and Globals getter native failures preserve exact identities",
+    "Supported immediate owners use current at: behavior; immediate getter results remain valid Oops",
+    "Ordinary source-global owners reject non-Symbol keys"
+  ],
+  "representation_note": "The removed Operand word/object distinction is not restored. The fixture checks supported immediate owner dispatch and immediate results under the Oop contract. Observation stores allocation identities rather than retaining the temporary objects being tested.",
+  "runtime_changes": false,
+  "id_changes": false
+}

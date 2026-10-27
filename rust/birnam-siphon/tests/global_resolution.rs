@@ -1,94 +1,208 @@
-//! Source resolution remains late-bound and scopes fetched values through reentry.
-mod support;
-use birnam_abi::{Oop, borrowed_slice, id_protocol::{NativeEntry, Operand, Outcome, Protocol}};
-use std::{cell::{Cell,RefCell}, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct H {id:Protocol,ns:Oop,gc:Oop,original:NativeEntry,key:Oop,nil:Cell<Oop>,globals:Cell<Oop>,
-    replacement_nil:Oop,replacement_globals:Oop,events:RefCell<Vec<Oop>>,mutate:Cell<bool>,fail:Cell<bool>,active:Cell<bool>,namespace_reply:Cell<u8>,globals_reply:Cell<u8>}
-unsafe extern "C" fn namespace_get(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
-    let h=unsafe{&*c.cast::<H>()};let key=object((unsafe{borrowed_slice(a,n)}).unwrap()[0]);
-    h.events.borrow_mut().push(key);
-    if key==unsafe{h.id.intern_name(b"Globals").unwrap()} {
-        match h.namespace_reply.get() {
-            1 => return Outcome::loaded(Operand::unit()),
-            2 => return Outcome::loaded(Operand::word(7)),
-            3 => return Outcome::failed(813,20),
-            _ => {}
-        }
-    }
-    if h.fail.get()&&key==h.key{return Outcome::failed(812,19);}
-    unsafe{(h.original.method.unwrap())(h.original.context,r,a,n)}
-}
-unsafe extern "C" fn globals_get(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome {
-    let h=unsafe{&*c.cast::<H>()};let [key]=(unsafe{borrowed_slice(a,n)}).unwrap() else{panic!("key")};
-    assert_eq!(object(*key),h.key);h.events.borrow_mut().push(r);
-    if h.mutate.get()&&!h.active.replace(true) {
-        unsafe{
-            for (name,value) in [(b"nil".as_slice(),h.replacement_nil),(b"Globals",h.replacement_globals)] {
-                send(h.id,h.ns,b"at:put:",&[Operand::object(h.id.intern_name(name).unwrap()),Operand::object(value)]);
-            }
-            collect(h.id,h.gc);
-            assert!(present(h.id,h.nil.get()),"fetched nil needs scope protection after rebinding");
-            assert!(present(h.id,h.globals.get()),"fetched Globals needs protection after rebinding");
-        }
-        h.active.set(false);
-    }
-    match h.globals_reply.get() {
-        1 => Outcome::failed(814,21),
-        2 => Outcome::loaded(Operand::word(9)),
-        _ => Outcome::loaded(Operand::object(h.nil.get()))
-    }
-}
+//! Global resolution retains fetched owners and preserves live getter order.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 #[test]
-#[ignore="production Namespace resolution required"]
+#[ignore = "requires production Oop Namespace"]
 fn global_resolution_preserves_precedence_getter_order_rebinding_gc_and_failures() {
-    unsafe{
-        let id=id();let ns=load(id,"bootstrap",&[Operand::bytes(directory().as_os_str().as_bytes())]);
-        let named=|n:&[u8]|object(send(id,ns,b"at:",&[Operand::object(id.intern_name(n).unwrap())]));
-        let roots=named(b"Roots");let gc=named(b"GC");let _floor=CompiledFloor::pin(id,ns,roots);
-        let nil=named(b"nil");let globals=named(b"Globals");let key=id.intern_name(b"ResolutionProbe").unwrap();
-        let missing=id.intern_name(b"ResolutionMissing").unwrap();
-        let a=allocate(id,named(b"ObjectVt"),0);let at=retain(id,roots,a);let b=allocate(id,named(b"ObjectVt"),0);let bt=retain(id,roots,b);
-        send(id,ns,b"at:put:",&[Operand::object(key),Operand::object(a)]);
-        assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(key)])),a);
-        send(id,globals,b"at:put:",&[Operand::object(key),Operand::object(b)]);
-        assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(key)])),b);
-        send(id,globals,b"at:put:",&[Operand::object(key),Operand::object(nil)]);
-        assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(key)])),a);
-        assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(missing)])),nil);
-        let bind=|r:Oop,n:&[u8]|send(id,id.receiver,b"bind:to:",&[Operand::object(id.intern_name(n).unwrap()),Operand::object(r)]).as_entry().unwrap();
-        let original=bind(ns,b"at:");let nb=object(send(id,id.receiver,b"behaviorOf:",&[Operand::object(ns)]));
-        let gb=behavior(id);let gbt=retain(id,roots,gb);let temporary_globals=allocate(id,gb,0);let gt=retain(id,roots,temporary_globals);
-        let temporary_nil=allocate(id,named(b"ObjectVt"),0);let nt=retain(id,roots,temporary_nil);
-        let mut h=H{id,ns,gc,original,key,nil:Cell::new(temporary_nil),globals:Cell::new(temporary_globals),replacement_nil:nil,replacement_globals:globals,
-            events:RefCell::new(Vec::new()),mutate:Cell::new(true),fail:Cell::new(false),active:Cell::new(false),namespace_reply:Cell::new(0),globals_reply:Cell::new(0)};
-        let c=(&raw mut h).cast();install(id,gb,b"at:",globals_get,c);install(id,nb,b"at:",namespace_get,c);
-        send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"nil").unwrap()),Operand::object(temporary_nil)]);
-        send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"Globals").unwrap()),Operand::object(temporary_globals)]);
-        release(id,roots,gt);release(id,roots,nt);
-        assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(key)])),a);
-        assert_eq!(*h.events.borrow(),[id.intern_name(b"nil").unwrap(),id.intern_name(b"Globals").unwrap(),temporary_globals,key]);
-        collect(id,gc);assert!(!present(id,temporary_nil)&&!present(id,temporary_globals),"resolver scopes must drain on return");
-        h.mutate.set(false);h.nil.set(nil);h.globals.set(globals);h.fail.set(true);h.events.borrow_mut().clear();
-        let error=id.send_named(ns,b"resolveGlobal:",&[Operand::object(key)]).unwrap_err();assert_eq!((error.status,error.detail),(812,19));
-        h.fail.set(false);h.events.borrow_mut().clear();h.namespace_reply.set(1);
-        assert_eq!(object(send(id,ns,b"resolveGlobal:",&[Operand::object(key)])),a);
-        assert_eq!(*h.events.borrow(),[id.intern_name(b"nil").unwrap(),id.intern_name(b"Globals").unwrap(),key]);
-        h.namespace_reply.set(2);
-        assert_eq!(id.send_named(ns,b"resolveGlobal:",&[Operand::object(key)]).unwrap_err().status,birnam_abi::id_protocol::INVALID_REQUEST);
-        h.namespace_reply.set(3);
-        let error=id.send_named(ns,b"resolveGlobal:",&[Operand::object(key)]).unwrap_err();assert_eq!((error.status,error.detail),(813,20));
-        h.namespace_reply.set(0);
-        let failed_owner=allocate(id,gb,0);let ft=retain(id,roots,failed_owner);
-        send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"Globals").unwrap()),Operand::object(failed_owner)]);
-        h.globals_reply.set(1);
-        let error=id.send_named(ns,b"resolveGlobal:",&[Operand::object(key)]).unwrap_err();assert_eq!((error.status,error.detail),(814,21));
-        h.globals_reply.set(2);
-        assert_eq!(id.send_named(ns,b"resolveGlobal:",&[Operand::object(key)]).unwrap_err().status,birnam_abi::id_protocol::INVALID_REQUEST);
-        send(id,ns,b"at:put:",&[Operand::object(id.intern_name(b"Globals").unwrap()),Operand::object(globals)]);
-        release(id,roots,ft);
-        install(id,nb,b"at:",original.method.unwrap(),original.context);
-        assert!(id.send_named(ns,b"resolveGlobal:",&[Operand::word(1)]).is_err());
-        for token in [gbt,bt,at]{release(id,roots,token);}
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let key = |n: &[u8]| q.keep(host.intern(n).unwrap()).unwrap();
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let ns = host.namespace;
+    let roots = host.roots;
+    let gc = named(b"GC");
+    let nil = named(b"nil");
+    let globals = named(b"Globals");
+    let object_vt = named(b"ObjectVt");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let name = key(b"ResolutionProbe");
+    let missing = key(b"ResolutionMissing");
+    let nil_name = key(b"nil");
+    let globals_name = key(b"Globals");
+    let at = key(b"at:");
+    let put = key(b"at:put:");
+    let resolve = key(b"resolveGlobal:");
+    let add = key(b"addMethod");
+    let remove = key(b"removeMethod:");
+    let allocate = key(b"allocate");
+    let retain = key(b"retain:");
+    let release = key(b"release:");
+    let identity = key(b"identityOf:");
+    let collect = key(b"collectPrecisely");
+    let present = key(b"present:");
+    let raw = |r, selector, args: &[Oop]| unsafe { host.id.send(r, selector, args) };
+    let a = call(named(b"Object"), b"clone", &[]);
+    let b = call(named(b"Object"), b"clone", &[]);
+    raw(ns, put, &[name, a]).unwrap();
+    assert_eq!(raw(ns, resolve, &[name]).unwrap(), a);
+    raw(globals, put, &[name, b]).unwrap();
+    assert_eq!(raw(ns, resolve, &[name]).unwrap(), b);
+    raw(globals, put, &[name, nil]).unwrap();
+    assert_eq!(raw(ns, resolve, &[name]).unwrap(), a);
+    assert_eq!(raw(ns, resolve, &[missing]).unwrap(), nil);
+    let ns_vt = call(host.id.root, b"behaviorOf:", &[ns]);
+    let original = call(host.id.root, b"bind:to:", &[at, ns]);
+    let alias = key(b"resolutionOriginalAt:");
+    call(ns_vt, b"addMethod", &[alias, original]);
+    let globals_vt = call(object_vt, b"delegated", &[]);
+    let size_vt = call(host.id.root, b"sizeBehavior", &[]);
+    let size_at = call(named(b"Execution"), b"directMethodFor:in:", &[at, size_vt]);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-global-resolution-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/global-resolution.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let fault = |status, detail| {
+        let e = raw(
+            named(b"Execution"),
+            key(b"failNative:detail:"),
+            &[size(status).unwrap(), size(detail).unwrap()],
+        )
+        .unwrap_err();
+        q.keep(e).unwrap()
+    };
+    let key_failure = fault(812, 19);
+    let ns_failure = fault(813, 20);
+    let globals_failure = fault(814, 21);
+    let monitor = call(named(b"Object"), b"clone", &[]);
+    let monitor_vt = call(host.id.root, b"ensurePrivateVtableFor:", &[monitor]);
+    let event_rows = call(host.id.root, b"sequence", &[std::ptr::null_mut(); 256]);
+    let z = size(0).unwrap();
+    let one = size(1).unwrap();
+    let temporary_globals = raw(globals_vt, allocate, &[z]).unwrap();
+    let gt = raw(roots, retain, &[temporary_globals]).unwrap();
+    let temporary_nil = raw(object_vt, allocate, &[z]).unwrap();
+    let nt = raw(roots, retain, &[temporary_nil]).unwrap();
+    let temporary_globals_id = raw(host.id.root, identity, &[temporary_globals]).unwrap();
+    let temporary_nil_id = raw(host.id.root, identity, &[temporary_nil]).unwrap();
+    let nil_id = raw(host.id.root, identity, &[nil]).unwrap();
+    let nil_name_id = raw(host.id.root, identity, &[nil_name]).unwrap();
+    let globals_name_id = raw(host.id.root, identity, &[globals_name]).unwrap();
+    let name_id = raw(host.id.root, identity, &[name]).unwrap();
+    let context = call(
+        host.id.root,
+        b"sequence",
+        &[
+            ns,
+            gc,
+            monitor,
+            name,
+            nil_name,
+            globals_name,
+            nil,
+            globals,
+            temporary_nil_id,
+            temporary_globals_id,
+            event_rows,
+            z,
+            one,
+            z,
+            z,
+            z,
+            z,
+            key_failure,
+            ns_failure,
+            globals_failure,
+            alias,
+        ],
+    );
+    let method = |n: &[u8]| {
+        call(
+            call(fixture, b"methodAt:", &[key(n)]),
+            b"withContext:",
+            &[context],
+        )
+    };
+    for n in [b"allocation:bytes:identity:".as_slice(), b"present:"] {
+        call(monitor_vt, b"addMethod", &[key(n), method(n)]);
     }
+    let namespace_get = method(b"namespaceGet");
+    let globals_get = method(b"globalsGet");
+    raw(globals_vt, add, &[at, globals_get]).unwrap();
+    raw(size_vt, add, &[at, globals_get]).unwrap();
+    raw(ns_vt, add, &[at, namespace_get]).unwrap();
+    let set = |field, v| {
+        raw(context, put, &[size(field).unwrap(), v]).unwrap();
+    };
+    let events = || {
+        let count = as_size(raw(context, at, &[size(11).unwrap()]).unwrap()).unwrap();
+        (0..count)
+            .map(|i| raw(event_rows, at, &[size(i).unwrap()]).unwrap())
+            .collect::<Vec<_>>()
+    };
+    raw(ns, put, &[nil_name, temporary_nil]).unwrap();
+    raw(ns, put, &[globals_name, temporary_globals]).unwrap();
+    raw(roots, release, &[gt]).unwrap();
+    raw(roots, release, &[nt]).unwrap();
+    assert_eq!(raw(ns, resolve, &[name]).unwrap(), a);
+    assert_eq!(
+        events(),
+        vec![nil_name_id, globals_name_id, temporary_globals_id, name_id]
+    );
+    raw(gc, collect, &[]).unwrap();
+    assert_eq!(raw(monitor, present, &[temporary_nil_id]).unwrap(), z);
+    assert_eq!(
+        raw(monitor, present, &[temporary_globals_id]).unwrap(),
+        z,
+        "resolver scopes must release fetched owners after returning"
+    );
+    set(12, z);
+    set(8, nil_id);
+    set(14, one);
+    set(11, z);
+    assert_eq!(raw(ns, resolve, &[name]).unwrap_err(), key_failure);
+    set(14, z);
+    set(11, z);
+    set(15, one);
+    assert_eq!(raw(ns, resolve, &[name]).unwrap(), a);
+    assert_eq!(events(), vec![nil_name_id, globals_name_id, name_id]);
+    // An immediate Globals owner is valid when its current at: provides data.
+    set(15, size(2).unwrap());
+    set(16, size(2).unwrap());
+    set(11, z);
+    assert_eq!(raw(ns, resolve, &[name]).unwrap(), size(9).unwrap());
+    assert_eq!(events(), vec![nil_name_id, globals_name_id, z]);
+    set(15, size(3).unwrap());
+    assert_eq!(raw(ns, resolve, &[name]).unwrap_err(), ns_failure);
+    set(15, z);
+    let failed_owner = raw(globals_vt, allocate, &[z]).unwrap();
+    let ft = raw(roots, retain, &[failed_owner]).unwrap();
+    raw(ns, put, &[globals_name, failed_owner]).unwrap();
+    set(16, one);
+    assert_eq!(raw(ns, resolve, &[name]).unwrap_err(), globals_failure);
+    set(16, size(2).unwrap());
+    assert_eq!(
+        raw(ns, resolve, &[name]).unwrap(),
+        size(9).unwrap(),
+        "a getter result is an Oop, not a separate carrier category"
+    );
+    raw(ns, put, &[globals_name, globals]).unwrap();
+    raw(roots, release, &[ft]).unwrap();
+    raw(ns_vt, add, &[at, original]).unwrap();
+    raw(ns_vt, remove, &[alias]).unwrap();
+    if size_at == nil {
+        raw(size_vt, remove, &[at]).unwrap();
+    } else {
+        raw(size_vt, add, &[at, size_at]).unwrap();
+    }
+    assert!(
+        raw(ns, resolve, &[size(1).unwrap()]).is_err(),
+        "source-global names still require Symbols under the ordinary owners"
+    );
 }
