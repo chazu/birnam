@@ -1,0 +1,39 @@
+{
+  "passed": false,
+  "status": "pending integration",
+  "scope": "Oop Boolean native-boundary parity counterexample; not a passing qualification",
+  "candidate_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
+  "prefix": "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/boolean_values.rs": "0fe1a81ccccaf7eac2d15c59681592deb54533ffe80aca301a12bf533aa34872",
+    "tests/fixtures/oop-host/boolean-values.c": "8c11468d3fafa9971ab318d36466441833bfeddc3094c105d637b311e49dab72"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/boolean-boundary-pending.log",
+      "sha256": "3fe7dc86f67ee40137285507e4f72c580ce3b9db5d39478e8f30c473532a9243",
+      "exit": 101
+    }
+  ],
+  "failed_expectations": [
+    "selection arity",
+    "selection null argument",
+    "selected callback failure",
+    "ifTrue: arity",
+    "ifTrue: null argument",
+    "& arity",
+    "& null argument",
+    "| arity",
+    "| null argument",
+    "selection replacement failure"
+  ],
+  "rejected_experiment": {
+    "change": "Global named-Method argument-count rejection",
+    "reason": "Breaks retained System load: missing-argument nil behavior",
+    "log": ".cargo-target/oop-corrected-qualification/rejected-experiments/method-arity-core-failure.log",
+    "sha256": "10f3e23a6d4fecf6c83f88c0015de5c554ceab5f10f3e049360529478029c84d",
+    "production_changes_reverted": true
+  },
+  "runtime_changes": false,
+  "id_changes": false
+}

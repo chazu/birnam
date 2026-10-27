@@ -1289,3 +1289,23 @@ authored body through Codegen's existing `implementationOf:` query, then inspect
 that body's CodeObject. No native-entry carrier interface or runtime change was
 needed. Full corrected-candidate Host acceptance remains incomplete.
 [Receipt](../measurements/integer-values-oop-20261026.json).
+
+## Pending Boolean native-boundary parity
+
+The Boolean harness now uses Oops and reaches all its retained checks. Truth
+tables, chosen-only callbacks, opaque result identities, reflection, Module reload
+stability, pure Word identity selection and collecting replacements pass before
+the final failure summary. Ten native-boundary checks still fail: malformed
+argument/null rejection and native failures from selected callbacks or replaced
+selection. These expectations remain active in the test; this is not completed
+Boolean acceptance.
+
+The authored Oop Boolean policy removed its former explicit incoming adapters.
+Ordinary source evaluation now handles failures where the retained native contract
+requires rejection or exact native propagation. A trial global strict-arity change
+was rejected: the complete core gate showed that it breaks System `load:`'s retained
+missing-argument nil result. Both production changes were reverted. Restoration
+must belong to the explicit incoming boundary and preserve selected-branch
+suspension; reinstating a synchronous deferred call is not sufficient. Id is
+unchanged, and migration relying on this missing native contract remains pending.
+[Evidence](../measurements/boolean-boundary-pending-oop-20261026.json).
