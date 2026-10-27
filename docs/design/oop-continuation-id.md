@@ -1383,3 +1383,23 @@ documentation, portable execution, workers and project operations/queries. The
 earlier concurrent timeout remains recorded. The image group is the remaining
 full-group retry for this candidate, which predates the incoming-adapter change.
 [Serial CLI receipt](../measurements/corrected-cli-serial-oop-20261026.json).
+
+## Incoming byte snapshots before conversion callbacks
+
+The migrated `native_incoming` harness exposed a retained ordering requirement:
+the Oop adapter converted a Word before reading a later byte argument, so a
+replaced Word factory could alter the bytes delivered to the body. Execution now
+rejects required null inputs first, reads every byte view through its public owner
+messages, and only then invokes Word/Bytes factories and the body. The snapshots
+are private call-local byte vectors; no foreign payload is read and no Id operation
+or representation catalog is added.
+
+The independent C fixture mutates byte inputs and collects from both Word and
+Bytes factories. The original snapshots reach the body in both cases. Full-width
+Word values, nullable results, captured Method reuse, independent signature copies
+and rejection before conversion effects also pass. Its loader observer proves
+Execution initialization before Integer/String/Float/Vector/Map and explicitly
+loads PortableCode at that same early point; the normal later load reuses the
+initialized owner. This tests early capability without changing production load
+order. Boolean acceptance and the complete Oop core gate pass as well.
+[Receipt](../measurements/native-incoming-oop-20261026.json).

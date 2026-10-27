@@ -1,267 +1,189 @@
-//! Explicit incoming carriers, rooting and primitive-only initialization.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_bytes, borrowed_slice,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
+//! Incoming Oop normalization, snapshot order and primitive-only initialization.
+#[path = "../../birnam-host/src/test_hooks.rs"]
+#[allow(dead_code)]
+mod hooks;
+use birnam_abi::{Oop, as_size, size};
+use birnam_host_support::{Context, Resources};
+use std::{
+    env,
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
 };
-use core::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use std::os::unix::ffi::OsStrExt;
-use support::*;
-struct Early {
-    id: Protocol,
-    load: NativeEntry,
-    seen: Cell<usize>,
-}
-unsafe extern "C" fn early_load(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<Early>() };
-    let result = (|| unsafe {
-        let args = borrowed_slice(a, n).unwrap();
-        let raw = args[0].as_bytes().unwrap();
-        let path = borrowed_bytes(raw.pointer, raw.length).unwrap();
-        if path.ends_with(b"libbirnam_execution.dylib")
-            || path.ends_with(b"libbirnam_portable_code.dylib")
-        {
-            let ns = args[1].as_object().unwrap();
-            for name in [
-                b"Integer".as_slice(),
-                b"String",
-                b"Float",
-                b"Vector",
-                b"Map",
-            ] {
-                assert_eq!(
-                    s.id.send_named(ns, b"at:", &[Operand::object(s.id.intern_name(name)?)])?
-                        .kind(),
-                    native::UNIT
-                );
-            }
-            s.seen.set(s.seen.get() + 1);
-        }
-        (s.load.method.unwrap())(s.load.context, r, a, n).into_result()
-    })();
-    result.map_or_else(|e| e, Outcome::loaded)
-}
-struct Mutate {
-    id: Protocol,
-    entry: NativeEntry,
-    gc: Oop,
-    input: RefCell<Vec<u8>>,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn mutate_word_factory(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    let s = unsafe { &*c.cast::<Mutate>() };
-    s.calls.set(s.calls.get() + 1);
-    s.input.borrow_mut().fill(b'z');
-    if let Err(e) = unsafe { s.id.send_named(s.gc, b"collectPrecisely", &[]) } {
-        return e;
-    }
-    unsafe { (s.entry.method.unwrap())(s.entry.context, r, a, n) }
-}
+
 #[test]
-#[ignore = "production native modules required"]
-fn incoming_signatures_preserve_carriers_and_early_bootstrap() {
-    unsafe {
-        let id = id();
-        let load_entry = send(id, id.receiver, b"lookup", &[Operand::object(id.load)])
-            .as_entry()
-            .unwrap();
-        let early = Box::leak(Box::new(Early {
-            id,
-            load: load_entry,
-            seen: Cell::new(0),
-        }));
-        send(
-            id,
-            id.receiver,
-            b"addMethod",
-            &[
-                Operand::object(id.load),
-                Operand::entry(NativeEntry::new(
-                    early_load,
-                    core::ptr::from_mut(early).cast(),
-                )),
-            ],
-        );
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        send(
-            id,
-            id.receiver,
-            b"addMethod",
-            &[Operand::object(id.load), Operand::entry(load_entry)],
-        );
-        assert_eq!(early.seen.get(), 2);
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let (string, roots, gc, word) = (
-            named(b"String"),
-            named(b"Roots"),
-            named(b"GC"),
-            named(b"Word"),
-        );
-        let code=br#"
-          let IncomingProbe := [Object clone];
-          let echo := [Execution block: [:self :bits :data | [System gc]; data] withNativeSignature: "bwb"];
-          [Reflect defineMethod: #echoWord:bytes: on: IncomingProbe as: echo];
-          let wordEcho := [Execution block: [:self :bits | bits] withNativeSignature: "ww"];
-          [Reflect defineMethod: #word: on: IncomingProbe as: wordEcho];
-          let optional := [Execution block: [:self :value | nil] withNativeSignature: "Wo"];
-          [Reflect defineMethod: #optional: on: IncomingProbe as: optional];
-          [Globals at: #IncomingProbe put: IncomingProbe];
-          let code := [wordEcho codeObject];
-          let signature := [code nativeSignature];
-          [Execution objectResultOf: signature selector: #appendBytes: byteArgument: "ignored"];
-          [Globals at: #IncomingCode put: code];
-          IncomingProbe
-        "#;
-        let source = object(send(id, string, b"fromBytes:", &[Operand::bytes(code)]));
-        let source_token = retain(id, roots, source);
-        let probe = object(send(
-            id,
-            named(b"Codegen"),
-            b"eval:",
-            &[Operand::object(source)],
-        ));
-        let probe_token = retain(id, roots, probe);
-        release(id, roots, source_token);
-        assert_eq!(object(send(id, probe, b"isError", &[])), named(b"false"));
-        let wb = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(word)],
-        ));
-        let original = send(
-            id,
-            wb,
-            b"lookup",
-            &[Operand::object(id.intern_name(b"fromBits:").unwrap())],
-        )
-        .as_entry()
-        .unwrap();
-        let mutate = Box::leak(Box::new(Mutate {
-            id,
-            entry: original,
-            gc,
-            input: RefCell::new(b"original".to_vec()),
-            calls: Cell::new(0),
-        }));
-        install(
-            id,
-            wb,
-            b"fromBits:",
-            mutate_word_factory,
-            core::ptr::from_mut(mutate).cast(),
-        );
-        let raw = {
-            let data = mutate.input.borrow();
-            Operand::bytes(&data)
-        };
-        let result = send(
-            id,
-            probe,
-            b"echoWord:bytes:",
-            &[Operand::word(usize::MAX), raw],
-        );
-        let b = result.as_bytes().unwrap();
-        assert_eq!(borrowed_bytes(b.pointer, b.length).unwrap(), b"original");
-        assert_eq!(&*mutate.input.borrow(), b"zzzzzzzz");
-        assert!(mutate.calls.get() >= 1);
-        send(
-            id,
-            wb,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(b"fromBits:").unwrap()),
-                Operand::entry(original),
-            ],
-        );
-        for bits in [0, 1, 1usize << 63, usize::MAX] {
-            assert_eq!(
-                send(id, probe, b"word:", &[Operand::word(bits)]).as_word(),
-                Some(bits)
-            );
-        }
-        assert!(
-            id.send_named(probe, b"word:", &[Operand::object(word)])
-                .is_err()
-        );
-        assert!(id.send_named(probe, b"word:", &[]).is_err());
-        assert_eq!(
-            send(
-                id,
-                probe,
-                b"optional:",
-                &[Operand::object(core::ptr::null_mut())]
+#[ignore = "requires production Oop modules"]
+fn incoming_signatures_preserve_values_and_early_bootstrap() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let prefix = lib.parent().unwrap().to_path_buf();
+    let resources = Resources {
+        id_dylib: lib.join("libbirnam_id.dylib"),
+        lib_dir: lib.clone(),
+        rust_workspace_dir: prefix.join("share/birnam/src"),
+        guide_dir: prefix.join("share/birnam/docs/guide"),
+        prefix,
+    };
+    let fixture = env::temp_dir().join(format!(
+        "birnam-native-incoming-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/native-incoming.c")
             )
-            .kind(),
-            native::UNIT
-        );
-        let method = object(send(
-            id,
+            .arg("-o")
+            .arg(&fixture)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let bootstrap = lib.join("libbirnam_bootstrap.dylib");
+    let portable = lib.join("libbirnam_portable_code.dylib");
+    let id = birnam_siphon::load(
+        resources.id_dylib.as_os_str().as_bytes(),
+        &[
+            fixture.as_os_str().as_bytes(),
+            bootstrap.as_os_str().as_bytes(),
+            lib.as_os_str().as_bytes(),
+            b"nameWithBytes",
+            b"sequence",
+            portable.as_os_str().as_bytes(),
+        ],
+    )
+    .unwrap();
+    let (h, module) = unsafe {
+        let constructor = id.send(id.literal(3).unwrap(), id.intern, &[]).unwrap();
+        let sequence = id.send(id.literal(4).unwrap(), id.intern, &[]).unwrap();
+        let args = id
+            .send(
+                id.root,
+                sequence,
+                &[id.literal(1).unwrap(), id.literal(5).unwrap()],
+            )
+            .unwrap();
+        let module = id.send(id.literal(0).unwrap(), id.load, &[args]).unwrap();
+        let args = id
+            .send(id.root, sequence, &[id.literal(2).unwrap()])
+            .unwrap();
+        let ns = id.send(id.literal(1).unwrap(), id.load, &[args]).unwrap();
+        (
+            Context::from_namespace(id, ns, resources, constructor).unwrap(),
+            module,
+        )
+    };
+    let q = h.scope();
+    q.keep(module).unwrap();
+    let hooks = hooks::Hooks::new(&h);
+    let key = |name: &[u8]| hooks.symbol(name);
+    let named = |name: &[u8]| h.named(name).unwrap();
+    let call = |r, name: &[u8], args: &[Oop]| q.call(r, name, args).unwrap();
+    let declared = |name: &[u8]| call(module, b"methodAt:", &[key(name)]);
+    assert_eq!(
+        as_size(call(declared(b"restore"), b"invokeOn:", &[module])),
+        Some(3)
+    );
+    std::fs::remove_file(fixture).unwrap();
+    let gc = named(b"GC");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let source=q.string(br#"
+      let IncomingProbe := [Object clone];
+      let echo := [Execution block: [:self :bits :data | [System gc]; data] withNativeSignature: "bwb"];
+      [Reflect defineMethod: #echoWord:bytes: on: IncomingProbe as: echo];
+      let wordEcho := [Execution block: [:self :bits | bits] withNativeSignature: "ww"];
+      [Reflect defineMethod: #word: on: IncomingProbe as: wordEcho];
+      let optional := [Execution block: [:self :value | nil] withNativeSignature: "Wo"];
+      [Reflect defineMethod: #optional: on: IncomingProbe as: optional];
+      let pair := [Execution block: [:self :first :second | [System gc]; second] withNativeSignature: "bbb"];
+      [Reflect defineMethod: #firstBytes:secondBytes: on: IncomingProbe as: pair];
+      let required := [Execution block: [:self :bits :value | value] withNativeSignature: "owO"];
+      [Reflect defineMethod: #requiredWord:object: on: IncomingProbe as: required];
+      let code := [wordEcho codeObject];
+      let signature := [code nativeSignature];
+      [signature appendBytes: "ignored"];
+      #[IncomingProbe code signature]
+    "#).unwrap();
+    let values = call(named(b"Codegen"), b"eval:", &[source]);
+    q.check_result(values).unwrap();
+    let probe = q.vector_at(values, 0).unwrap();
+    let code = q.vector_at(values, 1).unwrap();
+    assert_eq!(
+        q.read_bytes(q.vector_at(values, 2).unwrap()).unwrap(),
+        b"wwignored"
+    );
+    let word = named(b"Word");
+    let behavior = call(h.id.root, b"behaviorOf:", &[word]);
+    let selector = key(b"fromBits:");
+    let original = call(behavior, b"lookup", &[selector]);
+    let input = call(
+        named(b"Bytes"),
+        b"fromBytes:",
+        &[q.byte_values(b"original").unwrap()],
+    );
+    let full = q.word(usize::MAX).unwrap();
+    let context = hooks.context(&[original, gc, input, size(0).unwrap()]);
+    let replacement = call(declared(b"mutate"), b"withContext:", &[context]);
+    call(behavior, b"addMethod", &[selector, replacement]);
+    let result = call(probe, b"echoWord:bytes:", &[full, input]);
+    assert_eq!(
+        q.read_bytes(result).unwrap(),
+        b"original",
+        "byte input must be snapshotted before the Word factory runs"
+    );
+    assert_eq!(q.read_bytes(input).unwrap(), b"originalzzzzzzzz");
+    assert!(hooks.count(context, 3) >= 1);
+    let before = hooks.count(context, 3);
+    assert!(
+        h.send(
             probe,
-            b"methodFor:",
-            &[Operand::object(id.intern_name(b"word:").unwrap())],
-        ));
-        let method_token = retain(id, roots, method);
-        let pb = object(send(
-            id,
-            id.receiver,
-            b"ensurePrivateVtableFor:",
-            &[Operand::object(probe)],
-        ));
-        send(
-            id,
-            pb,
-            b"addMethod:as:",
-            &[
-                Operand::object(method),
-                Operand::object(id.intern_name(b"copiedWord:").unwrap()),
-            ],
-        );
-        collect(id, gc);
-        assert_eq!(
-            send(id, probe, b"copiedWord:", &[Operand::word(99)]).as_word(),
-            Some(99)
-        );
-        let source = object(send(
-            id,
-            string,
-            b"fromBytes:",
-            &[Operand::bytes(
-                br#"[[IncomingCode nativeSignature] asString]"#,
-            )],
-        ));
-        let token = retain(id, roots, source);
-        let signature = object(send(
-            id,
-            named(b"Codegen"),
-            b"eval:",
-            &[Operand::object(source)],
-        ));
-        let signature_token = retain(id, roots, signature);
-        let raw = send(id, signature, b"bytes", &[]).as_bytes().unwrap();
-        assert_eq!(borrowed_bytes(raw.pointer, raw.length).unwrap(), b"ww");
-        release(id, roots, signature_token);
-        release(id, roots, token);
-        release(id, roots, method_token);
-        release(id, roots, probe_token);
+            b"requiredWord:object:",
+            &[full, std::ptr::null_mut()]
+        )
+        .is_err()
+    );
+    assert_eq!(
+        hooks.count(context, 3),
+        before,
+        "a malformed non-null argument must be rejected before conversion callbacks"
+    );
+    call(behavior, b"addMethod", &[selector, original]);
+    let bytes = named(b"Bytes");
+    let bytes_vt = call(h.id.root, b"behaviorOf:", &[bytes]);
+    let from_bytes = key(b"fromBytes:");
+    let original_bytes = call(bytes_vt, b"lookup", &[from_bytes]);
+    let first = call(bytes, b"fromBytes:", &[q.byte_values(b"first").unwrap()]);
+    let second = call(bytes, b"fromBytes:", &[q.byte_values(b"second").unwrap()]);
+    let state = hooks.context(&[original_bytes, gc, second, size(0).unwrap()]);
+    let replacement = call(declared(b"mutate"), b"withContext:", &[state]);
+    call(bytes_vt, b"addMethod", &[from_bytes, replacement]);
+    let result = call(probe, b"firstBytes:secondBytes:", &[first, second]);
+    call(bytes_vt, b"addMethod", &[from_bytes, original_bytes]);
+    assert_eq!(q.read_bytes(result).unwrap(), b"second");
+    assert!(q.read_bytes(second).unwrap().len() > b"second".len());
+    assert!(
+        hooks.count(state, 3) >= 2,
+        "both input factories must have run"
+    );
+
+    for bits in [0, 1, 1usize << 63, usize::MAX] {
+        let result = call(probe, b"word:", &[q.word(bits).unwrap()]);
+        assert_eq!(q.word_bits(result).unwrap(), bits);
     }
+    assert!(h.send(probe, b"word:", &[named(b"nil")]).is_err());
+    assert!(h.send(probe, b"word:", &[]).is_err());
+    assert!(call(probe, b"optional:", &[std::ptr::null_mut()]).is_null());
+    let method = call(probe, b"methodFor:", &[key(b"word:")]);
+    let vt = call(h.id.root, b"ensurePrivateVtableFor:", &[probe]);
+    call(vt, b"addMethod:as:", &[method, key(b"copiedWord:")]);
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(
+        q.word_bits(call(probe, b"copiedWord:", &[q.word(99).unwrap()]))
+            .unwrap(),
+        99
+    );
+    assert_eq!(
+        q.read_bytes(call(code, b"nativeSignature", &[])).unwrap(),
+        b"ww"
+    );
 }

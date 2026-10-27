@@ -9,14 +9,16 @@ impl Drop for Preserve<'_> {
     }
 }
 unsafe fn copied_bytes(s: &State, q: &Scope<'_>, value: Oop) -> Result<Oop, Oop> {
+    unsafe { new_bytes(s, q, &byte_snapshot(s, q, value)?) }
+}
+unsafe fn byte_snapshot(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<u8>, Oop> {
     unsafe {
         let buffer = q.keep(s.send(value, b"bytes", &[])?);
-        let bytes = s.id.read_bytes(
+        s.id.read_bytes(
             buffer,
             s.names[b"sizeWord".as_slice()],
             s.names[b"atWord:".as_slice()],
-        )?;
-        new_bytes(s, q, &bytes)
+        )
     }
 }
 unsafe fn new_bytes(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
@@ -241,10 +243,29 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
         }
         let restore = Preserve(&s.preserve, s.preserve.replace(true));
         let answer = (|| {
+            if args[1..]
+                .iter()
+                .zip(sig.arguments())
+                .any(|(&value, &kind)| kind == b'O' && value.is_null())
+            {
+                return Err(invalid());
+            }
+            // Read all byte views before Word/Bytes factory callbacks can
+            // mutate another input. Payload interpretation stays with its owner.
+            let copied = args[1..]
+                .iter()
+                .zip(sig.arguments())
+                .map(|(&value, &kind)| {
+                    if kind == b'b' {
+                        byte_snapshot(s, &q, value).map(Some)
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .collect::<Result<Vec<_>, Oop>>()?;
             let mut values = vec![args[0]];
-            for (&value, &kind) in args[1..].iter().zip(sig.arguments()) {
+            for ((&value, &kind), copied) in args[1..].iter().zip(sig.arguments()).zip(&copied) {
                 let value = match kind {
-                    b'O' if value.is_null() => return Err(invalid()),
                     b'O' | b'o' => {
                         if value.is_null() {
                             s.nil
@@ -253,7 +274,7 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                         }
                     }
                     b'w' => s.send(s.named(b"Word")?, b"fromBits:", &[value])?,
-                    b'b' => copied_bytes(s, &q, value)?,
+                    b'b' => new_bytes(s, &q, copied.as_deref().ok_or_else(invalid)?)?,
                     _ => return Err(invalid()),
                 };
                 values.push(q.keep(value));

@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "scope": "Incoming Oop snapshot ordering, required-null admission, typed values, captured Methods and early native initialization",
+  "base_revision": "363dcfce9cf10a3eee5ae3cf0ebc7a5157702a4b",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-incoming-5ta1my25/prefix",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "5c2029ec8eb00ec15175d668a9f52a6776bf01a8fcbb39862922d1f9ce4013a1",
+    "rust/birnam-siphon/tests/native_incoming.rs": "3c24bf89687a7cc093e860b81e84c07ba9eb4e3f0ded6ff04aeaa179bc620042",
+    "tests/fixtures/oop-host/native-incoming.c": "81d34faaddda8afe0b324a63d48891a734e325134e2564ffee180d8e420c5381"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/native-incoming-after.log",
+      "sha256": "ef6a538950cb70730e793dcfcb713dc1941f9fd6326fdb9f70fc0bd46c1051e4",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-corrected-qualification/native-incoming-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0
+    }
+  ],
+  "regression_before": {
+    "log": ".cargo-target/oop-corrected-qualification/native-incoming-before.log",
+    "sha256": "2f985dd325195fcc54b1954b28c0bdd1250258d62b141ad96bae27ae7b450cc5",
+    "observed": "Body received originalzzzzzzzz after Word factory mutation instead of original"
+  },
+  "id_changes": false,
+  "remaining": [
+    "Remaining native harness and feature migration",
+    "Fresh complete qualification including the later incoming-adapter changes"
+  ]
+}
