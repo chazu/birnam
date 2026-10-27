@@ -1403,3 +1403,19 @@ loads PortableCode at that same early point; the normal later load reuses the
 initialized owner. This tests early capability without changing production load
 order. Boolean acceptance and the complete Oop core gate pass as well.
 [Receipt](../measurements/native-incoming-oop-20261026.json).
+
+## Collecting value initialization preserves replacements
+
+The `numbers_loading` harness now observes loading through Name messages and
+declared Oop Methods. It enables precise collection with a one-byte budget before
+ObjectModel initializes, keeps that pressure through native value construction and
+extension installation, and restores the ordinary budget after PortableCode.
+Authored startup follows at its normal budget. This matches the retained native
+construction scope in the current load order without changing production startup.
+
+Integer `+` and `to:` and String `size` and `split:` replacements survive the
+remaining initialization and repeated Integer policy loading. Untouched mixed
+arithmetic and String-to-Integer parsing still work. No runtime or Id change was
+needed; the removed Id `memoryManager` query was replaced by the existing Namespace
+GC binding in the test fixture.
+[Receipt](../measurements/numbers-loading-oop-20261027.json).

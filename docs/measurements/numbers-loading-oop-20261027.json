@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "scope": "Precise collecting native value initialization and live replacement preservation through Oops",
+  "base_revision": "daaa1cda18c760ea73eaa74212c87edb3e64b852",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-incoming-5ta1my25/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/numbers_loading.rs": "3557350b546df4f003f4a75f294ddec6f5d879a1bf9eaf3a82ab8b7306fb7a9d",
+    "tests/fixtures/oop-host/numbers-loading.c": "9d65c51a11d843bed8de4a46acfff27900951c3bac7e66c2bcb1dd221f92c8a6"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/numbers-loading.log",
+      "sha256": "997311d61ab01900f5af617e5b4d15b05953a99a44337603a10d87974b07c8f1",
+      "exit": 0
+    }
+  ],
+  "pressure_window": "Before ObjectModel initialization through PortableCode initialization; normal budget for subsequent authored startup",
+  "runtime_changes": false,
+  "id_changes": false
+}
