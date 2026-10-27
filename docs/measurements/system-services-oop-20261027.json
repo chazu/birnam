@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "scope": "Retained stdin, environment and file service acceptance through Oop messages and collecting declared callbacks",
+  "base_revision": "f06279a666a99bd094839a2b8640d10b9c9ea487",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/block-native-return-huqumtfi/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/system_services.rs": "f1b7bc1c24f5ff43f6f828f8e4d0a8c207766522559e57902b7cd136d9f0237e",
+    "rust/birnam-siphon/tests/system_services/file_io.rs": "548070ab981cd19162fcd82b37b98187069bd56dc2b1a93d7e729b855a042e85",
+    "tests/fixtures/oop-host/system-services.c": "c49a3ce46c80d8d9a1daa9a8efb33f6d6c016fcaa0078729f6734f61329ba3ae"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-corrected-qualification/system-services.log",
+      "sha256": "0ac68f2fbf351ec1dad7a20a6e149be943c7db33a8f3cb2c09cd0efb4156bee7",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Binary stdin, empty lines, CR preservation, 20000-byte line, final unterminated line, EOF and input error.",
+    "Missing, empty, UTF-8 and invalid environment names/values; exact String recognition and late Error factory publication.",
+    "All 256 byte values in file roundtrips, truncation, malformed filenames, argument refusal without side effects, and source calls.",
+    "Contents callback mutates the earlier filename byte provider under GC; the original filename snapshot determines the write.",
+    "Exact native failure identity, no write on contents failure, live collecting factories and replacements preserved by module reload."
+  ],
+  "runtime_changes": false,
+  "id_changes": false
+}

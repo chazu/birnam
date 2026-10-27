@@ -1,240 +1,163 @@
-//! File I/O preserves existing policy and snapshots names before contents sends.
+//! File I/O preserves policy and snapshots filenames before reading contents.
 use super::*;
-use std::cell::RefCell;
 
-struct ChangingBytes {
-    id: Protocol,
-    gc: Oop,
-    alias: Oop,
-    path: Oop,
-    contents: Oop,
-    path_bytes: RefCell<Vec<u8>>,
-    replacement: Vec<u8>,
-    seen: RefCell<Vec<Oop>>,
-    fail_contents: Cell<bool>,
-}
-unsafe extern "C" fn changing_bytes(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<ChangingBytes>();
-        assert_eq!(n, 0);
-        collect(p.id, p.gc);
-        p.seen.borrow_mut().push(r);
-        if r == p.path {
-            return Outcome::loaded(Operand::bytes(&p.path_bytes.borrow()));
-        }
-        if r == p.contents {
-            p.path_bytes.borrow_mut().copy_from_slice(&p.replacement);
-            if p.fail_contents.get() {
-                return Outcome::failed(native::INVALID_REQUEST, 961);
-            }
-        }
-        p.id.send(r, p.alias, borrowed_slice(a, n).unwrap())
-            .map_or_else(|e| e, Outcome::loaded)
+pub(super) fn check(h: &H<'_>) {
+    let nil = h.named(b"nil");
+    let system = h.named(b"System");
+    let root = std::path::PathBuf::from(std::env::var_os("BIRNAM_SERVICES_ROOT").unwrap());
+    let file = root.join("binary");
+    let path = h.string(file.as_os_str().as_bytes());
+    let data: Vec<u8> = (0..=255).collect();
+    let contents = h.string(&data);
+    let receiver = h.call(system, b"clone", &[]);
+    assert_eq!(
+        h.call(receiver, b"writeFile:contents:", &[path, contents]),
+        receiver
+    );
+    assert_eq!(fs::read(&file).unwrap(), data);
+    let read = h.system(b"readFile:", &[path]);
+    assert_eq!(h.text(read), data);
+    assert_ne!(read, contents);
+    h.bind(b"ServiceFilePath", path);
+    h.bind(b"ServiceFileContents", contents);
+    let read = h.eval(b"[System writeFile: ServiceFilePath contents: ServiceFileContents]; [System readFile: ServiceFilePath]");
+    assert_eq!(h.text(read), data);
+    let empty = h.string(b"");
+    assert_eq!(h.system(b"writeFile:contents:", &[path, empty]), system);
+    assert!(
+        fs::read(&file).unwrap().is_empty(),
+        "write truncates existing file"
+    );
+    assert_eq!(h.text(h.system(b"readFile:", &[path])), b"");
+    let invalid = h.string(&[0xff]);
+    let nul = h.string(b"bad\0path");
+    let directory = h.string(root.as_os_str().as_bytes());
+    let missing = h.string(root.join("missing").as_os_str().as_bytes());
+    for path in [invalid, nul, directory, missing, empty] {
+        h.error(h.system(b"readFile:", &[path]), b"could not read file");
     }
-}
-
-pub(super) unsafe fn check(h: &mut H) {
-    unsafe {
-        let id = h.id;
-        let nil = h.named(b"nil");
-        let system = h.named(b"System");
-        let root = std::path::PathBuf::from(std::env::var_os("BIRNAM_SERVICES_ROOT").unwrap());
-        let file = root.join("binary");
-        let path = h.string(file.as_os_str().as_bytes());
-        let data: Vec<u8> = (0..=255).collect();
-        let contents = h.string(&data);
-        let receiver = h.call(system, b"clone", &[]);
-        assert_eq!(
-            h.call(receiver, b"writeFile:contents:", &[path, contents]),
-            receiver
+    for path in [invalid, nul, directory, empty] {
+        h.error(
+            h.system(b"writeFile:contents:", &[path, contents]),
+            b"could not write file",
         );
-        assert_eq!(fs::read(&file).unwrap(), data);
-        let read = h.system(b"readFile:", &[path]);
-        assert_eq!(text(id, read), data);
-        assert_ne!(read, contents);
-        h.bind(b"ServiceFilePath", Operand::object(path));
-        h.bind(b"ServiceFileContents", Operand::object(contents));
-        let read = h.eval(b"[System writeFile: ServiceFilePath contents: ServiceFileContents]; [System readFile: ServiceFilePath]");
-        assert_eq!(text(id, read), data);
-        let empty = h.string(b"");
-        assert_eq!(h.system(b"writeFile:contents:", &[path, empty]), system);
-        assert!(
-            fs::read(&file).unwrap().is_empty(),
-            "write truncates existing file"
-        );
-        let read = h.system(b"readFile:", &[path]);
-        assert_eq!(text(id, read), b"");
-        let invalid = h.string(&[0xff]);
-        let nul = h.string(b"bad\0path");
-        let directory = h.string(root.as_os_str().as_bytes());
-        let missing = h.string(root.join("missing").as_os_str().as_bytes());
-        for path in [invalid, nul, directory, missing, empty] {
-            let error = h.system(b"readFile:", &[path]);
-            h.error(error, b"could not read file");
-        }
-        for path in [invalid, nul, directory, empty] {
-            let error = h.system(b"writeFile:contents:", &[path, contents]);
-            h.error(error, b"could not write file");
-        }
-        for (selector, args) in [
-            (b"readFile:".as_slice(), vec![]),
-            (b"readFile:", vec![nil]),
-            (b"writeFile:contents:", vec![path]),
-            (b"writeFile:contents:", vec![nil, contents]),
-            (b"writeFile:contents:", vec![path, nil]),
-            (b"writeFile:contents:", vec![invalid, nil]),
-        ] {
-            assert_eq!(h.system(selector, &args), nil);
-        }
-        assert!(
-            fs::read(&file).unwrap().is_empty(),
-            "refused write has no side effect"
-        );
-        let inherited = h.string(file.as_os_str().as_bytes());
-        send(
-            id,
-            id.receiver,
-            b"ensurePrivateVtableFor:",
-            &[Operand::object(inherited)],
-        );
-        assert_eq!(h.system(b"readFile:", &[inherited]), nil);
-        assert_eq!(
-            h.system(b"writeFile:contents:", &[inherited, contents]),
-            nil
-        );
-
-        // A replaced bytes method lends mutable fixture storage. Mutating that
-        // earlier view from the contents send must not redirect this write.
-        let first = root.join("snapshot-a");
-        let second = root.join("snapshot-b");
-        let snapshot_path = h.string(first.as_os_str().as_bytes());
-        let svt = h.named(b"StringVt");
-        let original = save(h, svt, b"bytes", b"fileBytes");
-        let mut p = ChangingBytes {
-            id,
-            gc: h.named(b"GC"),
-            alias: h.keep(id.intern_name(b"fileBytes").unwrap()),
-            path: snapshot_path,
-            contents,
-            path_bytes: RefCell::new(first.as_os_str().as_bytes().to_vec()),
-            replacement: second.as_os_str().as_bytes().to_vec(),
-            seen: RefCell::new(Vec::new()),
-            fail_contents: Cell::new(false),
-        };
-        install(
-            id,
-            svt,
-            b"bytes",
-            changing_bytes,
-            ptr::from_mut(&mut p).cast(),
-        );
-        assert_eq!(
-            h.system(b"writeFile:contents:", &[snapshot_path, contents]),
-            system
-        );
-        assert_eq!(*p.seen.borrow(), vec![snapshot_path, contents]);
-        assert_eq!(*p.path_bytes.borrow(), p.replacement);
-        assert_eq!(fs::read(&first).unwrap(), data);
-        assert!(
-            !second.exists(),
-            "contents callback cannot redirect the filename snapshot"
-        );
-        p.fail_contents.set(true);
-        let failure = id
-            .send_named(
-                system,
-                b"writeFile:contents:",
-                &[Operand::object(snapshot_path), Operand::object(contents)],
-            )
-            .unwrap_err();
-        assert_eq!(
-            (failure.status, failure.detail),
-            (native::INVALID_REQUEST, 961)
-        );
-        assert!(!second.exists(), "failed contents send does not write");
-        restore(h, svt, b"bytes", b"fileBytes", original);
-
-        // File reads and lazy errors use current collecting factories.
-        fs::write(&file, &data).unwrap();
-        let original = save(h, svt, b"fromBytes:", b"fileString:");
-        let mut forwarding_state = Forward {
-            id,
-            gc: h.named(b"GC"),
-            ns: h.ns,
-            alias: h.keep(id.intern_name(b"fileString:").unwrap()),
-            calls: Cell::new(0),
-            failure: Cell::new(false),
-            publish_error: Cell::new(ptr::null_mut()),
-        };
-        install(
-            id,
-            svt,
-            b"fromBytes:",
-            forwarding,
-            ptr::from_mut(&mut forwarding_state).cast(),
-        );
-        let read = h.system(b"readFile:", &[path]);
-        assert_eq!(text(id, read), data);
-        assert_eq!(forwarding_state.calls.get(), 1);
-        forwarding_state.failure.set(true);
-        let failure = id
-            .send_named(system, b"readFile:", &[Operand::object(path)])
-            .unwrap_err();
-        assert_eq!(
-            (failure.status, failure.detail),
-            (native::INVALID_REQUEST, 951)
-        );
-        forwarding_state.failure.set(false);
-        let error_factory = h.named(b"Error");
-        h.bind(b"Error", Operand::unit());
-        assert_eq!(h.system(b"readFile:", &[missing]), nil);
-        forwarding_state.publish_error.set(error_factory);
-        let error = h.system(b"writeFile:contents:", &[directory, contents]);
-        h.error(error, b"could not write file");
-        restore(h, svt, b"fromBytes:", b"fileString:", original);
-        let evt = h.named(b"ErrorFactoryVt");
-        let original = save(h, evt, b"kind:message:", b"fileError:message:");
-        install(id, evt, b"kind:message:", answer, nil);
-        assert_eq!(h.system(b"readFile:", &[missing]), nil);
-        assert_eq!(
-            h.system(b"writeFile:contents:", &[directory, contents]),
-            nil
-        );
-        restore(h, evt, b"kind:message:", b"fileError:message:", original);
-        let vt = h.named(b"SystemVt");
-        for (selector, alias, args) in [
-            (b"readFile:".as_slice(), b"fileRead:".as_slice(), vec![path]),
-            (
-                b"writeFile:contents:",
-                b"fileWrite:contents:",
-                vec![path, contents],
-            ),
-        ] {
-            let original = save(h, vt, selector, alias);
-            install(id, vt, selector, answer, contents);
-            let library = super::directory().join("libbirnam_file_io.dylib");
-            assert_eq!(
-                send(
-                    id,
-                    id.receiver,
-                    b"loadNative:",
-                    &[
-                        Operand::bytes(library.as_os_str().as_bytes()),
-                        Operand::object(h.ns)
-                    ]
-                )
-                .kind(),
-                native::UNIT
-            );
-            assert_eq!(h.system(selector, &args), contents);
-            restore(h, vt, selector, alias, original);
-        }
-        h.bind(b"ServiceFilePath", Operand::unit());
-        h.bind(b"ServiceFileContents", Operand::unit());
     }
+    for (selector, args) in [
+        (b"readFile:".as_slice(), vec![]),
+        (b"readFile:", vec![nil]),
+        (b"writeFile:contents:", vec![path]),
+        (b"writeFile:contents:", vec![nil, contents]),
+        (b"writeFile:contents:", vec![path, nil]),
+        (b"writeFile:contents:", vec![invalid, nil]),
+    ] {
+        assert_eq!(h.system(selector, &args), nil);
+    }
+    assert!(
+        fs::read(&file).unwrap().is_empty(),
+        "refused write has no side effect"
+    );
+    let inherited = h.string(file.as_os_str().as_bytes());
+    h.call(h.host.id.root, b"ensurePrivateVtableFor:", &[inherited]);
+    assert_eq!(h.system(b"readFile:", &[inherited]), nil);
+    assert_eq!(
+        h.system(b"writeFile:contents:", &[inherited, contents]),
+        nil
+    );
+
+    // The path's replaced bytes method returns a mutable provider. Changing that
+    // provider in the later contents callback must not redirect the file write.
+    let first = root.join("snapshot-a");
+    let second = root.join("snapshot-b");
+    let snapshot_path = h.string(first.as_os_str().as_bytes());
+    let svt = h.named(b"StringVt");
+    let original = h.save(svt, b"bytes", b"fileBytes");
+    let path_bytes = h.q.byte_values(first.as_os_str().as_bytes()).unwrap();
+    let replacement = h.q.byte_values(second.as_os_str().as_bytes()).unwrap();
+    let seen = h.hooks.context(&[ptr::null_mut(); 4]);
+    let changing = h.hooks.context(&[
+        h.named(b"GC"),
+        h.key(b"fileBytes"),
+        snapshot_path,
+        contents,
+        path_bytes,
+        replacement,
+        seen,
+        size(0).unwrap(),
+        ptr::null_mut(),
+    ]);
+    h.install(svt, b"bytes", h.method(b"changing", changing));
+    assert_eq!(
+        h.system(b"writeFile:contents:", &[snapshot_path, contents]),
+        system
+    );
+    assert_eq!(h.hooks.count(changing, 7), 2);
+    assert_eq!(h.hooks.field(seen, 0), snapshot_path);
+    assert_eq!(h.hooks.field(seen, 1), contents);
+    assert_eq!(
+        h.q.read_bytes(path_bytes).unwrap(),
+        second.as_os_str().as_bytes()
+    );
+    assert_eq!(fs::read(&first).unwrap(), data);
+    assert!(
+        !second.exists(),
+        "contents callback cannot redirect the filename snapshot"
+    );
+    let failure = h.hooks.fault(961);
+    h.hooks.put(changing, 8, failure);
+    assert_eq!(
+        h.fail(system, b"writeFile:contents:", &[snapshot_path, contents]),
+        failure
+    );
+    assert_eq!(h.hooks.count(changing, 7), 4);
+    assert_eq!(h.hooks.field(seen, 2), snapshot_path);
+    assert_eq!(h.hooks.field(seen, 3), contents);
+    assert!(!second.exists(), "failed contents send does not write");
+    h.restore(svt, b"bytes", b"fileBytes", original);
+
+    // File reads and late Error lookup use the current collecting factories.
+    fs::write(&file, &data).unwrap();
+    let original = h.save(svt, b"fromBytes:", b"fileString:");
+    let forwarding = h.forward(b"fileString:");
+    h.install(svt, b"fromBytes:", h.method(b"forward", forwarding));
+    assert_eq!(h.text(h.system(b"readFile:", &[path])), data);
+    assert_eq!(h.hooks.count(forwarding, 2), 1);
+    let failure = h.hooks.fault(951);
+    h.hooks.put(forwarding, 3, failure);
+    assert_eq!(h.fail(system, b"readFile:", &[path]), failure);
+    h.hooks.put(forwarding, 3, ptr::null_mut());
+    let error_factory = h.named(b"Error");
+    h.bind(b"Error", ptr::null_mut());
+    assert_eq!(h.system(b"readFile:", &[missing]), nil);
+    h.hooks.put(forwarding, 5, error_factory);
+    h.error(
+        h.system(b"writeFile:contents:", &[directory, contents]),
+        b"could not write file",
+    );
+    h.restore(svt, b"fromBytes:", b"fileString:", original);
+    let evt = h.named(b"ErrorFactoryVt");
+    let original = h.save(evt, b"kind:message:", b"fileError:message:");
+    h.install(evt, b"kind:message:", h.hooks.method(b"fixed", nil));
+    assert_eq!(h.system(b"readFile:", &[missing]), nil);
+    assert_eq!(
+        h.system(b"writeFile:contents:", &[directory, contents]),
+        nil
+    );
+    h.restore(evt, b"kind:message:", b"fileError:message:", original);
+    let vt = h.named(b"SystemVt");
+    for (selector, alias, args) in [
+        (b"readFile:".as_slice(), b"fileRead:".as_slice(), vec![path]),
+        (
+            b"writeFile:contents:",
+            b"fileWrite:contents:",
+            vec![path, contents],
+        ),
+    ] {
+        let original = h.save(vt, selector, alias);
+        h.install(vt, selector, h.hooks.method(b"fixed", contents));
+        assert!(h.load("file_io").is_null());
+        assert_eq!(h.system(selector, &args), contents);
+        h.restore(vt, selector, alias, original);
+    }
+    h.bind(b"ServiceFilePath", ptr::null_mut());
+    h.bind(b"ServiceFileContents", ptr::null_mut());
 }

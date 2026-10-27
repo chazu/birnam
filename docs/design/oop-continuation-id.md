@@ -1521,3 +1521,15 @@ oracle, 177 task-control checks, suspension and mapped/rebuilt image recovery.
 [Receipt and baseline comparison](../measurements/block-native-return-oop-20261027.json).
 The cold candidate `52c617fe` predates this correction and the incoming-adapter
 fixes; full installation qualification for these later changes remains pending.
+
+## Stdin, environment and file services
+
+The `system_services` harness and its file checks now use Oop arguments/results
+and declared collecting callbacks. Their retained checks cover binary and long
+stdin lines, CR/EOF/error handling, environment encoding and missing values,
+file roundtrips/truncation, invalid inputs without write effects, source calls,
+late Error factory publication, native failure identity and replacements across
+module reloads. A contents callback mutates the earlier filename byte-provider
+Oop under collection; the write still uses its original filename snapshot. No
+runtime or Id change was needed.
+[Receipt](../measurements/system-services-oop-20261027.json).
