@@ -18,18 +18,23 @@ pub struct H<'a> {
 }
 impl<'a> H<'a> {
     pub fn new(host: &'a Context) -> Self {
+        Self::with_fixture(host, "generation")
+    }
+    pub fn with_fixture(host: &'a Context, fixture_name: &str) -> Self {
         let q = host.scope();
         let gc = host.named(b"GC").unwrap();
         q.call(gc, b"precisePayloads:", &[size(1).unwrap()])
             .unwrap();
-        let path =
-            std::env::temp_dir().join(format!("birnam-generation-{}.dylib", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "birnam-{fixture_name}-{}.dylib",
+            std::process::id()
+        ));
         assert!(
             std::process::Command::new("clang")
                 .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
                 .arg(
                     Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../tests/fixtures/oop-host/generation.c")
+                        .join(format!("../../tests/fixtures/oop-host/{fixture_name}.c"))
                 )
                 .arg("-o")
                 .arg(&path)
@@ -122,24 +127,16 @@ impl<'a> H<'a> {
         self.call(self.prototype(n), b"clone", &[])
     }
     pub fn lifecycle(&self) {
-        self.host
-            .load_native(
-                &self.q,
-                &self
-                    .host
-                    .resources
-                    .lib_dir
-                    .join("native/libbirnam_store.dylib"),
-                &[self.host.namespace],
-            )
-            .unwrap();
+        self.modules(&["store", "stdlib", "candidatePolicy", "compiledUnit"]);
+    }
+    pub fn modules(&self, modules: &[&str]) {
         let module = self.host.global(&self.q, b"Module").unwrap();
         self.call(
             module,
             b"libDir:",
             &[self.text(self.host.resources.lib_dir.as_os_str().as_encoded_bytes())],
         );
-        for name in ["stdlib", "candidatePolicy", "compiledUnit"] {
+        for name in modules {
             let path = self
                 .host
                 .resources

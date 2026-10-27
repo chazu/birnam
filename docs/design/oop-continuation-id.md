@@ -2612,3 +2612,37 @@ All seven cases pass. The raw-edit case was rerun after removing the fixture's
 extra Method root; the six other cases were unchanged. Adjacent projection,
 transaction, candidate and retirement suites also pass. No runtime or Id change
 was needed. [Receipt](../measurements/generation-ledger-oop-20261027.json).
+
+## Image interruption checks and optional Store composition
+
+The image snapshot and partial-load harnesses now use declared Oop Methods and
+ordinary context objects instead of the old NativeEntry/Operand/Outcome interface.
+The save checks retain dictionary, Store retention-policy and provider-marker
+changes made during compilation; a rejected save must leave the existing file
+unchanged. Fresh image payloads and their children must survive a collecting
+callback and become reclaimable after saving. The fixture observes allocation
+identities rather than querying freed object references.
+
+The partial-load checks retain callback dictionary edits, independent Global
+bindings, explicit Store facts and newly recorded source. Native failures and
+ordinary Error objects keep their identities. Both mapped and rebuilt restoration
+retain the existing no-replay and partial-load requirements, including bound nil
+and an anonymous target restored before its Global is published. The existing
+authored-startup switches remain available.
+
+The shared generation setup also now loads the authored Store module, as the old
+optional-module setup did. Loading only native Store omitted its image-provider
+registration. Earlier generation receipts remain evidence for that narrower
+composition; the corrected composition is checked separately. These changes add
+no Id mechanism and do not restore universal method-change subscriptions.
+
+The two image harnesses pass, including mapped/rebuilt native failure and
+mapped/rebuilt authored startup with a late Global, bound nil and an ordinary
+Error. All seven ledger cases and adjacent projection, transaction, candidate and
+retirement checks pass with authored Store enabled. Explicit invalidation and
+Store checks also pass. [Receipt](../measurements/image-interruption-oop-20261027.json).
+
+The separate current-runtime cold Host run is still unqualified: its generation
+group stopped when compiled-unit baseline image preparation exceeded the existing
+300-second subprocess timeout. No deadline was changed, and the cause has not yet
+been established. [Failure receipt](../measurements/language-cold-host-timeout-oop-20261027.json).

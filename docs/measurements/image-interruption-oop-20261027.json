@@ -1,0 +1,92 @@
+{
+  "passed": true,
+  "scope": "Oop image save interruption, partial-load callback preservation, and generation checks with authored Store image participation",
+  "base_revision": "880b77eb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/image_snapshot_stamp.rs": "54681af62771edf4c822b9be36f1f0e7196b81ea4df40d07f6b62f4e892de6fb",
+    "rust/birnam-siphon/tests/image_recovery_conflict.rs": "0baf9eb874216b06d6ce9175f6ca0c76cbf6b9e80215d2fe416e5a37773bce29",
+    "rust/birnam-siphon/tests/support/generation.rs": "d24a6d35d6642d66044163e486d5b2e1d26d6cfe14983d8caf58feec443b7a6a",
+    "tests/fixtures/oop-host/image.c": "bf671c73d778c50b665462d8c681d4493107295694609e6dc0819797ce4256fb",
+    "rust/birnam-siphon/tests/generation_ledger.rs": "627db6e5df43b8a7bfef5391d5af88adbf67b74f13174210ab68355d4e4785bb"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/image-snapshot-oop.log",
+      "sha256": "9e8795e53e131369909557c10202b7824775b44d4df7fcbe8008a7e7953d34e6",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/image-conflict-oop.log",
+      "sha256": "b82d668de14241cff5ad744e44e8639e3a6da14f6a455ff2308880f7adb955fd",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/image-conflict-authored-oop.log",
+      "sha256": "b84f7ea8a87b255266eb65b67e5b957f3c52ddbe1d579c7041809bad953aca38",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-ledger-provider.log",
+      "sha256": "415091ed2f790516a4e9bae3713d0b75d132486ded968dbf588024a1fbd03c37",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-provider-adjacent.log",
+      "sha256": "9d90885b2843be4d33e05e98ca5746583d2aed27dc06f0d60b6ee132ede90e71",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/generation-provider-projection.log",
+      "sha256": "ea6eab678520396b01896accdf6539db534425128cbfbc68fa30fb8f54f065f2",
+      "exit": 0
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/explicit-invalidation-current.log",
+      "sha256": "6681e5a1cdb9f719c56bd249e9f2ec70a48af1e132b0424ea8d2596f694bd2b4",
+      "exit": 0
+    }
+  ],
+  "conflict_configurations": [
+    {
+      "flags": [],
+      "modes": [
+        "mapped",
+        "rebuilt"
+      ],
+      "failure": "exact native failure identity"
+    },
+    {
+      "flags": [
+        "BIRNAM_IMAGE_AUTHORED",
+        "BIRNAM_IMAGE_LATE_GLOBALS",
+        "BIRNAM_IMAGE_BOUND_NIL",
+        "BIRNAM_IMAGE_RETURN_ERROR",
+        "BIRNAM_IMAGE_STARTUP"
+      ],
+      "modes": [
+        "mapped",
+        "rebuilt"
+      ],
+      "failure": "exact ordinary Error identity"
+    }
+  ],
+  "retained_checks": [
+    "Interrupted dictionary, retention-policy and provider-marker edits leave the previous image file unchanged",
+    "Retention-policy edits preserve the fact basis while changing image data",
+    "Fresh image payload and child survive collecting callbacks and are reclaimed after saving",
+    "Failed loads preserve callback dictionary edits, unrelated Globals, explicit Store facts and introduced source",
+    "Bound nil remains present, callbacks run once, and failure identity is preserved",
+    "All seven generation ledger cases pass with the authored Store image provider",
+    "Generation projection, transaction, candidate admission and retirement pass",
+    "Explicit Store invalidation and both Store tests pass without a universal Id subscription"
+  ],
+  "composition_correction": "The former generation helper loaded only native Store. The corrected helper loads compiled Store, which registers image participation. Earlier receipts qualify the narrower composition only. Generation reruns began before extracting the equivalent with_fixture helper; both image tests exercise that extraction.",
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Other native/compiler harnesses and obsolete-contract audit",
+    "Automatic alias-return and numeric interception decisions",
+    "Current cold Host run stopped at compiled-unit baseline preparation timeout; full qualification remains incomplete"
+  ]
+}
