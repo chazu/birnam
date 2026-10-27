@@ -2646,3 +2646,15 @@ The separate current-runtime cold Host run is still unqualified: its generation
 group stopped when compiled-unit baseline image preparation exceeded the existing
 300-second subprocess timeout. No deadline was changed, and the cause has not yet
 been established. [Failure receipt](../measurements/language-cold-host-timeout-oop-20261027.json).
+
+## Isolate value conversion and worker reply failure
+
+The Isolate harness now uses Oops, scoped roots and existing declared callbacks.
+It preserves vector/map round trips, all supported copied value kinds, collecting
+Integer construction, cyclic and nontransferable rejection, and oversized-container
+errors. Native failures preserve their exact object identity both during decoding
+and while constructing a reply from a ready wire peer; the latter terminates the
+worker handle. The unchanged wire-only peer now lives with the Oop fixtures.
+
+The harness passes without runtime or Id changes. The worker-ready deadline
+remains 15 seconds. [Receipt](../measurements/isolate-conversion-oop-20261027.json).

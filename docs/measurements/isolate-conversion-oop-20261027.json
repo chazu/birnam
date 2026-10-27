@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "scope": "Isolate copied-value conversion and parent-side worker reply construction through current Oop owners",
+  "base_revision": "ebf2825aa790edee63c9fafe9da77b1fdf7821a6",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/language-absence-pseljnyt/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/isolate.rs": "9210b2fe22d0f54d44d39283d9253e3f994f4b371315a1f5661801738228ec64",
+    "tests/fixtures/oop-host/isolate_reply.py": "8e5add2174942957ca6f93dac8e991d5d25c658cba90d233c36390987200d2e0",
+    "tests/fixtures/oop-host/host-hooks.c": "c2b2259686fdee1c9402e6d5f8501578767ae8dc54a96923457ff1280c588eb0"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/isolate-oop.log",
+      "sha256": "30752502280a25fc6088143b8f3c3b3a2b66caa27150e740ff09dd8edebd67b4",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Nil, Boolean, Integer, floating point, String, Symbol and nested Vector round trip",
+    "Map round trip through current owners",
+    "Replaced Integer construction collects and is actually entered",
+    "Nontransferable Block returns encode/nonTransferable Error with unchanged message",
+    "Oversized container and collecting cyclic Vector lookup return existing codec errors",
+    "Native Integer construction failure preserves exact failure identity",
+    "Ready wire peer receives a request; Vector construction failure during reply preserves exact failure identity and leaves worker exited"
+  ],
+  "fixture_change": "Moved the unchanged wire-only Python peer out of the obsolete Id-protocol-v1 fixture directory; reused existing declared Oop callbacks",
+  "runtime_changes": false,
+  "id_changes": false,
+  "worker_ready_deadline_ms": 15000,
+  "remaining": [
+    "Other native/compiler integration harnesses",
+    "Cold Host qualification and timeout diagnosis",
+    "Pending automatic optimization decisions"
+  ]
+}
