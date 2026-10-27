@@ -12,8 +12,6 @@ mod inline_return;
 mod numeric_predicate;
 #[path = "compiler/prepared_call.rs"]
 mod prepared_call;
-#[path = "compiler/publication.rs"]
-mod publication;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -192,7 +190,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
-        publication::check(&mut h);
         h.clear();
         h.collect();
         assert_eq!(h.units(), 0);

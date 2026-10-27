@@ -1886,3 +1886,22 @@ are reclaimed when that binding is released.
 The complete source target passes with these checks included. No runtime or Id
 change was needed. Seven compiler groups remain pending.
 [Receipt](../measurements/compiler-globals-oop-20261027.json).
+
+## Compiled Methods and explicit publication policy
+
+The compiler publication group now runs through Oops in `compiler_source`.
+Collecting callbacks verify that ordinary Reflect definition/removal never call
+Store publication, authorization or notification, even when the authorizer fails.
+Explicit Store publication still calls its current hooks. False, nil, Error and
+native failure denials preserve the previous binding and description without
+retaining additional generated code.
+
+Notification sees the committed Method and its Store description. Its native
+failure leaves that commit intact, while a previously captured Method still runs
+its old body. Replacing the authorizer and observer changes the next send. Explicit
+removal releases the description and binding, and native-unit/byte counts return
+to baseline. The test's callback state releases its submitted Method after use.
+
+The full source target, explicit-invalidation and publication-contract targets
+pass. No runtime or Id change was needed. Six compiler groups remain pending.
+[Receipt](../measurements/compiler-publication-oop-20261027.json).

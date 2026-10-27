@@ -5,6 +5,8 @@ mod accounting;
 mod globals;
 #[path = "support/oop.rs"]
 mod oop;
+#[path = "compiler/publication.rs"]
+mod publication;
 use birnam_abi::{Oop, as_size, size};
 use birnam_host_support::Context;
 use std::cell::RefCell;
@@ -193,6 +195,7 @@ fn source_compiles_and_runs_on_production_execution() {
     h.reclaimed();
     accounting::check(&h);
     globals::check(&h);
+    publication::check(&h);
 }
 fn rejected_compilation(h: &H<'_>) {
     let syntax = h.eval(b"let :=");

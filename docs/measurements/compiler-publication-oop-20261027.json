@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "scope": "Compiled Method publication through explicit Store authorization and post-commit notification, separate from ordinary Reflect edits",
+  "base_revision": "75b616a604007d41973cadc04642ac007ddaae07",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/embedding-owner-pb9vdvs2/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/publication.rs": "8d433b88b4e24697f86b4d5f24cb629ac58bcc709060d888c4d1207ae8378dbe",
+    "rust/birnam-siphon/tests/compiler_source.rs": "14ad72b471257ebd21089ba191acb6fe37ceea6b1edba8606e1142552a45c712",
+    "rust/birnam-siphon/tests/compiler.rs": "f5f999a6ebff3a1cf271363f4a5782a4d92f733510c9f1d95b81876195f90c1f",
+    "tests/fixtures/oop-host/compiler-publication.c": "06d749e9e390d3f8a771dc223ea53a52557beb4a2198bb8d76d64fb59986968c"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-publication-final.log",
+      "sha256": "93bab0ae9b804e48a4f16a8f5293ebcdd9da78511649df610d510f199180907c",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Ordinary Reflect definition/removal bypasses Store publication and both hooks, including when the authorizer would fail",
+    "Explicit Store publication invokes collecting current hooks; its observer sees exact committed Method and description",
+    "False, nil and Error denial identities preserve the old binding and description without additional native mappings",
+    "Native authorization failure retains identity and prevents mutation",
+    "Native notification failure retains identity after commit; new calls see 42 while a captured old Method still returns 41",
+    "Replacing hook methods changes subsequent sends, with exact publication/authorization/notification counts",
+    "Explicit removal releases generated code and descriptions; actual native units and bytes return to baseline",
+    "Adjacent Store tests retain explicit invalidation without a universal method subscription"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "remaining": [
+    "Six compiler groups and other native targets remain unported",
+    "Full latest cold/Host qualification remains incomplete"
+  ]
+}
