@@ -1368,3 +1368,10 @@ and mapped/rebuilt image recovery. Block arity, Integer policy, pending-call
 recovery and the complete Oop core gate also pass. This is staged-runtime evidence;
 the cold candidate `52c617fe` does not include this later adapter correction.
 [Receipt](../measurements/native-boundary-oop-20261026.json).
+
+The complete installed Host task group also passes when rerun serially on cold
+candidate `52c617fe`: task images/fields, 19 service checks, all 27 multicore checks,
+closure observation and all 177 task-control checks. Code, assertions and the
+15-second worker deadline are unchanged from the concurrent run. This qualifies
+that candidate's task group; it predates the incoming-adapter correction above.
+[Serial task receipt](../measurements/corrected-tasks-serial-oop-20261026.json).

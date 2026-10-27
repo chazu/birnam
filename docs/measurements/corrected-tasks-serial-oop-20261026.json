@@ -1,0 +1,90 @@
+{
+  "passed": true,
+  "scope": "Complete serial installed Host task group on cold candidate 52c617fe; predates the continuing incoming-adapter correction",
+  "candidate_revision": "52c617feaf31ef0da973b5601425a8e9f6fb79e4",
+  "prefix": "/private/tmp/birnam-oop-corrected-1wcb9e4b/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/task-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.Pn1TU7/relocated"
+      ],
+      "exit_code": 0,
+      "label": "tasks:task-image-test.py",
+      "started_unix_ns": 1793063288568776000,
+      "status": "passed",
+      "wall_ns": 239521195042
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/task-fields-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.Pn1TU7/relocated"
+      ],
+      "exit_code": 0,
+      "label": "tasks:task-fields-test.py",
+      "started_unix_ns": 1793063528136893000,
+      "status": "passed",
+      "wall_ns": 261412935916
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/concurrency-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.Pn1TU7/relocated"
+      ],
+      "exit_code": 0,
+      "label": "tasks:concurrency-cli-test.py",
+      "started_unix_ns": 1793063789582563000,
+      "status": "passed",
+      "wall_ns": 434640264458
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/multicore-smoke.sh",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.Pn1TU7/relocated"
+      ],
+      "exit_code": 0,
+      "label": "tasks:multicore-smoke.sh",
+      "started_unix_ns": 1793064224266788000,
+      "status": "passed",
+      "wall_ns": 312095277792
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/closure-observation-test.sh",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.Pn1TU7/relocated"
+      ],
+      "exit_code": 0,
+      "label": "tasks:closure-observation-test.sh",
+      "started_unix_ns": 1793064536407907000,
+      "status": "passed",
+      "wall_ns": 104714182750
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-corrected-qualification/test-binaries/manifest.json",
+        "task-control",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "label": "tasks:task-control:--ignored",
+      "started_unix_ns": 1793064641153999000,
+      "status": "passed",
+      "wall_ns": 44356547542
+    }
+  ],
+  "log": ".cargo-target/oop-corrected-qualification/tasks-serial.log",
+  "log_sha256": "72f0cccc0eb7da5bf1e82e0a5ea6819011db78221479c62834b00b5440a892a5",
+  "worker_startup_deadline_ms": 15000,
+  "prior_failure_log": ".cargo-target/oop-corrected-qualification/tasks.log",
+  "note": "The unchanged complete task group passed serially after its concurrent run failed multicore assertions. No code, assertion or deadline was changed for this retry."
+}
