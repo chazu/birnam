@@ -2901,3 +2901,13 @@ optional providers, image format, documentation, portable execution, workers and
 project queries. Its image group remains running. This candidate predates the
 fixed-adapter null-validation correction; the newer cold candidate is qualified
 separately. [Receipt](../measurements/language-cli-oop-20261027.json).
+
+## Schema-tagged table data through Oops
+
+The tagged-table harness now uses Oop values and existing declared callbacks.
+It preserves schema decoding, locator/index queries, source positions after
+selection, and new base ordering after concatenation. Current Integer getter and
+constructor replacements remain observable, including collection and changed
+bounds. Schema tags belong to Bytes-owned table data; no payload-type catalog is
+introduced in Id. The harness passes without runtime changes.
+[Receipt](../measurements/tagged-rows-oop-20261027.json).

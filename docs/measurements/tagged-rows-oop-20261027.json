@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "scope": "Schema-tagged table positions and current numeric owner operations through Oops",
+  "base_revision": "7d13b51eb1634cdb18801c77699bbd8f7c0b4868",
+  "runtime_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/tagged_rows.rs": "fbaf4c211e318a4426c8dbb0ac3f2f3f36a9528797023cb81cf8f1577b78d5be"
+  },
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/tagged-rows-oop.log",
+      "sha256": "0e5ecade75b5e3ec9ff862a92ddfdaedae3e10540d97e306e1e1bd766bc26fc5",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Schema decoding and locator/index queries",
+    "Selection retains source position; concatenation establishes a new base ordering",
+    "Integer getter replacement collects and changes the bound used by table operations",
+    "Integer constructor replacement collects while producing source positions"
+  ],
+  "ownership": "Schema tags describe Bytes-owned serialized table data, not Id allocation, dispatch or GC payload types.",
+  "runtime_changes": false,
+  "id_changes": false
+}
