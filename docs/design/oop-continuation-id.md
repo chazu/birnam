@@ -3182,3 +3182,34 @@ Validation passes for the migrated test and four adjacent capture/input/cleanup
 tests, plus the Oop core check, including the negative dispatch-contract test,
 independent C caller, default and resumable compiler integration and 177 authored
 TaskControl checks. [Receipt](../measurements/root-token-validation-oop-20261027.json).
+
+
+## Word expression and helper acceptance through Oops
+
+The Word expression and authored-helper harnesses now use Oop Methods, ordinary
+Bytes for expression data and independently declared C callbacks. No production
+runtime or Id code changed. The original authored arithmetic/helper sources are
+retained. Explicit evaluation observes current primitive bindings and allocation
+permission, including revocation without a binding change and collection plus
+primitive replacement during permission. Refusal does not run the replacement;
+subsequent ordinary invocation does. Maximum-size and malformed programs are
+covered, as are supported immediate inputs and absent-input rejection.
+
+Helper checks preserve current body, capture-reader and primitive replacement.
+Replacing the helper body during its collecting capture read cannot redirect the
+already-entered Method; the first call finishes with its original result and the
+next call enters the replacement. This tests current and entered-call meanings
+without reinstating the former compiler helper proof machinery.
+
+The automatic producers are still missing. Both generated expression examples
+allocate four Words, compared with the historical one-Word assertion; the explicit
+evaluator still allocates one. The automatic helper-plan observer records zero
+calls, compared with the historical one-call assertion. These are measured counts,
+not elapsed-time results. The migrated tests preserve the language and explicit
+owner-operation checks while recording this compiler gap separately; they do not
+establish automatic producer completion or performance parity.
+
+Both targets and the adjacent guard/Word-query-order targets pass.
+[Receipt](../measurements/word-plans-oop-20261027.json). The metadata/admission
+regressions, automatic producer work and remaining native/compiler migrations are
+still open.

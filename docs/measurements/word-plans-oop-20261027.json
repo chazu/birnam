@@ -1,0 +1,63 @@
+{
+  "passed": true,
+  "scope": "Oop explicit Word expression evaluator and authored helper semantics; automatic compiler producers remain unported",
+  "base_revision": "7c70c6d9d61305befd6e7c69d59decc15a16ef86",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/root-token-d8qsh7zi/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/word_expression.rs": "58959a54f14ab561197701d8a70ad8ce0111dfff06a295efc9aea3301fbc0401",
+    "rust/birnam-siphon/tests/word_helper.rs": "bad3870e3d971e37fbaddf311b02f3d805243f458d5d3a22c507b8786098ba23",
+    "tests/fixtures/oop-host/word-expression.c": "ac6dc030e35a76c145c803a144bff4a4ee2dd14be815a05368c75c6bb547377a",
+    "tests/fixtures/oop-host/word-helper.c": "58644c5a8bdeb80dbe3875a12518b44136e4a1e30b787728fec053406342ccf5"
+  },
+  "checks": [
+    {
+      "targets": [
+        "guard_batch",
+        "word_expression",
+        "word_helper",
+        "word_representation_order"
+      ],
+      "log": ".cargo-target/oop-current-qualification/word-plans-oop.log",
+      "sha256": "6cf2b6ab790629fb4317266659cca986790293d2f3104e087af61129a42cc4b5",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "retained_checks": [
+    "Both original authored arithmetic sources preserve results, shared intermediate use and fresh escaping identities",
+    "Explicit evaluator allocates one escaping Word and preserves fresh result identity",
+    "Expected-epoch mismatch declines; replaced primitive and allocator force explicit evaluation to decline",
+    "Current allocator observes four authored constructions after replacement",
+    "Stateful allocation permission revokes and restores without a binding epoch change",
+    "Permission callback collects and replaces a primitive; explicit query declines without running the changed primitive, and ordinary invocation enters it exactly once",
+    "32 inputs and 32 operations work; malformed programs, invalid indices, excessive input count and absent inputs are rejected",
+    "Supported immediate Oop inputs work without a payload-type classification",
+    "Helper body, capture reader and Word primitive replacements affect subsequent sends",
+    "Body replacement during a collecting capture read cannot change the already-entered Method; the next helper send observes replacement",
+    "Helper execution remains correct under a one-byte collection budget"
+  ],
+  "contract_review": {
+    "operation_sequence": "Existing current Id sends to Word evaluation, helper implementation/capture operations and ObjectModel permission; unchanged",
+    "new_required_runtime_mechanisms": [],
+    "ownership": "Word interprets its own expression data and representations; Execution owns captures. Fixtures use only Id messages."
+  },
+  "automatic_producer_gap": {
+    "generated_expression_words": {
+      "independent_tree": 4,
+      "shared_tree": 4
+    },
+    "historical_expression_expectation": 1,
+    "explicit_expression_words": 1,
+    "automatic_helper_plan_calls": 0,
+    "historical_helper_plan_expectation": 1,
+    "status": "Not restored by this migration; no performance parity or automatic producer completion claimed.",
+    "timing_regression": "not measured"
+  },
+  "limits": [
+    "Staged-prefix component validation, not cold installation qualification",
+    "Automatic Word expression/helper production remains open",
+    "Method construction purity and closure admission regressions remain open",
+    "Other legacy native/compiler harnesses remain unported"
+  ]
+}

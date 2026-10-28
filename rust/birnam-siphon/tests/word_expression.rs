@@ -1,327 +1,246 @@
-//! Allocation witnesses and guard refusal for emitted nonescaping Word trees.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use std::{cell::Cell, ffi::c_void, os::unix::ffi::OsStrExt};
-use support::*;
-struct Hook {
-    entry: NativeEntry,
-    calls: Cell<usize>,
-    word_behavior: Oop,
-}
-struct Admission {
-    id: Protocol,
-    gc: Oop,
-    entry: NativeEntry,
-    vt: Oop,
-    replacement: *mut Hook,
-    change: Cell<bool>,
-    allowed: Cell<bool>,
-}
-unsafe extern "C" fn admission(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<Admission>() };
-    let answer = unsafe { (s.entry.method.unwrap())(s.entry.context, r, a, n) };
-    unsafe {
-        collect(s.id, s.gc);
-    }
-    if s.change.get() {
-        unsafe {
-            install(s.id, s.vt, b"bitXor:", xor_hook, s.replacement.cast());
-        }
-    }
-    if s.allowed.get() { answer } else { Outcome::loaded(Operand::word(0)) }
-}
-struct Words {
-    id: Protocol,
-    behavior: Oop,
-    count: usize,
-}
-unsafe extern "C" fn count_word(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let s = unsafe { &mut *c.cast::<Words>() };
-    let a = unsafe { borrowed_slice(a, n) }.unwrap();
-    if unsafe { send(s.id, s.id.receiver, b"behaviorOf:", &[a[0]]) }.as_object() == Some(s.behavior)
-    {
-        s.count += 1;
-    }
-    Outcome::loaded(Operand::unit())
-}
-unsafe fn words(id: Protocol, behavior: Oop) -> usize {
-    let mut w = Words {
-        id,
-        behavior,
-        count: 0,
-    };
-    unsafe {
-        inventory(id, count_word, (&raw mut w).cast());
-    }
-    w.count
-}
-unsafe extern "C" fn allocation_hook(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    let s = unsafe { &*c.cast::<Hook>() };
-    if unsafe { borrowed_slice(a, n) }.unwrap()[0].as_object() == Some(s.word_behavior) {
-        s.calls.set(s.calls.get() + 1);
-    }
-    unsafe { (s.entry.method.unwrap())(s.entry.context, r, a, n) }
-}
-unsafe extern "C" fn xor_hook(c: *mut c_void, r: Oop, _: *const Operand, _: usize) -> Outcome {
-    let s = unsafe { &*c.cast::<Hook>() };
-    s.calls.set(s.calls.get() + 1);
-    Outcome::loaded(Operand::object(r))
-}
+//! Explicit Word plans preserve current permissions and generated arithmetic meanings.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 #[test]
-#[ignore = "production Word expression and compiler modules required"]
-fn word_temporaries_elide_only_with_current_owner_permissions() {
-    unsafe {
-        check_case(false);
-        check_case(true);
+#[ignore = "requires production Oop Word owner and compiler"]
+fn word_expressions_observe_current_permissions_and_primitives() {
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let hooks = oop::hooks::Hooks::new(&host);
+    let key = |n: &[u8]| hooks.symbol(n);
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let word = named(b"Word");
+    let vt = named(b"WordVt");
+    let gc = named(b"GC");
+    let model = named(b"ObjectModel");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let a = call(word, b"fromBits:", &[size(10).unwrap()]);
+    let b = call(word, b"fromBits:", &[size(6).unwrap()]);
+    let changed = hooks.context(&[a, size(0).unwrap()]);
+    let replacement = hooks.method(b"fixedCount", changed);
+    let state = hooks.context(&[
+        vt,
+        gc,
+        size(1).unwrap(),
+        size(0).unwrap(),
+        replacement,
+        size(0).unwrap(),
+        size(0).unwrap(),
+    ]);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-word-expression-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/word-expression.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let method = |n: &[u8]| {
+        call(
+            call(module, b"methodAt:", &[key(n)]),
+            b"withContext:",
+            &[state],
+        )
+    };
+    let observer = call(named(b"Object"), b"clone", &[]);
+    let ovt = call(host.id.root, b"ensurePrivateVtableFor:", &[observer]);
+    for n in [b"allocation:bytes:identity:".as_slice(), b"words"] {
+        call(ovt, b"addMethod", &[key(n), method(n)]);
     }
-}
-unsafe fn check_case(shared: bool) {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
-        );
-        let named = |v: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(v).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let gc = named(b"GC");
-        let code=br#"let Probe := [Object clone]; [Reflect defineMethod: #compute:with: on: Probe as: [Execution block: [:self :a :b | let xor := [a bitXor: b]; let sum := [xor wrappingAdd: a]; let masked := [sum bitAnd: b]; [masked wrappingAdd: a]] withNativeSignature: "oOO"]]; Probe"#;
-        let code = if shared {
+    let count = || as_size(call(observer, b"words", &[])).unwrap();
+    let bytes = |v: &[u8]| call(named(b"Bytes"), b"fromBytes:", &[q.byte_values(v).unwrap()]);
+    let mvt = call(host.id.root, b"behaviorOf:", &[model]);
+    let xor = call(vt, b"lookup", &[key(b"bitXor:")]);
+    let allocate = call(mvt, b"lookup", &[key(b"allocate:bytes:")]);
+    let permission = call(mvt, b"lookup", &[key(b"canOmitAllocationFor:")]);
+    call(
+        mvt,
+        b"addMethod",
+        &[key(b"expressionOriginalAllocation:bytes:"), allocate],
+    );
+    call(
+        mvt,
+        b"addMethod",
+        &[key(b"expressionOriginalPermission:"), permission],
+    );
+    let allocation_observer = method(b"allocation");
+    let permission_observer = method(b"permit");
+    let set = |v, n: &[u8], m| {
+        call(v, b"addMethod", &[key(n), m]);
+    };
+    let expression = key(b"tryPrimitiveExpression:");
+    let epoch_expression = key(b"tryPrimitiveExpressionAtEpoch:");
+    let epoch = key(b"behaviorEpoch");
+    let raw = |r, s, a: &[Oop]| unsafe { host.id.send(r, s, a) };
+    for shared in [false, true] {
+        let source = if shared {
             br#"let Probe := [Object clone]; [Reflect defineMethod: #finish: on: Probe as: [Execution block: [:self :value | value] withNativeSignature: "oO"]]; [Reflect defineMethod: #compute:with: on: Probe as: [Execution block: [:self :a :b | let xor := [a bitXor: b]; let sum := [xor wrappingAdd: a]; let masked := [sum bitAnd: xor]; [self finish: [masked wrappingAdd: a]]] withNativeSignature: "oOO"]]; Probe"#.as_slice()
-        } else { code.as_slice() };
-        let expected = if shared {14} else {16};
-        let replaced = if shared {10} else {14};
-        let text = object(send(
-            id,
-            named(b"String"),
-            b"fromBytes:",
-            &[Operand::bytes(code)],
-        ));
-        let tt = retain(id, roots, text);
-        let probe = object(send(
-            id,
-            named(b"Codegen"),
-            b"eval:",
-            &[Operand::object(text)],
-        ));
-        let pt = retain(id, roots, probe);
-        release(id, roots, tt);
-        assert_eq!(object(send(id, probe, b"isError", &[])), named(b"false"));
-        let make = |x| object(send(id, named(b"Word"), b"fromBits:", &[Operand::word(x)]));
-        let a = make(10);
-        let b = make(6);
-        let at = retain(id, roots, a);
-        let bt = retain(id, roots, b);
-        let run = || {
-            object(send(
-                id,
-                probe,
-                b"compute:with:",
-                &[Operand::object(a), Operand::object(b)],
-            ))
+        } else {
+            br#"let Probe := [Object clone]; [Reflect defineMethod: #compute:with: on: Probe as: [Execution block: [:self :a :b | let xor := [a bitXor: b]; let sum := [xor wrappingAdd: a]; let masked := [sum bitAnd: b]; [masked wrappingAdd: a]] withNativeSignature: "oOO"]]; Probe"#.as_slice()
         };
-        let read = |v| send(id, v, b"bits", &[]).as_word().unwrap();
-        run();
-        collect(id, gc);
-        send(id, gc, b"budget:", &[Operand::word(usize::MAX)]);
-        let before = words(id, named(b"WordVt"));
-        let result = run();
-        let result_pin = retain(id, roots, result);
-        assert_eq!(read(result), expected);
-        let after = words(id, named(b"WordVt"));
-        assert_eq!(
-            after - before,
+        let probe = call(named(b"Codegen"), b"eval:", &[q.string(source).unwrap()]);
+        q.check_result(probe).unwrap();
+        let run = || call(probe, b"compute:with:", &[a, b]);
+        let expected = if shared { 14 } else { 16 };
+        let replaced = if shared { 10 } else { 14 };
+        let program = bytes(&[
             1,
-            "only the final escaping Word should exist"
+            2,
+            4,
+            5,
+            13,
+            0,
+            1,
+            6,
+            2,
+            0,
+            11,
+            3,
+            if shared { 2 } else { 1 },
+            6,
+            4,
+            0,
+        ]);
+        let args = [program, a, b];
+        call(gc, b"collectPrecisely", &[]);
+        let before = count();
+        let result = run();
+        assert_eq!(q.word_bits(result).unwrap(), expected);
+        eprintln!(
+            "generated Word allocations: shared={shared} words={}",
+            count() - before
         );
         let another = run();
-        let another_pin = retain(id, roots, another);
-        assert_ne!(another, result, "equal escaping results retain fresh identities");
-        assert_eq!(read(another), expected);
-        release(id, roots, another_pin);
-        let vt = named(b"WordVt");
-        let old = send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(id.intern_name(b"bitXor:").unwrap()),
-                Operand::object(a),
-            ],
-        )
-        .as_entry()
-        .unwrap();
-        let mut hook = Hook {
-            entry: old,
-            calls: Cell::new(0),
-            word_behavior: vt,
-        };
-        install(id, vt, b"bitXor:", xor_hook, (&raw mut hook).cast());
-        assert_eq!(read(run()), replaced);
+        assert_ne!(result, another);
+        assert_eq!(q.word_bits(another).unwrap(), expected);
+        let before = count();
+        let result = q.keep(raw(word, expression, &args).unwrap()).unwrap();
+        assert!(!result.is_null());
+        assert_eq!(q.word_bits(result).unwrap(), expected);
         assert_eq!(
-            hook.calls.get(),
+            count() - before,
             1,
-            "replaced primitive must execute exactly once"
+            "explicit expression publishes only its escaping Word"
         );
-        install(id, vt, b"bitXor:", old.method.unwrap(), old.context);
-        let model = named(b"ObjectModel");
-        let mvt = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(model)],
-        ));
-        let old = send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(id.intern_name(b"allocate:bytes:").unwrap()),
-                Operand::object(model),
-            ],
-        )
-        .as_entry()
-        .unwrap();
-        hook.entry = old;
-        hook.calls.set(0);
-        install(
-            id,
-            mvt,
-            b"allocate:bytes:",
-            allocation_hook,
-            (&raw mut hook).cast(),
-        );
-        assert_eq!(read(run()), expected);
-        assert_eq!(
-            hook.calls.get(),
-            4,
-            "allocation replacement must restore all original Word constructions"
-        );
-        install(
-            id,
-            mvt,
-            b"allocate:bytes:",
-            old.method.unwrap(),
-            old.context,
-        );
-        // Restoring default meaning must permit the next invocation again.
-        collect(id, gc);
-        send(id, gc, b"budget:", &[Operand::word(usize::MAX)]);
-        let before = words(id, vt);
-        assert_eq!(read(run()), expected);
-        assert_eq!(words(id, vt) - before, 1);
-        let permit_name = id.intern_name(b"canOmitAllocationFor:").unwrap();
-        let permit = send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[Operand::object(permit_name), Operand::object(model)],
-        )
-        .as_entry()
-        .unwrap();
-        let xor = send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(id.intern_name(b"bitXor:").unwrap()),
-                Operand::object(a),
-            ],
-        )
-        .as_entry()
-        .unwrap();
-        let mut grant = Admission {
-            id,
-            gc,
-            entry: permit,
-            vt,
-            replacement: &raw mut hook,
-            change: Cell::new(false),
-            allowed: Cell::new(true),
-        };
-        install(
-            id,
-            mvt,
-            b"canOmitAllocationFor:",
-            admission,
-            (&raw mut grant).cast(),
-        );
-        let answer = run();
-        let pin = retain(id, roots, answer);
-        assert_eq!(read(answer), expected);
+        let another = q.keep(raw(word, expression, &args).unwrap()).unwrap();
+        assert_ne!(result, another);
+        let stamp = raw(host.id.root, epoch, &[]).unwrap();
         assert!(
-            present(id, a) && present(id, b),
-            "collecting admission must preserve inputs"
+            !raw(word, epoch_expression, &[stamp, program, a, b])
+                .unwrap()
+                .is_null()
         );
-        release(id, roots, pin);
-        // Stateful permission may revoke without any method/epoch mutation.
-        // Query directly: inventory visitors would themselves rebind methods.
-        let expression = [1, 2, 1, 2, 6, 0, 1];
-        let evaluate = || send(id, named(b"Word"), b"tryPrimitiveExpression:", &[
-            Operand::bytes(&expression), Operand::object(a), Operand::object(b),
-        ]);
-        let epoch = send(id, id.receiver, b"behaviorEpoch", &[]).as_word();
-        grant.allowed.set(false);
-        assert_eq!(evaluate().kind(), birnam_abi::id_protocol::UNIT);
-        assert_eq!(send(id, id.receiver, b"behaviorEpoch", &[]).as_word(), epoch);
-        grant.allowed.set(true);
-        assert_eq!(read(object(evaluate())), 16);
-        assert_eq!(send(id, id.receiver, b"behaviorEpoch", &[]).as_word(), epoch);
-        grant.change.set(true);
-        hook.calls.set(0);
-        assert_eq!(read(run()), replaced);
+        assert!(
+            raw(
+                word,
+                epoch_expression,
+                &[size(as_size(stamp).unwrap() + 1).unwrap(), program, a, b]
+            )
+            .unwrap()
+            .is_null()
+        );
+        set(vt, b"bitXor:", replacement);
+        hooks.put(changed, 1, size(0).unwrap());
+        assert!(raw(word, expression, &args).unwrap().is_null());
+        assert_eq!(q.word_bits(run()).unwrap(), replaced);
+        assert_eq!(hooks.count(changed, 1), 1);
+        set(vt, b"bitXor:", xor);
+        set(mvt, b"allocate:bytes:", allocation_observer);
+        hooks.put(state, 6, size(0).unwrap());
+        assert!(raw(word, expression, &args).unwrap().is_null());
+        assert_eq!(q.word_bits(run()).unwrap(), expected);
         assert_eq!(
-            hook.calls.get(),
-            1,
-            "epoch change during admission must execute the replaced primitive once"
+            hooks.count(state, 6),
+            4,
+            "current allocator observes every authored Word construction"
         );
-        install(
-            id,
-            mvt,
-            b"canOmitAllocationFor:",
-            permit.method.unwrap(),
-            permit.context,
+        set(mvt, b"allocate:bytes:", allocate);
+        call(gc, b"collectPrecisely", &[]);
+        set(mvt, b"canOmitAllocationFor:", permission_observer);
+        let stamp = raw(host.id.root, epoch, &[]).unwrap();
+        hooks.put(state, 2, size(0).unwrap());
+        assert!(raw(word, expression, &args).unwrap().is_null());
+        assert_eq!(raw(host.id.root, epoch, &[]).unwrap(), stamp);
+        hooks.put(state, 2, size(1).unwrap());
+        let answer = q.keep(raw(word, expression, &args).unwrap()).unwrap();
+        assert_eq!(q.word_bits(answer).unwrap(), expected);
+        assert_eq!(raw(host.id.root, epoch, &[]).unwrap(), stamp);
+        hooks.put(state, 3, size(1).unwrap());
+        hooks.put(changed, 1, size(0).unwrap());
+        assert!(
+            raw(word, expression, &args).unwrap().is_null(),
+            "mutation during permission cannot authorize an expression using old primitive meanings"
         );
-        install(id, vt, b"bitXor:", xor.method.unwrap(), xor.context);
-        // Exercise all fixed-buffer limits: 32 inputs, 32 operations, 33 roots.
-        let mut program = vec![1, 32, 32, 63];
-        let mut arguments = vec![Operand::unit()];
-        let mut pins = vec![];
-        for i in 0..32 {
-            let value = make(i);
-            pins.push(retain(id, roots, value));
-            arguments.push(Operand::object(value));
-            program.extend_from_slice(&[6, if i == 0 { 0 } else { (31 + i) as u8 }, i as u8]);
-        }
-        arguments[0] = Operand::bytes(&program);
-        let maximum = object(send(
-            id,
-            named(b"Word"),
-            b"tryPrimitiveExpression:",
-            &arguments,
-        ));
-        assert_eq!(read(maximum), 496);
-        for token in pins {
-            release(id, roots, token);
-        }
-        for token in [result_pin, bt, at, pt] {
-            release(id, roots, token);
-        }
+        assert_eq!(
+            hooks.count(changed, 1),
+            0,
+            "a refused query does not run the changed primitive"
+        );
+        assert_eq!(q.word_bits(run()).unwrap(), replaced);
+        assert_eq!(hooks.count(changed, 1), 1);
+        hooks.put(state, 3, size(0).unwrap());
+        set(mvt, b"canOmitAllocationFor:", permission);
+        set(vt, b"bitXor:", xor);
+        assert_eq!(
+            q.word_bits(q.keep(raw(word, expression, &args).unwrap()).unwrap())
+                .unwrap(),
+            expected
+        );
     }
+    // Exercise the complete bounded program, with 32 inputs and 32 operations.
+    let mut program = vec![1, 32, 32, 63];
+    let mut args = vec![std::ptr::null_mut()];
+    for i in 0..32 {
+        args.push(call(word, b"fromBits:", &[size(i).unwrap()]));
+        program.extend_from_slice(&[6, if i == 0 { 0 } else { (31 + i) as u8 }, i as u8]);
+    }
+    args[0] = bytes(&program);
+    assert_eq!(
+        q.word_bits(q.keep(raw(word, expression, &args).unwrap()).unwrap())
+            .unwrap(),
+        496
+    );
+    let sum = bytes(&[1, 2, 1, 2, 6, 0, 1]);
+    assert_eq!(
+        q.word_bits(
+            q.keep(
+                raw(
+                    word,
+                    expression,
+                    &[sum, size(10).unwrap(), size(6).unwrap()]
+                )
+                .unwrap()
+            )
+            .unwrap()
+        )
+        .unwrap(),
+        16
+    );
+    for bad in [
+        vec![],
+        vec![1, 2, 0, 1],
+        vec![1, 2, 33, 2],
+        vec![1, 2, 1, 2, 99, 0, 1],
+        vec![1, 2, 1, 2, 6, 2, 1],
+        vec![1, 2, 1, 1, 6, 0, 1],
+    ] {
+        assert!(raw(word, expression, &[bytes(&bad), a, b]).is_err());
+    }
+    assert!(raw(word, expression, &[sum, a, std::ptr::null_mut()]).is_err());
+    let mut too_many = vec![sum];
+    too_many.extend(std::iter::repeat_n(a, 33));
+    assert!(raw(word, expression, &too_many).is_err());
 }
