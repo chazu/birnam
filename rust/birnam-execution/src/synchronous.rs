@@ -246,6 +246,9 @@ unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> O
             return Err(invalid());
         };
         let q = s.scope(&[r, *k]);
+        if s.storage.borrow().image_shell(r) {
+            return Err(invalid());
+        }
         let method = q.keep(s.field(r, 0)?);
         let admitted = s
             .admitted
@@ -293,10 +296,13 @@ unsafe extern "C" fn clone_block(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usize
             return Err(invalid());
         }
         let fields = s.fields(r)?;
+        let pending = s.storage.borrow().image_shell(r);
         let scope = s.scope(&fields);
         scope.keep(r);
         let behavior = s.send(s.id.root, b"behaviorOf:", &[r])?;
-        s.make_block(behavior, &fields)
+        let copy = s.make_block(behavior, &fields)?;
+        s.storage.borrow_mut().set_image_shell(copy, pending);
+        Ok(copy)
     })()
     .unwrap_or_else(abi::fault_reference)
 }

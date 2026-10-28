@@ -1,0 +1,91 @@
+{
+  "passed": true,
+  "scope": "Reject unfinished image-shell execution and preserve pending state when cloning; valid closure construction through Oops",
+  "base_revision": "3500cae56da4e3038a22132cad828d898f730ce8",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/closure-shell-8r8jkv59/prefix",
+  "cold_qualified": false,
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "25caee929599544fc0a92f49a1efa196aea10e2a3259eeb6bd1ae695dd9eeed7",
+    "rust/birnam-siphon/tests/closure_construction.rs": "50445f26cd08fa15a6e8e95c58fb7b4a1ce66c42db0e4d2f0074cf4d21333280",
+    "tests/fixtures/oop-host/closure-construction.c": "3426d65eadab75e8f8051bc6b0ddbfd1e3cd7e9cda7e6d35d5fd95bd822d662c"
+  },
+  "execution_library_sha256": "736fc4f73da18338e80d1d56ba5c64597e5acfac85677bdf06a5620522f94681",
+  "before": {
+    "log": ".cargo-target/oop-current-qualification/closure-construction-before.log",
+    "sha256": "5dcd23ef5f6a506d55b9ee161e52854007b35527353ee6b656b6a3d3928ea736",
+    "exit": 101,
+    "observed": "The image-shell case executed a pending synchronous closure before restoring captures; construction, nested closures and task cases passed independently."
+  },
+  "checks": [
+    {
+      "targets": [
+        "block_method_capture",
+        "capture_access",
+        "closure_construction",
+        "materialization"
+      ],
+      "isolated_closure_cases": [
+        "construction",
+        "image-shell",
+        "nested",
+        "tasks"
+      ],
+      "log": ".cargo-target/oop-current-qualification/closure-shell-final.log",
+      "sha256": "e9dc78d4075a91cc58781cb7c0c36b9fe920941483144bf5ddd28a008df4a8d0",
+      "exit": 0
+    },
+    {
+      "target": "image_snapshot_stamp",
+      "log": ".cargo-target/oop-current-qualification/closure-shell-image.log",
+      "sha256": "ce33f6e66e2b97c547232e53e47169e91e44c41a65f07dea0f8ef8064251b404",
+      "exit": 0
+    },
+    {
+      "command": "bash scripts/oop-id-slice-test.sh",
+      "log": ".cargo-target/oop-current-qualification/closure-shell-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0,
+      "details_sha256": {
+        ".cargo-target/oop-current-qualification/closure-shell-core-details/dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+        ".cargo-target/oop-current-qualification/closure-shell-core-details/numeric-integration.log": "837a42ea4472289f13fb3aef375bddada7ce57834c5807ffca627c8fb359dc30",
+        ".cargo-target/oop-current-qualification/closure-shell-core-details/unit.log": "5c8968298c52bef888603d6dc99cd915db6b4a647684543884d9c86e9da45cbd"
+      }
+    }
+  ],
+  "contract_review": {
+    "contract": "An image shell must not execute before its captures are restored; cloning cannot turn an unfinished shell into an executable Block.",
+    "before": "Block value reads its Method and prepares entry regardless of pending state; clone copies payload but drops the pending flag.",
+    "after": "Block value rejects the existing pending state before reading/entering the body; clone snapshots that state with the fields and copies it before returning.",
+    "new_required_mechanisms": [],
+    "id_changes": false,
+    "ownership": "The flag, Block fields and clone representation are already owned by Execution. No generic allocator, dispatch or GC payload catalog is added."
+  },
+  "retained_checks": [
+    "Caller CodeObject lease is dropped during collecting admission; Method retains the code afterward",
+    "Both execution styles preserve capture order, repeated aliases, constructor-time collection and Block clones",
+    "Captured Method aliases preserve code identity and result",
+    "Pending shell and pending clone reject invocation; wrong-size restoration leaves the shell pending; restoration is one-time",
+    "Root Machine entry reports nativeInvalidRequest before restoration and succeeds afterward",
+    "Twelve nested captures and zero-capture literals work in both emitters",
+    "Original task fixture text unchanged; shared Cells survive waiting, collection, resume, cancellation and cleanup at quanta 128/1"
+  ],
+  "known_failures_rechecked": {
+    "target": "closure_admission",
+    "log": ".cargo-target/oop-current-qualification/closure-admission-after-shell.log",
+    "sha256": "f61b195d7f8f20ba23e175e5d29344457e6ff5b8b9e3fe26a3f4a4788df880a0",
+    "exit": 101,
+    "cases": [
+      "failed-admission",
+      "idempotent-admission",
+      "different-code",
+      "direct-synchronous",
+      "direct-resumable",
+      "null-capture"
+    ]
+  },
+  "limits": [
+    "This fixes shell readiness, not Method construction purity or immutable code/count admission.",
+    "Remaining admission validation variants must be revisited with that correction; historical full harness is at 64d33e25:rust/birnam-siphon/tests/closure_construction.rs.",
+    "The successful cold/archive candidate 31514b0c predates this runtime correction."
+  ]
+}

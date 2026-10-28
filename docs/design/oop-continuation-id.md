@@ -3432,3 +3432,39 @@ corrections. [Receipt](../measurements/latest-fixes-cold-install-oop-20261028.js
 It predates the pending image-shell correction. Full Host qualification of a final
 corrected candidate remains outstanding, along with the documented Method
 purity/admission failures and remaining legacy runtime harnesses.
+
+
+## Pending image shells and closure construction
+
+The Oop closure-construction port reproduced an execution-readiness defect:
+`imageShellFromMethod:codeObject:` marked a Block as pending, but `value` ignored
+that state and `clone` dropped it. An unfinished closure could therefore run with
+unrestored captures. The valid construction, nested-closure and task cases passed
+independently before the fix.
+
+Execution now rejects its existing pending flag before entering a Block body and
+copies that flag with a cloned Block's fields. The clone snapshots it before any
+outgoing callback and sets it before returning the copy. There is no new message,
+allocation, registry or lifetime mechanism; Id and generic allocation/dispatch/GC
+remain unchanged. Execution alone interprets this existing owner state.
+
+Both synchronous and resumable shells and their clones reject execution until
+restoration. Wrong-size restoration leaves them pending; successful restoration is
+one-time. A root Machine reports the ordinary invalid-request Error before
+restoration and returns the captured value afterward. Capture ordering, aliases,
+constructor-time collection, admitted-code lifetime, twelve nested captures and
+zero-capture literals pass. The original task source text is unchanged and passes
+wait/resume/GC/cancel/cleanup at quanta 128 and 1.
+
+The four isolated closure groups, adjacent capture/materialization checks, image
+snapshot check and Oop core check pass.
+[Receipt](../measurements/closure-shell-oop-20261028.json). This does not repair
+Method purity or code/count admission: all six dedicated admission failures were
+rerun and remain failures. Additional historical admission-validation variants
+remain part of that future correction, rather than being certified by valid-path
+construction tests.
+
+The compile-only native gate audit now accounts for 94 compiled targets and two
+legacy failures: `binding_undo` and `shared_invocation_probe`.
+[Audit](../measurements/native-gate-closure-audit-oop-20261028.json). Full runtime
+acceptance and cold qualification of the shell correction remain outstanding.
