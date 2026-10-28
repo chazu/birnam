@@ -3419,3 +3419,16 @@ A fresh cold installation at `31514b0c` has completed successfully with no Birna
 PATH or build cache. It includes the root-token and callback-policy fixes. Exact
 installation verification passed; archive relocation is now running with the build
 source and original prefix hidden. No archive or full Host success is claimed yet.
+
+
+## Root-token and callback-policy fixes: cold installation and archive
+
+Cold candidate `31514b0c` builds from a clean source checkout with no Birnam on PATH
+and no build cache. Its relocated archive passes with the original source and
+prefix hidden, and the exact installation manifest verifies after those paths are
+restored. This candidate includes the root-token validation and callback-policy
+corrections. [Receipt](../measurements/latest-fixes-cold-install-oop-20261028.json).
+
+It predates the pending image-shell correction. Full Host qualification of a final
+corrected candidate remains outstanding, along with the documented Method
+purity/admission failures and remaining legacy runtime harnesses.
