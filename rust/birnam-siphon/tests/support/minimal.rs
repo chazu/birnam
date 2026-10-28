@@ -196,6 +196,25 @@ impl<'a> H<'a> {
             )
             .unwrap();
     }
+    pub fn resolved(&self, n: &[u8]) -> Oop {
+        self.call(self.host.namespace, b"resolveGlobal:", &[self.key(n)])
+    }
+    pub fn integer(&self, value: usize) -> Oop {
+        self.call(
+            self.named(b"Integer"),
+            b"fromWord:",
+            &[size(value).unwrap()],
+        )
+    }
+    pub fn number(&self, value: Oop) -> usize {
+        self.host
+            .scope()
+            .word_bits(self.call(self.named(b"Integer"), b"wordOf:", &[value]))
+            .unwrap()
+    }
+    pub fn publish(&self, name: &[u8], value: Oop) {
+        self.call(self.host.namespace, b"at:put:", &[self.key(name), value]);
+    }
     pub fn mark(&self) -> usize {
         self.tokens.borrow().len()
     }

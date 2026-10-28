@@ -2977,3 +2977,18 @@ collection, recipe reuse and authored replacement with registration retirement.
 Store, Relational, Bootstrap, Image and Isolate are absent from the input directory.
 No runtime or Id changes were needed; this does not replace full Host or image
 qualification. [Receipt](../measurements/alien-without-store-oop-20261027.json).
+
+## Cell, record and registry isolation through Oops
+
+The Cell isolation harness now loads actual Error/Globals/Cell initializers through
+the native-only Oop composition. The combined registry, ordinary-record and
+Test/Bench run passes with the original exported programs. It preserves live
+accessor/constructor replacement, snapshots, identity replacement, aliases,
+registry reachability and reclamation after releasing the final test root.
+
+Named adapters use the existing Codegen template operation and `withImplementation:`;
+the retired NativeBackend template emitter is not restored. Reclamation uses
+allocation identities instead of querying freed references. Four Cell-specific
+helpers were added without changing the shared helper's existing functions, and
+the adjacent Globals isolation check passes. No runtime or Id changes were needed.
+[Receipt](../measurements/cell-without-store-oop-20261027.json).

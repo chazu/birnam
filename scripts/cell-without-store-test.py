@@ -73,7 +73,7 @@ let requests := REQUESTS;
     (work/'run.log').write_text(run['output'])
     receipt={'passed':run['exit_code']==0,'prefix':str(prefix),'export':export,'run':run,
       'slots':args.slots, 'registry':args.registry, 'records':args.records, 'harness':args.harness,
-      'source_sha256':{str(f.relative_to(ROOT)):sha(f) for f in [ROOT/'modules/cell.birnam', ROOT/'modules/stdlib.birnam', ROOT/'modules/modules.birnam',ROOT/'rust/birnam-siphon/tests/cell_without_store.rs',Path(__file__).resolve()]+([ROOT/'modules'/f'{m}.birnam' for m in ['log','config','http','process','app-config']] if args.records else [])+([ROOT/'modules/test.birnam',ROOT/'modules/bench.birnam'] if args.harness else [])},
+      'source_sha256':{str(f.relative_to(ROOT)):sha(f) for f in [ROOT/'modules/cell.birnam', ROOT/'modules/stdlib.birnam', ROOT/'modules/modules.birnam',ROOT/'rust/birnam-siphon/tests/cell_without_store.rs',ROOT/'rust/birnam-siphon/tests/support/minimal.rs',ROOT/'tests/fixtures/oop-host/cell-access.c',ROOT/'tests/fixtures/oop-host/allocation-presence.c',Path(__file__).resolve()]+([ROOT/'modules'/f'{m}.birnam' for m in ['log','config','http','process','app-config']] if args.records else [])+([ROOT/'modules/test.birnam',ROOT/'modules/bench.birnam'] if args.harness else [])},
       'program_sha256':{f.name:sha(f) for f in programs.glob('*.bin')},
       'floor_sha256':{f.name:sha(f) for f in floor.iterdir()},
       'scope':'Actual Error/Globals/Cell initializers without Store/Relational/Bootstrap/Lang/Generation, plus exported unchanged ancillary slot/record/registry/harness bodies. No synthetic Cell or Globals alias. Not a Store-free full application bootstrap.'}
