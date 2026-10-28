@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "scope": "Alias-return source behavior and current owner effects through Oops; obsolete compiler harness removed",
+  "base_revision": "78cd1fcb4e0947c9f425664c89ba574b8bdd3360",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/callback-policy-h33k_dxl/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/inline_return.rs": "bca4e3847fc29cc335f0e2a4e88ef360204c045027b9c6e83b047f9fbf14075e",
+    "rust/birnam-siphon/tests/compiler_source.rs": "5997d09edbb9271149de794a4afefa55ce24bbbc5029772b07e2893a391b347c",
+    "scripts/native-message-test.sh": "ea1057d4170b5d6ae4e7bac426f1db7645dd8fd76a2fb8bc112b0ebeae709e5b"
+  },
+  "checks": [
+    {
+      "targets": [
+        "compiler_source",
+        "pending_call_recovery"
+      ],
+      "log": ".cargo-target/oop-current-qualification/compiler-alias-oop.log",
+      "sha256": "39f525f29767c488e76bc50a897248e85b2e25f6baf20752ecdca0a783f0968f",
+      "exit": 0
+    },
+    {
+      "command": "bash -n scripts/native-message-test.sh",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Original alias-chain body returns exact input identity across Namespace rebinding",
+    "A real source Integer literal preserves current constructor effects",
+    "Current frame-reader effects agree for separately created equivalent bodies",
+    "Constructor and frame-reader callbacks can collect",
+    "Replacing the callee value method changes the next result exactly once; restoring it restores identity",
+    "Bounded execution exposes the actual argument in frames across collection",
+    "Native units and bytes return to the prior baseline",
+    "Adjacent explicit candidate test retains return, refusal and recovery without replay"
+  ],
+  "automatic_candidate_attachments": 0,
+  "automatic_optimization": "Not enabled; the rejected producer experiment and its lack of allocation savings remain recorded separately.",
+  "deleted_harness": "rust/birnam-siphon/tests/compiler.rs",
+  "contract_review": {
+    "runtime_changes": false,
+    "id_changes": false,
+    "new_required_mechanisms": [],
+    "ownership": "Compiler acceptance uses current owner messages; no old Operand/Outcome bridge or private invocation interface is restored."
+  },
+  "limits": [
+    "All former compiler source groups now compile/run in compiler_source; this is not completion of all remaining runtime harnesses.",
+    "Automatic producer gaps, Method construction purity and closure admission issues remain open.",
+    "Latest production fixes are not yet cold-qualified."
+  ]
+}

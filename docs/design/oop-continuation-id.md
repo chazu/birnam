@@ -3352,3 +3352,24 @@ calls in generated source, so its former optimization is not claimed. Only the
 legacy alias-return compiler group remains in `compiler.rs`; the other documented
 metadata/admission and harness work remains open.
 [Receipt](../measurements/compiler-predicate-oop-20261027.json).
+
+
+## Alias-return acceptance and compiler harness consolidation
+
+The alias-return group now runs in `compiler_source`. The original alias-chain
+body preserves its input identity across binding changes. A real source literal
+supplies the Integer-constructor effect, replacing the old assumption that routing
+indices require Integer allocation. Current constructor/frame-reader effects agree
+for separately created equivalent bodies; collecting replacements, changed callee
+behavior, bounded frame visibility and code reclamation pass.
+
+The old `compiler.rs` harness and its remaining Operand/Outcome helpers are removed
+from the active gate. Its source acceptance groups now live in the Oop compiler
+suite. The explicit pending-call candidate/recovery target also passes. This does
+not enable the rejected automatic alias-return producer: compilation records zero
+candidate attachments, and the earlier no-savings/slower experiment remains valid
+historical evidence. No production runtime or Id change was made.
+[Receipt](../measurements/compiler-alias-oop-20261028.json).
+
+The remaining legacy runtime harnesses, automatic producer gaps and documented
+Method metadata/admission issues still prevent full integration acceptance.

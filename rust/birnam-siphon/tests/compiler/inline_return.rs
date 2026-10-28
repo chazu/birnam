@@ -1,72 +1,120 @@
-//! Producer-proven alias returns reuse existing inline admission and fallback.
+//! Alias returns retain input identity, current effects and ordinary frame visibility.
 use super::*;
-use std::time::Instant;
-unsafe extern "C" fn baseline(_: *mut c_void, r: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(r))
-}
-struct Factory { original: NativeEntry, calls: Cell<usize> }
-unsafe extern "C" fn factory(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let f = unsafe { &*c.cast::<Factory>() }; f.calls.set(f.calls.get()+1);
-    unsafe { f.original.method.unwrap()(f.original.context,r,a,n) }
-}
-pub(super) unsafe fn check(h: &mut H) {
-    unsafe {
-        h.clear();h.collect();
-        let method = h.named(b"Method"); let mvt = vt(h,method); let attach = lookup(h,method,b"withInline:at:owner:");
-        let candidate = h.eval(b"[:x | let alias := x; let another := alias; another]");
-        install(h.id,mvt,b"withInline:at:owner:",baseline,ptr::null_mut());
-        let plain = h.eval(b"[:x | let alias := x; let another := alias; another]");
-        restore(h,mvt,b"withInline:at:owner:",attach);
-        let argument = h.eval(b"[Object clone]");h.bind(b"InlineArgument",argument);
-        h.bind(b"InlineReturn",candidate);
-        let caller = h.compile(b"let answer := [InlineReturn value: InlineArgument]; answer");let block = h.block(caller);
-        assert_eq!(run(h,block,false),argument);
-        h.bind(b"InlineReturn",plain);assert_eq!(run(h,block,false),argument);
-        // A replaced constructor's effects cannot be elided; both bodies run it.
-        let integer = h.named(b"Integer");let ivt=vt(h,integer);
-        let mut f=Factory { original:lookup(h,integer,b"fromWord:"),calls:Cell::new(0) };
-        install(h.id,ivt,b"fromWord:",factory,ptr::from_mut(&mut f).cast());
-        let mut counts=[0;2];
-        for (i,body) in [plain,candidate].into_iter().enumerate() {
-            h.bind(b"InlineReturn",body);f.calls.set(0);assert_eq!(run(h,block,false),argument);counts[i]=f.calls.get();
-        }
-        assert!(counts[0]>0);assert_eq!(counts[0],counts[1]);
-        restore(h,ivt,b"fromWord:",f.original);
-        // Changed frame access selects the ordinary frame/PC path through Id.
-        let machine_proto=h.named(b"Machine");let machine_vt=vt(h,machine_proto);
-        let mut reader=Factory { original:lookup(h,machine_proto,b"oopAt:"),calls:Cell::new(0) };
-        install(h.id,machine_vt,b"oopAt:",factory,ptr::from_mut(&mut reader).cast());
-        let mut reads=[0;2];
-        for (i,body) in [plain,candidate].into_iter().enumerate() {
-            h.bind(b"InlineReturn",body);reader.calls.set(0);assert_eq!(run(h,block,false),argument);reads[i]=reader.calls.get();
-        }
-        assert!(reads[0]>0);assert_eq!(reads[0],reads[1]);
-        restore(h,machine_vt,b"oopAt:",reader.original);
-        // A bounded drive exposes a real Frame rather than taking the shortcut.
-        h.bind(b"InlineReturn",candidate);
-        let machine=object(send(h.id,h.named(b"Machine"),b"new",&[]));h.keep(machine);
-        let budget=h.eval(b"1");let mut result=object(send(h.id,machine,b"runBlock:budget:",&[Operand::object(block),Operand::object(budget)]));
-        let mut observed=false;
-        for _ in 0..32 {
-            if result!=machine {break;}
-            let view=object(send(h.id,machine,b"currentFrameView",&[]));h.keep(view);
-            observed|=view!=h.named(b"nil");h.collect();
-            result=object(send(h.id,machine,b"continueWithBudget:",&[Operand::object(budget)]));
-        }
-        assert!(observed);assert_eq!(result,argument);
-        send(h.id,h.named(b"GC"),b"budget:",&[Operand::word(usize::MAX)]);
-        let mut elapsed=[0;2];let mut allocations=[0;2];
-        for (i,body) in [plain,candidate].into_iter().enumerate() {
-            h.bind(b"InlineReturn",body);let start=Instant::now();
-            for _ in 0..180 {
-                let before=send(h.id,h.id.receiver,b"allocationCount",&[]).as_word().unwrap();
-                assert_eq!(run(h,block,false),argument);
-                allocations[i]+=send(h.id,h.id.receiver,b"allocationCount",&[]).as_word().unwrap()-before;
-            }
-            elapsed[i]=start.elapsed().as_nanos();
-        }
-        assert!(allocations[1]<allocations[0]);
-        println!("inline-return: baseline {}ns/{} allocations; optimized {}ns/{} allocations",elapsed[0],allocations[0],elapsed[1],allocations[1]);
-        h.bind(b"InlineReturn",h.named(b"nil"));h.bind(b"InlineArgument",h.named(b"nil"));h.clear();h.collect();
+pub(super) fn check(h: &H<'_>) {
+    h.clear();
+    h.collect();
+    let baseline_units = h.units();
+    let baseline_bytes = h.native_bytes();
+    let method_vt = h.call(h.host.id.root, b"methodBehavior", &[]);
+    let attach = h.key(b"withInline:at:owner:");
+    let original = h.call(method_vt, b"lookup", &[attach]);
+    assert!(!original.is_null());
+    let admitted = h.hooks.context(&[original, size(0).unwrap()]);
+    h.call(
+        method_vt,
+        b"addMethod",
+        &[attach, h.hooks.method(b"counted", admitted)],
+    );
+    let body = h.eval(b"[:x | let alias := x; let another := alias; another]");
+    h.call(method_vt, b"addMethod", &[attach, original]);
+    h.host.scope().check_result(body).unwrap();
+    eprintln!(
+        "automatic alias-return candidates={}",
+        h.hooks.count(admitted, 1)
+    );
+    let other_body = h.eval(b"[:x | let alias := x; let another := alias; another]");
+    let argument = h.eval(b"[Object clone]");
+    h.bind(b"InlineArgument", argument);
+    h.bind(b"InlineReturn", body);
+    // The source literal, rather than obsolete boxed routing indices, supplies
+    // the actual language constructor effect being compared.
+    let block = h.block(h.compile(
+        b"let inlineMarker := 35; let answer := [InlineReturn value: InlineArgument]; answer",
+    ));
+    let machine = h.named(b"Machine");
+    let gc = h.named(b"GC");
+    let raw = |r, s, a: &[Oop]| unsafe { h.host.id.send(r, s, a) };
+    let run_key = h.key(b"runBlock:");
+    let add = h.key(b"addMethod");
+    let run = || h.call(h.call(machine, b"new", &[]), b"runBlock:", &[block]);
+    for callee in [body, other_body] {
+        h.bind(b"InlineReturn", callee);
+        assert_eq!(run(), argument);
     }
+    for (receiver, selector) in [
+        (h.named(b"Integer"), b"fromWord:".as_slice()),
+        (machine, b"oopAt:"),
+    ] {
+        let vt = h.vt(receiver);
+        let selector = h.key(selector);
+        let original = h.call(h.host.id.root, b"bind:to:", &[selector, receiver]);
+        let state = h.hooks.context(&[original, size(0).unwrap()]);
+        let replacement = h.hooks.method(b"counted", state);
+        let mut counts = [0; 2];
+        for (i, callee) in [body, other_body].into_iter().enumerate() {
+            h.bind(b"InlineReturn", callee);
+            h.hooks.put(state, 1, size(0).unwrap());
+            let target = h.call(machine, b"new", &[]);
+            raw(vt, add, &[selector, replacement]).unwrap();
+            let result = raw(target, run_key, &[block]);
+            raw(vt, add, &[selector, original]).unwrap();
+            assert_eq!(result.unwrap(), argument);
+            counts[i] = h.hooks.count(state, 1);
+        }
+        assert!(counts[0] > 0);
+        assert_eq!(counts[0], counts[1]);
+        let state = h.hooks.context(&[original, gc, size(0).unwrap()]);
+        let replacement = h.hooks.method(b"collectOnce", state);
+        let target = h.call(machine, b"new", &[]);
+        raw(vt, add, &[selector, replacement]).unwrap();
+        let result = raw(target, run_key, &[block]);
+        raw(vt, add, &[selector, original]).unwrap();
+        assert_eq!(result.unwrap(), argument);
+        assert_eq!(h.hooks.count(state, 2), 1);
+    }
+    h.bind(b"InlineReturn", body);
+    let replaced = h.eval(b"[Object clone]");
+    let state = h.hooks.context(&[replaced, size(0).unwrap()]);
+    let vt = h.call(h.host.id.root, b"ensurePrivateVtableFor:", &[body]);
+    let value = h.key(b"value:");
+    let original = h.call(vt, b"lookup", &[value]);
+    raw(vt, add, &[value, h.hooks.method(b"fixedCount", state)]).unwrap();
+    let result = run();
+    raw(vt, add, &[value, original]).unwrap();
+    assert_eq!(result, replaced);
+    assert_eq!(h.hooks.count(state, 1), 1);
+    assert_eq!(run(), argument);
+    let target = h.call(machine, b"new", &[]);
+    let budget = h.eval(b"1");
+    let mut result = h.call(target, b"runBlock:budget:", &[block, budget]);
+    let mut observed = false;
+    for _ in 0..128 {
+        if result != target {
+            break;
+        }
+        let view = h.call(target, b"currentFrameView", &[]);
+        if view != h.named(b"nil") {
+            let count = h.integer(h.call(view, b"slotCount", &[]));
+            for index in 0..count {
+                observed |= h.call(view, b"oopAt:", &[size(index as usize).unwrap()]) == argument;
+            }
+        }
+        h.collect();
+        result = h.call(target, b"continueWithBudget:", &[budget]);
+    }
+    assert!(observed);
+    assert_eq!(result, argument);
+    for name in [
+        b"InlineReturn".as_slice(),
+        b"InlineArgument",
+        b"inlineMarker",
+        b"answer",
+    ] {
+        h.bind(name, h.named(b"nil"));
+    }
+    h.call(h.named(b"Codegen"), b"evictMaterializations", &[]);
+    h.clear();
+    h.collect();
+    assert_eq!(h.units(), baseline_units);
+    assert_eq!(h.native_bytes(), baseline_bytes);
 }
