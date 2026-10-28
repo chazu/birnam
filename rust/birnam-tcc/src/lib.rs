@@ -35,6 +35,7 @@ struct Entry {
     unit: Oop,
     code: native::Method,
     context: Oop,
+    method: Oop,
 }
 struct State {
     id: Protocol,
@@ -436,9 +437,10 @@ unsafe fn bind_entry(
                 unit,
                 code,
                 context: environment,
+                method: ptr::null_mut(),
             },
         );
-        s.send(
+        let method = q.keep(s.send(
             if continuing {
                 s.continuation_template
             } else {
@@ -446,8 +448,44 @@ unsafe fn bind_entry(
             },
             b"withContext:",
             &[context],
-        )
+        )?);
+        s.entries
+            .borrow_mut()
+            .get_mut(&context.addr())
+            .ok_or_else(invalid)?
+            .method = method;
+        Ok(method)
     }
+}
+// Reflection belongs to the code provider. This scans existing executable
+// records only; normal calls do not query or classify a Method through it.
+unsafe extern "C" fn context_of_method(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [method] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*method]);
+        let entries: Vec<_> = s.entries.borrow().values().copied().collect();
+        for entry in &entries {
+            if !entry.method.is_null() {
+                q.keep(entry.method);
+            }
+        }
+        for entry in entries {
+            if entry.method.is_null() {
+                continue;
+            }
+            if entry.method == *method
+                || s.send(s.id.root, b"sameNativeMethod:as:", &[*method, entry.method])?
+                    == number(1)?
+            {
+                return Ok(entry.context);
+            }
+        }
+        Ok(ptr::null_mut())
+    })()
+    .unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn method_with_context(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
@@ -511,7 +549,7 @@ unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
             s.entries
                 .borrow()
                 .get(&value.addr())
-                .map(|e| vec![e.unit, e.context])
+                .map(|e| vec![e.unit, e.context, e.method])
                 .unwrap_or_default()
         };
         for value in refs {
@@ -680,6 +718,8 @@ const NAMES: &[&[u8]] = &[
     b"withContext:",
     b"generatedContinuationEntry",
     b"declaredMethodAt:context:",
+    b"contextOfMethod:",
+    b"sameNativeMethod:as:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Bytes"),
@@ -733,6 +773,8 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"withContext:"),
     Literal::new(b"generatedContinuationEntry"),
     Literal::new(b"declaredMethodAt:context:"),
+    Literal::new(b"contextOfMethod:"),
+    Literal::new(b"sameNativeMethod:as:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -824,6 +866,11 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: 50,
         entry: Some(method_with_context),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 51,
+        entry: Some(context_of_method),
         convention: 0,
     },
 ];
@@ -919,6 +966,7 @@ unsafe extern "C" fn initialize(
                 | b"loadObject:"
                 | b"checkpoint"
                 | b"liveNativeUnits"
+                | b"contextOfMethod:"
                 | b"mappingIdentityOf:"
                 | b"mappingBytes:"
                 | b"rootsDo:"

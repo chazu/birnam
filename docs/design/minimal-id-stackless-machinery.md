@@ -309,6 +309,28 @@ build, not cold/release qualification.
 [Evidence](../measurements/owned-code-construction-oop-20261028.json). Default reflected body forwarding, synchronous code-provider source
 construction, and the remaining generic admission removal are still pending.
 
+## Implementation checkpoint: provider-owned TCC reflection (2026-10-28)
+
+Following the user's choice to keep the bootstrap Method API unchanged, TCC now
+answers `contextOfMethod:` for its own generated executables. It returns the
+supplied opaque context, including through a captured alias, or native absence
+for a Method it does not own. Ordinary invocation does not use this operation.
+
+The operation scans TCC's existing executable-entry records. Those records now
+retain their representative Method so identity comparison remains valid when only
+a captured alias survives. Entry tracing reports that reference with the Unit and
+context. No new registry or universal Method-metadata record was introduced, and
+the Unit still does not retain all its bound instances. Constructor callbacks keep
+the previous access to initialized executable data; reflection skips a binding
+whose representative Method has not yet been returned by its constructor.
+
+Tests cover default/bound contexts, foreign Methods, captured-alias-only lifetime,
+collection during calls, discarded environments with a live Unit, final mapping
+release and the absence of a new bootstrap Method `context` selector. Focused
+constructor tests and the core suite pass.
+[Evidence](../measurements/tcc-provider-reflection-oop-20261028.json).
+Compiler adoption for synchronous source metadata remains pending.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code

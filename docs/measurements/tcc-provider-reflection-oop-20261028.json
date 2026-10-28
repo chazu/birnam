@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "96b322a6b8a0b46e23aaf4ad9bc17d79c7ed1c5f",
+  "scope": "Provider-owned reflection on existing TCC entry records, following the user decision to keep the bootstrap Method API unchanged.",
+  "source_sha256": {
+    "rust/birnam-tcc/src/lib.rs": "751af644195a0849ccc7557bfe40f43359d1e4ed8edfd2ab128d6901ec6954cf",
+    "rust/birnam-siphon/tests/tcc_context.rs": "6814d3312a7e086bf9b02c1c5e432d6167e9ec755ec6af88c92510292114fa28"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/tcc-reflection-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/tcc-reflection-milestone/focused.log",
+      "sha256": "7778e22d6e3d422ccbdcafe9bd53de042a6271c7e77ba111ee26525f05f50e2c",
+      "result": "passed"
+    },
+    "alias_lifetime": {
+      "path": ".cargo-target/oop-current-qualification/tcc-reflection-milestone/alias_lifetime.log",
+      "sha256": "82cc7fd992955e2664237a55a8be24764b39962cc8b40c64c6d847ae0fcb2102",
+      "result": "passed"
+    }
+  },
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/tcc-reflection-p675y6l1/prefix",
+  "tcc_sha256": "dd1145c8eabb2972bbb767df974d0122b0fee70b5fc5533aaf4988c8ea347cc6",
+  "verified": [
+    "default and supplied contexts returned by TCC",
+    "captured aliases resolve through executable identity",
+    "unknown/foreign Methods return no context",
+    "wrong query arity rejected",
+    "no context selector added to bootstrap Method behavior",
+    "captured alias alone retains a valid representative and context across GC",
+    "live Unit does not retain discarded bound environments",
+    "final binding removal releases mapping",
+    "direct constructors and core suite continue to pass"
+  ],
+  "architecture_review": {
+    "data": "One Method reference added to existing TCC entry records for provider reflection; no new registry",
+    "lifetime": "Entry tracing retains that representative while a captured alias retains the entry; the table remains weak and Unit refs do not retain bound entries",
+    "construction": "Executable entry data remains available before replaceable withContext callbacks; reflection skips incomplete records",
+    "invocation": "No reflection lookup added to ordinary calls",
+    "id": "No Id or bootstrap Method API changes"
+  },
+  "remaining": "Synchronous compiler metadata construction/adoption, default definition forwarding removal, remaining admission/image work, and full qualification."
+}

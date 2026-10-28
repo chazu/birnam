@@ -61,6 +61,26 @@ fn declared_code_binds_contexts_purely_and_keeps_their_lifetimes_separate() {
     let continuing = call(unit, b"declaredMethodAt:context:", &[size(2).unwrap(), two]);
     assert_eq!(epoch(), before);
     assert_ne!(first, second);
+    assert_eq!(call(tcc, b"contextOfMethod:", &[first]), one);
+    assert_eq!(call(tcc, b"contextOfMethod:", &[second]), two);
+    assert_eq!(call(tcc, b"contextOfMethod:", &[original]), unit);
+    let captured = call(first, b"captured", &[]);
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(call(tcc, b"contextOfMethod:", &[captured]), one);
+    let foreign = hooks.method(b"fixed", two);
+    assert!(
+        unsafe { h.id.send(tcc, key(b"contextOfMethod:"), &[foreign]) }
+            .unwrap()
+            .is_null()
+    );
+    assert!(h.send(tcc, b"contextOfMethod:", &[]).is_err());
+    // No context accessor was added to the bootstrap Method behavior.
+    let method_vt = call(h.id.root, b"methodBehavior", &[]);
+    assert!(
+        unsafe { h.id.send(method_vt, key(b"lookup"), &[key(b"context")]) }
+            .unwrap()
+            .is_null()
+    );
     for (name, method) in [
         (b"first".as_slice(), first),
         (b"second", second),
@@ -107,6 +127,29 @@ fn declared_code_binds_contexts_purely_and_keeps_their_lifetimes_separate() {
             context
         );
     }
+
+    // A captured alias alone keeps the representative used by owner reflection
+    // valid even after the originally returned Method loses its caller roots.
+    let (alias, environment) = {
+        let local = h.scope();
+        let environment = local.call(h.id.root, b"sequence", &[two]).unwrap();
+        let method = local
+            .call(
+                unit,
+                b"declaredMethodAt:context:",
+                &[size(0).unwrap(), environment],
+            )
+            .unwrap();
+        let alias = local.call(method, b"captured", &[]).unwrap();
+        local
+            .call(vt, b"addMethod", &[key(b"capturedOnly"), alias])
+            .unwrap();
+        (alias, environment)
+    };
+    call(gc, b"collectPrecisely", &[]);
+    assert_eq!(call(tcc, b"contextOfMethod:", &[alias]), environment);
+    assert_eq!(call(object, b"capturedOnly", &[]), environment);
+    assert_eq!(call(environment, b"at:", &[size(0).unwrap()]), two);
 
     // Keeping the Unit alive must not retain every bound environment.
     let identity;
