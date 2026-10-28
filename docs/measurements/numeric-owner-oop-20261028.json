@@ -1,0 +1,48 @@
+{
+  "passed": true,
+  "scope": "Explicit Integer numeric consumer and direct Id dispatch in isolated native/published contexts",
+  "base_revision": "31514b0c624953123fe7f230c1465ecee984b34e",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/callback-policy-h33k_dxl/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/execution_candidates.rs": "94e68ac6841acf5f5d3f81f383e4a02e596bdf5424553ad0656781cc53b9bb46",
+    "scripts/native-message-test.sh": "d988bde899935bdfb25e6940e8abe1dcbede0f0ad3c88fd6d85251243fdace0d"
+  },
+  "checks": [
+    {
+      "targets": [
+        "execution_candidates",
+        "execution_numeric",
+        "integer_predicate"
+      ],
+      "log": ".cargo-target/oop-current-qualification/numeric-owner-oop.log",
+      "sha256": "0d52ead1d744a8f2e74e170794ad575566d8c85bfa42b866a30414453e0fe08f",
+      "exit": 0
+    },
+    {
+      "command": "bash -n scripts/native-message-test.sh",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "350 ordinary arithmetic sends per isolated context succeed while the optional numeric query is poisoned",
+    "Native selected arithmetic evaluates through the explicit owner query; authored selected arithmetic declines",
+    "Current non-arithmetic replacement is not re-entered by a refused query",
+    "A captured native arithmetic Method retains its meaning after dictionary replacement",
+    "Current Execution evaluator can collect",
+    "Visitor refusal uses ordinary checked arithmetic; exact visitor failure propagates",
+    "Authored arithmetic declines without entering collecting, refusing or failing native visitors",
+    "Changed native Method context is not mistaken for Integer arithmetic"
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "new_required_mechanisms": [],
+  "cleanup": [
+    "Removed uncompiled execution_machines/native_tier.rs harness",
+    "Removed the last legacy execution_machine.c fixture injection from native-message-test.sh; supplied test prefixes are no longer modified by that setup"
+  ],
+  "limits": [
+    "Automatic hot Machine interception is not restored; the public numeric-owner operation and direct dispatch are qualified instead.",
+    "Explicit PC/inline candidates retain their separate acceptance targets.",
+    "Three other legacy runtime harnesses and known metadata/admission failures remain."
+  ]
+}

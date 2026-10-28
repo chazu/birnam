@@ -3389,3 +3389,33 @@ This closes qualification of that specific cold candidate. It predates the
 root-token validation and callback-policy fixes and does not qualify them. The
 open Method purity/admission failures and remaining runtime harness work also
 remain independent blockers to declaring full language integration complete.
+
+
+## Explicit numeric owner acceptance and remaining compile blockers
+
+The remaining numeric-consumer harness now uses Oops in separate native-only and
+published-language processes. In each context, 350 ordinary sends still work with
+a failing optional numeric query installed: Id enters the selected Method directly.
+Explicit evaluation recognizes canonical native arithmetic, preserves a captured
+Method's meaning after replacement and declines authored or changed-context
+Methods. Current visitors can collect, decline or fail; refusal and exact failure
+handling pass without invoking an authored entry through the native evaluator.
+The two adjacent explicit numeric targets pass as well.
+[Receipt](../measurements/numeric-owner-oop-20261028.json).
+
+The old automatic hot-Machine interception is not restored or claimed by these
+checks. Its uncompiled harness is removed, along with the native-message script's
+injection of the old execution-machine dylib into the supplied prefix. Explicit
+PC/inline candidate tests remain separate. No runtime code or Id operation changed.
+
+An actual compile-only audit accounts for all 96 distinct Rust targets in the
+native-message gate: 93 compile; `binding_undo`, `shared_invocation_probe` and
+`closure_construction` still fail on removed carrier APIs. No target is unaccounted
+for. This is not a passing full gate: the isolated checks remain separate, and the
+compilable closure-admission and construction-purity tests retain known failures.
+[Compile audit](../measurements/native-gate-compile-audit-oop-20261028.json).
+
+A fresh cold installation at `31514b0c` has completed successfully with no Birnam on
+PATH or build cache. It includes the root-token and callback-policy fixes. Exact
+installation verification passed; archive relocation is now running with the build
+source and original prefix hidden. No archive or full Host success is claimed yet.
