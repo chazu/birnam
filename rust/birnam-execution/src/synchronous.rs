@@ -753,6 +753,10 @@ const NAMES: &[&[u8]] = &[
     b"methodFromBlock:",
     b"method:withNativeSignature:",
     b"nativeMethodValue",
+    b"fromStep:descriptor:selection:owner:callPlans:codeObject:",
+    b"methodCodeObject",
+    b"methodSynchronous",
+    b"canonicalBytesOf:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -996,6 +1000,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"methodFromBlock:"),
     Literal::new(b"method:withNativeSignature:"),
     Literal::new(b"nativeMethodValue"),
+    Literal::new(b"fromStep:descriptor:selection:owner:callPlans:codeObject:"),
+    Literal::new(b"methodCodeObject"),
+    Literal::new(b"methodSynchronous"),
+    Literal::new(b"canonicalBytesOf:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1578,6 +1586,9 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(native_adapters::method_value),
         convention: 1,
     },
+    MethodSpec { name: 241, entry: Some(resumable::from_step_code), convention: 0 },
+    MethodSpec { name: 242, entry: Some(reflection::method_code), convention: 0 },
+    MethodSpec { name: 243, entry: Some(reflection::method_synchronous), convention: 0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1690,6 +1701,8 @@ unsafe extern "C" fn initialize(
                     | b"nativeMethodValue"
                     | b"nativeDeferredAnswer"
                     | b"codeValue"
+                    | b"methodCodeObject"
+                    | b"methodSynchronous"
                     | b"binding:value:weak:"
             ) {
                 continue;
@@ -1756,18 +1769,11 @@ unsafe extern "C" fn initialize(
             b"addMethod",
             &[names[b"binding:value:weak:".as_slice()], observer],
         )?;
-        let nil_code = keep(send(s.code_getter, b"withContext:", &[s.nil])?)?;
-        send(
-            send(id.root, b"methodBehavior", &[])?,
-            b"addMethod",
-            &[names[b"codeObject".as_slice()], nil_code],
-        )?;
-        let sync = keep(send(s.code_getter, b"withContext:", &[named(b"true")?])?)?;
-        send(
-            send(id.root, b"methodBehavior", &[])?,
-            b"addMethod",
-            &[names[b"isSynchronous".as_slice()], sync],
-        )?;
+        for (selector, declaration) in [(b"codeObject".as_slice(), b"methodCodeObject".as_slice()), (b"isSynchronous".as_slice(), b"methodSynchronous".as_slice())] {
+            let getter = keep(send(image, b"methodAt:", &[names[declaration]])?)?;
+            let getter = keep(send(getter, b"withContext:", &[*ns])?)?;
+            send(send(id.root, b"methodBehavior", &[])?, b"addMethod", &[names[selector], getter])?;
+        }
         send(id.root, b"ownerOf:put:", &[block_vt, block])?;
         // The factory has no Block fields; it is a rooted ordinary object. Only actual
         // constructed Blocks are tracked and traced by this representation owner.

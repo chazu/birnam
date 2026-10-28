@@ -28,6 +28,44 @@ pub(super) unsafe extern "C" fn code_object(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+pub(super) unsafe extern "C" fn method_code(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    _: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let q = s.scope(&[r]);
+        Ok(resumable::source_code(s, r, &q)?.unwrap_or(s.nil))
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+pub(super) unsafe extern "C" fn method_synchronous(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    _: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let q = s.scope(&[r]);
+        s.named(if resumable::source_code(s, r, &q)?.is_some() {
+            b"false"
+        } else {
+            b"true"
+        })
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -35,6 +73,13 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             return Err(invalid());
         };
         let q = s.scope(&[r, *code]);
+        if let Some(original) = resumable::source_code(s, r, &q)? {
+            return if original == *code {
+                Ok(r)
+            } else {
+                Err(invalid())
+            };
+        }
         let arity = if *code == s.nil || native_adapters::owns(s, r, &q)? {
             None
         } else {
@@ -205,6 +250,13 @@ pub(super) unsafe extern "C" fn admit_selected(
             return Err(invalid());
         }
         let q = s.scope(&[r, *code, *sync]);
+        if let Some(original) = resumable::source_code(s, r, &q)? {
+            return if original == *code && *sync == s.named(b"false")? {
+                Ok(r)
+            } else {
+                Err(invalid())
+            };
+        }
         let result = admit(ptr::null_mut(), c, r, code, 1);
         if abi::is_fault(result) {
             return Err(abi::object_reference(result));
@@ -341,8 +393,12 @@ unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) ->
             }
         }
 
-        let owned = q.keep(s.send(method, b"captured", &[])?);
-        let owned = q.keep(s.send(owned, b"admitCodeObject:", &[code])?);
+        let owned = if let Some(owned) = resumable::with_source(s, method, code, &q)? {
+            q.keep(owned)
+        } else {
+            let owned = q.keep(s.send(method, b"captured", &[])?);
+            q.keep(s.send(owned, b"admitCodeObject:", &[code])?)
+        };
         let mut values = vec![owned];
         if let Some(captures) = captures {
             if abi::as_size(s.send(captures, b"sizeWord", &[])?) != Some(count) {

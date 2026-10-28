@@ -266,6 +266,49 @@ Block arity/capture, direct Method/native Method and Machine checks pass.
 [Evidence](../measurements/method-capture-purity-oop-20261028.json).
 Default definition metadata and generic code admission remain separate open work.
 
+## Implementation checkpoint: source-associated resumable code (2026-10-28)
+
+The resumable compiler now supplies its CodeObject to
+`Execution fromStep:descriptor:selection:owner:callPlans:codeObject:` while creating
+the executable. The producer derives step code, descriptor and CodeObject from the
+same portable program. Execution checks the declared parameter and capture counts
+against the descriptor before allocating/publishing the Method. Native step
+providers remain responsible for implementing their declared program; this is not
+a proof that arbitrary native machine code matches portable source.
+
+Before, the compiler created a resumable Method and then mutated its behavior with
+`admitCodeObject:synchronous:`. After, the existing owned code description retains
+one optional CodeObject reference. Shared `codeObject` and `isSynchronous` Methods
+read that description. There is no per-code metadata vtable, new universal Method
+record, or new registry. Source metadata is traced with its existing code owner.
+Native/handwritten entries still need no portable CodeObject.
+
+For Execution-owned code, old admission messages now only assert the existing
+association: the same CodeObject is idempotent without another shape query;
+replacement or a conflicting synchronous mode is rejected without mutation.
+Materialization can construct a fresh unbound executable instance with an equal
+canonical portable description. It shares the original registration/descriptor,
+keeps the requested CodeObject identity, and leaves the original Method unchanged.
+Different program bytes and attempts to reinterpret an already-bound Method are
+rejected. The native-provider legacy admission path remains open work.
+
+The isolated constructor test uses native owners and the build-only grammar seed.
+It checks pure compilation and capture, default Method behavior, immutable source
+association, descriptor/count disagreement, failure before publication, and fresh
+materialization with matching bytes. Poisoning both old admission selectors does
+not prevent the compiler from producing executable code. The test uses a local
+capture rather than a top-level let, because the isolated composition deliberately
+has no Globals publication service. It is part of the core gate.
+
+Generated artifacts using the old post-construction admission sequence must be
+rebuilt. The migration deliberately does not reinstate that mutation as a loading
+fallback. The core gate and focused tests against a rebuilt published development prefix
+pass, including native-boundary image round trips and optimizer recovery. All 837
+installed files were reverified against its manifest afterward. This is a development
+build, not cold/release qualification.
+[Evidence](../measurements/owned-code-construction-oop-20261028.json). Default reflected body forwarding, synchronous code-provider source
+construction, and the remaining generic admission removal are still pending.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code

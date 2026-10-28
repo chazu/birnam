@@ -68,7 +68,7 @@ pub(super) unsafe fn install(s: &State, image: Oop, behavior: Oop) -> Result<(),
             let step = q.keep(s.send(image, b"methodAt:", &[s.names[name]])?);
             let step = q.keep(s.send(step, b"withContext:", &[s.ns])?);
             let descriptor = descriptor(s, step, arity, returns)?;
-            let method = q.keep(register_descriptor(s, descriptor, step, s.receiver)?);
+            let method = q.keep(register_descriptor(s, descriptor, step, s.receiver, None)?);
             s.send(behavior, b"addMethod", &[s.names[name], method])?;
         }
         Ok(())

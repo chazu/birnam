@@ -26,7 +26,7 @@ pub(super) fn check(h: &H<'_>) {
     std::fs::remove_file(path).unwrap();
     let execution = h.named(b"Execution");
     let execution_vt = h.vt(execution);
-    let registration = h.key(b"fromStep:descriptor:selection:owner:callPlans:");
+    let registration = h.key(b"fromStep:descriptor:selection:owner:callPlans:codeObject:");
     let register = h.call(execution_vt, b"lookup", &[registration]);
     let captured = h.hooks.context(&[register, h.named(b"nil")]);
     let capture = q
@@ -41,7 +41,7 @@ pub(super) fn check(h: &H<'_>) {
     h.call(execution_vt, b"addMethod", &[registration, register]);
     q.check_result(admitted).unwrap();
     let saved = h.call(captured, b"at:", &[size(1).unwrap()]);
-    let mut arguments: Vec<_> = (0..5)
+    let mut arguments: Vec<_> = (0..6)
         .map(|i| h.call(saved, b"at:", &[size(i).unwrap()]))
         .collect();
     let plans = q.read_bytes(h.call(arguments[4], b"bytes", &[])).unwrap();

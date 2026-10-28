@@ -29,6 +29,7 @@ struct Registered {
     candidate: Option<std::rc::Rc<native_tier::Candidate>>,
     // The lexical environment is instance state; the code registration is shared.
     environment: Option<Oop>,
+    code_object: Option<Oop>,
 }
 #[derive(Default)]
 pub(super) struct Runtime {
@@ -53,6 +54,7 @@ pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"methodFromBlock:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:callPlans:",
+    b"fromStep:descriptor:selection:owner:callPlans:codeObject:",
     b"prepareCall:selector:",
     b"callPlan:field:",
     b"resumableEntry",
@@ -201,7 +203,7 @@ unsafe fn refresh(s: &State, value: Oop) -> Result<(), Oop> {
     }
 }
 pub(super) unsafe extern "C" fn from_step(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { register_step(c, a, n, false) }
+    unsafe { register_step(c, a, n, false, false) }
 }
 pub(super) unsafe extern "C" fn from_step_plans(
     _: Oop,
@@ -210,13 +212,22 @@ pub(super) unsafe extern "C" fn from_step_plans(
     a: *const Oop,
     n: usize,
 ) -> Oop {
-    unsafe { register_step(c, a, n, true) }
+    unsafe { register_step(c, a, n, true, false) }
 }
-unsafe fn register_step(c: Oop, a: *const Oop, n: usize, plans: bool) -> Oop {
+pub(super) unsafe extern "C" fn from_step_code(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { register_step(c, a, n, true, true) }
+}
+unsafe fn register_step(c: Oop, a: *const Oop, n: usize, plans: bool, coded: bool) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        if args.len() != 4 + usize::from(plans) {
+        if args.len() != 4 + usize::from(plans) + usize::from(coded) {
             return Err(invalid());
         }
         let [step, description, selection, owner] = &args[..4] else {
@@ -269,7 +280,25 @@ unsafe fn register_step(c: Oop, a: *const Oop, n: usize, plans: bool) -> Oop {
                 .admit_call_plans(&plans, &description, authority)
                 .map_err(|_| invalid())?;
         }
-        register_descriptor(s, descriptor, *step, *owner)
+        let code = if coded {
+            let code = args[5];
+            let factory = s.named(b"CodeObject")?;
+            let arity = index(s, s.send(factory, b"parameterCountOf:", &[code])?)?;
+            let captures = index(s, s.send(factory, b"captureCountOf:", &[code])?)?;
+            if arity
+                != descriptor
+                    .v2_entry_binding()
+                    .ok_or_else(invalid)?
+                    .argument_count
+                || captures != descriptor.entry_capture_slots().len()
+            {
+                return Err(invalid());
+            }
+            Some(code)
+        } else {
+            None
+        };
+        register_descriptor(s, descriptor, *step, *owner, code)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -278,9 +307,13 @@ unsafe fn register_descriptor(
     descriptor: Arc<FrameDescriptor>,
     step: Oop,
     owner: Oop,
+    code_object: Option<Oop>,
 ) -> Result<Oop, Oop> {
     unsafe {
         let q = s.scope(&[step, owner]);
+        if let Some(code) = code_object {
+            q.keep(code);
+        }
         let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
         let (context_vt, template) = {
             let r = s.resume.borrow();
@@ -310,6 +343,11 @@ unsafe fn register_descriptor(
         let capability = checked(engine.register_resumable(OWNER, semantic))?;
         let lease = checked(engine.publish_owned(capability))?;
         drop(engine);
+        if code_object.is_some() {
+            s.admitted
+                .borrow_mut()
+                .insert(method.addr(), binding.argument_count);
+        }
         let mut runtime = s.resume.borrow_mut();
         runtime.records.insert(
             context.addr(),
@@ -324,9 +362,86 @@ unsafe fn register_descriptor(
                 inline: None,
                 candidate: None,
                 environment: None,
+                code_object,
             },
         );
         Ok(method)
+    }
+}
+// Executable identity is supplied by Id; these are this owner's existing code
+// descriptions, not a second metadata database for arbitrary Methods.
+unsafe fn owned_record(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Registered>, Oop> {
+    unsafe {
+        if let Some(record) = s
+            .resume
+            .borrow()
+            .records
+            .values()
+            .find(|r| r.method == method)
+            .cloned()
+        {
+            return Ok(Some(record));
+        }
+        let records: Vec<_> = s.resume.borrow().records.values().cloned().collect();
+        for record in &records {
+            q.keep(record.method);
+        }
+        for record in records {
+            if s.send(s.id.root, b"sameNativeMethod:as:", &[method, record.method])?
+                == abi::size(1).unwrap()
+            {
+                return Ok(Some(record));
+            }
+        }
+        Ok(None)
+    }
+}
+pub(super) unsafe fn source_code(
+    s: &State,
+    method: Oop,
+    q: &Scope<'_>,
+) -> Result<Option<Oop>, Oop> {
+    unsafe { Ok(owned_record(s, method, q)?.map(|r| r.code_object.unwrap_or(s.nil))) }
+}
+// Materialization may bind an equal portable description to a fresh executable
+// instance. It must never rewrite an existing Method's source association.
+pub(super) unsafe fn with_source(
+    s: &State,
+    method: Oop,
+    code: Oop,
+    q: &Scope<'_>,
+) -> Result<Option<Oop>, Oop> {
+    unsafe {
+        let Some(mut record) = owned_record(s, method, q)? else {
+            return Ok(None);
+        };
+        if record.environment.is_some() {
+            return Err(invalid());
+        }
+        let original = record.code_object.ok_or_else(invalid)?;
+        let factory = q.keep(s.named(b"CodeObject")?);
+        let before = q.keep(s.send(factory, b"canonicalBytesOf:", &[original])?);
+        let after = q.keep(s.send(factory, b"canonicalBytesOf:", &[code])?);
+        if bytes(s, before, 64 << 20)? != bytes(s, after, 64 << 20)? {
+            return Err(invalid());
+        }
+        let (vt, template) = {
+            let runtime = s.resume.borrow();
+            (runtime.context_vt, runtime.template)
+        };
+        let context = q.keep(allocate(s, vt, 0)?);
+        let copy = q.keep(s.send(template, b"withContext:", &[context])?);
+        record.method = copy;
+        record.code_object = Some(code);
+        record.candidate = None;
+        let arity = record
+            .descriptor
+            .v2_entry_binding()
+            .ok_or_else(invalid)?
+            .argument_count;
+        s.resume.borrow_mut().records.insert(context.addr(), record);
+        s.admitted.borrow_mut().insert(copy.addr(), arity);
+        Ok(Some(copy))
     }
 }
 pub(super) unsafe extern "C" fn method_from_block(
@@ -1844,6 +1959,7 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
         let mut values = vec![record.method, record.step, record.owner,
             record.descriptor.executable_owner.get()];
         values.extend(record.environment);
+        values.extend(record.code_object);
         if let Some(inline) = record.inline {
             values.extend([inline.method, inline.owner]);
         }

@@ -280,11 +280,11 @@ fn compile_mode(
         return Err(Error::InvalidProgram);
     }
     let execution = e.name(b"Execution")?;
-    let register = e.name(b"fromStep:descriptor:selection:owner:callPlans:")?;
+    let register = e.name(b"fromStep:descriptor:selection:owner:callPlans:codeObject:")?;
     let code_object = e.name(b"CodeObject")?;
     let from_canonical = e.name(b"fromCanonicalBytes:")?;
     let admit_code = e.name(b"admitCodeObject:synchronous:")?;
-    let false_name = e.name(b"false")?;
+    e.name(b"false")?;
     let nil_name = e.name(b"nil")?;
     let method_names = (0..e.functions.len())
         .map(|i| e.name(format!("compiledFunction{i}").as_bytes()))
@@ -372,15 +372,13 @@ fn compile_mode(
             "{{O at=size_oop({i});O method=call(&c,unit,n==2?{native_declared}:{declared},&at,1);"
         )
         .unwrap();
+        writeln!(out,"O encoded=blob(&c,program_{i},sizeof(program_{i}));O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(code==named(&c,{nil_name})||is_error(&c,code))return finish(&c,code);").unwrap();
         if e.descriptors[i].is_some() {
-            writeln!(out,"O descriptor=blob(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=blob(&c,selection_{i},sizeof(selection_{i}));O plans=blob(&c,plans_{i},sizeof(plans_{i}));O a[]={{method,descriptor,selection,owner,plans}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,5);").unwrap();
-        }
-        let mode = if e.descriptors[i].is_some() {
-            false_name
+            writeln!(out,"O descriptor=blob(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=blob(&c,selection_{i},sizeof(selection_{i}));O plans=blob(&c,plans_{i},sizeof(plans_{i}));O a[]={{method,descriptor,selection,owner,plans,code}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,6);if(c.error)return finish(&c,0);").unwrap();
         } else {
-            e.names.iter().position(|v| v == b"true").unwrap()
-        };
-        writeln!(out,"O encoded=blob(&c,program_{i},sizeof(program_{i}));O code=call(&c,named(&c,{code_object}),{from_canonical},&encoded,1);if(c.error)return finish(&c,0);if(code==named(&c,{nil_name})||is_error(&c,code))return finish(&c,code);O admission[]={{code,named(&c,{mode})}};method=call(&c,method,{admit_code},admission,2);if(c.error)return finish(&c,0);").unwrap();
+            let mode = e.names.iter().position(|v| v == b"true").unwrap();
+            writeln!(out,"O admission[]={{code,named(&c,{mode})}};method=call(&c,method,{admit_code},admission,2);if(c.error)return finish(&c,0);").unwrap();
+        }
         writeln!(
             out,
             "methods[{i}]=method;raw(&c,owner,S_RETAIN,&method,1);if(c.error)return finish(&c,0);}}"

@@ -11,6 +11,9 @@ mkdir -p "$fixture" "$logs"
 mise exec -- cargo test --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment -p birnam-system-output -p birnam-file-io -p birnam-peg -p birnam-artifact -p birnam-execution -p birnam-codegen -p birnam-native-backend -p birnam-codegen-runtime --lib > "$logs/unit.log" 2>&1
 mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birnam-root-registry -p birnam-collect -p birnam-namespace -p birnam-storage -p birnam-boolean -p birnam-nil -p birnam-object-model -p birnam-word -p birnam-bytes -p birnam-string -p birnam-float -p birnam-integer -p birnam-vector -p birnam-map -p birnam-prelude -p birnam-system-input -p birnam-environment -p birnam-system-output -p birnam-file-io -p birnam-peg -p birnam-artifact -p birnam-tcc -p birnam-execution -p birnam-lang-seed -p birnam-native-backend -p birnam-codegen-runtime -p birnam-portable-code > "$logs/build.log" 2>&1
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_slice > "$logs/caller-build.log" 2>&1
+# Code-construction purity uses this explicit native floor and build-only grammar
+# seed, not a published prefix or its old generated artifacts.
+BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/release" mise exec -- cargo test --offline --locked -p birnam-siphon --test owned_code_construction -- --include-ignored > "$logs/owned-code-construction.log" 2>&1
 python3 - "$CARGO_TARGET_DIR/release" <<'PY_EXPORTS'
 from pathlib import Path
 import json,subprocess,sys

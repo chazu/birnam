@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "aea62ff2c74a1d65d5d471cac1b3be20262a9d2e",
+  "scope": "Compiler-created resumable code establishes source metadata at construction, without dictionary mutation. Other definition/admission migration remains pending.",
+  "source_sha256": {
+    "rust/birnam-execution/src/resumable_runtime.rs": "e26afd12e3174f899dfb32ec9c1cce04b3da982120614fcf4bd1bc58d7e889a2",
+    "rust/birnam-execution/src/synchronous.rs": "bffcc310a54768e227174c439f2aa4d2c517902355ac2394c7118f83b0841a82",
+    "rust/birnam-execution/src/oop_reflection.rs": "1297d39a95240cfc310415a87f25fa5d3248a9ab1702ac81f0bb0f051da87e4a",
+    "rust/birnam-execution/src/control.rs": "85f78ca9c302cea4585196136c5f185b4f3deeb3d60d54ff269c934a382874bb",
+    "rust/birnam-native-backend/src/oop_emission.rs": "c78fde8b854d21a3b5e376917844bdd249994767539e33a8d23fde26c8d5b40d",
+    "rust/birnam-siphon/tests/owned_code_construction.rs": "81d7e529aabe25c837b58694b0eaefbaf89de95984fa7cf2e234ea173c4df874",
+    "rust/birnam-siphon/tests/compiler/prepared_call.rs": "562471dea8d2a8e3ebbb2c54c751abb33b1ffbd79b3002ef418f3f3aa1fbba35",
+    "scripts/oop-id-slice-test.sh": "75253ab5e7355d3028c50cc0477afed91c1543d3faa08b7c434c27138742d999"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/owned-code-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "units": {
+      "path": ".cargo-target/oop-current-qualification/owned-code-milestone/units.log",
+      "sha256": "aeeea0fd6db5187ee0e9b14d0e2d624d29f2797d393b11177728622bda6d5141",
+      "result": "passed"
+    },
+    "runtime": {
+      "path": ".cargo-target/oop-current-qualification/owned-code-milestone/runtime.log",
+      "sha256": "f36d24cec40773908f599e95040428dd6b16e3d2bf0ac89837761a5ccc85d3fc",
+      "result": "passed"
+    },
+    "construction": {
+      "path": ".cargo-target/oop-current-qualification/owned-code-milestone/construction.log",
+      "sha256": "9cffa9abf0de94a99e5837b333891eb94dc2c43437f67532c41dd4b1339f17b0",
+      "result": "passed"
+    },
+    "install": {
+      "path": ".cargo-target/oop-current-qualification/owned-code-milestone/install.log",
+      "sha256": "3bfa9ac13235001843958da128a95b12ce6edccc4525c007ed384db387b4f10f",
+      "result": "passed"
+    },
+    "published_focused": {
+      "path": ".cargo-target/oop-current-qualification/owned-code-milestone/published_focused.log",
+      "sha256": "d33f9ba4511bdc960eefe950c8ebb3ffbae6ccbc04fc09dd124b7b8839c5667f",
+      "result": "passed"
+    }
+  },
+  "published_prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-owned-code-wm1zwq8i/prefix",
+  "prefix_receipt_sha256": "9bd606801b583b7a2dcffd934205f78eaf56da2df55dfa3aa97eb3e392993709",
+  "build_mode": "development-cache",
+  "source_manifest_sha256": "c094edc9fab8bc6667127d85b0b44abcf5d93844b5e9c35faededd33caa68316",
+  "source_manifest_files": 748,
+  "installed_manifest_sha256": "6bd157ca707e9816d4da181a0b1f99da526762e92a9275bde966a78030edfe2c",
+  "installed_files_reverified": 837,
+  "build_note": "Development-cache build from the unchanged worktree; not a clean-checkout/cold build or full release qualification. All generated artifacts and startup images were rebuilt; installed manifest independently reverified after focused tests.",
+  "verified": [
+    "compiler creates resumable code without binding-epoch changes or metadata vtables",
+    "same CodeObject association idempotent without count re-queries",
+    "conflicting CodeObject or synchronous mode rejected",
+    "descriptor parameter/capture disagreement rejected before creation",
+    "count-query failure preserves native failure identity and performs no binding writes",
+    "poisoned old admission operations do not prevent compilation",
+    "fresh matching-program source association preserves original Method and supplied CodeObject identities",
+    "different program bytes rejected",
+    "core independent caller/lookup/continuation/native boundary and 177 task-control checks",
+    "published compiler_source, capture, direct constructors, Machine, materialization, native image boundaries and optimizer recovery tests"
+  ],
+  "architecture_review": {
+    "new_state": "One optional source CodeObject reference in an existing per-code Execution record; no new Method registry",
+    "producer": "Compiler derives step, descriptor and CodeObject from the same portable program",
+    "validation": "Execution validates descriptor and checks declared parameter/capture counts; native step providers remain responsible for their actual executable semantics",
+    "reflection": "Shared Method behavior reads owned code descriptions; per-code metadata vtables removed on this path",
+    "gc": "Existing code-owner tracing retains source references; fresh aliases share registration/descriptor and source lifetime",
+    "id": "No changes in this milestone; prior capture purity change preserves existing operation and language behavior"
+  },
+  "remaining": [
+    "default reflected body forwarding and template removal",
+    "synchronous code-provider source construction",
+    "native-provider generic admission removal",
+    "remaining reflection/image adaptation for direct Method definitions",
+    "full same-revision cold/relocated/Host qualification"
+  ]
+}

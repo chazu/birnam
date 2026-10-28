@@ -156,7 +156,7 @@ pub(super) unsafe fn check(
         let register = call(
             ev,
             b"lookup",
-            &[sel(b"fromStep:descriptor:selection:owner:callPlans:")],
+            &[sel(b"fromStep:descriptor:selection:owner:callPlans:codeObject:")],
         );
         let metadata = call(id.root, b"sequence", &[nil, nil]);
         let context = call(id.root, b"sequence", &[register, metadata]);
@@ -165,7 +165,7 @@ pub(super) unsafe fn check(
         call(
             ev,
             b"addMethod",
-            &[sel(b"fromStep:descriptor:selection:owner:callPlans:"), capture],
+            &[sel(b"fromStep:descriptor:selection:owner:callPlans:codeObject:"), capture],
         );
         call(
             codegen,
@@ -175,7 +175,7 @@ pub(super) unsafe fn check(
         call(
             ev,
             b"addMethod",
-            &[sel(b"fromStep:descriptor:selection:owner:callPlans:"), register],
+            &[sel(b"fromStep:descriptor:selection:owner:callPlans:codeObject:"), register],
         );
         let descriptor = bytes(call(metadata, b"at:", &[abi::size(0).unwrap()]));
         let filename = path.as_os_str().as_encoded_bytes();
