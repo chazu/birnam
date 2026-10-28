@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "ae2f8acebc87c4cce3d61f0bd0d192186c1af59f",
+  "scope": "Code-provider context binding through an ordinary TCC Unit operation; generated method-body lowering and default definition migration remain pending.",
+  "source_sha256": {
+    "rust/birnam-tcc/src/lib.rs": "48552600e7f0a2fb0de51bcfd20c42546174c03032354e035b8eb42465b864fd",
+    "rust/birnam-siphon/tests/tcc_context.rs": "8bcf99ecc88e4a0bc9ed2c16afa286f5f0475b0fa3a0742af98d323983989fbb",
+    "tests/fixtures/oop-continuation/tcc-context.c": "ef0934dee93958adce064df8f2b38a6b480644462a625ac824827933a289486e",
+    "scripts/native-message-test.sh": "e0368756a14992aae0d061bc22710640601d900505e53afda702104400581e62"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/tcc-context-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "units": {
+      "path": ".cargo-target/oop-current-qualification/tcc-context-milestone/units.log",
+      "sha256": "cf011518d635d08262541165ee7ff15acb42e7e8e87157a1baf6869cc56a557f",
+      "result": "passed"
+    },
+    "runtime": {
+      "path": ".cargo-target/oop-current-qualification/tcc-context-milestone/runtime.log",
+      "sha256": "61fc1b5d09a5fb889580b1d8bf9692fe567bdf0d376aaf40fb8eaf1c7dbbf2c8",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/tcc-context-milestone/focused.log",
+      "sha256": "3f519e843bda40d6a5bebb7a6bc246166c085056f83d18d630781e112d085def",
+      "result": "passed"
+    }
+  },
+  "focused_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/tcc-context-r5s2onvm/prefix",
+  "focused_tcc_sha256": "ebf4f6710dd4677fdd63673f260e774e0398254816b649a63cac8991843ddc52",
+  "core_tcc_sha256": "bb9162a60c4b5e762f13394463f82887fbf855b730f19810c8e3b7a451855ea6",
+  "build_note": "Focused prefix uses TCC resource-metrics; core uses the ordinary core build. Both contain the same final source implementation.",
+  "verified": [
+    "pure context binding with unchanged epoch",
+    "unchanged default Unit context",
+    "independent contexts for the same code",
+    "receiver and arguments pass through unchanged",
+    "native and continuation calling conventions preserved",
+    "collection during generated entry",
+    "immediate and null contexts are opaque data",
+    "uninitialized/failed-initialization bindings rejected",
+    "escaped Method remains valid after initialization retry",
+    "invalid index and wrong argument count rejected",
+    "unreferenced bound environment dies while Unit stays live; allocation identity observer has positive control",
+    "installed binding retains code and environment without source roots",
+    "native mapping count returns to baseline after final binding removal",
+    "direct constructors, continuation transparency and optimizer recovery remain passing"
+  ],
+  "architecture_review": {
+    "id": "No API or payload-contract changes",
+    "owner_operation": "TCC Unit declaredMethodAt:context:",
+    "state": "TCC entry retains supplied context and original Unit/code; Unit caches validated declaration/code-convention pairs",
+    "cross_owner_work": "Only existing Id messages and the existing native function ABI",
+    "gc": "TCC traces context and Unit, roots both during entry, and retires dead entry keys",
+    "retention": "Bound instances are not retained by the Unit"
+  },
+  "remaining": [
+    "compiler method-body lowering and coherent code/shape construction",
+    "default Reflect/arity/DNU integration",
+    "optional Method reflection and image recipes",
+    "generic admission and template removal",
+    "full same-revision native/cold/relocated/Host qualification"
+  ]
+}

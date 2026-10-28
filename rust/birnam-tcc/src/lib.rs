@@ -28,11 +28,13 @@ struct Compiled {
     initializing: bool,
     implementation: Option<Oop>,
     methods: Vec<Oop>,
+    declarations: Vec<(native::Method, bool)>,
 }
 #[derive(Clone, Copy)]
 struct Entry {
     unit: Oop,
     code: native::Method,
+    context: Oop,
 }
 struct State {
     id: Protocol,
@@ -186,6 +188,7 @@ impl State {
                     initializing: false,
                     implementation: None,
                     methods: Vec::new(),
+                    declarations: Vec::new(),
                 },
             );
             Ok(unit)
@@ -240,11 +243,11 @@ unsafe extern "C" fn generated(root: Oop, c: Oop, r: Oop, a: *const Oop, n: usiz
     (|| unsafe {
         let s = instance()?;
         let entry = *s.entries.borrow().get(&c.addr()).ok_or_else(invalid)?;
-        let _scope = s.scope(&[c, entry.unit]);
+        let _scope = s.scope(&[c, entry.unit, entry.context]);
         s.depth
             .set(s.depth.get().checked_add(1).ok_or_else(invalid)?);
         let _entered = Entered(s);
-        let result = (entry.code)(root, entry.unit, r, a, n);
+        let result = (entry.code)(root, entry.context, r, a, n);
         if abi::is_fault(result) {
             Err(abi::object_reference(result))
         } else {
@@ -345,11 +348,12 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
             }
             (initialize, names, methods)
         };
-        s.units
-            .borrow_mut()
-            .get_mut(&r.addr())
-            .unwrap()
-            .initializing = true;
+        {
+            let mut units = s.units.borrow_mut();
+            let unit = units.get_mut(&r.addr()).unwrap();
+            unit.initializing = true;
+            unit.declarations = declarations.clone();
+        }
         // Failed initialization can publish Methods. Keep every constructed context
         // and declared entry in the Unit; retry must not invalidate earlier Methods.
         let result = (|| {
@@ -366,21 +370,7 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
             }
             let mut methods = Vec::new();
             for (code, continuing) in declarations {
-                let context =
-                    scope.keep(s.send(s.model, b"allocate:bytes:", &[s.entry_vt, number(0)?])?);
-                s.entries
-                    .borrow_mut()
-                    .insert(context.addr(), Entry { unit: r, code });
-                let method = scope.keep(s.send(
-                    if continuing {
-                        s.continuation_template
-                    } else {
-                        s.template
-                    },
-                    b"withContext:",
-                    &[context],
-                )?);
-                methods.push(method);
+                methods.push(scope.keep(bind_entry(s, r, code, continuing, r)?));
             }
             {
                 let mut units = s.units.borrow_mut();
@@ -428,6 +418,55 @@ unsafe extern "C" fn initialize_unit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: u
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+// Bind data to declared code within its owner. The supplied context never
+// replaces the bookkeeping that retains the actual executable and mapping.
+unsafe fn bind_entry(
+    s: &State,
+    unit: Oop,
+    code: native::Method,
+    continuing: bool,
+    environment: Oop,
+) -> Result<Oop, Oop> {
+    unsafe {
+        let q = s.scope(&[unit, environment]);
+        let context = q.keep(s.send(s.model, b"allocate:bytes:", &[s.entry_vt, number(0)?])?);
+        s.entries.borrow_mut().insert(
+            context.addr(),
+            Entry {
+                unit,
+                code,
+                context: environment,
+            },
+        );
+        s.send(
+            if continuing {
+                s.continuation_template
+            } else {
+                s.template
+            },
+            b"withContext:",
+            &[context],
+        )
+    }
+}
+unsafe extern "C" fn method_with_context(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [index, context] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let (code, continuing) = s
+            .units
+            .borrow()
+            .get(&r.addr())
+            .filter(|unit| unit.result.is_some())
+            .and_then(|unit| unit.declarations.get(abi::as_size(*index)?))
+            .copied()
+            .ok_or_else(invalid)?;
+        bind_entry(s, r, code, continuing, *context)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 unsafe extern "C" fn method_at(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -472,7 +511,7 @@ unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
             s.entries
                 .borrow()
                 .get(&value.addr())
-                .map(|e| vec![e.unit])
+                .map(|e| vec![e.unit, e.context])
                 .unwrap_or_default()
         };
         for value in refs {
@@ -640,6 +679,7 @@ const NAMES: &[&[u8]] = &[
     b"visit:",
     b"withContext:",
     b"generatedContinuationEntry",
+    b"declaredMethodAt:context:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Bytes"),
@@ -692,6 +732,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"visit:"),
     Literal::new(b"withContext:"),
     Literal::new(b"generatedContinuationEntry"),
+    Literal::new(b"declaredMethodAt:context:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -779,6 +820,11 @@ static METHODS: &[MethodSpec] = &[
         name: 49,
         entry: Some(generated),
         convention: 1,
+    },
+    MethodSpec {
+        name: 50,
+        entry: Some(method_with_context),
+        convention: 0,
     },
 ];
 unsafe extern "C" fn initialize(
@@ -878,7 +924,11 @@ unsafe extern "C" fn initialize(
                 | b"rootsDo:"
                 | b"referencesOf:do:"
                 | b"retire:" => vt,
-                b"initialize" | b"initializeWith:" | b"retain:" | b"declaredMethodAt:" => unit_vt,
+                b"initialize"
+                | b"initializeWith:"
+                | b"retain:"
+                | b"declaredMethodAt:"
+                | b"declaredMethodAt:context:" => unit_vt,
                 #[cfg(feature = "resource-metrics")]
                 b"liveNativeBytes" => vt,
                 _ => continue,

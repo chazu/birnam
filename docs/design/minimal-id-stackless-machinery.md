@@ -206,6 +206,46 @@ optional reflection/image migration. The remaining synchronous code-provider
 binding and owner descriptions must be completed before deleting the old path;
 no generic forwarding fallback was added for those missing pieces.
 
+## Implementation checkpoint: code-provider context binding (2026-10-28)
+
+TCC Units now answer `declaredMethodAt:context:`. A successfully initialized Unit
+selects one of its declared executables and constructs a Method with a supplied
+Oop context. This supplies the owner operation needed by generated method bodies;
+the compiler has not yet adopted it for ordinary synchronous definitions.
+[Qualification](../measurements/tcc-context-binding-oop-20261028.json).
+
+Before, TCC's private entry record retained `{unit, code}` and always supplied the
+Unit as the generated function's context. Replacing the Method's context directly
+would lose that private entry record. After, the record retains `{unit, code,
+context}`; TCC still selects and retains the executable, while supplying the bound
+context to that executable through the existing native calling convention.
+Ordinary declared Methods retain the previous Unit context by default. Receivers
+and arguments pass through unchanged. No forwarding send or second entry protocol
+was introduced.
+
+The added state is one context Oop per binding and the Unit's validated code and
+calling-convention declarations for indexed construction. TCC alone interprets
+that state. Its existing GC callback traces Unit and context, and entered calls
+root both. Bound instances are not appended to the Unit's permanent reference
+list: retaining compiled code must not retain every environment ever bound to it.
+Construction changes no dictionary or binding epoch. Calls before successful
+initialization, after a failed initialization, or with an invalid declaration
+index are rejected before a binding is allocated. Earlier escaped Methods remain
+valid after a successful initialization retry.
+
+An independently declared C module verifies synchronous and continuation-aware
+entries, default and bound contexts, unchanged receiver/arguments, collection
+during entry, immediate/null contexts, and pure construction. Allocation identity
+checks with a live positive control prove that an unreferenced bound environment
+can die while the Unit stays live. A separately installed Method alone retains its
+Unit and environment; removing its final binding returns native mapping count to
+baseline. The core suite and focused direct-construction, continuation and optimizer
+recovery checks pass.
+
+This closes the code-provider interface gap. Generated body lowering, coherent
+code/shape construction, default definition migration, and optional reflection/image
+consumers still need integration; this checkpoint does not claim those completed.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code
@@ -350,9 +390,9 @@ Change lowering to distinguish receiver from lexical environment.
 
 A real interface seam must be solved explicitly: TCC currently uses its Method
 context to identify `{unit, code}` and passes the Unit as the generated function's
-context. It cannot simply be overwritten with captures. The code provider must
-bind an environment to its executable entry through an owner operation, retaining
-both code and environment. This is code construction, not a universal metadata
+context. It cannot simply be overwritten with captures. The code provider now offers
+`declaredMethodAt:context:` to bind an environment while retaining the code and
+Unit. The compiler must still adopt that operation for method bodies. This is code construction, not a universal metadata
 service. No foreign payload read or shared private struct is justified.
 
 Similarly, per-code descriptions needed by stackless execution must be created
