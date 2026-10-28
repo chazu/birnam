@@ -6,6 +6,13 @@ preserved purity assertion fails (664 → 674 for two Methods). This is unresolv
 not a qualified implementation of that contract. No Id change or test relaxation
 has been made; see [the evidence](../measurements/minimal-mutation-epoch-oop-20261027.json).
 
+**Open closure-admission regressions (2026-10-27):** Oop admission omits the
+established capture-count and immutable CodeObject-association checks. Repeated
+admission queries shape again; direct construction accepts incorrect capture
+counts and raw absent references. Six isolated contract cases fail; explicit
+external pairing passes its identity/mismatch control. No production repair or
+contract relaxation has been made. See [the evidence](../measurements/closure-admission-regressions-oop-20261027.json).
+
 2026-10-24. Id, the explicit compiler paths, TCC and Execution now use the
 continuation contract. Their native/source gate passes, including the original
 custom-lookup tail regression. This is not completion of the broader runtime,
@@ -3064,3 +3071,35 @@ fixture mistakes and their corrections are recorded in the
 [receipt](../measurements/capture-access-oop-20261027.json). This is staged-prefix
 component evidence; the Method-construction epoch violation remains open, and the
 remaining old native harnesses still prevent full integration acceptance.
+
+
+## Closure admission regression checkpoint
+
+Before porting the remaining `closure_construction` assertions, the new Oop
+`closure_admission` harness isolates the established contract from
+[Method code admission](method-code-admission.md). Each case runs in a fresh
+process; one failure cannot prevent the other cases from being exercised. The
+native-message gate includes the new target, and the original harness remains
+intact for its still-unported lifetime, image-shell and task coverage.
+
+Six cases fail: a failing capture-count query is ignored during admission;
+same-CodeObject admission re-queries shape; another CodeObject can overwrite the
+association; synchronous and resumable Methods accept incorrect capture counts;
+and raw absence is accepted as a capture. A supported immediate Oop is accepted
+in the positive control, so the null assertion introduces no payload-type catalog.
+Explicit external pairing retains its supplied CodeObject identity without changing
+the original association and rejects a mismatched capture count.
+
+The implementation explains these results. `oop_reflection::admit` only queries
+arity, installs a new `codeObject` getter and overwrites the arity record on every
+call. `from_operands` passes the supplied references directly to `make_block`,
+which checks that a Method reference was supplied but not its capture count.
+The external-pairing route has its own count comparison and passes that control.
+
+This is failure evidence, not a completed migration. Restoring admission must
+preserve the existing registration, replacement and lifetime contracts while
+remaining entirely owned by Execution through Id messages. The outstanding
+Method-metadata purity conflict must also be resolved before extending its
+construction mechanism. No new Id hook, private cross-module API or replacement
+application protocol is introduced by this checkpoint.
+[Receipt](../measurements/closure-admission-regressions-oop-20261027.json).

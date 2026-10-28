@@ -1,0 +1,63 @@
+{
+  "passed": false,
+  "scope": "Seven isolated Oop cases for the existing closure admission contract",
+  "base_revision": "9ebb841355eb4ac06762e730a3dd6f199746d41e",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "contract_sources": [
+    "docs/design/method-code-admission.md",
+    "rust/birnam-siphon/tests/closure_construction.rs"
+  ],
+  "source_sha256": {
+    "rust/birnam-siphon/tests/closure_admission.rs": "eefcc17b7350c20f192739f2f5f796aa7ca4b1934c4b23d8935a986dd228c0cb"
+  },
+  "cases": {
+    "failed-admission": {
+      "passed": false,
+      "observed": "captureCountOf: replaced by a failing Method, but admission succeeds"
+    },
+    "idempotent-admission": {
+      "passed": false,
+      "observed": "same-CodeObject admission enters a replaced failing parameterCountOf: reader"
+    },
+    "different-code": {
+      "passed": false,
+      "observed": "admission accepts a different CodeObject with equal program bytes"
+    },
+    "direct-synchronous": {
+      "passed": false,
+      "observed": "two-capture Method accepts zero, one, three and 4097 captures"
+    },
+    "direct-resumable": {
+      "passed": false,
+      "observed": "two-capture Method accepts zero, one, three and 4097 captures"
+    },
+    "null-capture": {
+      "passed": false,
+      "observed": "direct construction accepts raw absence among captures; supported immediate Oop control succeeds"
+    },
+    "external-pairing": {
+      "passed": true,
+      "observed": "distinct equal-program code identity preserved, original Method association unchanged, mismatched capture count rejected"
+    }
+  },
+  "command": "BIRNAM_TEST_MODULE_DIRECTORY=<prefix>/lib MISE_TRUSTED_CONFIG_PATHS=$PWD CARGO_TARGET_DIR=$PWD/.cargo-target/oop-slice mise exec -- cargo test --offline --locked -p birnam-siphon --test closure_admission -- --include-ignored --nocapture",
+  "checks": [
+    {
+      "log": ".cargo-target/oop-current-qualification/closure-admission-before.log",
+      "sha256": "f6a062cf3dbc5da9e6c3f9ace70a546dd5a622c90ffcddb0e0b737f654c924bb",
+      "exit": 101
+    }
+  ],
+  "diagnosis": [
+    "Execution oop_reflection::admit queries only parameterCountOf:, installs a new codeObject getter and overwrites arity on every call. It neither admits capture count nor checks an existing association.",
+    "Execution synchronous::from_operands delegates to make_block, which checks only that the argument list and Method reference are nonempty. It does not check admitted capture count or null capture references.",
+    "The explicit external pairing route separately queries both counts and correctly rejects a mismatch in the control case."
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "limits": [
+    "This is deliberately failing contract evidence, not a repaired runtime or completed closure-construction migration.",
+    "The legacy closure_construction harness remains intact, including callback lifetime, image shell, nested closure and task lifecycle cases.",
+    "The unresolved Method construction epoch regression also remains open."
+  ]
+}
