@@ -9,6 +9,8 @@ mod dispatch;
 mod frame_call;
 #[path = "compiler/globals.rs"]
 mod globals;
+#[path = "compiler/numeric_predicate.rs"]
+mod numeric_predicate;
 #[path = "support/oop.rs"]
 mod oop;
 #[path = "compiler/prepared_call.rs"]
@@ -207,6 +209,7 @@ fn source_compiles_and_runs_on_production_execution() {
     dispatch::check(&h);
     frame_call::check(&h);
     discarded_clone::check(&h);
+    numeric_predicate::check(&h);
     prepared_call::check(&h);
     let module_manager = host.global(&floor, b"Module").unwrap();
     h.call(

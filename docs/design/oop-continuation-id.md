@@ -3321,3 +3321,34 @@ No failed CLI check was retried or deadline changed.
 This candidate predates the generated root-token validation and typed-callback
 policy corrections. Its passing CLI group does not qualify those later fixes or
 repair the open Method metadata/admission contracts.
+
+
+## Numeric predicate acceptance through Oops
+
+The numeric-predicate source group now runs in `compiler_source`. It retains
+checked arithmetic, signed extrema, overflow/division errors, existing comparison
+rounding, exact equality, live method/factory/allocation effects, selector aliases,
+live Error-family designation and mixed Float inputs. Collecting replacements keep
+execution correct. Paused-frame inspection confirms the same intermediate Integer
+identity after collection without keeping that Integer in the caller's test scope.
+Native units and bytes return to their previous baseline.
+
+A separate `integer_predicate` target exercises the existing explicit Integer
+predicate operation on the native-only floor. This makes its successful path
+observable independently of the published authored arithmetic: the collecting
+visitor commits once, while arithmetic refusal, stale epoch, changed numeric
+Methods and custom visitor lookup commit nothing. Exact visitor failures propagate
+once and subsequent evaluation still succeeds. The native-message gate includes
+this target. No runtime, Id message or private cross-module interface was added.
+
+The initial port counted incidental additions as source-operation repetitions;
+the final declared fixture retains the old receiver-specific counter and forwards
+other calls through their captured Method. The same filter scopes the additional
+replacement-result check. Those failed fixture probes remain in the receipt.
+
+The full compiler-source suite, explicit Integer predicate test and explicit
+Execution arithmetic test pass. Automatic predicate evaluation still records zero
+calls in generated source, so its former optimization is not claimed. Only the
+legacy alias-return compiler group remains in `compiler.rs`; the other documented
+metadata/admission and harness work remains open.
+[Receipt](../measurements/compiler-predicate-oop-20261027.json).

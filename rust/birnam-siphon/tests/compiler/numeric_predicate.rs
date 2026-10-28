@@ -1,424 +1,255 @@
-//! The real source producer and Integer/Execution consumer, against an unannotated
-//! baseline. Inventory counts are actual objects, never synthetic elision charges.
+//! Published arithmetic/comparison keeps current effects and inspectable intermediates.
 use super::*;
-use std::time::Instant;
-const ATTACH: &[u8] = b"withNumericPredicate:then:left:right:limit:return:in:";
-const EVALUATE: &[u8] = b"evaluatePredicate:then:left:right:limit:in:epoch:with:";
-unsafe extern "C" fn unannotated(_: *mut c_void, r: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(r))
+fn number(h: &H<'_>, value: i64) -> Oop {
+    let q = h.host.scope();
+    h.call(
+        h.named(b"Integer"),
+        b"fromWord:",
+        &[q.word(value as usize).unwrap()],
+    )
 }
-unsafe fn number(h: &mut H, value: i64) -> Oop {
-    unsafe {
-        let v = object(send(
-            h.id,
-            h.named(b"Integer"),
-            b"fromWord:",
-            &[Operand::word(value as usize)],
-        ));
-        h.keep(v)
+fn inputs(h: &H<'_>, values: [i64; 3]) -> [Oop; 3] {
+    let values = values.map(|v| number(h, v));
+    for (name, value) in [b"PredicateA".as_slice(), b"PredicateB", b"PredicateC"]
+        .into_iter()
+        .zip(values)
+    {
+        h.bind(name, value);
     }
+    values
 }
-struct Forward {
-    id: Protocol,
-    gc: Oop,
-    original: NativeEntry,
-    calls: Cell<usize>,
-    count_receiver: Option<Oop>,
-    collect: bool,
-    change: Option<(Oop, Oop, NativeEntry)>,
-}
-unsafe extern "C" fn forward(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Forward>();
-        if p.count_receiver.is_none_or(|receiver| receiver == r) { p.calls.set(p.calls.get() + 1); }
-        if p.collect {
-            collect(p.id, p.gc);
-        }
-        if let Some((behavior, selector, entry)) = p.change {
-            send(
-                p.id,
-                behavior,
-                b"addMethod",
-                &[Operand::object(selector), Operand::entry(entry)],
-            );
-        }
-        p.original.method.unwrap()(p.original.context, r, a, n)
-    }
-}
-unsafe fn inputs(h: &mut H, values: [i64; 3]) -> [Oop; 3] {
-    unsafe {
-        let v = values.map(|v| number(h, v));
-        for (name, value) in [b"PredicateA".as_slice(), b"PredicateB", b"PredicateC"]
-            .into_iter()
-            .zip(v)
-        {
-            h.bind(name, value);
-        }
-        v
-    }
-}
-unsafe fn source(first: &str, then: &str) -> Vec<u8> {
+fn source(first: &str, then: &str) -> Vec<u8> {
     format!("[:a :b :c | let answer := [[a {first} b] {then} c]; answer]").into_bytes()
 }
-unsafe fn paused(h: &mut H, block: Oop, intermediate: i64, expected: Oop) {
-    unsafe {
-        let machine = object(send(h.id, h.named(b"Machine"), b"new", &[]));
-        h.keep(machine);
-        let one = number(h, 1);
-        let integer_vt = h.named(b"IntegerVt");
-        let mut observed = false;
-        let mut value = object(send(
-            h.id,
-            machine,
-            b"runBlock:budget:",
-            &[Operand::object(block), Operand::object(one)],
-        ));
-        for _ in 0..24 {
-            if value != machine {
-                break;
-            }
-            let view = object(send(h.id, machine, b"currentFrameView", &[]));
-            h.keep(view);
-            if view != h.named(b"nil") {
-                let count = h.integer(object(send(h.id, view, b"slotCount", &[])));
-                for i in 0..count {
-                    let index = number(h, i);
-                    let value = object(send(h.id, view, b"oopAt:", &[Operand::object(index)]));
-                    if vt(h, value) == integer_vt && h.integer(value) == intermediate {
-                        h.collect();
-                        assert!(present(h.id, value));
-                        observed = true;
-                    }
-                }
-            }
-            value = object(send(
-                h.id,
-                machine,
-                b"continueWithBudget:",
-                &[Operand::object(one)],
-            ));
-        }
-        assert_eq!(value, expected);
-        assert!(observed, "paused baseline exposes the intermediate Integer");
+pub(super) fn check(h: &H<'_>) {
+    h.clear();
+    h.collect();
+    let baseline_units = h.units();
+    let baseline_bytes = h.native_bytes();
+    let q = h.host.scope();
+    let path = std::env::temp_dir().join(format!(
+        "birnam-compiler-predicate-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/integer-predicate.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = h.host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let forward = q.call(fixture, b"methodAt:", &[h.key(b"forward")]).unwrap();
+    let integer = h.named(b"Integer");
+    let ivt = h.named(b"IntegerVt");
+    let gc = h.named(b"GC");
+    let model = h.named(b"ObjectModel");
+    let truth = h.named(b"true");
+    let falsity = h.named(b"false");
+    let candidate = h.eval(&source("+", "<"));
+    h.bind(b"NumericPredicate", candidate);
+    inputs(h, [4, 5, 20]);
+    let block=h.block(h.compile(b"let predicateAnswer := [NumericPredicate value: PredicateA value: PredicateB value: PredicateC]; predicateAnswer"));
+    let machine = h.named(b"Machine");
+    let run = || h.call(h.call(machine, b"new", &[]), b"runBlock:", &[block]);
+    let evaluate = h.key(b"evaluatePredicate:then:left:right:limit:in:epoch:with:");
+    let original_evaluate = h.call(ivt, b"lookup", &[evaluate]);
+    let evaluated = h.hooks.context(&[original_evaluate, size(0).unwrap()]);
+    h.call(
+        ivt,
+        b"addMethod",
+        &[evaluate, h.hooks.method(b"counted", evaluated)],
+    );
+    let result = run();
+    h.call(ivt, b"addMethod", &[evaluate, original_evaluate]);
+    assert_eq!(result, truth);
+    eprintln!(
+        "automatic Integer predicate calls={}",
+        h.hooks.count(evaluated, 1)
+    );
+    for (first, then, values, expected) in [
+        ("+", "<", [4, 5, 20], truth),
+        ("-", ">", [4, 5, 0], falsity),
+        ("*", "<=", [-3, 7, -21], truth),
+        ("/", ">=", [-11, 3, -3], truth),
+        ("mod:", "=", [i64::MIN, -1, 0], truth),
+        ("+", "<", [1 << 53, 0, (1 << 53) + 1], falsity),
+        ("+", "=", [1 << 53, 0, (1 << 53) + 1], falsity),
+    ] {
+        h.bind(b"NumericPredicate", h.eval(&source(first, then)));
+        inputs(h, values);
+        assert_eq!(run(), expected, "{first} then {then}: {values:?}");
     }
-}
-struct CommitProbe {
-    id: Protocol,
-    gc: Oop,
-    roots: Oop,
-    integer: Oop,
-    machine: Oop,
-    calls: Cell<usize>,
-    expected: Oop,
-}
-unsafe extern "C" fn after_commit(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<CommitProbe>();
-        let args = borrowed_slice(a, n).unwrap();
-        let result = p.id.send_named(r, b"savedPredicateCommit:", args).unwrap();
-        assert_eq!(result.kind(), 0);
-        assert!(p.id.send_named(r, b"savedPredicateCommit:", args).is_err(), "a result is committed only once");
-        // Publication precedes owner cleanup: collect and inspect the caller
-        // while the Integer query is still entered, before it returns Unit.
-        collect(p.id, p.gc);
-        let view = object(send(p.id, p.machine, b"currentFrameView", &[]));
-        let root = retain(p.id, p.roots, view);
-        let count = send(p.id, view, b"slotCount", &[]);
-        let count = send(p.id, p.integer, b"wordOf:", &[count])
-            .as_word()
-            .unwrap();
-        let mut found = false;
-        for i in 0..count {
-            let index = send(p.id, p.integer, b"fromWord:", &[Operand::word(i)]);
-            found |= send(p.id, view, b"oopAt:", &[index]).as_object() == Some(p.expected);
-        }
-        release(p.id, p.roots, root);
+    for (first, values, kind) in [
+        ("+", [i64::MAX, 1, 0], b"overflow".as_slice()),
+        ("/", [1, 0, 0], b"zeroDivide"),
+        ("/", [i64::MIN, -1, 0], b"overflow"),
+    ] {
+        h.bind(b"NumericPredicate", h.eval(&source(first, "<")));
+        inputs(h, values);
+        assert_eq!(h.call(run(), b"kind", &[]), h.key(kind));
+    }
+    h.bind(b"NumericPredicate", candidate);
+    let original_inputs = inputs(h, [4, 5, 20]);
+    let raw = |r, n: &[u8], a: &[Oop]| unsafe { h.host.id.send(r, h.key(n), a) };
+    for (receiver, selector) in [
+        (original_inputs[0], b"+".as_slice()),
+        (original_inputs[0], b"<"),
+        (integer, b"fromWord:"),
+        (integer, b"wordOf:"),
+        (model, b"allocate:bytes:"),
+        (gc, b"prepareAllocation"),
+    ] {
+        let vt = h.vt(receiver);
+        let key = h.key(selector);
+        let original = h.call(h.host.id.root, b"bind:to:", &[key, receiver]);
+        let state = h.hooks.context(&[
+            original,
+            size(0).unwrap(),
+            if selector == b"+" {
+                original_inputs[0]
+            } else {
+                std::ptr::null_mut()
+            },
+        ]);
+        let replacement = q.call(forward, b"withContext:", &[state]).unwrap();
+        let target = h.call(machine, b"new", &[]);
+        raw(vt, b"addMethod", &[key, replacement]).unwrap();
+        let result = raw(target, b"runBlock:", &[block]);
+        raw(vt, b"addMethod", &[key, original]).unwrap();
+        assert_eq!(result.unwrap(), truth);
+        let calls = h.hooks.count(state, 1);
         assert!(
-            found,
-            "Boolean is already published in the caller during owner callback"
+            calls > 0,
+            "current operation {} must run",
+            String::from_utf8_lossy(selector)
         );
-        p.calls.set(p.calls.get() + 1);
-        Outcome::loaded(result)
-    }
-}
-pub(super) unsafe fn check(h: &mut H) {
-    unsafe {
-        h.clear();
-        h.collect();
-        let gc = h.named(b"GC");
-        let integer = h.named(b"Integer");
-        let integer_vt = h.named(b"IntegerVt");
-        let model = h.named(b"ObjectModel");
-        let truth = h.named(b"true");
-        let falsity = h.named(b"false");
-        let method = h.named(b"Method");
-        let method_vt = vt(h, method);
-        let attach = lookup(h, method, ATTACH);
-        let candidate = h.eval(&source("+", "<"));
-        install(h.id, method_vt, ATTACH, unannotated, ptr::null_mut());
-        let baseline = h.eval(&source("+", "<"));
-        restore(h, method_vt, ATTACH, attach);
-        h.bind(b"NumericPredicate", candidate);
-        inputs(h, [4, 5, 20]);
-        let caller=h.compile(b"let predicateAnswer := [NumericPredicate value: PredicateA value: PredicateB value: PredicateC]; predicateAnswer");
-        let block = h.block(caller);
-        send(h.id, gc, b"budget:", &[Operand::word(usize::MAX)]);
-        let before = instances(h, integer_vt);
-        assert_eq!(run(h, block, false), truth);
-        let optimized = instances(h, integer_vt) - before;
-        h.bind(b"NumericPredicate", baseline);
-        let before = instances(h, integer_vt);
-        assert_eq!(run(h, block, false), truth);
-        let ordinary = instances(h, integer_vt) - before;
-        let native_arithmetic = object(send(h.id,integer,b"hasBootstrapArithmetic:",&[Operand::object(h.id.intern_name(b"+").unwrap())])) == truth;
-        if native_arithmetic {
-            assert!(optimized < ordinary, "native predicate must remove Integer allocations: {optimized} vs {ordinary}");
-        }
-        // Refused admission can allocate through authored owner queries. Physical
-        // allocation parity is not a language contract; the replacement/effect
-        // and zero native-predicate-commit checks below establish refusal.
-
-        h.bind(b"NumericPredicate", candidate);
-        paused(h, block, 9, truth);
-
-        // Checked arithmetic, signed extrema and existing comparison rounding.
-        for (first, then, values, expected) in [
-            ("+", "<", [4, 5, 20], truth),
-            ("-", ">", [4, 5, 0], falsity),
-            ("*", "<=", [-3, 7, -21], truth),
-            ("/", ">=", [-11, 3, -3], truth),
-            ("mod:", "=", [i64::MIN, -1, 0], truth),
-            ("+", "<", [1 << 53, 0, (1 << 53) + 1], falsity),
-            ("+", "=", [1 << 53, 0, (1 << 53) + 1], falsity),
-        ] {
-            let predicate = h.eval(&source(first, then));
-            h.bind(b"NumericPredicate", predicate);
-            inputs(h, values);
-            assert_eq!(run(h, block, false), expected);
-        }
-        for (first, values, kind) in [
-            ("+", [i64::MAX, 1, 0], b"overflow".as_slice()),
-            ("/", [1, 0, 0], b"zeroDivide"),
-            ("/", [i64::MIN, -1, 0], b"overflow"),
-        ] {
-            let predicate = h.eval(&source(first, "<"));
-            h.bind(b"NumericPredicate", predicate);
-            inputs(h, values);
-            let result = run(h, block, false);
+        if selector == b"+" || selector == b"<" {
             assert_eq!(
-                send(h.id, result, b"kind", &[]).as_object(),
-                Some(h.id.intern_name(kind).unwrap())
+                calls,
+                1,
+                "source operation {}",
+                String::from_utf8_lossy(selector)
             );
         }
-        h.bind(b"NumericPredicate", candidate);
-        let original_inputs = inputs(h, [4, 5, 20]);
-
-        for (receiver, selector) in [
-            (original_inputs[0], b"+".as_slice()),
-            (original_inputs[0], b"<"),
-            (integer, b"fromWord:"),
-            (integer, b"wordOf:"),
-            (model, b"allocate:bytes:"),
-            (gc, b"prepareAllocation"),
-            (h.id.receiver, b"allocate:bytes:"),
-            (h.id.receiver, b"lookup"),
-        ] {
-            let original = lookup(h, receiver, selector);
-            let behavior = vt(h, receiver);
-            let mut p = Box::new(Forward {
-                id: h.id,
-                gc,
-                original,
-                calls: Cell::new(0),
-                count_receiver: (selector == b"+").then_some(original_inputs[0]),
-                collect: false,
-                change: None,
-            });
-            install(
-                h.id,
-                behavior,
-                selector,
-                forward,
-                ptr::from_mut(&mut *p).cast(),
-            );
-            let before = instances(h, integer_vt);
-            assert_eq!(run(h, block, false), truth);
-            assert!(
-                p.calls.get() > 0,
-                "current replacement {selector:?} executes"
-            );
-            if selector == b"+" || selector == b"<" {
-                assert_eq!(p.calls.get(), 1);
-            }
-            assert!(
-                instances(h, integer_vt) - before >= ordinary,
-                "replacement takes baseline"
-            );
-            restore(h, behavior, selector, original);
-        }
-
-        // A numeric result and an inspectable intermediate binding use baseline.
-        let returning_number = h.eval(&source("+", "*"));
-        h.bind(b"NumericPredicate", returning_number);
-        assert_eq!(h.integer(run(h, block, false)), 180);
-        let bound = h.eval(b"[:a :b :c | let sum := [a + b]; let answer := [sum < c]; answer]");
-        h.bind(b"NumericPredicate", bound);
-        let before = instances(h, integer_vt);
-        assert_eq!(run(h, block, false), truth);
-        assert!(instances(h, integer_vt) - before >= ordinary);
-        h.bind(b"NumericPredicate", candidate);
-
-        // Alias recognition relies on selected entries, not selector spelling.
-        let add = lookup(h, original_inputs[0], b"+");
-        let less = lookup(h, original_inputs[0], b"<");
-        install(h.id, integer_vt, b"sum:", add.method.unwrap(), add.context);
-        install(
-            h.id,
-            integer_vt,
-            b"below:",
-            less.method.unwrap(),
-            less.context,
-        );
-        let alias = h.eval(&source("sum:", "below:"));
-        h.bind(b"NumericPredicate", alias);
-        let before = instances(h, integer_vt);
-        assert_eq!(run(h, block, false), truth);
-        if native_arithmetic { assert_eq!(instances(h, integer_vt) - before, optimized); }
-        h.bind(b"NumericPredicate", candidate);
-
-        // Guard-time collection and replacement happen before consuming the body.
-        let evaluate = lookup(h, integer, EVALUATE);
-        let mut changed = Box::new(Forward {
-            id: h.id,
-            gc,
-            original: add,
-            calls: Cell::new(0),
-                count_receiver: None,
-            collect: false,
-            change: None,
-        });
-        let mut checking = Box::new(Forward {
-            id: h.id,
-            gc,
-            original: evaluate,
-            calls: Cell::new(0),
-                count_receiver: None,
-            collect: true,
-            change: None,
-        });
-        install(
-            h.id,
-            integer_vt,
-            EVALUATE,
-            forward,
-            ptr::from_mut(&mut *checking).cast(),
-        );
-        assert_eq!(run(h, block, false), truth);
-        assert!(checking.calls.get() > 0);
-        for value in original_inputs {
-            assert!(present(h.id, value));
-        }
-        checking.collect = false;
-        checking.change = Some((
-            integer_vt,
-            h.id.intern_name(b"+").unwrap(),
-            NativeEntry::new(forward, ptr::from_mut(&mut *changed).cast()),
-        ));
-        assert_eq!(run(h, block, false), truth);
-        assert_eq!(changed.calls.get(), 1);
-        restore(h, integer_vt, b"+", add);
-        restore(h, integer_vt, EVALUATE, evaluate);
-
-        let machine = object(send(h.id, h.named(b"Machine"), b"new", &[]));
-        h.keep(machine);
-        let mut probe = Box::new(CommitProbe {
-            id: h.id,
-            gc,
-            roots: h.roots,
-            integer,
-            machine,
-            calls: Cell::new(0),
-            expected: truth,
-        });
-        let execution = h.named(b"Execution");
-        let execution_vt = vt(h, execution);
-        let commit = lookup(h, execution, b"commitNumericPredicate:");
-        install(h.id, execution_vt, b"savedPredicateCommit:", commit.method.unwrap(), commit.context);
-        install(h.id, execution_vt, b"commitNumericPredicate:", after_commit, ptr::from_mut(&mut *probe).cast());
-        assert!(h.id.send_named(execution, b"savedPredicateCommit:", &[Operand::object(truth)]).is_err());
-        assert_eq!(
-            object(send(h.id, machine, b"runBlock:", &[Operand::object(block)])),
-            truth
-        );
-        assert_eq!(probe.calls.get(), usize::from(native_arithmetic), "authored arithmetic must not publish through the Rust predicate consumer");
-        restore(h, execution_vt, b"commitNumericPredicate:", commit);
-        send(h.id, execution_vt, b"removeMethod:", &[Operand::object(h.id.intern_name(b"savedPredicateCommit:").unwrap())]);
-
-        // Effectful lookup cannot run between the owner's final reads and commit.
-        let execution_lookup = lookup(h, execution_vt, b"lookup");
-        let mut lookup_probe = Forward { id: h.id, gc, original: execution_lookup, calls: Cell::new(0), count_receiver: None, collect: false, change: None };
-        let old_meta = vt(h, execution_vt);
-        let custom_meta = object(send(h.id, old_meta, b"delegated", &[]));
-        h.keep(custom_meta);
-        install(h.id, custom_meta, b"lookup", forward, ptr::from_mut(&mut lookup_probe).cast());
-        send(h.id, h.id.receiver, b"reassociateBehaviorOf:with:", &[Operand::object(execution_vt), Operand::object(custom_meta)]);
-        let before = instances(h, integer_vt);
-        assert_eq!(run(h, block, false), truth);
-        assert!(instances(h, integer_vt) - before >= ordinary);
-        send(h.id, h.id.receiver, b"reassociateBehaviorOf:with:", &[Operand::object(execution_vt), Operand::object(old_meta)]);
-
-        // Live error-family designation must retain ordinary error propagation.
-        let error_vt = h.named(b"ErrorVt");
-        h.bind(b"ErrorVt", integer_vt);
-        assert_eq!(run(h, block, false), original_inputs[2]);
-        h.bind(b"ErrorVt", error_vt);
-        let float = h.eval(b"4.5");
-        h.bind(b"PredicateA", float);
-        assert_eq!(run(h, block, false), truth);
-        h.bind(b"PredicateA", original_inputs[0]);
-
-        let mut elapsed = [0u128; 2];
-        let mut allocations = [0usize; 2];
-        for round in 0..6 {
-            for mode in [round % 2, 1 - round % 2] {
-                h.bind(
-                    b"NumericPredicate",
-                    if mode == 0 { baseline } else { candidate },
-                );
-                h.collect();
-                let before = send(h.id, h.id.receiver, b"allocationCount", &[])
-                    .as_word()
-                    .unwrap();
-                let start = Instant::now();
-                for _ in 0..30 {
-                    assert_eq!(run(h, block, false), truth);
-                }
-                elapsed[mode] += start.elapsed().as_nanos();
-                allocations[mode] += send(h.id, h.id.receiver, b"allocationCount", &[])
-                    .as_word()
-                    .unwrap()
-                    - before;
-            }
-        }
-        if native_arithmetic { assert!(allocations[1] < allocations[0]); }
-        else { assert!(allocations[1] >= allocations[0],"refused native predicate must not elide authored arithmetic"); }
-        eprintln!(
-            "numeric-predicate: 180 runs baseline={}ns/{} allocations optimized={}ns/{} allocations; Integer boxes/run {ordinary}->{optimized}",
-            elapsed[0], allocations[0], elapsed[1], allocations[1]
-        );
-        for name in [
-            b"NumericPredicate".as_slice(),
-            b"PredicateA",
-            b"PredicateB",
-            b"PredicateC",
-            b"predicateAnswer",
-        ] {
-            h.bind(name, h.named(b"nil"));
-        }
-        h.clear();
-        h.collect();
-        assert_eq!(h.units(), 0);
-        assert_eq!(h.native_bytes(), 0);
-        send(h.id, gc, b"budget:", &[Operand::word(1 << 20)]);
     }
+    let add = h.call(ivt, b"lookup", &[h.key(b"+")]);
+    let less = h.call(ivt, b"lookup", &[h.key(b"<")]);
+    for (selector, original) in [(b"+".as_slice(), add), (b"<", less)] {
+        let state = h.hooks.context(&[original, gc, size(0).unwrap()]);
+        let method = h.hooks.method(b"collectOnce", state);
+        raw(ivt, b"addMethod", &[h.key(selector), method]).unwrap();
+        let result = run();
+        raw(ivt, b"addMethod", &[h.key(selector), original]).unwrap();
+        assert_eq!(result, truth);
+        assert_eq!(h.hooks.count(state, 2), 1);
+    }
+    let changed = h
+        .hooks
+        .context(&[add, size(0).unwrap(), original_inputs[0], number(h, 30)]);
+    raw(
+        ivt,
+        b"addMethod",
+        &[
+            h.key(b"+"),
+            q.call(
+                q.call(fixture, b"methodAt:", &[h.key(b"replace")]).unwrap(),
+                b"withContext:",
+                &[changed],
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+    let result = run();
+    raw(ivt, b"addMethod", &[h.key(b"+"), add]).unwrap();
+    assert_eq!(result, falsity);
+    assert_eq!(h.hooks.count(changed, 1), 1);
+    h.bind(b"NumericPredicate", h.eval(&source("+", "*")));
+    assert_eq!(h.integer(run()), 180);
+    let bound = h.eval(b"[:a :b :c | let sum := [a + b]; let answer := [sum < c]; answer]");
+    h.bind(b"NumericPredicate", bound);
+    assert_eq!(run(), truth);
+    h.call(ivt, b"addMethod", &[h.key(b"sum:"), add]);
+    h.call(ivt, b"addMethod", &[h.key(b"below:"), less]);
+    h.bind(b"NumericPredicate", h.eval(&source("sum:", "below:")));
+    assert_eq!(run(), truth);
+    h.call(ivt, b"removeMethod:", &[h.key(b"sum:")]);
+    h.call(ivt, b"removeMethod:", &[h.key(b"below:")]);
+    h.bind(b"NumericPredicate", candidate);
+    let error_vt = h.named(b"ErrorVt");
+    h.bind(b"ErrorVt", ivt);
+    let result = run();
+    h.bind(b"ErrorVt", error_vt);
+    assert_eq!(result, original_inputs[2]);
+    h.bind(b"PredicateA", h.eval(b"4.5"));
+    assert_eq!(run(), truth);
+    h.bind(b"PredicateA", original_inputs[0]);
+    let target = h.call(machine, b"new", &[]);
+    let one = number(h, 1);
+    let mut result = h.call(target, b"runBlock:budget:", &[block, one]);
+    let mut observed = false;
+    for _ in 0..4096 {
+        if result != target {
+            break;
+        }
+        let view = h.call(target, b"currentFrameView", &[]);
+        if view != h.named(b"nil") {
+            let count = h.integer(h.call(view, b"slotCount", &[]));
+            for index in 0..count {
+                let index = size(index as usize).unwrap();
+                let value = h.host.send(view, b"oopAt:", &[index]).unwrap();
+                if !value.is_null()
+                    && h.host
+                        .send(h.host.id.root, b"behaviorOf:", &[value])
+                        .unwrap()
+                        == ivt
+                    && h.integer(value) == 9
+                {
+                    let identity = h
+                        .host
+                        .send(h.host.id.root, b"identityOf:", &[value])
+                        .unwrap();
+                    h.collect();
+                    let after = h.host.send(view, b"oopAt:", &[index]).unwrap();
+                    assert_eq!(
+                        h.host
+                            .send(h.host.id.root, b"identityOf:", &[after])
+                            .unwrap(),
+                        identity,
+                        "paused frame retains the actual intermediate"
+                    );
+                    observed = true;
+                }
+            }
+        }
+        result = h.call(target, b"continueWithBudget:", &[one]);
+    }
+    assert_eq!(result, truth);
+    assert!(
+        observed,
+        "paused execution exposes the intermediate Integer"
+    );
+    for name in [
+        b"NumericPredicate".as_slice(),
+        b"PredicateA",
+        b"PredicateB",
+        b"PredicateC",
+        b"predicateAnswer",
+    ] {
+        h.bind(name, h.named(b"nil"));
+    }
+    h.call(h.named(b"Codegen"), b"evictMaterializations", &[]);
+    drop(q);
+    h.clear();
+    h.collect();
+    assert_eq!(h.units(), baseline_units);
+    assert_eq!(h.native_bytes(), baseline_bytes);
 }

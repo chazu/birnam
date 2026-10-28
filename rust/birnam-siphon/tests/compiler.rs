@@ -2,8 +2,6 @@
 //! General source/control/lifetime acceptance lives in compiler_source.rs.
 #[path = "compiler/inline_return.rs"]
 mod inline_return;
-#[path = "compiler/numeric_predicate.rs"]
-mod numeric_predicate;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -176,7 +174,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
             tokens: vec![],
             floor: CompiledFloor::pin(id, ns, roots),
         };
-        numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
         h.clear();
         h.collect();
@@ -189,7 +186,7 @@ fn compiler_optimizations_preserve_current_language_behavior() {
     }
 }
 
-// Shared helpers for the two remaining legacy compiler groups.
+// Helpers for the remaining legacy alias-return compiler group.
 unsafe fn lookup(h: &H, r: Oop, name: &[u8]) -> NativeEntry {
     unsafe {
         send(
@@ -218,34 +215,9 @@ unsafe fn vt(h: &H, value: Oop) -> Oop {
         ))
     }
 }
-struct Count {
-    id: Protocol,
-    behavior: Oop,
-    count: usize,
-}
-unsafe extern "C" fn count(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    unsafe {
-        let p = &mut *c.cast::<Count>();
-        let [value, _, _] = borrowed_slice(a, n).unwrap() else {
-            panic!("inventory")
-        };
-        if send(p.id, p.id.receiver, b"behaviorOf:", &[*value]).as_object() == Some(p.behavior) {
-            p.count += 1;
-        }
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe fn instances(h: &H, behavior: Oop) -> usize {
-    unsafe {
-        let mut c = Count {
-            id: h.id,
-            behavior,
-            count: 0,
-        };
-        support::inventory(h.id, count, ptr::from_mut(&mut c).cast());
-        c.count
-    }
-}
+
+
+
 unsafe fn run(h: &H, block: Oop, bounded: bool) -> Oop {
     unsafe {
         let machine = object(send(h.id, h.named(b"Machine"), b"new", &[]));

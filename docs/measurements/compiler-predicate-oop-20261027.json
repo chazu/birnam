@@ -1,0 +1,76 @@
+{
+  "passed": true,
+  "scope": "Published numeric predicate behavior and explicit Integer-owner predicate evaluation through Oops",
+  "base_revision": "19ba296ad8159e17deac4f5f5c7595dc4a85a54c",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/callback-policy-h33k_dxl/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/numeric_predicate.rs": "7f01dbe9741508a6309a4589a6b7ae3800b1f5dc02da25572d22fc54d5cc4161",
+    "rust/birnam-siphon/tests/compiler_source.rs": "577d7da600e9278809b5ec075b8c9c3458bb782677448af333c3e87f812a324c",
+    "rust/birnam-siphon/tests/compiler.rs": "b9e91bb3c39dfb7d4b522f4c274d46194aca4d29082a57b3d53d78d7db64babc",
+    "rust/birnam-siphon/tests/integer_predicate.rs": "2588118cb2a76c0c58ffe5632f55cb189e54a30e4a74bb9ab5f7c15a4edd1cab",
+    "tests/fixtures/oop-host/integer-predicate.c": "439c86adf2322ef35f3088d381fa29de4ee78b3428503a169b3df87ca3558859",
+    "scripts/native-message-test.sh": "ed5f28f6f02dcb448d604cf9558f9d6a07e0cdf503ab6ba28e180ede8cb1f78a"
+  },
+  "checks": [
+    {
+      "targets": [
+        "compiler_source",
+        "execution_numeric",
+        "integer_predicate"
+      ],
+      "log": ".cargo-target/oop-current-qualification/compiler-predicate-oop.log",
+      "sha256": "a991831f276531ca600e3118208532f626c65b394b54460895af86fae57aea92",
+      "exit": 0
+    },
+    {
+      "command": "bash -n scripts/native-message-test.sh",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "published_checks": [
+    "Checked arithmetic and signed extrema",
+    "Historical comparison rounding and exact equality near 2^53",
+    "Overflow and zeroDivide error kinds",
+    "Current arithmetic/comparison, factory, allocation and GC effects",
+    "Collecting arithmetic/comparison replacements",
+    "Replacing the selected source addition changes its result exactly once",
+    "Numeric results, explicit lexical intermediates and selector aliases",
+    "Live ErrorVt designation and mixed Float input",
+    "Paused frame preserves the same intermediate Integer identity through collection",
+    "Native units and bytes return to the pre-test baseline"
+  ],
+  "owner_checks": [
+    "Native-only floor confirms canonical arithmetic is actually selected",
+    "Accepted predicate commits once to a collecting visitor",
+    "Overflow, division failure, stale epoch and changed numeric methods decline without committing or entering replacements",
+    "Custom visitor lookup causes refusal without lookup or commit effects",
+    "Exact visitor failure propagates once; subsequent invocation succeeds"
+  ],
+  "contract_review": {
+    "operation_sequence": "Existing Integer evaluation and current visitor commit through Id; published source uses ordinary current arithmetic and comparison sends. Unchanged.",
+    "new_required_mechanisms": [],
+    "ownership": "Integer interprets its own numbers; Execution owns frames. Test callbacks store their own state in Oop Sequences and use public Id sends only."
+  },
+  "automatic_producer_calls": 0,
+  "automatic_producer_status": "Not restored or qualified; no old optimization timing/allocation-reduction claim is made.",
+  "development_probes": [
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-predicate-counter-probe.log",
+      "exit": 101,
+      "cause": "Port initially counted every addition rather than retaining the old receiver-specific source-operation counter."
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/compiler-predicate-value-probe.log",
+      "exit": 101,
+      "cause": "Additional replacement-result probe also counted incidental additions; final declared callback changes/counts only the intended receiver and forwards other entered calls."
+    }
+  ],
+  "remaining": [
+    "Legacy compiler alias-return group",
+    "Shared-invocation and closure-construction harness work",
+    "Method construction purity and closure admission regressions",
+    "Other pending contract decisions and cold qualification of the latest fixes"
+  ]
+}
