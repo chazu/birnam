@@ -1,0 +1,60 @@
+{
+  "passed": true,
+  "scope": "Oop capture reads through current owner methods, generated synchronous invocation, reentry and precise collection",
+  "base_revision": "e8c66ac6b9380e11a9eac48ee90160046f53d005",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "runtime_changes": false,
+  "id_changes": false,
+  "source_sha256": {
+    "rust/birnam-siphon/tests/capture_access.rs": "2e48a3d0f1688891f7a5a5ce50eed83486349ea0a931ebae5e7ef8cadc192b0c",
+    "tests/fixtures/oop-host/capture-access.c": "ed9f30a559674ba642ff490aa8a2371eefea806968ae74f85dcaa662f41d960f"
+  },
+  "checks": [
+    {
+      "targets": [
+        "capture_access",
+        "capture_dependencies",
+        "block_method_capture"
+      ],
+      "log": ".cargo-target/oop-current-qualification/capture-access-final.log",
+      "sha256": "936a21be97ef21a6ff0bc1c04c4e2fab8d0158b4f237934abf7af33c487fbe7e",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "Two capture identities and repeated aliases; direct and factory access; immediate and heap Word indices; out of range and null index return nil",
+    "Explicit captured-body invocation on nil retains its nil result",
+    "Default direct and factory Word-indexed reads do not call GC prepareAllocation",
+    "Replacing either reader affects both generated projections; first fresh result survives precise collection during the second read",
+    "Exact native failure object from either reader is preserved",
+    "A replacement installed during the first projection is observed by the second projection",
+    "Blocks retain captures after caller temporary roots disappear, including during nested Block invocation and collection",
+    "Both captures are reclaimed after owning Blocks lose their roots, checked by weak allocation identities",
+    "Removed raw capture borrow and grant selectors remain absent"
+  ],
+  "contract_review": {
+    "operation_sequence": "Generated function -> current Block captureWord:of: -> current Block captureWordAt: -> Execution-owned capture storage; unchanged",
+    "required_new_runtime_mechanisms": [],
+    "ownership": "Execution continues to interpret and trace its own Block storage. The independent C fixture uses only public Id messages and weak allocation identities.",
+    "removed_test_mechanisms": "Native pointer byte snapshots and their grant/matcher wrappers are replaced by observations of current Oop capture reads, not reinstated as runtime APIs."
+  },
+  "development_attempts": [
+    {
+      "log": ".cargo-target/oop-current-qualification/capture-access-test-setup-error.log",
+      "result": "stopped with SIGTERM after sampling recursion: test captured shared value handler instead of compiled Block body; corrected to existing methodFor:"
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/capture-access-fixture-context-error.log",
+      "result": "fixture aborted; newly added root cleanup used missing Roots context field and misspelled selector"
+    },
+    {
+      "log": ".cargo-target/oop-current-qualification/capture-access-fixture-selector-error.log",
+      "result": "fixture aborted; crash stack showed reentry through DNU after misspelled releaseTokensProtecting:; corrected to existing releaseTokensProtecting"
+    }
+  ],
+  "limits": [
+    "Staged-prefix component validation, not full installed qualification",
+    "Method-construction epoch regression remains open",
+    "Other legacy native harnesses still require migration"
+  ]
+}

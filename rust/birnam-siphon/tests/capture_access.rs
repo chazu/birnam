@@ -1,468 +1,295 @@
-//! Capture borrowing is conditional on the current reader and grant bindings.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
+//! Current capture readers preserve aliases and results across reentry and GC.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 use birnam_artifact_codec::portable_program::{NodeSpec, ProgramSpec, StatementSpec, encode};
-use std::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-    os::unix::ffi::OsStrExt,
-};
-use support::*;
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
-    gc: Oop,
-    tokens: RefCell<Vec<usize>>,
-    _floor: CompiledFloor,
-}
-impl H {
-    unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name).unwrap())],
-            ))
-        }
-    }
-    unsafe fn keep(&self, value: Oop) -> Oop {
-        self.tokens
-            .borrow_mut()
-            .push(unsafe { retain(self.id, self.roots, value) });
-        value
-    }
-    unsafe fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                r,
-                name,
-                &args
-                    .iter()
-                    .copied()
-                    .map(Operand::object)
-                    .collect::<Vec<_>>(),
-            )))
-        }
-    }
-    unsafe fn vector(&self, values: &[Oop]) -> Oop {
-        unsafe {
-            let mut v = self.call(self.named(b"Vector"), b"new", &[]);
-            for &value in values {
-                v = self.call(v, b"add:", &[value]);
-            }
-            v
-        }
-    }
-    unsafe fn admit(&self, bytes: &[u8]) -> Oop {
-        unsafe {
-            let b = self.keep(object(send(
-                self.id,
-                self.named(b"Bytes"),
-                b"fromBytes:",
-                &[Operand::bytes(bytes)],
-            )));
-            self.call(self.named(b"CodeObject"), b"fromCanonicalBytes:", &[b])
-        }
-    }
-    unsafe fn bits(&self, value: Oop) -> usize {
-        unsafe { send(self.id, value, b"bits", &[]).as_word().unwrap() }
-    }
-}
-unsafe fn binding(h: &H, r: Oop, name: &[u8]) -> NativeEntry {
-    unsafe {
-        send(
-            h.id,
-            h.id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(h.id.intern_name(name).unwrap()),
-                Operand::object(r),
-            ],
-        )
-        .as_entry()
-        .unwrap()
-    }
-}
-unsafe fn vtable(h: &H, r: Oop) -> Oop {
-    unsafe {
-        object(send(
-            h.id,
-            h.id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(r)],
-        ))
-    }
-}
-unsafe fn set(h: &H, vt: Oop, name: &[u8], entry: NativeEntry) {
-    unsafe {
-        send(
-            h.id,
-            vt,
-            b"addMethod",
-            &[
-                Operand::object(h.id.intern_name(name).unwrap()),
-                Operand::entry(entry),
-            ],
-        );
-    }
-}
-struct Hook {
-    id: Protocol,
-    gc: Oop,
-    word: Oop,
-    original: NativeEntry,
-    behavior: Oop,
-    calls: Cell<usize>,
-    first: Cell<Oop>,
-    mutate: Cell<bool>,
-}
-unsafe extern "C" fn deny_prepare(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<Hook>() };
-    h.calls.set(h.calls.get() + 1);
-    Outcome::failed(901, 7)
-}
-unsafe extern "C" fn fresh(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    (|| unsafe {
-        let h = &*c.cast::<Hook>();
-        let [index] = borrowed_slice(a, n).unwrap() else {
-            panic!("capture index")
-        };
-        let index = index.as_word().unwrap();
-        if index == 1 {
-            collect(h.id, h.gc);
-            assert!(
-                present(h.id, h.first.get()),
-                "fresh result from earlier projection must be retained"
-            );
-        }
-        let value = object(h.id.send_named(h.word, b"fromBits:", &[Operand::word(101 + index)])?);
-        if index == 0 {
-            h.first.set(value);
-        }
-        h.calls.set(h.calls.get() + 1);
-        Ok(Operand::object(value))
-    })()
-    .map_or_else(|e| e, Outcome::loaded)
-}
-unsafe extern "C" fn grant_wrapper(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<Hook>() };
-    let answer = unsafe { (h.original.method.unwrap())(h.original.context, r, a, n) };
-    // The canonical grant must decline when this wrapper is installed. It may
-    // mutate after querying, so treating its reply as a canonical grant is unsafe.
-    assert_eq!(answer.value.as_word(), Some(0));
-    if h.mutate.get() {
-        unsafe { install(h.id, h.behavior, b"captureWordAt:", fresh, c) }
-    };
-    answer
-}
-unsafe extern "C" fn unbound(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(6, 0)
-}
-unsafe extern "C" fn bad_mode(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::word(3))
-}
-unsafe extern "C" fn bulk_wrapper(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<Hook>() };
-    let answer = unsafe { (h.original.method.unwrap())(h.original.context, r, a, n) };
-    assert_eq!(answer.value.kind(), 0, "forwarding bulk query must decline while wrapper is selected");
-    if h.mutate.get() { unsafe { install(h.id, h.behavior, b"captureWordAt:", fresh, c) }; }
-    answer
-}
-unsafe extern "C" fn malformed_bulk(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::bytes(b"truncated"))
-}
-struct Overwrite {
-    id: Protocol,
-    gc: Oop,
-    other: Oop,
-    expected: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn overwrite_and_collect(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
-    assert_eq!(n, 0);
-    let h = unsafe { &*c.cast::<Overwrite>() };
-    unsafe {
-        assert!(send(h.id, h.other, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).as_bytes().is_some());
-        collect(h.id, h.gc);
-        assert!(present(h.id, h.expected), "receiver edge must keep later capture alive");
-    }
-    h.calls.set(h.calls.get() + 1);
-    Outcome::loaded(Operand::object(r))
-}
-unsafe extern "C" fn fail(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::failed(812, 19)
-}
 
 #[test]
-#[ignore = "requires rebuilt production modules"]
-fn capture_reads_borrow_owned_edges_but_retain_replaced_fresh_results() {
-    unsafe {
-        let id = id();
-        let ns = load(
-            id,
-            "bootstrap",
-            &[Operand::bytes(directory().as_os_str().as_bytes())],
+#[ignore = "requires production Oop modules and synchronous compiler"]
+fn capture_reads_observe_current_methods_and_preserve_live_values() {
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let hooks = oop::hooks::Hooks::new(&host);
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let key = |n: &[u8]| hooks.symbol(n);
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let gc = named(b"GC");
+    let nil = named(b"nil");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-capture-access-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/capture-access.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let method = |name: &[u8], context| {
+        call(
+            call(fixture, b"methodAt:", &[key(name)]),
+            b"withContext:",
+            &[context],
+        )
+    };
+    let behavior = |object| call(host.id.root, b"behaviorOf:", &[object]);
+    let bind = |vt, selector: &[u8], method| {
+        call(vt, b"addMethod", &[key(selector), method]);
+    };
+    let observer = call(named(b"Object"), b"clone", &[]);
+    let ovt = call(host.id.root, b"ensurePrivateVtableFor:", &[observer]);
+    for selector in [b"present:".as_slice(), b"allocation:bytes:identity:"] {
+        bind(ovt, selector, method(selector, nil));
+    }
+    let portable = encode(ProgramSpec {
+        parameters: &[],
+        captures: &[b"a", b"b"],
+        lets: &[],
+        statements: &[StatementSpec::Expression { root_node: 0 }],
+        nodes: &[NodeSpec::LexicalRead(0)],
+    })
+    .unwrap();
+    let admit = |bytes: &[u8]| {
+        let bytes = call(
+            named(b"Bytes"),
+            b"fromBytes:",
+            &[q.byte_values(bytes).unwrap()],
         );
-        let named = |name: &[u8]| {
-            object(send(
-                id,
-                ns,
-                b"at:",
-                &[Operand::object(id.intern_name(name).unwrap())],
-            ))
-        };
-        let roots = named(b"Roots");
-        let h = H {
-            id,
-            ns,
-            roots,
-            gc: named(b"GC"),
-            tokens: RefCell::new(Vec::new()),
-            _floor: CompiledFloor::pin(id, ns, roots),
-        };
-        let bytes = encode(ProgramSpec {
+        call(named(b"CodeObject"), b"fromCanonicalBytes:", &[bytes])
+    };
+    let code = admit(&portable);
+    let vector = |values: &[Oop]| {
+        let mut v = call(named(b"Vector"), b"new", &[]);
+        for &value in values {
+            v = call(v, b"add:", &[value]);
+        }
+        v
+    };
+    let a = q.word(7).unwrap();
+    let b = q.word(8).unwrap();
+    let block = call(
+        named(b"Codegen"),
+        b"materializeSynchronous:captures:",
+        &[code, vector(&[a, b])],
+    );
+    let repeated = call(
+        named(b"Codegen"),
+        b"materializeSynchronous:captures:",
+        &[code, vector(&[a, a])],
+    );
+    let vt = behavior(block);
+    let factory = named(b"Block");
+    let fvt = behavior(factory);
+    let reader = call(vt, b"lookup", &[key(b"captureWordAt:")]);
+    let factory_reader = call(fvt, b"lookup", &[key(b"captureWord:of:")]);
+    for (target, expected) in [(block, [a, b]), (repeated, [a, a])] {
+        for (index, value) in expected.into_iter().enumerate() {
+            assert_eq!(
+                call(target, b"captureWordAt:", &[size(index).unwrap()]),
+                value
+            );
+            assert_eq!(
+                call(factory, b"captureWord:of:", &[size(index).unwrap(), target]),
+                value
+            );
+        }
+        assert_eq!(call(target, b"captureWordAt:", &[size(2).unwrap()]), nil);
+        assert_eq!(call(target, b"value", &[]), a);
+    }
+    assert_eq!(call(block, b"captureWordAt:", &[q.word(1).unwrap()]), b);
+    assert_eq!(call(block, b"captureWordAt:", &[std::ptr::null_mut()]), nil);
+    let body = call(block, b"methodFor:", &[key(b"value")]);
+    assert_eq!(call(body, b"invokeOn:", &[nil]), nil);
+    for selector in [
+        b"tryBorrowCaptureOperands:".as_slice(),
+        b"captureReadMode",
+        b"captureReadModeOf:",
+    ] {
+        for receiver in [block, factory, nil] {
+            assert!(
+                call(host.id.root, b"bind:to:", &[key(selector), receiver]).is_null(),
+                "retired raw capture protocols must remain absent"
+            );
+        }
+    }
+    let failure = unsafe {
+        host.id.send(
+            named(b"Execution"),
+            key(b"failNative:detail:"),
+            &[size(812).unwrap(), size(19).unwrap()],
+        )
+    }
+    .unwrap_err();
+    q.keep(failure).unwrap();
+    let denied = hooks.context(&[failure, size(0).unwrap()]);
+    let deny = hooks.method(b"deny", denied);
+    let gcvt = behavior(gc);
+    let prepare = call(gcvt, b"lookup", &[key(b"prepareAllocation")]);
+    let direct_key = key(b"captureWordAt:");
+    let factory_key = key(b"captureWord:of:");
+    let value_key = key(b"value");
+    let add_key = key(b"addMethod");
+    let prepare_key = key(b"prepareAllocation");
+    let raw = |r, s, args: &[Oop]| unsafe { host.id.send(r, s, args) };
+    bind(gcvt, b"prepareAllocation", deny);
+    assert_eq!(raw(block, direct_key, &[size(0).unwrap()]).unwrap(), a);
+    assert_eq!(
+        raw(factory, factory_key, &[size(1).unwrap(), block]).unwrap(),
+        b
+    );
+    raw(gcvt, add_key, &[prepare_key, prepare]).unwrap();
+    assert_eq!(
+        hooks.count(denied, 1),
+        0,
+        "default Word-indexed reads require no allocation admission"
+    );
+
+    let state = hooks.context(&[
+        gc,
+        named(b"Word"),
+        size(0).unwrap(),
+        size(0).unwrap(),
+        std::ptr::null_mut(),
+        vt,
+        direct_key,
+        observer,
+        host.roots,
+    ]);
+    let fresh = method(b"fresh:", state);
+    for (owner, selector, replacement, original) in [
+        (vt, b"captureWordAt:".as_slice(), fresh, reader),
+        (
+            fvt,
+            b"captureWord:of:",
+            method(b"factory:of:", state),
+            factory_reader,
+        ),
+    ] {
+        hooks.put(state, 2, size(0).unwrap());
+        bind(owner, selector, replacement);
+        let result = call(block, b"value", &[]);
+        assert_eq!(q.word_bits(result).unwrap(), 101);
+        assert_eq!(
+            hooks.count(state, 2),
+            2,
+            "every capture uses the current reader"
+        );
+        bind(owner, selector, original);
+        bind(owner, selector, deny);
+        assert_eq!(raw(block, value_key, &[]).unwrap_err(), failure);
+        bind(owner, selector, original);
+    }
+    // The first projection replaces the second projection's reader. No cached
+    // Method or old borrowing proof may bypass the replacement.
+    hooks.put(state, 4, deny);
+    hooks.put(state, 2, size(0).unwrap());
+    bind(vt, b"captureWordAt:", fresh);
+    assert_eq!(raw(block, value_key, &[]).unwrap_err(), failure);
+    assert_eq!(hooks.count(state, 2), 1);
+    bind(vt, b"captureWordAt:", reader);
+    hooks.put(state, 4, std::ptr::null_mut());
+
+    let callback_code = admit(
+        &encode(ProgramSpec {
             parameters: &[],
             captures: &[b"a", b"b"],
             lets: &[],
-            statements: &[StatementSpec::Expression { root_node: 0 }],
-            nodes: &[NodeSpec::LexicalRead(0)],
-        })
-        .unwrap();
-        let code = h.admit(&bytes);
-        let a = h.keep(object(send(
-            id,
-            h.named(b"Word"),
-            b"fromBits:",
-            &[Operand::word(7)],
-        )));
-        let b = h.keep(object(send(
-            id,
-            h.named(b"Word"),
-            b"fromBits:",
-            &[Operand::word(8)],
-        )));
-        let block = h.call(
-            h.named(b"Codegen"),
-            b"materializeSynchronous:captures:",
-            &[code, h.vector(&[a, b])],
-        );
-        let vt = vtable(&h, block);
-        let factory = h.named(b"Block");
-        let factory_vt = vtable(&h, factory);
-        let reader = binding(&h, block, b"captureWordAt:");
-        let grant = binding(&h, block, b"captureReadMode");
-        let bulk = binding(&h, block, b"tryBorrowCaptureOperands:");
-        let snapshot = send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).as_bytes().unwrap();
-        let snapshot = birnam_abi::borrowed_bytes(snapshot.pointer, snapshot.length).unwrap().to_vec();
-        let values: Vec<_> = snapshot.chunks_exact(size_of::<usize>())
-            .map(|b| usize::from_ne_bytes(b.try_into().unwrap())).collect();
-        assert_eq!(values, [a.addr(), b.addr()]);
-        assert_eq!(send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(0)]).as_bytes().unwrap().length, 0);
-        let one = send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(1)]).as_bytes().unwrap();
-        assert_eq!(usize::from_ne_bytes(birnam_abi::borrowed_bytes(one.pointer, one.length).unwrap().try_into().unwrap()), a.addr());
-        let repeated = h.call(h.named(b"Codegen"), b"materializeSynchronous:captures:", &[code, h.vector(&[a, a])]);
-        let repeated_bytes = send(id, repeated, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).as_bytes().unwrap();
-        let repeated_values: Vec<_> = birnam_abi::borrowed_bytes(repeated_bytes.pointer, repeated_bytes.length).unwrap()
-            .chunks_exact(size_of::<usize>()).map(|b| usize::from_ne_bytes(b.try_into().unwrap())).collect();
-        assert_eq!(repeated_values, [a.addr(), a.addr()]);
-        assert_eq!(h.call(repeated, b"value", &[]), a);
-        assert_eq!(send(id, block, b"tryBorrowCaptureOperands:", &[Operand::word(3)]).kind(), 0);
-        assert!(id.send_named(block, b"tryBorrowCaptureOperands:", &[Operand::object(a)]).is_err());
-        assert_eq!(
-            send(
-                id,
-                block,
-                b"captureReadMode",
-                &[]
-            )
-            .as_word(),
-            Some(1)
-        );
-        assert_eq!(h.call(block, b"value", &[]), a);
-        assert_eq!(id.send_named(block, b"captureReadMode", &[Operand::word(0)]).unwrap_err().status, 1);
-        // The normal route does not consult the factory query at all.
-        let fallback_grant = binding(&h, factory, b"captureReadModeOf:");
-        set(&h, factory_vt, b"captureReadModeOf:", NativeEntry::new(fail, std::ptr::null_mut()));
-        assert_eq!(h.call(block, b"value", &[]), a);
-        set(&h, factory_vt, b"captureReadModeOf:", fallback_grant);
-        let mut hook = Hook {
-            id,
-            gc: h.gc,
-            word: h.named(b"Word"),
-            original: grant,
-            behavior: vt,
-            calls: Cell::new(0),
-            first: Cell::new(std::ptr::null_mut()),
-            mutate: Cell::new(false),
-        };
-        let context = (&raw mut hook).cast();
-        // Neither the direct nor factory Word-indexed default reader requests
-        // allocation admission. Collector mutation checks remain on allocating ops.
-        let gcvt = vtable(&h, h.gc);
-        let prepare = binding(&h, h.gc, b"prepareAllocation");
-        set(
-            &h,
-            gcvt,
-            b"prepareAllocation",
-            NativeEntry::new(deny_prepare, context),
-        );
-        assert_eq!(
-            send(id, block, b"captureWordAt:", &[Operand::word(0)]).as_object(),
-            Some(a)
-        );
-        assert_eq!(
-            send(
-                id,
-                h.named(b"Block"),
-                b"captureWord:of:",
-                &[Operand::word(1), Operand::object(block)]
-            )
-            .as_object(),
-            Some(b)
-        );
-        assert_eq!(h.call(block, b"value", &[]), a);
-        assert_eq!(hook.calls.get(), 0);
-        set(&h, gcvt, b"prepareAllocation", prepare);
-        // A forwarding bulk provider cannot lend a previously valid snapshot
-        // then replace the reader: its own binding is part of admission.
-        hook.original = bulk;
-        hook.mutate.set(true);
-        hook.calls.set(0);
-        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(bulk_wrapper, context));
-        assert_eq!(h.bits(h.call(block, b"value", &[])), 101);
-        assert_eq!(hook.calls.get(), 2);
-        set(&h, vt, b"tryBorrowCaptureOperands:", bulk);
-        set(&h, vt, b"captureWordAt:", reader);
-        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(malformed_bulk, std::ptr::null_mut()));
-        assert_eq!(id.send_named(block, b"value", &[]).unwrap_err().status, 1);
-        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(fail, std::ptr::null_mut()));
-        let failure = id.send_named(block, b"value", &[]).unwrap_err();
-        assert_eq!((failure.status, failure.detail), (812, 19));
-        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(unbound, std::ptr::null_mut()));
-        assert_eq!(h.call(block, b"value", &[]), a);
-        set(&h, vt, b"tryBorrowCaptureOperands:", NativeEntry::new(bad_mode, std::ptr::null_mut()));
-        assert_eq!(id.send_named(block, b"value", &[]).unwrap_err().status, 1);
-        set(&h, vt, b"tryBorrowCaptureOperands:", bulk);
-        hook.original = grant;
-        for mutate_after_grant in [false, true] {
-            hook.calls.set(0);
-            hook.mutate.set(mutate_after_grant);
-            hook.first.set(std::ptr::null_mut());
-            if mutate_after_grant {
-                set(
-                    &h,
-                    vt,
-                    b"captureReadMode",
-                    NativeEntry::new(grant_wrapper, context),
-                );
-            } else {
-                set(&h, vt, b"captureWordAt:", NativeEntry::new(fresh, context));
-            }
-            let result = h.call(block, b"value", &[]);
-            assert_eq!(h.bits(result), 101);
-            assert_eq!(hook.calls.get(), 2);
-            collect(id, h.gc);
-            assert!(present(id, result));
-            set(&h, vt, b"captureReadMode", grant);
-            set(&h, vt, b"captureWordAt:", reader);
-        }
-        // Removing the direct query must not bypass a replaced direct reader.
-        set(&h, vt, b"captureReadMode", NativeEntry::new(unbound, std::ptr::null_mut()));
-        hook.calls.set(0);
-        hook.first.set(std::ptr::null_mut());
-        set(&h, vt, b"captureWordAt:", NativeEntry::new(fresh, context));
-        assert_eq!(h.bits(h.call(block, b"value", &[])), 101);
-        assert_eq!(hook.calls.get(), 2);
-        set(&h, vt, b"captureWordAt:", reader);
-        set(&h, vt, b"captureReadMode", grant);
-        set(&h, vt, b"captureReadMode", NativeEntry::new(fail, std::ptr::null_mut()));
-        let failure = id.send_named(block, b"value", &[]).unwrap_err();
-        assert_eq!((failure.status, failure.detail), (812, 19));
-        set(&h, vt, b"captureReadMode", grant);
-        set(&h, vt, b"captureReadMode", NativeEntry::new(bad_mode, std::ptr::null_mut()));
-        assert_eq!(id.send_named(block, b"value", &[]).unwrap_err().status, 1);
-        set(&h, vt, b"captureReadMode", grant);
-        // A forwarding Id proof query cannot grant borrowing from an old
-        // answer and then replace the reader. The request fences that query's
-        // own binding, so its canonical implementation returns zero.
-        let matcher = binding(&h, id.receiver, b"nativeBindingsMatch:");
-        hook.original = matcher;
-        hook.mutate.set(true);
-        hook.calls.set(0);
-        set(
-            &h,
-            id.receiver,
-            b"nativeBindingsMatch:",
-            NativeEntry::new(grant_wrapper, context),
-        );
-        let result = h.call(block, b"value", &[]);
-        assert_eq!(h.bits(result), 101);
-        assert_eq!(hook.calls.get(), 2);
-        set(&h, id.receiver, b"nativeBindingsMatch:", matcher);
-        set(&h, vt, b"captureWordAt:", reader);
-        set(
-            &h,
-            vt,
-            b"captureWordAt:",
-            NativeEntry::new(fail, std::ptr::null_mut()),
-        );
-        let failure = id.send_named(block, b"value", &[]).unwrap_err();
-        assert_eq!((failure.status, failure.detail), (812, 19));
-        set(&h, vt, b"captureWordAt:", reader);
-        // Once the native caller's temporary capture roots disappear, the live
-        // Block remains the lifetime cover. Precise GC must retain both edges.
-        let fresh_a = allocate(id, behavior(id), 0);
-        let ta = retain(id, roots, fresh_a);
-        let fresh_b = allocate(id, behavior(id), 0);
-        let tb = retain(id, roots, fresh_b);
-        let method = h.call(block, b"methodFor:", &[id.intern_name(b"value").unwrap()]);
-        let nil = h.named(b"nil");
-        assert_eq!(send(id, nil, b"tryBorrowCaptureOperands:", &[Operand::word(2)]).kind(), 0);
-        assert_eq!(send(id, nil, b"captureReadMode", &[]).as_word(), Some(2));
-        assert_eq!(h.call(method, b"invokeOn:", &[nil]), nil);
-        let only_owner = h.keep(object(send(
-            id,
-            h.named(b"Block"),
-            b"fromMethod:captureOperands:",
-            &[
-                Operand::object(method),
-                Operand::object(fresh_a),
-                Operand::object(fresh_b),
+            statements: &[
+                StatementSpec::Expression { root_node: 1 },
+                StatementSpec::Expression { root_node: 2 },
             ],
-        )));
-        let callback_code = h.admit(&encode(ProgramSpec {
-            parameters: &[], captures: &[b"a", b"b"], lets: &[],
-            statements: &[StatementSpec::Expression { root_node: 1 }, StatementSpec::Expression { root_node: 2 }],
-            nodes: &[NodeSpec::LexicalRead(0), NodeSpec::Send { selector: b"overwriteCaptureBuffer", operands: &[0] }, NodeSpec::LexicalRead(1)],
-        }).unwrap());
-        let callback_block = h.call(h.named(b"Codegen"), b"materializeSynchronous:captures:", &[callback_code, h.vector(&[fresh_a, fresh_b])]);
-        let mut overwrite = Overwrite { id, gc: h.gc, other: block, expected: fresh_b, calls: Cell::new(0) };
-        install(id, vtable(&h, fresh_a), b"overwriteCaptureBuffer", overwrite_and_collect, (&raw mut overwrite).cast());
-        release(id, roots, ta);
-        release(id, roots, tb);
-        collect(id, h.gc);
-        assert!(present(id, fresh_a) && present(id, fresh_b));
-        assert_eq!(h.call(only_owner, b"value", &[]), fresh_a);
-        assert_eq!(h.call(callback_block, b"value", &[]), fresh_b);
-        assert_eq!(overwrite.calls.get(), 1, "copied operands survive later borrow overwrite and precise GC");
-        assert_eq!(
-            send(
-                id,
-                factory,
-                b"captureReadModeOf:",
-                &[Operand::object(h.named(b"nil"))]
-            )
-            .as_word(),
-            Some(2)
+            nodes: &[
+                NodeSpec::LexicalRead(0),
+                NodeSpec::Send {
+                    selector: b"nested",
+                    operands: &[0],
+                },
+                NodeSpec::LexicalRead(1),
+            ],
+        })
+        .unwrap(),
+    );
+    let only = host.scope();
+    let (callback, owned, ids, nested_state) = {
+        let temporary = host.scope();
+        let tc = |r, n: &[u8], a: &[Oop]| temporary.call(r, n, a).unwrap();
+        let first = tc(named(b"Object"), b"clone", &[]);
+        let second = tc(named(b"Object"), b"clone", &[]);
+        let ids = [
+            tc(host.id.root, b"identityOf:", &[first]),
+            tc(host.id.root, b"identityOf:", &[second]),
+        ];
+        let nested_state = tc(
+            host.id.root,
+            b"sequence",
+            &[gc, block, ids[1], size(0).unwrap(), observer],
         );
-        for token in h.tokens.borrow_mut().drain(..) {
-            release(id, roots, token);
-        }
+        let nested_method = tc(
+            tc(fixture, b"methodAt:", &[key(b"nested")]),
+            b"withContext:",
+            &[nested_state],
+        );
+        let private = tc(host.id.root, b"ensurePrivateVtableFor:", &[first]);
+        tc(private, b"addMethod", &[key(b"nested"), nested_method]);
+        let captures = tc(
+            tc(tc(named(b"Vector"), b"new", &[]), b"add:", &[first]),
+            b"add:",
+            &[second],
+        );
+        let callback = tc(
+            named(b"Codegen"),
+            b"materializeSynchronous:captures:",
+            &[callback_code, captures],
+        );
+        let selected = call(block, b"methodFor:", &[value_key]);
+        let owned = tc(
+            factory,
+            b"fromMethod:captureOperands:",
+            &[selected, first, second],
+        );
+        only.keep(callback).unwrap();
+        only.keep(owned).unwrap();
+        (callback, owned, ids, nested_state)
+    };
+    call(gc, b"collectPrecisely", &[]);
+    for identity in ids {
+        assert_eq!(as_size(call(observer, b"present:", &[identity])), Some(1));
+    }
+    // Raw sends avoid accidentally retaining captures in the outer test scope.
+    let first = raw(owned, value_key, &[]).unwrap();
+    assert_eq!(
+        host.send(host.id.root, b"identityOf:", &[first]).unwrap(),
+        ids[0]
+    );
+    let second = raw(callback, value_key, &[]).unwrap();
+    assert_eq!(
+        host.send(host.id.root, b"identityOf:", &[second]).unwrap(),
+        ids[1]
+    );
+    assert_eq!(
+        as_size(
+            host.send(nested_state, b"at:", &[size(3).unwrap()])
+                .unwrap()
+        ),
+        Some(1)
+    );
+    drop(only);
+    call(gc, b"collectPrecisely", &[]);
+    for identity in ids {
+        assert_eq!(
+            as_size(call(observer, b"present:", &[identity])),
+            Some(0),
+            "test scopes must not hide capture ownership"
+        );
     }
 }

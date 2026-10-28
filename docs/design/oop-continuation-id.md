@@ -3041,3 +3041,26 @@ construction-epoch purity requirement: that independent contract still fails and
 remains unresolved. The earlier candidate also predates the null-validation fix.
 [Earlier image receipt](../measurements/language-image-oop-20261027.json),
 [corrected interaction receipt](../measurements/fixed-adapters-interaction-oop-20261027.json).
+
+
+## Capture reader acceptance through Oops
+
+The old `capture_access` harness now exercises the current Oop operations. The
+runtime sequence remains generated function → current `Block captureWord:of:` →
+current `captureWordAt:` → Execution-owned capture storage. No Id or production
+runtime code changed, and no raw-pointer capture borrowing or grant API was added.
+
+The test retains alias, bounds, allocation-admission, replacement, failure and GC
+checks. Both reader replacements return fresh results; collection during the
+second read must retain the first result. A replacement installed during the first
+read must affect the second. Nested invocation and collection preserve captures
+held only by their Blocks, and weak allocation identities confirm reclamation once
+those Blocks lose their roots. Explicit captured-body invocation on nil still
+returns nil. Negative checks require the old borrowing and grant selectors to stay
+absent. The fixture interprets no runtime payloads and uses only Id messages.
+
+The migrated test, capture dependency test and captured-Block-body test pass. Early
+fixture mistakes and their corrections are recorded in the
+[receipt](../measurements/capture-access-oop-20261027.json). This is staged-prefix
+component evidence; the Method-construction epoch violation remains open, and the
+remaining old native harnesses still prevent full integration acceptance.
