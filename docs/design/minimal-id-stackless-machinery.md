@@ -331,6 +331,68 @@ constructor tests and the core suite pass.
 [Evidence](../measurements/tcc-provider-reflection-oop-20261028.json).
 Compiler adoption for synchronous source metadata remains pending.
 
+## Implementation checkpoint: synchronous producer construction (2026-10-28)
+
+The synchronous emitter now produces a constructor alongside each native body and
+its direct Method entry. The constructor binds an Execution-owned context through
+TCC's public binding operation, or through the native module's existing Method
+constructor for standalone artifacts. It returns the real declared native Method;
+ordinary invocation does not enter an Execution forwarding entry or send `value:`
+to the source Block.
+
+Before: obtain a raw native body Method, attach CodeObject/synchronous getters by
+mutating a private vtable, then wrap that body again when defining a Method.
+After: the producer creates code and a shared description together; a bound
+instance retains that description and its lexical environment. The direct native
+entry reads its environment through an ordinary context message and binds the
+actual receiver as its first formal parameter. Its existing body code is shared.
+
+The generated constructor checks parameter/capture counts and a SHA-256 digest of
+the actual emitted portable program. An unrelated program with equal counts is
+therefore rejected. This does not claim to verify arbitrary handwritten native
+constructors: providers implement the constructor contract. No source description
+is attached to an arbitrary already-existing Method by the generated path.
+
+Required state is explicit. A shared code description holds the source CodeObject,
+parameter/capture counts and producer constructor. An instance holds its real
+Method and optional lexical environment. These are Execution-owned contexts,
+traced and retired by that owner, not a universal metadata record for all Methods.
+Native code communicates with those contexts only through Id messages. Reflection
+uses provider-owned records; the bootstrap Method API remains unchanged.
+
+Both compiler paths now avoid post-construction admission. Their old admission
+messages only assert an existing immutable association. Matching canonical source
+can be supplied to a fresh instance; the previous Method is never rewritten.
+The existing compiled-code shape cache now also records the capture count, so
+wrong capture counts and null captures are rejected before Block allocation.
+That cache contains only checked layout scalars, not source/optimizer/signature
+metadata for arbitrary native Methods.
+
+Checked capture reads use that same layout directly. They do not ask a Method for
+its CodeObject on every capture access; this removes a profiled metadata-search
+cost from normal execution. Capture accessor dispatch remains live. A regression
+that disables the Method CodeObject query fails on the prior runtime and passes on
+the corrected one, alongside the existing accessor-replacement and collecting
+capture tests. Legacy entries without a checked shape retain their prior reflection
+path until their remaining admission support is retired.
+
+TCC context binding is permitted during its native initializer after declarations
+and default entries are ready, as well as after successful initialization. Calls
+before initialization or after failed initialization remain rejected. This lets
+the actual producer construct its methods while initializing its Unit.
+
+The isolated native-construction test covers epoch purity, poisoning old admission
+and body forwarding, source/capture preservation, receiver binding, wrong arity,
+unrelated source rejection, callback failure, immutable metadata and code lifetime.
+The core suite passes, including standalone synchronous artifacts and task control.
+A fresh development prefix rebuilt and published successfully. Its focused compiler,
+materialization, native-boundary image, Machine, optimizer recovery and TCC checks
+pass; all installed files were reverified against the manifest afterward. This is
+not a cold/release qualification.
+[Evidence](../measurements/synchronous-code-construction-oop-20261028.json).
+Default reflected-body forwarding and remaining legacy/native-signature admission
+still need migration; this is not a completed language integration.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code

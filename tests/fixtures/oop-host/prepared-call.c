@@ -17,7 +17,7 @@ static Oop replace(Oop root,Oop c,Oop r,const Oop*a,size_t n){
 }
 /* [original registration Method,captured Oop arguments]. */
 static Oop capture(Oop root,Oop c,Oop r,const Oop*a,size_t n){
- (void)root;if(n!=6)return id.invalid;Oop values=id.message(id.root,id.root,names[SEQ],a,n);CHECK(values);CHECK(put(c,1,values));
+ (void)root;if(n!=2&&n!=6)return id.invalid;Oop values=id.message(id.root,id.root,names[SEQ],a,n);CHECK(values);CHECK(put(c,1,values));
  Oop args[]={r,values};return id.message(id.root,get(c,0),names[INVOKE],args,2);
 }
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t count,const Oop*a,size_t n){

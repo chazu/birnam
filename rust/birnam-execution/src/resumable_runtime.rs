@@ -138,7 +138,7 @@ pub(super) unsafe fn index(s: &State, value: Oop) -> Result<usize, Oop> {
         Ok(lo | (hi << 32))
     }
 }
-unsafe fn bytes(s: &State, value: Oop, limit: usize) -> Result<Vec<u8>, Oop> {
+pub(super) unsafe fn bytes(s: &State, value: Oop, limit: usize) -> Result<Vec<u8>, Oop> {
     unsafe {
         let q = s.scope(&[value]);
         let buffer = q.keep(s.send(value, b"bytes", &[])?);
@@ -346,7 +346,7 @@ unsafe fn register_descriptor(
         if code_object.is_some() {
             s.admitted
                 .borrow_mut()
-                .insert(method.addr(), binding.argument_count);
+                .insert(method.addr(), CodeShape { parameters: binding.argument_count, captures: descriptor.entry_capture_slots().len() });
         }
         let mut runtime = s.resume.borrow_mut();
         runtime.records.insert(
@@ -439,8 +439,9 @@ pub(super) unsafe fn with_source(
             .v2_entry_binding()
             .ok_or_else(invalid)?
             .argument_count;
+        let captures = record.descriptor.entry_capture_slots().len();
         s.resume.borrow_mut().records.insert(context.addr(), record);
-        s.admitted.borrow_mut().insert(copy.addr(), arity);
+        s.admitted.borrow_mut().insert(copy.addr(), CodeShape { parameters: arity, captures });
         Ok(Some(copy))
     }
 }
@@ -470,6 +471,7 @@ pub(super) unsafe extern "C" fn method_from_block(
                 .and_then(|bytes| (bytes / size_of::<Oop>()).checked_sub(1))
                 .ok_or_else(invalid)?
         };
+        if let Some(method) = native_code::method_from_block(s, *body, &q)? { return Ok(method); }
         let code = q.keep(s.field(*body, 0)?);
         // Ask Id about executable identity; only Execution reads its own
         // Block representation and code descriptions.

@@ -56,7 +56,11 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
     );
     let method_behavior = call(h.id.root, b"behaviorOf:", &[method]);
     let private = call(h.id.root, b"ensurePrivateVtableFor:", &[method]);
-    call(private, b"addMethod", &[key(b"isError"), hooks.method(b"deny", forbidden)]);
+    call(
+        private,
+        b"addMethod",
+        &[key(b"isError"), hooks.method(b"deny", forbidden)],
+    );
     let before = epoch();
     assert_eq!(
         call(
@@ -82,7 +86,11 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
         b"addMethod",
         &[constructor, original_constructor],
     );
-    call(h.id.root, b"reassociateBehaviorOf:with:", &[method, method_behavior]);
+    call(
+        h.id.root,
+        b"reassociateBehaviorOf:with:",
+        &[method, method_behavior],
+    );
     let argument = call(named(b"Object"), b"clone", &[]);
     // Poison the source body's dispatch. The new Method must enter its code,
     // not send value: or query captures on this former Block receiver.
@@ -118,8 +126,15 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
     // Future sends see replacement; the selected Method retains its meaning.
     let before = epoch();
     let captured = call(object, b"methodFor:", &[key(b"answer:")]);
-    assert_eq!(epoch(), before, "capturing an entered implementation is pure");
-    assert_eq!(call(h.id.root, b"behaviorOf:", &[captured]), call(h.id.root, b"behaviorOf:", &[method]));
+    assert_eq!(
+        epoch(),
+        before,
+        "capturing an entered implementation is pure"
+    );
+    assert_eq!(
+        call(h.id.root, b"behaviorOf:", &[captured]),
+        call(h.id.root, b"behaviorOf:", &[method])
+    );
     let replacement_body = eval(b"[:self :arg | arg]");
     let replacement = call(execution, b"methodFromBlock:", &[replacement_body]);
     call(behavior, b"addMethod", &[key(b"answer:"), replacement]);
@@ -175,7 +190,11 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
     // a reassociation after the new Method becomes visible.
     let custom = hooks.method(b"fixed", argument);
     let custom_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[custom]);
-    call(custom_vt, b"addMethod", &[key(b"annotation"), hooks.method(b"fixed", next)]);
+    call(
+        custom_vt,
+        b"addMethod",
+        &[key(b"annotation"), hooks.method(b"fixed", next)],
+    );
     let before = epoch();
     let copy = call(custom, b"captured", &[]);
     assert_eq!(epoch(), before);
@@ -200,25 +219,19 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
     }
     let source = eval(b"let x := 3; [:self | x]");
     let source_method = call(source, b"methodFor:", &[key(b"value:")]);
-    let missing = call(
-        named(b"Block"),
-        b"fromMethod:captureOperands:",
-        &[source_method],
-    );
-    let extra = call(
-        named(b"Block"),
-        b"fromMethod:captureOperands:",
-        &[source_method, argument, argument],
-    );
-    let null_capture = call(
-        named(b"Block"),
-        b"fromMethod:captureOperands:",
-        &[source_method, std::ptr::null_mut()],
-    );
-    for rejected in [missing, extra, null_capture] {
+    for captures in [vec![], vec![argument, argument], vec![std::ptr::null_mut()]] {
         let before = epoch();
-        assert!(h.send(execution, b"methodFromBlock:", &[rejected]).is_err());
-        assert_eq!(epoch(), before);
+        let mut inputs = vec![source_method];
+        inputs.extend(captures);
+        assert!(
+            h.send(named(b"Block"), b"fromMethod:captureOperands:", &inputs)
+                .is_err()
+        );
+        assert_eq!(
+            epoch(),
+            before,
+            "invalid captures must be rejected by construction"
+        );
     }
 
     // Two executions share code but retain separate receivers and pending calls.

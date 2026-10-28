@@ -3,6 +3,8 @@
 mod native_adapters;
 #[path = "oop_reflection.rs"]
 mod reflection;
+#[path = "native_code.rs"]
+mod native_code;
 #[path = "oop_numeric.rs"]
 mod numeric;
 #[path = "resumable_runtime.rs"]
@@ -23,6 +25,11 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
+#[derive(Clone, Copy)]
+struct CodeShape {
+    parameters: usize,
+    captures: usize,
+}
 struct State {
     id: Protocol,
     control: Control,
@@ -42,13 +49,14 @@ struct State {
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     storage: RefCell<Objects>,
-    // Portable-code arities are temporary admission data owned by Execution.
-    admitted: RefCell<HashMap<usize, usize>>,
+    // Checked compiled-code shapes; native callables need no such description.
+    admitted: RefCell<HashMap<usize, CodeShape>>,
     // Parsed signatures belong only to explicit native entry contexts. The
     // context's Sequence owns its executable, environment and declared Method.
     native_signatures: RefCell<HashMap<usize, std::sync::Arc<abi::native_signature::Signature>>>,
     engine: RefCell<ExecutionState>,
     resume: RefCell<resumable::Runtime>,
+    native_code: RefCell<native_code::Runtime>,
     depth: Cell<usize>,
     draining: Cell<bool>,
     preserve: Cell<bool>,
@@ -165,6 +173,11 @@ impl State {
             if values.is_empty() || values[0].is_null() {
                 return Err(invalid());
             }
+            if let Some(shape) = self.admitted.borrow().get(&values[0].addr()) {
+                if values.len() - 1 != shape.captures || values[1..].iter().any(|v| v.is_null()) {
+                    return Err(invalid());
+                }
+            }
             let scope = self.scope(values);
             scope.keep(behavior);
             let bytes = values
@@ -246,7 +259,7 @@ unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> O
             return Err(invalid());
         }
         let method = q.keep(s.field(r, 0)?);
-        if s.admitted.borrow().get(&method.addr()).is_some_and(|arity| *arity != args.len()) {
+        if s.admitted.borrow().get(&method.addr()).is_some_and(|shape| shape.parameters != args.len()) {
             return Err(invalid());
         }
         // Block entry preserves the body's native result. Machine call completion
@@ -452,7 +465,7 @@ unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
         let [block, v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        if let Some(values) = resumable::references(s, *block)? {
+        if let Some(values) = native_code::references(s, *block).or(resumable::references(s, *block)?) {
             for value in values {
                 s.send(*v, b"visit:", &[value])?;
             }
@@ -474,6 +487,7 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
         let s = state(c)?;
         let values = borrowed_slice(a, n).ok_or_else(invalid)?;
         resumable::retire(s, values)?;
+        native_code::retire(s, values);
         let mut storage = s.storage.borrow_mut();
         for &v in values {
             storage.remove(v);
@@ -757,6 +771,13 @@ const NAMES: &[&[u8]] = &[
     b"methodCodeObject",
     b"methodSynchronous",
     b"canonicalBytesOf:",
+    b"fromNativeCodeFactory:codeObject:",
+    b"nativeCodeEnvironment",
+    b"nativeCodeParameters",
+    b"nativeCodeCaptures",
+    b"environment",
+    b"parameterCount",
+    b"nativeCodeSource",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1004,6 +1025,13 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"methodCodeObject"),
     Literal::new(b"methodSynchronous"),
     Literal::new(b"canonicalBytesOf:"),
+    Literal::new(b"fromNativeCodeFactory:codeObject:"),
+    Literal::new(b"nativeCodeEnvironment"),
+    Literal::new(b"nativeCodeParameters"),
+    Literal::new(b"nativeCodeCaptures"),
+    Literal::new(b"environment"),
+    Literal::new(b"parameterCount"),
+    Literal::new(b"nativeCodeSource"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1589,6 +1617,11 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec { name: 241, entry: Some(resumable::from_step_code), convention: 0 },
     MethodSpec { name: 242, entry: Some(reflection::method_code), convention: 0 },
     MethodSpec { name: 243, entry: Some(reflection::method_synchronous), convention: 0 },
+    MethodSpec { name:245, entry:Some(native_code::from_factory), convention:0 },
+    MethodSpec { name:246, entry:Some(native_code::field::<0>), convention:0 },
+    MethodSpec { name:247, entry:Some(native_code::field::<1>), convention:0 },
+    MethodSpec { name:248, entry:Some(native_code::field::<2>), convention:0 },
+    MethodSpec { name:251, entry:Some(native_code::field::<3>), convention:0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1686,6 +1719,7 @@ unsafe extern "C" fn initialize(
             native_signatures: RefCell::new(HashMap::new()),
             engine: RefCell::new(ExecutionState::new(1)),
             resume: RefCell::new(resumable::Runtime::default()),
+            native_code: RefCell::new(native_code::Runtime::default()),
             depth: Cell::new(0),
             draining: Cell::new(false),
             preserve: Cell::new(false),
@@ -1703,6 +1737,10 @@ unsafe extern "C" fn initialize(
                     | b"codeValue"
                     | b"methodCodeObject"
                     | b"methodSynchronous"
+                    | b"nativeCodeEnvironment"
+                    | b"nativeCodeParameters"
+                    | b"nativeCodeCaptures"
+                    | b"nativeCodeSource"
                     | b"binding:value:weak:"
             ) {
                 continue;
@@ -1788,6 +1826,8 @@ unsafe extern "C" fn initialize(
             send(*ns, b"at:put:", &[names[name], value])?;
         }
         resumable::install(s, image, base)?;
+        let native_context = keep(native_code::install(s, image, base)?)?;
+        s.resume.borrow_mut().roots.push(native_context);
         for token in tokens {
             send(roots, b"release:", &[token])?;
         }

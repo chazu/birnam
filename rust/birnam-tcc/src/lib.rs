@@ -497,7 +497,10 @@ unsafe extern "C" fn method_with_context(_: Oop, c: Oop, r: Oop, a: *const Oop, 
             .units
             .borrow()
             .get(&r.addr())
-            .filter(|unit| unit.result.is_some())
+            .filter(|unit| {
+                unit.result.is_some()
+                    || (unit.initializing && unit.methods.len() == unit.declarations.len())
+            })
             .and_then(|unit| unit.declarations.get(abi::as_size(*index)?))
             .copied()
             .ok_or_else(invalid)?;

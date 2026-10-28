@@ -28,6 +28,14 @@ pub(super) unsafe extern "C" fn code_object(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+unsafe fn owned_source(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<(Oop, bool)>, Oop> {
+    unsafe {
+        if let Some(code) = resumable::source_code(s, method, q)? {
+            return Ok(Some((code, false)));
+        }
+        Ok(native_code::source(s, method, q)?.map(|code| (code, true)))
+    }
+}
 pub(super) unsafe extern "C" fn method_code(
     _: Oop,
     c: Oop,
@@ -41,7 +49,9 @@ pub(super) unsafe extern "C" fn method_code(
             return Err(invalid());
         }
         let q = s.scope(&[r]);
-        Ok(resumable::source_code(s, r, &q)?.unwrap_or(s.nil))
+        Ok(owned_source(s, r, &q)?
+            .map(|(code, _)| code)
+            .unwrap_or(s.nil))
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -73,7 +83,7 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             return Err(invalid());
         };
         let q = s.scope(&[r, *code]);
-        if let Some(original) = resumable::source_code(s, r, &q)? {
+        if let Some((original, _)) = owned_source(s, r, &q)? {
             return if original == *code {
                 Ok(r)
             } else {
@@ -85,7 +95,11 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
         } else {
             let factory = q.keep(s.named(b"CodeObject")?);
             let arity = q.keep(s.send(factory, b"parameterCountOf:", &[*code])?);
-            Some(resumable::index(s, arity)?)
+            let captures = q.keep(s.send(factory, b"captureCountOf:", &[*code])?);
+            Some(CodeShape {
+                parameters: resumable::index(s, arity)?,
+                captures: resumable::index(s, captures)?,
+            })
         };
         let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
         let private = q.keep(s.send(behavior, b"delegated", &[])?);
@@ -250,8 +264,9 @@ pub(super) unsafe extern "C" fn admit_selected(
             return Err(invalid());
         }
         let q = s.scope(&[r, *code, *sync]);
-        if let Some(original) = resumable::source_code(s, r, &q)? {
-            return if original == *code && *sync == s.named(b"false")? {
+        if let Some((original, synchronous)) = owned_source(s, r, &q)? {
+            let expected = s.named(if synchronous { b"true" } else { b"false" })?;
+            return if original == *code && *sync == expected {
                 Ok(r)
             } else {
                 Err(invalid())
@@ -293,8 +308,8 @@ pub(super) unsafe extern "C" fn block_synchronous(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-// Public capture inspection is available only for this owner's coded Blocks.
-// No storage borrow is held while asking the Method for its current CodeObject.
+// Checked code shapes establish capture layout at construction. Reflection
+// is needed only for legacy entries without such a description.
 pub(super) unsafe fn inspect_captures(s: &State, r: Oop) -> Result<Option<usize>, Oop> {
     unsafe {
         if r == s.block || s.storage.borrow().family_of(r) != Some(s.block_vt) {
@@ -302,6 +317,19 @@ pub(super) unsafe fn inspect_captures(s: &State, r: Oop) -> Result<Option<usize>
         }
         let q = s.scope(&[r]);
         let method = q.keep(s.field(r, 0)?);
+        let checked = s.admitted.borrow().get(&method.addr()).copied();
+        if let Some(shape) = checked {
+            let expected = shape
+                .captures
+                .checked_add(1)
+                .and_then(|words| words.checked_mul(size_of::<Oop>()))
+                .ok_or_else(invalid)?;
+            return if s.storage.borrow().payload_size(r) == Some(expected) {
+                Ok(Some(shape.captures))
+            } else {
+                Err(invalid())
+            };
+        }
         if s.send(method, b"codeObject", &[])? == s.nil {
             return Ok(None);
         }
@@ -394,6 +422,8 @@ unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) ->
         }
 
         let owned = if let Some(owned) = resumable::with_source(s, method, code, &q)? {
+            q.keep(owned)
+        } else if let Some(owned) = native_code::with_source(s, method, code, &q)? {
             q.keep(owned)
         } else {
             let owned = q.keep(s.send(method, b"captured", &[])?);

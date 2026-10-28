@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "c63e3b5ebb731a9c868b12fadc5d1963c53e4f42",
+  "scope": "Synchronous compiler source construction, direct native body binding and checked capture layout. Default reflected-body forwarding and remaining native/legacy admission are still pending.",
+  "source_sha256": {
+    "rust/birnam-execution/src/native_code.rs": "28ac35529763c6972db51ba587ef122c266aab8f54c185c5388e488b4aa043ca",
+    "rust/birnam-execution/src/oop_reflection.rs": "730672adc80523665995cc3e814823f0904edffe26c0f25fac9b3b55acb9054c",
+    "rust/birnam-execution/src/resumable_runtime.rs": "609af4ede1d7449d2d6c08f8472f3da3e4b4cf278d9853eb213e845c26203937",
+    "rust/birnam-execution/src/synchronous.rs": "4960e2252c3b36753fdea43b194ce0bb915edfb70a017302c448798f0fc950b6",
+    "rust/birnam-native-backend/src/oop_emission.rs": "1d1c240429d8fec47d3c0077503c79db5dda56e390d422e73142cc43928dd468",
+    "rust/birnam-tcc/src/lib.rs": "6bc8df43129bc6f07036a7334b7138e9c4a1ad1e6d9c10eb851d0630c99c877f",
+    "rust/birnam-siphon/tests/native_code_construction.rs": "1ea123d259c3c67d5abf3c5bb048a610682bc1af00cdc4ca16b1cb5e8d27ecf9",
+    "rust/birnam-siphon/tests/direct_method_construction.rs": "f854aec0bcdb93d08944be410433ed4ed417c93e2f79a3045dfaaa8d0a1340f6",
+    "scripts/oop-id-slice-test.sh": "aef0c9c9cfc18cd8621059677392086c21b16aec752aecb0d1e1b02ad3f2827c",
+    "tests/fixtures/oop-host/prepared-call.c": "8452468c3738e003b79f4f6da53134daaf2e0b7521236d49623bf4b7b07d6ad8"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "constructor_tests": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/constructor_tests.log",
+      "sha256": "f751716ad545220ab92c26994b4d4f0f14a2bd8d96da48dd0a9a401218dbe371",
+      "result": "passed"
+    },
+    "capture_before": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/capture_before.log",
+      "sha256": "389ba90020312feeba6384e561f0749a866707ca37f19c9a0cc1f9ff93ef98c3",
+      "result": "expected failure"
+    },
+    "capture_after": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/capture_after.log",
+      "sha256": "1c72b218d2bf8feaf81e557b5bb60928e9388f72f3cf2d9321b601d68ad7dcc6",
+      "result": "passed"
+    },
+    "capture_dispatch": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/capture_dispatch.log",
+      "sha256": "5fdcb05c6850b0231e9aab8a924a17a4f238d2628091c2da7e1c993c4e97c93e",
+      "result": "passed"
+    },
+    "install": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/install.log",
+      "sha256": "c707973f408890bc346503940000f08c567052e8ea38eee68d959801c080da80",
+      "result": "passed"
+    },
+    "published_focused": {
+      "path": ".cargo-target/oop-current-qualification/native-code-milestone/published_focused.log",
+      "sha256": "6ceb46085b630871abd26d04bc4689fcf1af262a44066482f9c1bf52525e0315",
+      "result": "passed"
+    }
+  },
+  "published_prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-native-code-checked-71fj20cp/prefix",
+  "install_receipt_sha256": "e123d6a004c37288b88bf65b773b18a425859efa919e53555141154ae49c5566",
+  "build_mode": "development-cache",
+  "source_manifest_sha256": "a5423108b9b4f13cf29dfe4de70301137430f0447e61fd6a6e3714be74d28825",
+  "source_manifest_files": 724,
+  "installed_manifest_sha256": "65b4aa77156da433781f231d2bd9b1096175f3da51c06fd037dc85f04fa4dac6",
+  "installed_files_reverified": 813,
+  "build_note": "Development-cache build of unchanged worktree; not a clean-checkout/cold build or full migration qualification. Earlier build was deliberately terminated to remove the profiled capture metadata dependency, then rebuilt from corrected source.",
+  "verified": [
+    "both compiler paths construct source metadata without invoking old admission selectors",
+    "synchronous compilation and Method binding leave the binding epoch unchanged",
+    "generated native constructors reject unrelated portable source with matching counts using embedded source digest",
+    "receiver and captures bound separately with no body value forwarding",
+    "captured source identity and native mapping lifetime",
+    "codeObject replacement and synchronous-mode changes rejected on owned code",
+    "fresh matching-program source association preserves prior Method",
+    "wrong capture counts/null captures rejected before Block allocation",
+    "checked captures do not query Method codeObject; live capture-accessor replacement retained",
+    "published compiler, materialization, native-boundary image, Machine, optimizer recovery and TCC context checks",
+    "core suite including standalone synchronous artifacts and 177 task-control checks"
+  ],
+  "architecture_review": {
+    "id": "No Id or bootstrap Method API change",
+    "constructor": "Generated code provider binds an actual declared native entry through existing public owner operations",
+    "shared_code": "Source CodeObject, parameter/capture counts and producer constructor; no universal record for arbitrary native Methods",
+    "instance": "Real Method, shared code description and optional lexical environment; data remains with Execution and is traced/retired there",
+    "cross_owner_work": "Id messages only; generated native code asks its context for environment and constructor facts",
+    "invocation": "Lookup then entry of the real native Method; no Execution forwarding entry or value send to the body",
+    "validation": "Actual generated factory compares source digest/counts; arbitrary native factory implementations remain responsible for their constructor contract"
+  },
+  "remaining": [
+    "default Reflect/template/forwarder removal",
+    "DNU and definition-arity integration",
+    "remaining generic and native-signature admission cleanup",
+    "direct-Method reflection/image integration",
+    "full native gate and same-revision cold/relocated/Host qualification"
+  ]
+}
