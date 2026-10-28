@@ -1,0 +1,59 @@
+{
+  "passed": true,
+  "scope": "All serial Host groups on the cold fixed-adapter candidate; not final language integration acceptance",
+  "candidate_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/private/tmp/birnam-oop-adapters-wt7knhai/prefix",
+  "groups": {
+    "generation": {
+      "checks": 17,
+      "passed": true,
+      "log": ".cargo-target/oop-fixed-adapters-qualification/generation.log",
+      "log_sha256": "bc11693fce2c42e234536d2789d5e5fe6baf5d3bbdb999ab8ba375ed88cc80e0",
+      "timings_sha256": "4465e4e6d8d83deb7830f5b046fe83c7b32541116f24e44a84f43496fdfb4637"
+    },
+    "interaction": {
+      "checks": 6,
+      "passed": true,
+      "log": ".cargo-target/oop-fixed-adapters-qualification/interaction.log",
+      "log_sha256": "cf993ea2b000d520a08d10ed8d1e639af4727a18cd657ddfe8154b6f044362f8",
+      "timings_sha256": "f57a6272e5e4886ccac2b4dca92095bda9517e81ca63a0d3fc9281c0bbfeab70"
+    },
+    "tasks": {
+      "checks": 6,
+      "passed": true,
+      "log": ".cargo-target/oop-fixed-adapters-qualification/tasks.log",
+      "log_sha256": "15d986833b7d502584c31c26627fd7d22464086ba16c8ab3d648816594e88edb",
+      "timings_sha256": "6ecbdf1945d57c88c487a8fafddee7e25172b9ca4339b563ca70f031514435c6"
+    },
+    "cli": {
+      "checks": 18,
+      "passed": true,
+      "log": ".cargo-target/oop-fixed-adapters-qualification/cli.log",
+      "log_sha256": "1e07a3a392bfae60fc8af8db872117ea9ff93048329c7ac46d234f72f2eaf491",
+      "timings_sha256": "ecdc2379d24a2840392dc0a55573d52e92b148b2f6f3e5d7370763981563701e"
+    },
+    "image": {
+      "checks": 16,
+      "passed": true,
+      "log": ".cargo-target/oop-fixed-adapters-qualification/image.log",
+      "log_sha256": "67dc79dd698c087d51e9f4534843577b50bc0f1839e6b3fc8ec219bc7dc424d3",
+      "timings_sha256": "69e0350b83ba5a3d69e89dc7de362c92a4e25c430a1fec36502e0cc08ee1a6ae"
+    }
+  },
+  "total_checks": 63,
+  "started_ns": 1793140359869787000,
+  "finished_ns": 1793159001956461000,
+  "staged_manifest_files": 826,
+  "staged_manifest_sha256": "4596776fe54e31f5bb79e5caede725aa1befbd711d6fccdc22e9a7a3183ae8d8",
+  "receipt_sha256": "f42a890fe1a75196c1be8d329d6a4cd6d50f2d592ce281f5fc8f551c5c7fdb6a",
+  "source_still_clean": true,
+  "source_revision_unchanged": true,
+  "exact_install_contract_reverified": true,
+  "retry": false,
+  "cold_install_and_archive_receipt": "docs/measurements/fixed-adapters-cold-install-oop-20261027.json",
+  "limits": [
+    "Candidate predates 7c70c6d9 root-token validation and 13e430e8 callback-policy correction.",
+    "Method construction purity and closure admission contracts remain independently failing.",
+    "Remaining legacy runtime harnesses and compiler producer decisions are not qualified by Host checks."
+  ]
+}

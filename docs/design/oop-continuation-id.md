@@ -3373,3 +3373,19 @@ historical evidence. No production runtime or Id change was made.
 
 The remaining legacy runtime harnesses, automatic producer gaps and documented
 Method metadata/admission issues still prevent full integration acceptance.
+
+
+## Fixed-adapter cold candidate: all Host groups complete
+
+The serial Host run on cold revision `1fa7e3c2` is terminal and passed all 63
+checks across generation, interaction, tasks, CLI and image groups. The final
+image group passed 16 checks. The source checkout remains clean at that
+revision, and the original receipt and exact 826-file installation manifest were
+reverified after the run. No failed group was retried.
+[Image receipt](../measurements/fixed-adapters-image-oop-20261028.json),
+[complete Host receipt](../measurements/fixed-adapters-host-complete-oop-20261028.json).
+
+This closes qualification of that specific cold candidate. It predates the
+root-token validation and callback-policy fixes and does not qualify them. The
+open Method purity/admission failures and remaining runtime harness work also
+remain independent blockers to declaring full language integration complete.
