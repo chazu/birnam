@@ -1,0 +1,291 @@
+{
+  "passed": true,
+  "scope": "Complete 17-check Host generation group for corrected cold 1fa7e3c2 candidate in one unchanged run",
+  "candidate_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "prefix": "/private/tmp/birnam-oop-adapters-wt7knhai/prefix",
+  "checks": [
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "direct_method_observations_restore_native_abi_and_owned_identity",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:direct_method_observations_restore_native_abi_and_owned_identity",
+      "started_unix_ns": 1793140360822354000,
+      "status": "passed",
+      "wall_ns": 12217281041
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "candidate_task_exit_retains_explicit_undo_and_releases_operation_scope",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:candidate_task_exit_retains_explicit_undo_and_releases_operation_scope",
+      "started_unix_ns": 1793140373077846000,
+      "status": "passed",
+      "wall_ns": 12439239792
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "registry_validation_uses_one_metadata_read_and_current_query",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:registry_validation_uses_one_metadata_read_and_current_query",
+      "started_unix_ns": 1793140385566660000,
+      "status": "passed",
+      "wall_ns": 11698917791
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:source_registry_images_preserve_aliases_and_reject_changed_snapshots",
+      "started_unix_ns": 1793140397303846000,
+      "status": "passed",
+      "wall_ns": 285164756334
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "source_registry_sends_retain_partial_edits_for_explicit_undo",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:source_registry_sends_retain_partial_edits_for_explicit_undo",
+      "started_unix_ns": 1793140682528360000,
+      "status": "passed",
+      "wall_ns": 17000548083
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "image_application_boundary_invalidates_without_restore",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:image_application_boundary_invalidates_without_restore",
+      "started_unix_ns": 1793140699563699000,
+      "status": "passed",
+      "wall_ns": 243429217458
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "certificate_release_reclaims_observations_and_preserves_candidate_undo",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:certificate_release_reclaims_observations_and_preserves_candidate_undo",
+      "started_unix_ns": 1793140943048235000,
+      "status": "passed",
+      "wall_ns": 15705484709
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "discard_cancels_preparation_and_keeps_bindings_and_files",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:discard_cancels_preparation_and_keeps_bindings_and_files",
+      "started_unix_ns": 1793140958789581000,
+      "status": "passed",
+      "wall_ns": 12161862917
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "independent_candidate_modules_need_no_certificate",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:independent_candidate_modules_need_no_certificate",
+      "started_unix_ns": 1793140970984892000,
+      "status": "passed",
+      "wall_ns": 16047006834
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "rollback_keeps_released_predecessors_discarded",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:rollback_keeps_released_predecessors_discarded",
+      "started_unix_ns": 1793140987067277000,
+      "status": "passed",
+      "wall_ns": 15414373750
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "dependency_changes_use_registered_module_without_certification",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:dependency_changes_use_registered_module_without_certification",
+      "started_unix_ns": 1793141002515218000,
+      "status": "passed",
+      "wall_ns": 13976829250
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "activation_inside_entered_methods_uses_current_setters",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:activation_inside_entered_methods_uses_current_setters",
+      "started_unix_ns": 1793141016525927000,
+      "status": "passed",
+      "wall_ns": 13142733542
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "lifecycle_fields_preserve_explicit_facts_and_status_reads",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:lifecycle_fields_preserve_explicit_facts_and_status_reads",
+      "started_unix_ns": 1793141029702169000,
+      "status": "passed",
+      "wall_ns": 12376463667
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/lifecycle-record-image-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.AiiBK9/relocated"
+      ],
+      "exit_code": 0,
+      "label": "generation:lifecycle-record-image-test.py",
+      "started_unix_ns": 1793141042131894000,
+      "status": "passed",
+      "wall_ns": 265246509250
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/host_test_binaries.py",
+        "run",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+        "host-lib",
+        "--",
+        "image_restores_descriptions_and_explicit_adoption",
+        "--ignored"
+      ],
+      "exit_code": 0,
+      "label": "generation:host-lib:image_restores_descriptions_and_explicit_adoption",
+      "started_unix_ns": 1793141307433206000,
+      "status": "passed",
+      "wall_ns": 1582314151584
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/generation-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.AiiBK9/relocated"
+      ],
+      "exit_code": 0,
+      "label": "generation:generation-cli-test.py",
+      "started_unix_ns": 1793145302831056000,
+      "status": "passed",
+      "wall_ns": 42075426917
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/compiled-unit-cli-test.py",
+        "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T//birnam-host-cli.AiiBK9/relocated"
+      ],
+      "exit_code": 0,
+      "label": "generation:compiled-unit-cli-test.py",
+      "started_unix_ns": 1793145344955097000,
+      "status": "passed",
+      "wall_ns": 244858398208
+    }
+  ],
+  "log": ".cargo-target/oop-fixed-adapters-qualification/generation.log",
+  "log_sha256": "bc11693fce2c42e234536d2789d5e5fe6baf5d3bbdb999ab8ba375ed88cc80e0",
+  "timings_sha256": "4465e4e6d8d83deb7830f5b046fe83c7b32541116f24e44a84f43496fdfb4637",
+  "prepared_test_binaries_manifest": ".cargo-target/oop-fixed-adapters-qualification/test-binaries/manifest.json",
+  "prepared_test_binaries_manifest_sha256": "a9d066b1c25c228848f89a4cf964074dc3e82fc27e0869d322c9f626a6e4a859",
+  "remaining": [
+    "Complete interaction, tasks, CLI and image Host groups",
+    "Remaining native/compiler harnesses and pending contract decisions"
+  ]
+}

@@ -2992,3 +2992,17 @@ allocation identities instead of querying freed references. Four Cell-specific
 helpers were added without changing the shared helper's existing functions, and
 the adjacent Globals isolation check passes. No runtime or Id changes were needed.
 [Receipt](../measurements/cell-without-store-oop-20261027.json).
+
+## Image isolation and explicit Store participation
+
+The isolated Image harness passes all ten cases through Oops: optional Store
+save/mapped/rebuilt controls, Store-free save/mapped/rebuilt/resave, mapped/rebuilt
+recovery of that resave, and rejection when an image's Store provider is missing.
+Existing authored assertions, documentation hooks and CLI/LSP boundaries remain.
+The base directory excludes Store, Relational, Bootstrap and Isolate; positive
+provider controls add Store alone. No runtime or Id changes were needed.
+[Receipt](../measurements/image-without-store-oop-20261027.json).
+
+The corrected cold 1fa7e3c2 candidate also passes all 17 Host generation checks in
+one unchanged run. Its remaining Host groups continue separately.
+[Receipt](../measurements/fixed-adapters-generation-oop-20261027.json).
