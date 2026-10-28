@@ -3,6 +3,15 @@ use birnam_abi::{Oop, size};
 use birnam_host_support::{Context, Resources};
 use std::{os::unix::ffi::OsStrExt, path::PathBuf};
 pub fn native_floor() -> Context {
+    compose(true)
+}
+
+/// Only the owners needed for direct dictionary mutation and portable bodies.
+pub fn mutation_floor() -> Context {
+    compose(false)
+}
+
+fn compose(artifact_dependencies: bool) -> Context {
     let lib = PathBuf::from(std::env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
     let prefix = lib.parent().unwrap().to_path_buf();
     let resources = Resources {
@@ -67,7 +76,9 @@ pub fn native_floor() -> Context {
             "prelude",
             "file_io",
         ] {
-            mount(name, &[host.namespace]);
+            if artifact_dependencies || !matches!(name, "float" | "prelude" | "file_io") {
+                mount(name, &[host.namespace]);
+            }
         }
         let collection = call(base, b"delegated", &[]);
         publish(b"Collection", collection);
@@ -83,7 +94,9 @@ pub fn native_floor() -> Context {
             "native_backend",
             "codegen_runtime",
         ] {
-            mount(name, &[host.namespace]);
+            if artifact_dependencies || name != "artifact" {
+                mount(name, &[host.namespace]);
+            }
         }
     }
     host

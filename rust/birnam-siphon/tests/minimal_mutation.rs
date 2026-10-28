@@ -1,450 +1,278 @@
-//! Existing direct Method/dictionary protocol on a floor without Store or Generation.
-mod support;
-use birnam_abi::{
-    Oop,
-    id_protocol::{Operand, Outcome, Protocol},
-};
-use std::os::unix::ffi::OsStrExt;
-use std::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-    path::PathBuf,
-};
-use support::*;
-
-struct H {
-    id: Protocol,
-    ns: Oop,
-    roots: Oop,
-    tokens: RefCell<Vec<usize>>,
-}
-unsafe fn mount(id: Protocol, module: &str, ns: Oop) {
-    let path = directory().join(format!("libbirnam_{module}.dylib"));
-    unsafe {
-        id.send(
-            id.receiver,
-            id.load,
-            &[
-                Operand::bytes(path.as_os_str().as_bytes()),
-                Operand::object(ns),
-            ],
-        )
-    }
-    .unwrap_or_else(|e| panic!("load {module}: {e:?}"));
-}
-impl H {
-    unsafe fn keep(&self, o: Oop) -> Oop {
-        self.tokens
-            .borrow_mut()
-            .push(unsafe { retain(self.id, self.roots, o) });
-        o
-    }
-    unsafe fn named(&self, name: &[u8]) -> Oop {
-        unsafe {
-            object(send(
-                self.id,
-                self.ns,
-                b"at:",
-                &[Operand::object(self.id.intern_name(name).unwrap())],
-            ))
-        }
-    }
-    unsafe fn call(&self, r: Oop, name: &[u8], args: &[Oop]) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                r,
-                name,
-                &args
-                    .iter()
-                    .copied()
-                    .map(Operand::object)
-                    .collect::<Vec<_>>(),
-            )))
-        }
-    }
-    unsafe fn integer(&self, value: usize) -> Oop {
-        unsafe {
-            self.keep(object(send(
-                self.id,
-                self.named(b"Integer"),
-                b"fromWord:",
-                &[Operand::word(value)],
-            )))
-        }
-    }
-    unsafe fn number(&self, value: Oop) -> usize {
-        unsafe {
-            send(
-                self.id,
-                self.named(b"Integer"),
-                b"wordOf:",
-                &[Operand::object(value)],
-            )
-            .as_word()
-            .unwrap()
-        }
-    }
-    unsafe fn publish(&self, name: &[u8], value: Oop) {
-        unsafe {
-            send(
-                self.id,
-                self.ns,
-                b"at:put:",
-                &[
-                    Operand::object(self.id.intern_name(name).unwrap()),
-                    Operand::object(value),
-                ],
-            );
-        }
-    }
-    unsafe fn clear_from(&self, floor: usize) {
-        for token in self.tokens.borrow_mut().drain(floor..).rev() {
-            unsafe {
-                release(self.id, self.roots, token);
-            }
-        }
-    }
-}
-
-impl H {
-    unsafe fn program(&self, index: usize) -> Oop {
-        unsafe {
-            let root = PathBuf::from(std::env::var_os("BIRNAM_MUTATION_PROGRAMS").unwrap());
-            let bytes = std::fs::read(root.join(format!("{index}.bin"))).unwrap();
-            let bytes = self.keep(object(send(
-                self.id,
-                self.named(b"Bytes"),
-                b"fromBytes:",
-                &[Operand::bytes(&bytes)],
-            )));
-            let code = self.call(self.named(b"CodeObject"), b"fromCanonicalBytes:", &[bytes]);
-            let captures = self.call(self.named(b"Vector"), b"new", &[]);
-            self.call(
-                self.named(b"Codegen"),
-                b"materializeResumable:captures:",
-                &[code, captures],
-            )
-        }
-    }
-    unsafe fn template(&self, arity: usize) -> Oop {
-        unsafe {
-            let source = self.call(
-                self.named(b"NativeBackend"),
-                b"named:synchronous:",
-                &[self.integer(arity), self.named(b"false")],
-            );
-            let unit = self.call(self.named(b"TCC"), b"compile:", &[source]);
-            self.call(unit, b"initializeWith:", &[self.named(b"nil")])
-        }
-    }
-    unsafe fn epoch(&self) -> usize {
-        unsafe {
-            send(self.id, self.id.receiver, b"bindingEpoch", &[])
-                .as_word()
-                .unwrap()
-        }
-    }
-}
-struct Switch {
-    id: Protocol,
-    gc: Oop,
-    vtable: Oop,
-    selector: Oop,
-    replacement: Oop,
-    entered: Oop,
-    body: Oop,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn switch(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<Switch>();
-        p.calls.set(p.calls.get() + 1);
-        send(
-            p.id,
-            p.vtable,
-            b"addMethod:as:",
-            &[Operand::object(p.replacement), Operand::object(p.selector)],
-        );
-        collect(p.id, p.gc);
-        assert!(
-            present(p.id, p.entered) && present(p.id, p.body),
-            "entered Method and implementation must survive replacement and GC"
-        );
-        Outcome::loaded(Operand::unit())
-    }
-}
-unsafe extern "C" fn constant(c: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
-    Outcome::loaded(Operand::object(c.cast()))
-}
+//! Direct Method/dictionary operations without Store, Globals or Generation.
+#[path = "support/minimal.rs"]
+#[allow(dead_code)]
+mod minimal;
+use birnam_abi::{as_size, size};
+use minimal::H;
+use std::path::{Path, PathBuf};
 #[test]
 #[ignore = "scripts/minimal-mutation-test.py supplies an isolated floor and exported programs"]
 fn direct_mutation_needs_no_store_generation_or_publication_owner() {
-    unsafe {
-        for module in ["store", "relational", "generation", "bootstrap"] {
-            assert!(
-                !directory()
-                    .join(format!("libbirnam_{module}.dylib"))
-                    .exists()
-            );
+    let case = match std::env::var("BIRNAM_MUTATION_CASE") {
+        Ok(case) => case,
+        Err(_) => {
+            let mut passed = true;
+            for case in ["construction", "mutation"] {
+                let status = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--ignored",
+                        "--exact",
+                        "direct_mutation_needs_no_store_generation_or_publication_owner",
+                        "--nocapture",
+                    ])
+                    .env("BIRNAM_MUTATION_CASE", case)
+                    .status()
+                    .unwrap();
+                passed &= status.success();
+            }
+            assert!(passed, "all isolated mutation contracts must pass");
+            return;
         }
-        let id = id();
-        let roots = load(id, "root_registry", &[]);
-        let ns = load(id, "namespace", &[Operand::object(roots)]);
-        let h = H {
-            id,
-            ns,
-            roots,
-            tokens: RefCell::new(Vec::new()),
-        };
-        let prototype = object(send(id, id.receiver, b"objectPrototype", &[]));
-        let vt = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(prototype)],
-        ));
-        h.publish(b"Object", prototype);
-        h.publish(b"ObjectVt", vt);
-        for module in ["boolean", "nil"] {
-            mount(id, module, ns);
-        }
-        let gc = load(id, "collect", &[Operand::object(roots)]);
-        h.publish(b"GC", gc);
-        send(id, gc, b"activate", &[]);
-        for module in [
-            "object_model",
-            "word",
-            "bytes",
-            "execution",
-            "portable_code",
-            "string",
-            "integer",
-        ] {
-            mount(id, module, ns);
-        }
-        let collection = h.keep(object(send(id, vt, b"delegated", &[])));
-        h.publish(b"Collection", collection);
-        h.publish(b"CollectionVt", collection);
-        let symbol = id.intern_name(b"Symbol").unwrap();
-        h.publish(
-            b"SymbolVt",
-            object(send(
-                id,
-                id.receiver,
-                b"behaviorOf:",
-                &[Operand::object(symbol)],
-            )),
-        );
-        for module in ["vector", "map", "tcc", "native_backend", "codegen_runtime"] {
-            mount(id, module, ns);
-        }
-        // Namespace is a real binding owner, not a fake database. Only the compiler's
-        // existing Globals-first read convention needs this alias in the small floor.
-        h.publish(b"Globals", ns);
+    };
 
-        for name in [
+    let directory = PathBuf::from(std::env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let programs = PathBuf::from(std::env::var_os("BIRNAM_MUTATION_PROGRAMS").unwrap());
+    for module in ["store", "relational", "generation", "bootstrap", "lang"] {
+        assert!(!directory.join(format!("libbirnam_{module}.dylib")).exists());
+    }
+    let host = minimal::mutation_floor();
+    let h = H::new(&host);
+    let q = host.scope();
+    let absent = || {
+        for n in [
             b"Store".as_slice(),
             b"db",
             b"Relational",
             b"Generation",
             b"MethodPublication",
             b"Lang",
+            b"Globals",
+            b"Bootstrap",
         ] {
             assert!(
-                send(
-                    id,
-                    ns,
-                    b"at:",
-                    &[Operand::object(id.intern_name(name).unwrap())]
-                )
-                .as_object()
-                .is_none()
+                h.call(host.namespace, b"at:", &[h.key(n)]).is_null(),
+                "unexpected owner {}",
+                String::from_utf8_lossy(n)
             );
         }
-        // Universal dictionary subscriptions are not part of the Id floor.
-        assert_eq!(
-            send(id, id.receiver, b"bind:to:", &[
-                Operand::object(id.intern_name(b"methodChangesTo:").unwrap()),
-                Operand::object(id.receiver),
-            ]).kind(),
-            birnam_abi::id_protocol::UNIT
-        );
-        let nil = h.named(b"nil");
-        let selector = h.keep(id.intern_name(b"answer").unwrap());
-        let template = h.template(0);
-        let one = h.program(0);
-        let two = h.program(1);
-        let epoch = h.epoch();
-        let first = h.call(template, b"withImplementation:", &[one]);
-        let second = h.call(template, b"withImplementation:", &[two]);
-        assert_ne!(first, second);
-        assert_eq!(
-            h.epoch(),
-            epoch,
-            "pure binding construction changes no live dictionary"
-        );
-        let parent = h.call(prototype, b"clone", &[]);
-        let parent_vt = h.call(id.receiver, b"ensurePrivateVtableFor:", &[parent]);
-        assert_eq!(
-            h.call(parent_vt, b"addMethod:as:", &[first, selector]),
-            first
-        );
-        let child = h.call(parent, b"clone", &[]);
-        let child_vt = h.call(id.receiver, b"ensurePrivateVtableFor:", &[child]);
-        assert_eq!(h.number(h.call(child, b"answer", &[])), 11);
-        assert_eq!(
-            send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(selector), Operand::object(child_vt)]
+    };
+    absent();
+    assert!(
+        h.call(
+            host.id.root,
+            b"bind:to:",
+            &[h.key(b"methodChangesTo:"), host.id.root]
+        )
+        .is_null()
+    );
+    let prototype = h.named(b"Object");
+    let gc = h.named(b"GC");
+    let nil = h.named(b"nil");
+    let path = std::env::temp_dir().join(format!(
+        "birnam-minimal-mutation-{}.dylib",
+        std::process::id()
+    ));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/minimal-mutation.c")
             )
-            .kind(),
-            birnam_abi::id_protocol::UNIT
-        );
-        h.call(child_vt, b"addMethod:as:", &[second, selector]);
-        for _ in 0..32 {
-            assert_eq!(h.number(h.call(child, b"answer", &[])), 22);
-        }
-        assert_eq!(h.number(h.call(parent, b"answer", &[])), 11);
-        let captured = h.call(child, b"methodFor:", &[selector]);
-        let before = h.epoch();
-        assert!(
-            send(id, child_vt, b"removeMethod:", &[Operand::object(selector)])
-                .as_entry()
-                .is_some()
-        );
-        assert!(h.epoch() > before);
-        assert_eq!(h.number(h.call(child, b"answer", &[])), 11);
-        let args = h.call(h.named(b"Vector"), b"new", &[]);
-        assert_eq!(
-            h.number(h.call(captured, b"invokeOn:arguments:", &[child, args])),
-            22
-        );
-        let before = h.epoch();
-        assert_eq!(
-            send(id, child_vt, b"removeMethod:", &[Operand::object(selector)]).kind(),
-            birnam_abi::id_protocol::UNIT
-        );
-        assert!(h.epoch() >= before); // existing epochs conservatively include removal attempts
-        h.call(child_vt, b"addMethod:as:", &[second, selector]);
-        let snapshot = h.epoch();
-        h.call(child_vt, b"addMethod:as:", &[first, selector]);
-        h.call(child_vt, b"addMethod:as:", &[second, selector]);
-        assert!(
-            h.epoch() > snapshot,
-            "an explicit prepared operation can detect ABA without an authorizer"
-        );
-        // A retained outer Method still sends through its implementation's current value:.
-        let implementation_vt = h.call(id.receiver, b"ensurePrivateVtableFor:", &[one]);
-        let value = h.integer(33);
-        install(id, implementation_vt, b"value:", constant, value.cast());
-        assert_eq!(
-            h.number(h.call(first, b"invokeOn:arguments:", &[child, args])),
-            33
-        );
-        send(
-            id,
-            implementation_vt,
-            b"removeMethod:",
-            &[Operand::object(id.intern_name(b"value:").unwrap())],
-        );
-        assert_eq!(
-            h.number(h.call(first, b"invokeOn:arguments:", &[child, args])),
-            11
-        );
-        // Keep only the dictionary edge to this Method, then replace it from inside
-        // its own body. Native context fields deliberately are not collector roots.
-        let mark = h.tokens.borrow().len();
-        let body = h.program(2);
-        let entered = h.call(template, b"withImplementation:", &[body]);
-        h.call(child_vt, b"addMethod:as:", &[entered, selector]);
-        h.clear_from(mark);
-        let mut state = Box::new(Switch {
-            id,
-            gc,
-            vtable: child_vt,
-            selector,
-            replacement: second,
-            entered,
-            body,
-            calls: Cell::new(0),
-        });
-        install(
-            id,
-            child_vt,
-            b"replaceNow",
-            switch,
-            (&mut *state as *mut Switch).cast(),
-        );
-        assert_eq!(h.number(h.call(child, b"answer", &[])), 11);
-        assert_eq!(state.calls.get(), 1);
-        assert_eq!(h.number(h.call(child, b"answer", &[])), 22);
-        collect(id, gc);
-        assert!(
-            !present(id, entered) && !present(id, body),
-            "retired binding and body must collect after the entered call ends"
-        );
-        let unary = h.template(1);
-        let body = h.program(3);
-        let method = h.call(unary, b"withImplementation:", &[body]);
-        let argument = h.call(prototype, b"clone", &[]);
-        let unary_selector = h.keep(id.intern_name(b"echo:").unwrap());
-        h.call(child_vt, b"addMethod:as:", &[method, unary_selector]);
-        assert_eq!(h.call(child, b"echo:", &[argument]), argument);
-        // The production Reflect facade now uses these same owners. It must
-        // neither resolve Generation nor require a Store for a prepared body.
-        let reflect = h.named(b"Reflect");
-        let ordinary = h.keep(id.intern_name(b"ordinaryFacade").unwrap());
-        assert_eq!(
-            h.call(reflect, b"defineMethod:on:as:", &[ordinary, child, one]),
-            child
-        );
-        assert_eq!(h.number(h.call(child, b"ordinaryFacade", &[])), 11);
-        assert_eq!(
-            h.call(reflect, b"removeMethod:on:", &[ordinary, child]),
-            child
-        );
-        assert_eq!(
-            send(
-                id,
-                id.receiver,
-                b"bindingOf:in:",
-                &[Operand::object(ordinary), Operand::object(child_vt)]
-            )
-            .kind(),
-            birnam_abi::id_protocol::UNIT
-        );
-        // A raw native binding has no Execution-owned Method. Removal must
-        // still work; the optional lifetime query legitimately returns Unit.
-        install(id, child_vt, b"rawOrdinary", constant, value.cast());
-        let raw = h.keep(id.intern_name(b"rawOrdinary").unwrap());
-        assert_eq!(h.call(reflect, b"removeMethod:on:", &[raw, child]), child);
-        assert_eq!(send(id, id.receiver, b"bindingOf:in:", &[Operand::object(raw), Operand::object(child_vt)]).kind(), birnam_abi::id_protocol::UNIT);
-        // No managed notification registration or hidden namespace owner appeared.
-        for name in [
-            b"Store".as_slice(),
-            b"db",
-            b"Relational",
-            b"Generation",
-            b"MethodPublication",
-        ] {
-            assert!(
-                send(
-                    id,
-                    ns,
-                    b"at:",
-                    &[Operand::object(id.intern_name(name).unwrap())]
-                )
-                .as_object()
-                .is_none()
-            );
-        }
-        let _ = nil;
-        h.clear_from(0);
-        eprintln!(
-            "minimal-mutation: direct install/remove, inheritance, warmed lookup, captured/entered Methods, live implementation sends, ABA and GC passed without Store/Relational/Generation"
-        );
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let fixture = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let method = |n: &[u8], context| {
+        q.call(
+            q.call(fixture, b"methodAt:", &[h.key(n)]).unwrap(),
+            b"withContext:",
+            &[context],
+        )
+        .unwrap()
+    };
+    let monitor = q.call(prototype, b"clone", &[]).unwrap();
+    let mv = q
+        .call(host.id.root, b"ensurePrivateVtableFor:", &[monitor])
+        .unwrap();
+    for n in [b"allocation:bytes:identity:".as_slice(), b"present:"] {
+        q.call(
+            mv,
+            b"addMethod",
+            &[h.key(n), method(n, std::ptr::null_mut())],
+        )
+        .unwrap();
     }
+    let identity = |o| q.call(host.id.root, b"identityOf:", &[o]).unwrap();
+    let present = |id| q.call(monitor, b"present:", &[id]).unwrap() == size(1).unwrap();
+    let program = |index| {
+        let bytes = std::fs::read(programs.join(format!("{index}.bin"))).unwrap();
+        let bytes = h.call(
+            h.named(b"Bytes"),
+            b"fromBytes:",
+            &[q.byte_values(&bytes).unwrap()],
+        );
+        let code = h.call(h.named(b"CodeObject"), b"fromCanonicalBytes:", &[bytes]);
+        let captures = h.call(h.named(b"Vector"), b"new", &[]);
+        h.call(
+            h.named(b"Codegen"),
+            b"materializeResumable:captures:",
+            &[code, captures],
+        )
+    };
+    let template = |arity| {
+        h.call(
+            h.named(b"Codegen"),
+            b"methodTemplateForArity:synchronous:",
+            &[h.integer(arity), h.named(b"false")],
+        )
+    };
+    let epoch = || as_size(h.call(host.id.root, b"bindingEpoch", &[])).unwrap();
+    let direct = |vt, selector| {
+        h.call(
+            h.named(b"Execution"),
+            b"directMethodFor:in:",
+            &[selector, vt],
+        )
+    };
+    let selector = h.key(b"answer");
+    let zero = template(0);
+    let one = program(0);
+    let two = program(1);
+    let before = epoch();
+    let first = h.call(zero, b"withImplementation:", &[one]);
+    let second = h.call(zero, b"withImplementation:", &[two]);
+    assert_ne!(first, second);
+    if case == "construction" {
+        assert_eq!(
+            epoch(),
+            before,
+            "binding construction must not edit a live dictionary"
+        );
+        return;
+    }
+    assert_eq!(case, "mutation");
+    let parent = h.call(prototype, b"clone", &[]);
+    let parent_vt = h.call(host.id.root, b"ensurePrivateVtableFor:", &[parent]);
+    assert_eq!(
+        h.call(parent_vt, b"addMethod:as:", &[first, selector]),
+        first
+    );
+    let child = h.call(parent, b"clone", &[]);
+    let child_vt = h.call(host.id.root, b"ensurePrivateVtableFor:", &[child]);
+    assert_eq!(h.number(h.call(child, b"answer", &[])), 11);
+    assert_eq!(direct(child_vt, selector), nil);
+    h.call(child_vt, b"addMethod:as:", &[second, selector]);
+    for _ in 0..32 {
+        assert_eq!(h.number(h.call(child, b"answer", &[])), 22);
+    }
+    assert_eq!(h.number(h.call(parent, b"answer", &[])), 11);
+    let captured = h.call(child, b"methodFor:", &[selector]);
+    let before = epoch();
+    assert_eq!(h.call(child_vt, b"removeMethod:", &[selector]), second);
+    assert!(epoch() > before);
+    assert_eq!(h.number(h.call(child, b"answer", &[])), 11);
+    let args = h.call(h.named(b"Vector"), b"new", &[]);
+    assert_eq!(
+        h.number(h.call(captured, b"invokeOn:arguments:", &[child, args])),
+        22
+    );
+    let before = epoch();
+    assert!(h.call(child_vt, b"removeMethod:", &[selector]).is_null());
+    assert!(epoch() >= before);
+    h.call(child_vt, b"addMethod:as:", &[second, selector]);
+    let before = epoch();
+    h.call(child_vt, b"addMethod:as:", &[first, selector]);
+    h.call(child_vt, b"addMethod:as:", &[second, selector]);
+    assert!(
+        epoch() > before,
+        "the existing epoch observes remove/replacement cycles"
+    );
+    let iv = h.call(host.id.root, b"ensurePrivateVtableFor:", &[one]);
+    let value = h.integer(33);
+    h.call(
+        iv,
+        b"addMethod",
+        &[h.key(b"value:"), method(b"fixed", value)],
+    );
+    assert_eq!(
+        h.number(h.call(first, b"invokeOn:arguments:", &[child, args])),
+        33
+    );
+    h.call(iv, b"removeMethod:", &[h.key(b"value:")]);
+    assert_eq!(
+        h.number(h.call(first, b"invokeOn:arguments:", &[child, args])),
+        11
+    );
+    let mark = h.mark();
+    let body = program(2);
+    let entered = h.call(zero, b"withImplementation:", &[body]);
+    let entered_id = identity(entered);
+    let body_id = identity(body);
+    h.call(child_vt, b"addMethod:as:", &[entered, selector]);
+    h.clear_from(mark);
+    let state = q
+        .call(
+            host.id.root,
+            b"sequence",
+            &[
+                gc,
+                child_vt,
+                selector,
+                second,
+                entered_id,
+                body_id,
+                size(0).unwrap(),
+                monitor,
+            ],
+        )
+        .unwrap();
+    h.call(
+        child_vt,
+        b"addMethod",
+        &[h.key(b"replaceNow"), method(b"switch", state)],
+    );
+    assert_eq!(h.number(h.call(child, b"answer", &[])), 11);
+    assert_eq!(
+        as_size(q.call(state, b"at:", &[size(6).unwrap()]).unwrap()),
+        Some(1)
+    );
+    assert_eq!(h.number(h.call(child, b"answer", &[])), 22);
+    h.collect();
+    assert!(
+        !present(entered_id) && !present(body_id),
+        "replaced Method and body must collect after the entered call ends"
+    );
+    let unary = template(1);
+    let body = program(3);
+    let implementation = h.call(unary, b"withImplementation:", &[body]);
+    let argument = h.call(prototype, b"clone", &[]);
+    let echo = h.key(b"echo:");
+    h.call(child_vt, b"addMethod:as:", &[implementation, echo]);
+    assert_eq!(h.call(child, b"echo:", &[argument]), argument);
+    let reflect = h.named(b"Reflect");
+    let ordinary = h.key(b"ordinaryFacade");
+    assert_eq!(
+        h.call(reflect, b"defineMethod:on:as:", &[ordinary, child, one]),
+        child
+    );
+    assert_eq!(h.number(h.call(child, b"ordinaryFacade", &[])), 11);
+    assert_eq!(
+        h.call(reflect, b"removeMethod:on:", &[ordinary, child]),
+        child
+    );
+    assert_eq!(direct(child_vt, ordinary), nil);
+    let native = h.key(b"nativeOrdinary");
+    h.call(child_vt, b"addMethod", &[native, method(b"fixed", value)]);
+    assert_eq!(
+        h.call(reflect, b"removeMethod:on:", &[native, child]),
+        child
+    );
+    assert_eq!(direct(child_vt, native), nil);
+    absent();
+    h.clear_from(0);
 }

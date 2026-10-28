@@ -1,0 +1,104 @@
+{
+  "export": {
+    "argv": [
+      "/private/tmp/birnam-oop-adapters-wt7knhai/prefix/bin/birnam",
+      "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-minimal-mutation-ir9nno9k/export.birnam"
+    ],
+    "exit_code": 0,
+    "output": "0\n0\n0\n0\n",
+    "stderr": "",
+    "stdout": "0\n0\n0\n0\n",
+    "wall_ns": 11733093000
+  },
+  "floor_sha256": {
+    "libbirnam_boolean.dylib": "e80347f2a737885050594b7d747cc6bcb589915959652b61703fab55f87a2aea",
+    "libbirnam_bytes.dylib": "2fa0fa14a0b70901f57ca9747e75f2f8d4ff5f9962ed421d0a7ef76f68a814c0",
+    "libbirnam_codegen_runtime.dylib": "ea81458e35c83216e3260e0daf8fa544339d4b8434ae08412fdb5668c6c57cc5",
+    "libbirnam_collect.dylib": "aff34cf5578f941983d2ac3d826fb62fcc8e2759b9eb5bf3f3e8aeb8bfa09a44",
+    "libbirnam_execution.dylib": "46f4e30ac761998253a509e8b45f00d95ae066bacb42eefc8e099aa8db8d5428",
+    "libbirnam_id.dylib": "e7c367c4e9ef04f5c88babedc47416fdffce50cad417b86b1355b9c37ae651b3",
+    "libbirnam_integer.dylib": "744e6f18cc74aaf03aeffaae188d0770c70ec046318a7144389f4b471ce9c4ce",
+    "libbirnam_map.dylib": "731dfe72cdedc0444cccba8868cdeef31a703dd931355a14caa026f9562ffbc0",
+    "libbirnam_namespace.dylib": "e7d8a486d7f7d7334afa86272d852be3136ad08a86ecf90829577b6db126a76c",
+    "libbirnam_native_backend.dylib": "d6118cf077f7e38ac71aaabac7d7046f5c139fcf527ac43def84ebbca5a4071a",
+    "libbirnam_nil.dylib": "f1b5a77fead579ee620891f54aeabbcb1ba726095a08130729d49b0f5d6663b7",
+    "libbirnam_object_model.dylib": "c4b9cbe2098bd568b3a1e4f44f41db824621af84a95e09c2e419c7e0e49ab548",
+    "libbirnam_portable_code.dylib": "3c877f1fa2d107a1e00c3a0111ea70a5fcf278c136289d22e99d5e908f0d9a7a",
+    "libbirnam_root_registry.dylib": "5e327132906f1f76b620d16949a66a16ff4cd979d56c6b4d885c14f134a63eb2",
+    "libbirnam_string.dylib": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+    "libbirnam_tcc.dylib": "37ab9b8697a85e673333f8070a0aea17a0dd3c2792237d3b0dde343621dc5fb3",
+    "libbirnam_vector.dylib": "5b36a3c969ee29edb6887a4f1d6fabb69828ca5aa0b5fc05d57280316c289c85",
+    "libbirnam_word.dylib": "38ecf2543c2c2379aa632754af652dacd34eb5996c8c12af63409b2ac942dd90"
+  },
+  "passed": false,
+  "prefix": "/private/tmp/birnam-oop-adapters-wt7knhai/prefix",
+  "program_sha256": {
+    "0.bin": "815858a32736d3c8fd5963678ce9981a27ca13ee4b61b15bd9e424566dc2a66e",
+    "1.bin": "2c91241ffe308d2d1ffed34c3b0e4bf7c9a8caf8a043f03301a84743c268ab18",
+    "2.bin": "967c92521441fd2e678f42cf8acad89add6330a2f7153abb314849ed71eadff2",
+    "3.bin": "4e0fc7fabe49b47be81e545cb469fe9d404fe859d41305dc3f4f397f4542b5f3"
+  },
+  "run": {
+    "argv": [
+      "mise",
+      "exec",
+      "--",
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-p",
+      "birnam-siphon",
+      "--test",
+      "minimal_mutation",
+      "--",
+      "--include-ignored",
+      "--nocapture"
+    ],
+    "exit_code": 101,
+    "output": "\nrunning 1 test\n\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... FAILED\n\nfailures:\n\nfailures:\n    direct_mutation_needs_no_store_generation_or_publication_owner\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s\n\n\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s\n\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... FAILED\n\nfailures:\n\nfailures:\n    direct_mutation_needs_no_store_generation_or_publication_owner\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s\n     Running tests/minimal_mutation.rs (.cargo-target/native-message-tests/debug/deps/minimal_mutation-5a370b6bcba94ea0)\n\nthread 'direct_mutation_needs_no_store_generation_or_publication_owner' (41446565) panicked at rust/birnam-siphon/tests/minimal_mutation.rs:151:9:\nassertion `left == right` failed: binding construction must not edit a live dictionary\n  left: 674\n right: 664\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'direct_mutation_needs_no_store_generation_or_publication_owner' (41446563) panicked at rust/birnam-siphon/tests/minimal_mutation.rs:28:13:\nall isolated mutation contracts must pass\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p birnam-siphon --test minimal_mutation`\n",
+    "stderr": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s\n     Running tests/minimal_mutation.rs (.cargo-target/native-message-tests/debug/deps/minimal_mutation-5a370b6bcba94ea0)\n\nthread 'direct_mutation_needs_no_store_generation_or_publication_owner' (41446565) panicked at rust/birnam-siphon/tests/minimal_mutation.rs:151:9:\nassertion `left == right` failed: binding construction must not edit a live dictionary\n  left: 674\n right: 664\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'direct_mutation_needs_no_store_generation_or_publication_owner' (41446563) panicked at rust/birnam-siphon/tests/minimal_mutation.rs:28:13:\nall isolated mutation contracts must pass\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p birnam-siphon --test minimal_mutation`\n",
+    "stdout": "\nrunning 1 test\n\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... FAILED\n\nfailures:\n\nfailures:\n    direct_mutation_needs_no_store_generation_or_publication_owner\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s\n\n\nrunning 1 test\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s\n\ntest direct_mutation_needs_no_store_generation_or_publication_owner ... FAILED\n\nfailures:\n\nfailures:\n    direct_mutation_needs_no_store_generation_or_publication_owner\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s\n\n",
+    "wall_ns": 217076458
+  },
+  "scope": "Open construction-epoch contract regression plus independently passing ordinary mutation behavior on a minimal Oop floor",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/minimal_mutation.rs": "7ccafc37c3035d1f5f553d830973cc73db63b249fb854c6b5fd194a597d0806f",
+    "rust/birnam-siphon/tests/support/minimal.rs": "5ab638bf277403f0ff350c217b6735d618bb05f4d632eff07c607b5631b29f08",
+    "scripts/minimal-mutation-test.py": "ae5eee01f4101afff13b60067f6c93cf976bbc1baec73225728e99baa593f729",
+    "tests/fixtures/oop-host/minimal-mutation.c": "09654e146f7886789750a8b74a5ddc230e417fed8f2c95a60fe94f496939288a"
+  },
+  "base_revision": "ec4211bfecc201547cb991632210b796c77d195f",
+  "runtime_revision": "1fa7e3c2171d6ddda6b7d97157d92e2fb6bf2ceb",
+  "original_receipt": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-minimal-mutation-ir9nno9k/results.json",
+  "original_receipt_sha256": "d9c98ab7d4aec0ab11b77e58799516587e80a9f370834d695beff5ffc5c6c38a",
+  "runtime_changes": false,
+  "id_changes": false,
+  "construction": {
+    "passed": false,
+    "epoch_before": 664,
+    "epoch_after": 674,
+    "cause": "Codegen implementation() installs four metadata Methods in a new private vtable and reassociates each constructed Method, advancing the coarse binding epoch five times per Method.",
+    "authority": "docs/design/minimal-mutation-and-coordination.md: pure Method construction without changing dictionary epoch",
+    "decision": "Pending user clarification; neither the assertion nor Id semantics was weakened."
+  },
+  "mutation": {
+    "passed": true,
+    "log": ".cargo-target/oop-current-qualification/minimal-mutation-behavior.log",
+    "log_sha256": "6664be157bfceae2df1bac1ccf39bce95526678e8cf923b203775f86533a2cc5",
+    "checks": [
+      "Inherited and warmed lookup observe direct replacement",
+      "Captured Method still executes after removal",
+      "Existing epoch observes replacement cycles",
+      "Retained Method calls current implementation value:",
+      "Entered Method/body survive replacement and GC, then reclaim after return",
+      "Ordinary Reflect definition/removal works with portable and declared native Methods",
+      "No Store, Relational, Generation, Bootstrap, Lang, MethodPublication or Globals binding is introduced"
+    ]
+  },
+  "adjacent_globals": {
+    "passed": true,
+    "log": ".cargo-target/oop-current-qualification/mutation-floor-globals.log",
+    "log_sha256": "ee504c9a59333aa8a87b85c069f498ca39efe2d47e58eeee7ff57ce4ddd02090"
+  }
+}

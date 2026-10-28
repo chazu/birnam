@@ -1,5 +1,11 @@
 # Continuation-aware Id: design and proof checkpoint
 
+**Open contract regression (2026-10-27):** ordinary Method construction currently
+advances the binding epoch while initializing private metadata behavior. The
+preserved purity assertion fails (664 → 674 for two Methods). This is unresolved,
+not a qualified implementation of that contract. No Id change or test relaxation
+has been made; see [the evidence](../measurements/minimal-mutation-epoch-oop-20261027.json).
+
 2026-10-24. Id, the explicit compiler paths, TCC and Execution now use the
 continuation contract. Their native/source gate passes, including the original
 custom-lookup tail regression. This is not completion of the broader runtime,
@@ -3006,3 +3012,21 @@ provider controls add Store alone. No runtime or Id changes were needed.
 The corrected cold 1fa7e3c2 candidate also passes all 17 Host generation checks in
 one unchanged run. Its remaining Host groups continue separately.
 [Receipt](../measurements/fixed-adapters-generation-oop-20261027.json).
+
+
+## Minimal mutation: passing behavior, failing construction purity
+
+The isolated Oop fixture now uses the existing Codegen template operation,
+`withImplementation:`, direct Method observations and declared callbacks. Store,
+Relational, Generation, Bootstrap and Lang are absent. Unlike the old fixture,
+it requires no Globals alias. Inheritance, warmed lookup, captured/entered Method
+lifetime, current implementation sends, replacement epochs and Reflect mutation
+all pass in a separate process. Reclamation checks use weak allocation identities.
+
+The default runner also executes the construction-purity case and remains failing.
+Codegen creates four metadata getter/binder Methods in a private vtable and
+reassociates each new Method, changing the coarse epoch five times. That conflicts
+with the documented zero-epoch-change preparation contract. The distinction is
+now explicit: ordinary mutation behavior is proven, construction purity is not.
+No runtime fix, new Id protocol or private metadata registry has been introduced.
+[Evidence](../measurements/minimal-mutation-epoch-oop-20261027.json).
