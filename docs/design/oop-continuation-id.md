@@ -3030,3 +3030,14 @@ with the documented zero-epoch-change preparation contract. The distinction is
 now explicit: ordinary mutation behavior is proven, construction purity is not.
 No runtime fix, new Id protocol or private metadata registry has been introduced.
 [Evidence](../measurements/minimal-mutation-epoch-oop-20261027.json).
+
+## Host qualification limits after the purity finding
+
+The earlier a3eaa227 candidate has completed all 63 Host checks across its recorded
+unchanged generation retry. Its 827-file installation manifest remains exact.
+The corrected 1fa7e3c2 candidate has also completed all six interaction checks and
+continues with tasks, CLI and image groups. These suites do not establish the
+construction-epoch purity requirement: that independent contract still fails and
+remains unresolved. The earlier candidate also predates the null-validation fix.
+[Earlier image receipt](../measurements/language-image-oop-20261027.json),
+[corrected interaction receipt](../measurements/fixed-adapters-interaction-oop-20261027.json).
