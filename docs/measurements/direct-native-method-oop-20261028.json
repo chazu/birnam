@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "ac6eb102411a6d18af75132a7edafe1430efed1f",
+  "scope": "Direct native-conversion Method construction and consolidation of native signature state; default Reflect and direct-Method image migration remain pending.",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "99a81a94d6d5723b6f4076f80683e2a588c9e861db23fe9ba63200727b89f624",
+    "rust/birnam-execution/src/oop_reflection.rs": "3eee07a3b97d3c3cd518b58ac7b087212b8f235c5f1034dd7b35c6763bd3769e",
+    "rust/birnam-execution/src/synchronous.rs": "1e2b23fee71a6debba913742e3767535a7e6fc381612133df4c6e82ac0021c9b",
+    "rust/birnam-siphon/tests/direct_native_method.rs": "075d8cc26a60021d78da239f204c18e0af43809e17cf35a6dd4197ee5849888f",
+    "scripts/native-message-test.sh": "f242ded1e657b4ff521d6b09ae4ba24e312816f733a5e20dc6926cff959a109a"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/native-method-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "units": {
+      "path": ".cargo-target/oop-current-qualification/native-method-milestone/units.log",
+      "sha256": "c8cfaf9918fc72208e1f624ac5037d652809801b1f6ae4c309b0b79922871192",
+      "result": "passed"
+    },
+    "runtime": {
+      "path": ".cargo-target/oop-current-qualification/native-method-milestone/runtime.log",
+      "sha256": "2d21e4373a525267ee0317ab7379808875d04171f126fbcb0a1fc41e94e456f0",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/native-method-milestone/focused.log",
+      "sha256": "df5915645a477b09fb9b4e85bfc705023a9963565cf8f5d816486bce999f97ce",
+      "result": "passed"
+    },
+    "native_construction_lifetime": {
+      "path": ".cargo-target/oop-current-qualification/native-method-milestone/native_construction_lifetime.log",
+      "sha256": "5bc91ed705e1b3d7435c05ab32ba9e478d622733b233f5fa8621cad23be3f9d7",
+      "result": "passed"
+    }
+  },
+  "focused_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/native-method-rbpra32z/prefix",
+  "focused_execution_sha256": "2de883333fc753a4cf5926ccd8dc8ea3f56de4b33e795a6982049e5cbbd38fdb",
+  "core_execution_sha256": "40be27f075e90f2053eb44c5e0a57d10b90518e3b7527f1aba87a2137648d67c",
+  "source_note": "Focused tests used the final implementation before formatting. Core rebuilt after formatting oop_native and oop_reflection; later changes were comments and declaration formatting only.",
+  "verified": [
+    "binding epoch unchanged by direct construction",
+    "default Method behavior",
+    "actual receiver and lexical captures",
+    "no source Block value lookup",
+    "signature reflection snapshots and captured Method identity",
+    "Word/Bytes conversions",
+    "native failure identity and observer receiver/detail",
+    "invalid arguments rejected before native body effects",
+    "deferred branch suspension/resumption across GC",
+    "deferred native failure observation",
+    "synchronous generated body",
+    "unfinished image shells rejected by both native constructors",
+    "mapping retained by installed Method and released after binding removal",
+    "existing Block arity and native numeric inputs",
+    "existing typed Block image round trips",
+    "publication failure/callback handling"
+  ],
+  "architecture_review": {
+    "id": "Unchanged API and payload opacity",
+    "native_state": "One parsed signature per native entry context replaces duplicate context/Method signature records",
+    "context": "Sequence owns executable, lexical environment and the Method used for explicit owner reflection; all access uses Id",
+    "general_admission": "Reduced to portable-code arity values; native conversion enforces its own arguments",
+    "gc": "Existing Sequence tracing and retirement cleanup; signature table retains no Oops",
+    "definitions": "No private metadata vtable or generic application protocol in the new constructor"
+  },
+  "remaining": [
+    "Reflect/default definition migration",
+    "ordinary arity and DNU integration",
+    "synchronous provider direct environment binding",
+    "optional Method reflection and image recipes",
+    "generic admission and template removal",
+    "full same-revision native/cold/relocated/Host qualification"
+  ]
+}

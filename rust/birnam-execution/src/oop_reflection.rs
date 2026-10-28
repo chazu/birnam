@@ -35,7 +35,7 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             return Err(invalid());
         };
         let q = s.scope(&[r, *code]);
-        let arity = if *code == s.nil {
+        let arity = if *code == s.nil || native_adapters::owns(s, r, &q)? {
             None
         } else {
             let factory = q.keep(s.named(b"CodeObject")?);
@@ -52,9 +52,9 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
         )?;
         s.send(s.id.root, b"reassociateBehaviorOf:with:", &[r, private])?;
         let mut records = s.admitted.borrow_mut();
-        let record = records.entry(r.addr()).or_default();
-        record.arity = arity;
-        if record.arity.is_none() && record.native_signature.is_none() {
+        if let Some(arity) = arity {
+            records.insert(r.addr(), arity);
+        } else {
             records.remove(&r.addr());
         }
         Ok(r)

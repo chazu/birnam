@@ -23,17 +23,11 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
-#[derive(Clone, Default)]
-struct Admitted {
-    arity: Option<usize>,
-    // Immutable admission data for Methods and native-adapter contexts.
-    // Weak keys are removed before address reuse; these values contain no Oops.
-    native_signature: Option<std::sync::Arc<abi::native_signature::Signature>>,
-}
 struct State {
     id: Protocol,
     control: Control,
     native_value: Oop,
+    native_method_value: Oop,
     native_answer: Oop,
     capture_seed: Oop,
     block_value_seed: Oop,
@@ -48,9 +42,11 @@ struct State {
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     storage: RefCell<Objects>,
-    // Admission facts owned by Execution. Keys retain neither Methods nor
-    // adapter contexts; retirement removes both before address reuse.
-    admitted: RefCell<HashMap<usize, Admitted>>,
+    // Portable-code arities are temporary admission data owned by Execution.
+    admitted: RefCell<HashMap<usize, usize>>,
+    // Parsed signatures belong only to explicit native entry contexts. The
+    // context's Sequence owns its executable, environment and declared Method.
+    native_signatures: RefCell<HashMap<usize, std::sync::Arc<abi::native_signature::Signature>>>,
     engine: RefCell<ExecutionState>,
     resume: RefCell<resumable::Runtime>,
     depth: Cell<usize>,
@@ -250,15 +246,7 @@ unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> O
             return Err(invalid());
         }
         let method = q.keep(s.field(r, 0)?);
-        let admitted = s
-            .admitted
-            .borrow()
-            .get(&method.addr())
-            .cloned()
-            .unwrap_or_default();
-        if admitted.native_signature.is_none()
-            && admitted.arity.is_some_and(|arity| arity != args.len())
-        {
+        if s.admitted.borrow().get(&method.addr()).is_some_and(|arity| *arity != args.len()) {
             return Err(invalid());
         }
         // Block entry preserves the body's native result. Machine call completion
@@ -442,6 +430,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.block,
             s.block_vt,
             s.native_value,
+            s.native_method_value,
             s.native_answer,
             s.capture_seed,
             s.block_value_seed,
@@ -489,6 +478,7 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
         for &v in values {
             storage.remove(v);
             s.admitted.borrow_mut().remove(&v.addr());
+            s.native_signatures.borrow_mut().remove(&v.addr());
         }
         Ok(ptr::null_mut())
     })()
@@ -761,6 +751,8 @@ const NAMES: &[&[u8]] = &[
     b"optimizeWith:",
     b"numericOperation:left:right:",
     b"methodFromBlock:",
+    b"method:withNativeSignature:",
+    b"nativeMethodValue",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1002,6 +994,8 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"optimizeWith:"),
     Literal::new(b"numericOperation:left:right:"),
     Literal::new(b"methodFromBlock:"),
+    Literal::new(b"method:withNativeSignature:"),
+    Literal::new(b"nativeMethodValue"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1574,6 +1568,16 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(resumable::method_from_block),
         convention: 0,
     },
+    MethodSpec {
+        name: 239,
+        entry: Some(native_adapters::method_with_signature),
+        convention: 0,
+    },
+    MethodSpec {
+        name: 240,
+        entry: Some(native_adapters::method_value),
+        convention: 1,
+    },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1636,6 +1640,11 @@ unsafe extern "C" fn initialize(
                 b"methodAt:",
                 &[names[b"nativeSignatureValue".as_slice()]],
             )?)?,
+            native_method_value: keep(send(
+                image,
+                b"methodAt:",
+                &[names[b"nativeMethodValue".as_slice()]],
+            )?)?,
             native_answer: keep(send(
                 image,
                 b"methodAt:",
@@ -1663,6 +1672,7 @@ unsafe extern "C" fn initialize(
             scoped: RefCell::new(Vec::new()),
             storage: RefCell::new(Objects::default()),
             admitted: RefCell::new(HashMap::new()),
+            native_signatures: RefCell::new(HashMap::new()),
             engine: RefCell::new(ExecutionState::new(1)),
             resume: RefCell::new(resumable::Runtime::default()),
             depth: Cell::new(0),
@@ -1677,6 +1687,7 @@ unsafe extern "C" fn initialize(
             if matches!(
                 name,
                 b"nativeSignatureValue"
+                    | b"nativeMethodValue"
                     | b"nativeDeferredAnswer"
                     | b"codeValue"
                     | b"binding:value:weak:"

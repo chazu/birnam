@@ -117,6 +117,18 @@ pub(super) unsafe extern "C" fn with_signature(
     a: *const Oop,
     n: usize,
 ) -> Oop {
+    unsafe { construct(c, a, n, false) }
+}
+pub(super) unsafe extern "C" fn method_with_signature(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { construct(c, a, n, true) }
+}
+unsafe fn construct(c: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let [block, sig] = borrowed_slice(a, n).ok_or_else(invalid)? else {
@@ -126,28 +138,41 @@ pub(super) unsafe extern "C" fn with_signature(
         let parsed = std::sync::Arc::new(signature(s, &q, *sig)?);
         // Signature bytes are immutable admission data, not a mutable object
         // hidden in the context. Public reflection returns a fresh byte value.
-        let sig = q.keep(new_bytes(s, &q, parsed.bytes())?);
+        if s.storage.borrow().family_of(*block) != Some(s.block_vt)
+            || s.storage.borrow().image_shell(*block)
+        {
+            return Err(invalid());
+        }
         let mut fields = s.fields(*block)?;
         for &value in &fields {
             q.keep(value);
         }
         let method = *fields.first().ok_or_else(invalid)?;
-        let context = q.keep(s.send(s.id.root, b"sequence", &[method])?);
-        s.admitted.borrow_mut().insert(
-            context.addr(),
-            Admitted {
-                arity: None,
-                native_signature: Some(parsed.clone()),
+        // Executable and environment are program state. The final reference
+        // supports owner reflection without a second per-Method signature index.
+        let context = q.keep(s.send(
+            s.id.root,
+            b"sequence",
+            &[method, if bound { *block } else { s.nil }, s.nil],
+        )?);
+        let declared = q.keep(s.send(
+            if bound {
+                s.native_method_value
+            } else {
+                s.native_value
             },
-        );
-        fields[0] = q.keep(s.send(s.native_value, b"withContext:", &[context])?);
-        s.admitted.borrow_mut().insert(
-            fields[0].addr(),
-            Admitted {
-                arity: Some(parsed.arguments().len() + 1),
-                native_signature: Some(parsed),
-            },
-        );
+            b"withContext:",
+            &[context],
+        )?);
+        s.send(context, b"at:put:", &[abi::size(2).unwrap(), declared])?;
+        s.native_signatures
+            .borrow_mut()
+            .insert(context.addr(), parsed.clone());
+        if bound {
+            return Ok(declared);
+        }
+        let sig = q.keep(new_bytes(s, &q, parsed.bytes())?);
+        fields[0] = declared;
         let code = q.keep(s.send(method, b"codeObject", &[])?);
         if code != s.nil {
             let code = q.keep(s.send(code, b"withNativeSignature:", &[sig])?);
@@ -161,6 +186,34 @@ pub(super) unsafe extern "C" fn with_signature(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
+// This index is the native executable's required signature state, not a
+// universal Method metadata table. Only construction and explicit reflection scan it.
+unsafe fn signature_for_method(
+    s: &State,
+    method: Oop,
+    q: &Scope<'_>,
+) -> Result<Option<std::sync::Arc<Signature>>, Oop> {
+    unsafe {
+        let entries: Vec<_> = s
+            .native_signatures
+            .borrow()
+            .iter()
+            .map(|(&key, sig)| (q.keep(ptr::with_exposed_provenance_mut(key)), sig.clone()))
+            .collect();
+        for (context, signature) in entries {
+            let declared = q.keep(s.send(context, b"at:", &[abi::size(2).unwrap()])?);
+            if s.send(s.id.root, b"sameNativeMethod:as:", &[method, declared])?
+                == abi::size(1).unwrap()
+            {
+                return Ok(Some(signature));
+            }
+        }
+        Ok(None)
+    }
+}
+pub(super) unsafe fn owns(s: &State, method: Oop, q: &Scope<'_>) -> Result<bool, Oop> {
+    unsafe { Ok(signature_for_method(s, method, q)?.is_some()) }
+}
 pub(super) unsafe extern "C" fn native_signature(
     _: Oop,
     c: Oop,
@@ -170,20 +223,16 @@ pub(super) unsafe extern "C" fn native_signature(
 ) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let [block] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let q = s.scope(&[*block]);
-        if s.storage.borrow().family_of(*block) != Some(s.block_vt) {
-            return Ok(s.nil);
-        }
-        let method = s.field(*block, 0)?;
-        let sig = s
-            .admitted
-            .borrow()
-            .get(&method.addr())
-            .and_then(|v| v.native_signature.clone());
-        if let Some(sig) = sig {
+        let q = s.scope(&[*value]);
+        let method = if s.storage.borrow().family_of(*value) == Some(s.block_vt) {
+            s.field(*value, 0)?
+        } else {
+            *value
+        };
+        if let Some(sig) = signature_for_method(s, method, &q)? {
             new_bytes(s, &q, sig.bytes())
         } else {
             Ok(s.nil)
@@ -219,21 +268,43 @@ unsafe fn notify(s: &State, q: &Scope<'_>, receiver: Oop, error: Oop) {
     }
 }
 pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { enter(c, r, a, n, false) }
+}
+pub(super) unsafe extern "C" fn method_value(
+    _: Oop,
+    c: Oop,
+    r: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    unsafe { enter(c, r, a, n, true) }
+}
+unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
     (|| unsafe {
         let s = runtime()?;
         let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
+        };
+        let bound_arguments;
+        let args = if bound {
+            bound_arguments = std::iter::once(r)
+                .chain(args.iter().copied())
+                .collect::<Vec<_>>();
+            bound_arguments.as_slice()
+        } else {
+            args
         };
         let q = s.scope(&[c, r, *k]);
         for &a in args {
             q.keep(a);
         }
         let method = q.keep(context(s, c, 0)?);
+        let environment = if bound { q.keep(context(s, c, 1)?) } else { r };
         let sig = s
-            .admitted
+            .native_signatures
             .borrow()
             .get(&c.addr())
-            .and_then(|v| v.native_signature.clone())
+            .cloned()
             .ok_or_else(invalid)?;
         if args.len() != sig.arguments().len() + 1 {
             if sig.observes_failure() {
@@ -280,7 +351,7 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                 };
                 values.push(q.keep(value));
             }
-            let value = q.keep(s.invoke(method, r, &values)?);
+            let value = q.keep(s.invoke(method, environment, &values)?);
             match sig.result() {
                 b'o' => Ok(value),
                 b'x' => Ok(ptr::null_mut()),

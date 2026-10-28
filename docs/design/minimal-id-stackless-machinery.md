@@ -130,6 +130,53 @@ currently finds its existing code registration through Id identity queries; this
 is construction work, not a new lookup on every Method send. No performance claim
 is made for complete programs by this checkpoint.
 
+## Implementation checkpoint: direct native conversion Methods (2026-10-28)
+
+`Execution method:withNativeSignature:` constructs a Method for an explicit native
+conversion contract. It binds the actual message receiver and lexical environment
+without a method-definition forwarder. This is a real native boundary: argument
+conversion, return conversion and failure observation remain required work.
+[Qualification](../measurements/direct-native-method-oop-20261028.json).
+
+Before, native signature state was duplicated under both a Method address and its
+context in the general admission table. A separate Sequence held the executable,
+and ordinary definitions added a forwarder and private metadata vtable around the
+resulting Block. The new native constructor returns the actual native-conversion
+Method, whose context retains the captured executable and lexical environment.
+
+Parsed signature state now lives once per native context. The general admission
+table holds only portable-code arities. Both the existing explicit typed Block and
+the new Method use the same native conversion implementation. Native arity checks
+stay at that boundary, including observer delivery on a rejected argument list.
+`nativeSignatureOf:` works for Blocks and captured native Methods through the
+owner's existing signature contexts; it does not add metadata to other Methods.
+The context retains its declared Method for this explicit reflection operation,
+replacing the second per-Method signature index. Construction/reflection can scan
+those contexts; invocation reads its own context directly.
+
+All context references are ordinary Sequence fields, read and written through Id.
+Their existing owner supplies GC tracing. The signature table contains no Oops;
+retirement removes dead context keys before address reuse. No Id operation,
+payload catalog, shared private struct or allocation exemption was introduced.
+Default direct construction neither edits bindings nor asks for optional portable
+CodeObject metadata. The legacy typed Block's image metadata remains on its old
+path pending the wider admission/reflection migration.
+
+Tests cover pure construction, actual receiver/captures, poisoning the source
+Block's `value:` lookup, immutable signature reflection, captured Method identity,
+Word/Bytes conversion, exact native failure identity, observer receiver and detail,
+rejection before native effects, a deferred branch that suspends and resumes across
+GC, deferred failure observation, synchronous generated bodies, unfinished-image
+rejection, and code mapping lifetime after source roots and the last binding are
+released. Existing typed-Block image round trips, Block arity, numeric inputs and
+publication failure handling continue to pass. Both native constructors now reject
+unfinished image shells instead of making their unfinished bodies executable.
+
+This makes the required native conversion constructor available. Default Reflect
+migration, direct-Method image recipes and removal of the old definition and
+admission machinery remain pending; this checkpoint does not qualify full startup
+or the entire language migration.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code
