@@ -3308,3 +3308,16 @@ or claimed by this test migration. The full compiler-source and ObjectModel targ
 pass. Shared old helpers now live in the legacy compiler harness solely for its
 two remaining groups, numeric predicates and alias returns.
 [Receipt](../measurements/compiler-clone-oop-20261027.json).
+
+
+## Corrected cold candidate: CLI acceptance
+
+The serial Host run on cold candidate `1fa7e3c2` has completed all 18 CLI
+checks, including provider-independent core execution, worker behavior, native
+wrapping, portable execution and project queries. Image checks are now running.
+No failed CLI check was retried or deadline changed.
+[Receipt](../measurements/fixed-adapters-cli-oop-20261027.json).
+
+This candidate predates the generated root-token validation and typed-callback
+policy corrections. Its passing CLI group does not qualify those later fixes or
+repair the open Method metadata/admission contracts.
