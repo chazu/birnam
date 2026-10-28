@@ -137,26 +137,26 @@ Evidence: [admission failures](../measurements/closure-admission-regressions-oop
 
 ## 3. Continuation wrapping depends on Execution identity bookkeeping
 
-**Status: observable continuation-transparency failure reproduced on 2026-10-28.**
+**Status: original suspension failure repaired; frame-owned answers qualified on
+2026-10-28.**
 
-The independent forwarding probe returns 42 through direct, one-wrapper and
-nested-wrapper answers. Direct suspension/resumption succeeds; both wrapped cases
-return `invalidRequest` after the first effect instead of suspending. No private
-alias registration is used. This demonstrates a control difference in the current
-integration; it does not establish a new Id defect or qualify a repair.
-[Audit and scope](minimal-id-stackless-machinery.md#evidence-including-a-new-counterexample).
+The original independent probe returned 42 through direct, one-wrapper and
+nested-wrapper answers, but only the direct case could suspend. Both wrapped
+cases returned `invalidRequest` after the first effect. Execution had inferred a
+native boundary from an unrecognized answer Method.
 
-[Execution's resumable driver](../../rust/birnam-execution/src/resumable_runtime.rs)
-uses `return_methods` to associate its answer Methods with pending calls. A known
-answer lets the callee join the caller's Machine. Incoming native failure observers
-wrap that answer and call `alias_return` to preserve its identity in this table.
+The repair establishes the boundary using an actual transfer through Id's existing
+`pause:` operation. Accepted transfers continue on the owned driver; a real native
+barrier retains synchronous entry bookkeeping. Frames now own their answer
+continuations and pending-return identities, so capture/restore and protected exit
+move or discard that state with the computation. The separate answer stack and
+`alias_return` registration are removed. Execution's own answer index remains an
+optimization for direct calls and optimizer recovery.
 
-This is local Execution bookkeeping, not shared private state with Id. Existing
-tests cover branch suspension with and without an observer. Nevertheless, special
-recognition of a wrapper can make execution placement depend on more than the
-public continuation operation. This deserves an explicit equivalence check.
+[Contract, operation sequence and ownership](minimal-id-stackless-machinery.md#implementation-checkpoint-frame-owned-answers-2026-10-28).
+[Qualification receipt](../measurements/continuation-forwarding-oop-20261028.json).
 
-**Remediation:** compare direct answers with semantically equivalent forwarding
+**Retained regression obligations:** compare direct answers with semantically equivalent forwarding
 continuations, including nested wrappers and an independently declared wrapper
 that does not call `alias_return`. Compare observable results, failure identity,
 effect order, suspension/resumption, cancellation, cleanup and supported frame

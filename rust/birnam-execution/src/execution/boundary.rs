@@ -7,6 +7,8 @@ use super::*;
 pub(super) struct FrameControl {
     pub(super) boundary_result: Option<usize>,
     pub(super) deliveries: usize,
+    pub(super) answer: Option<FrameAnswer>,
+    pub(super) pending_return: Oop,
 }
 
 pub(crate) struct BoundaryExit {
@@ -85,7 +87,12 @@ impl FrameArena {
             .checked_add(1)
             .ok_or(FrameError::GenerationExhausted)?;
         // A host return has no Birnam handler left to acknowledge the handoff.
-        if slot.return_destination.is_none() {
+        if slot.return_destination.is_none()
+            && slot
+                .control
+                .answer
+                .is_none_or(|answer| answer.completes_drive)
+        {
             return Ok(());
         }
         let caller_index = *self
@@ -102,7 +109,9 @@ impl FrameArena {
             index: caller_index,
             generation: self.slots[caller_index].generation,
         };
-        self.validate_pending_call(caller, slot.return_destination.unwrap().result_slot)?;
+        if let Some(destination) = slot.return_destination {
+            self.validate_pending_call(caller, destination.result_slot)?;
+        }
         let control = &mut self.slots[caller_index].control;
         let total = control
             .deliveries

@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "cc7f92e061aa3bff9ef7bbace218eceb828d31fc",
+  "scope": "Continuation forwarding through the existing Id API; frame-owned answers and pending-return identity. Not full language integration or cold release qualification.",
+  "source_sha256": {
+    "rust/birnam-execution/src/execution.rs": "047a6d3f4db6ceb9d5c7d81611c0eb0cb9ae2f13872609b6c972e6bbe3b0f7bc",
+    "rust/birnam-execution/src/execution/boundary.rs": "8400525233ba6ce12f9cdf092c461152d68b38eec86b1b762c6166cd753270bf",
+    "rust/birnam-execution/src/resumable_runtime.rs": "32d616f491417e962e43bf600c451332d54a658f165e529251f373eeb123ba30",
+    "rust/birnam-execution/src/oop_native.rs": "fbad2fdebdf4c8c0cda92b9c4143e1713ac00a233f541e3fb4453145dc8f2134",
+    "rust/birnam-siphon/tests/continuation_transparency.rs": "5aa80d008a7120a8c227b20bf343e932c0422edd75e98be0262b4703dc5880fc",
+    "tests/fixtures/oop-continuation/transparent-answer.c": "773b0e26e6e7f213e643844a47868cd6914c5f84962a7f46ace872c5c6164e8f"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/forwarding-core3.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "core_units": {
+      "path": ".cargo-target/oop-slice/qualification/unit.log",
+      "sha256": "e58f7ee62bbcdf8b260ff05b039b1a913748322727c622a15061dd52c4791878",
+      "result": "passed"
+    },
+    "core_runtime": {
+      "path": ".cargo-target/oop-slice/qualification/numeric-integration.log",
+      "sha256": "63528b14e39ffe671eea0fe4144f16f0be609ba08f214f966a0d1591bfee3a9f",
+      "result": "passed"
+    },
+    "direct_wrapped_twice": {
+      "path": ".cargo-target/oop-current-qualification/forwarding-final.log",
+      "sha256": "b1503c54ae88aff9792bdf520ee5d9c0286dc4289e80f2bdfeb3bb2521c33123",
+      "result": "passed"
+    },
+    "machine_and_optimizer_recovery": {
+      "path": ".cargo-target/oop-current-qualification/forwarding-focused3.log",
+      "sha256": "a964647b0c493825c8d088cc72475db6212cbffe16f2d878eb426fc7dcde6679",
+      "result": "passed"
+    },
+    "native_adapters_image_and_failure_policy": {
+      "path": ".cargo-target/oop-current-qualification/forwarding-boundaries3.log",
+      "sha256": "a9f5cb82cdeaf87cdc665d78489500d5b5923d67c06ff2dd4ebea00de28bcf35",
+      "result": "passed"
+    }
+  },
+  "focused_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/answer-forwarding-9hv7v250/prefix",
+  "execution_library_sha256": "6b3e7cfb5e4b898d461a0fda5aaf6aa5ac482ca0f0fca1437e0f99b681e3047e",
+  "source_note": "Runtime qualification used the final implementation; subsequent runtime-source changes were formatting only. The final independent forwarding test additionally exercises runnable-boundary cancellation ingress.",
+  "forwarding_cases": [
+    "direct",
+    "one opaque wrapper",
+    "two opaque wrappers"
+  ],
+  "behaviors": [
+    "normal result",
+    "budget stops with GC",
+    "suspend/resume and effects exactly once",
+    "wrappers execute exactly once at return",
+    "protected exit abandons inner wrappers and preserves outer wrappers",
+    "runnable-boundary cancellation ingress skips remaining effects",
+    "capture/restore with GC retains answers and pending calls across arena generations",
+    "consumed continuation rejected",
+    "actual native suspension boundary preserved"
+  ],
+  "architecture_review": {
+    "id_api_and_payload_contract": "unchanged; no Id files or exported API changed",
+    "cross_owner_communication": "Id sends and existing continuation control only",
+    "removed": [
+      "alias_return and its call site",
+      "separate Run.answers stack",
+      "ReturnSite saved arena handle"
+    ],
+    "necessary_state": [
+      "FrameAnswer on its activation",
+      "pending return context identity on its caller frame",
+      "entry handoff flag in the owned driver"
+    ],
+    "gc": "Execution traces answer and pending-return references in both live and detached frames",
+    "optimizer": "owned-answer direct path and optional inline/recovery retained; pending_call_recovery passes without replaying effects"
+  },
+  "remaining": [
+    "direct method definition and lexical environment binding",
+    "pure construction and coherent code-owner admission",
+    "legacy API and source cleanup",
+    "remaining explicit native failure-scope audit",
+    "full native gate and same-revision cold/relocated/end-to-end qualification"
+  ]
+}

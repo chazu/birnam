@@ -303,7 +303,6 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             let destination = if sig.observes_failure() {
                 let context = q.keep(s.send(s.id.root, b"sequence", &[*k, args[0]])?);
                 let answer = q.keep(s.send(s.native_answer, b"withContext:", &[context])?);
-                resumable::alias_return(s, *k, answer);
                 answer
             } else {
                 *k

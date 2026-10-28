@@ -976,6 +976,7 @@ struct DetachedFrame {
 
 impl DetachedFrame {
     fn trace_roots(&self, mut mark: impl FnMut(Oop)) {
+        self.control.trace_roots(&mut mark);
         if !self.descriptor.executable_owner.get().is_null() {
             mark(self.descriptor.executable_owner.get());
         }
@@ -986,6 +987,25 @@ impl DetachedFrame {
             {
                 mark(core::ptr::with_exposed_provenance_mut(*word));
             }
+        }
+    }
+}
+
+/// The answer belongs to the activation, including while detached or replaced
+/// by a tail call. Only Execution interprets the native-drive bookkeeping.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct FrameAnswer {
+    pub(crate) continuation: Oop,
+    pub(crate) completes_drive: bool,
+}
+
+impl boundary::FrameControl {
+    fn trace_roots(&self, mut mark: impl FnMut(Oop)) {
+        if let Some(answer) = self.answer {
+            mark(answer.continuation);
+        }
+        if !self.pending_return.is_null() {
+            mark(self.pending_return);
         }
     }
 }
@@ -1239,6 +1259,41 @@ impl FrameArena {
         Ok(next)
     }
 
+    pub(crate) fn frame_answer(&self, frame: FrameHandle) -> Result<Option<FrameAnswer>, FrameError> {
+        Ok(self.require_live(frame)?.control.answer)
+    }
+
+    pub(crate) fn set_frame_answer(
+        &mut self,
+        frame: FrameHandle,
+        answer: FrameAnswer,
+    ) -> Result<(), FrameError> {
+        self.require_live_mut(frame)?.control.answer = Some(answer);
+        Ok(())
+    }
+
+    pub(crate) fn pending_return(&self, frame: FrameHandle) -> Result<Oop, FrameError> {
+        Ok(self.require_live(frame)?.control.pending_return)
+    }
+
+    pub(crate) fn set_pending_return(
+        &mut self,
+        frame: FrameHandle,
+        context: Oop,
+    ) -> Result<(), FrameError> {
+        self.require_live_mut(frame)?.control.pending_return = context;
+        Ok(())
+    }
+
+    pub(crate) fn failure_answer(&self) -> Option<Oop> {
+        self.stack.iter().rev().find_map(|index| {
+            self.slots[*index]
+                .control
+                .answer
+                .map(|answer| answer.continuation)
+        })
+    }
+
     pub(crate) fn current_handle(&self) -> Option<FrameHandle> {
         let index = *self.stack.last()?;
         let slot = &self.slots[index];
@@ -1457,6 +1512,7 @@ impl FrameArena {
         let slot = self.require_live_mut(handle)?;
         slot.control.boundary_result = None;
         slot.control.deliveries = deliveries;
+        slot.control.pending_return = core::ptr::null_mut();
         Ok(())
     }
 
@@ -1610,6 +1666,7 @@ impl FrameArena {
         }
         for index in &self.stack {
             let slot = &self.slots[*index];
+            slot.control.trace_roots(&mut mark);
             let descriptor = slot
                 .descriptor
                 .as_deref()

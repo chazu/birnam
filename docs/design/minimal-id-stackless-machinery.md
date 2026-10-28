@@ -20,6 +20,63 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: frame-owned answers (2026-10-28)
+
+The continuation-forwarding repair is implemented independently of the pending
+method-definition redesign. The original counterexample below remains historical
+evidence; current qualification is recorded in
+[the forwarding receipt](../measurements/continuation-forwarding-oop-20261028.json).
+
+Contract: a continuation may forward its answer without registering its identity
+with Execution. Suspension, budget stops, effects and structured exits retain their
+meaning. An actual synchronous native caller still forbids escaping its boundary.
+Id continues to perform current lookup followed by direct Method entry.
+
+Before:
+
+```text
+recognized answer -> direct frame call
+unrecognized answer -> assume native reentry -> install an entry barrier
+frame return -> pop a separate per-Machine answer stack
+```
+
+After:
+
+```text
+owned pending-call answer -> optional direct frame/optimizer path
+other answer -> transfer through Id's existing pause operation
+  accepted -> owned driver continues the same computation
+  native barrier -> retain the actual synchronous entry boundary
+frame return -> answer its retained continuation
+capture / restore / protected exit -> move or discard answer with its frame
+```
+
+The actual transfer is necessary because an answer's representation does not tell
+Execution whether a native caller is waiting. A boolean in the owned driver marks
+an entry handoff that it should immediately continue; genuine lookup pauses and
+budget stops retain their existing scheduling behavior. No Id operation, ABI,
+foreign payload read, or cross-owner private representation was added.
+
+The frame owns its answer Oop and whether returning completes a native/initial
+drive. These replace the separate answer stack. It also retains the identity of
+its current pending return; this replaces a saved arena handle in `ReturnSite`.
+Capture changes arena handle generations, but preserves the logical pending call.
+Return consumption and boundary completion clear that identity. Live and detached
+frames trace both references through Execution's existing GC ownership.
+
+`alias_return` is removed. The remaining Method-address index recognizes only
+Execution's own pending answers for direct calls, tail replacement and optional
+inlining/recovery. Unrecognized wrappers execute through the general path and
+are actually called at return; they are not skipped as aliases.
+
+Qualification covers direct/one/two independent wrappers; exactly-once wrapper
+execution; budget stops and GC; suspension/resumption; protected exits both inside
+and outside a wrapper; capture/restore with GC and consumed-continuation rejection;
+and rejection at a real native callback boundary. The broader core and focused
+checks retain custom lookup, native boundaries, task control, optimizer recovery
+and lifetime coverage. This checkpoint does not complete direct Method definition,
+construction purity, code-owner admission or full language/release qualification.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code
@@ -105,7 +162,7 @@ metadata database merely because execution is stackless.
 | Generic `admitCodeObject:` mutation of existing Methods | Replace with construction by the code owner | The owner creating compiled executable code can establish the code association and shape together. Arbitrary native code need not acquire a portable CodeObject, and unrelated code must not be attached as if its correspondence had been verified. |
 | Per-code arity, environment shape and saved-state layout | Keep where the compiled execution format needs them | These are facts about code, not a second application protocol. Validate external code/captures before use. Share immutable descriptions rather than reconstructing them per binding. |
 | Capture values and mutable captured Cells | Keep | They are program state. Moving captures from the call receiver to an explicit lexical context preserves the distinction between receiver and environment. |
-| `return_methods` identity recognition / `alias_return` | Replace the semantic dependency | The forwarding probe fails. Opaque answer forwarding must not decide whether task control works. A possible direction is to retain and invoke the actual answer continuation at frame return rather than decode its identity into a special return path. Execution context must come from the owned drive, not a guess about the answer's internals. |
+| `return_methods` identity recognition / `alias_return` | General forwarding repaired; `alias_return` removed | The original forwarding probe failed. Opaque answer forwarding must not decide whether task control works. A possible direction is to retain and invoke the actual answer continuation at frame return rather than decode its identity into a special return path. Execution context must come from the owned drive, not a guess about the answer's internals. |
 | Pending call/result destination | Keep the responsibility | A caller must receive its result in the right suspended computation, once. A caller-owned continuation can contain this state; a reverse Method-address index is not inherently required. |
 | Machine/frame arenas, capability slots and generation counters | Representation choices to simplify after control equivalence is established | They currently supply saved state, stale-handle checks and ownership. Those properties are required where exposed; this exact collection of indexed tables and generations is not. Do not delete checks before replacing their guarantees. |
 | Machine action objects plus Id work objects | Consolidation candidate | Both encode control transitions. Continue/call/return/wait are necessary operations, but two complete encodings/drivers are not a consequence of stacklessness. Prove one coherent execution path before removal. |
