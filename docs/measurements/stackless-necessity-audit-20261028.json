@@ -1,0 +1,164 @@
+{
+  "scope": "Necessity audit of method construction, stackless execution and concurrency; no runtime implementation changes",
+  "source_revision": "80b8a47c898d99b7e7d6c1ebb4ef390abd041c8f",
+  "independent_core": {
+    "build_commands": [
+      [
+        "clang",
+        "-dynamiclib",
+        "-O2",
+        "/Users/chazu/dev/zig/birnam/tests/fixtures/oop-continuation/module.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/continuation.dylib"
+      ],
+      [
+        "clang",
+        "-dynamiclib",
+        "-O2",
+        "/Users/chazu/dev/zig/birnam/tests/fixtures/oop-continuation/native.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/native.dylib"
+      ],
+      [
+        "clang",
+        "-dynamiclib",
+        "-O2",
+        "/Users/chazu/dev/zig/birnam/tests/fixtures/oop-continuation/rejected.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/rejected-version.dylib"
+      ],
+      [
+        "clang",
+        "-dynamiclib",
+        "-O2",
+        "-DBAD_CONVENTION",
+        "/Users/chazu/dev/zig/birnam/tests/fixtures/oop-continuation/rejected.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/rejected-convention.dylib"
+      ],
+      [
+        "clang",
+        "-O2",
+        "/Users/chazu/dev/zig/birnam/tests/fixtures/oop-continuation/caller.c",
+        "-o",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/caller"
+      ]
+    ],
+    "argv": [
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/caller",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/libbirnam_id.dylib",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/libbirnam_root_registry.dylib",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/libbirnam_collect.dylib",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/continuation.dylib",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/native.dylib",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/rejected-version.dylib",
+      "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/necessity-core/rejected-convention.dylib"
+    ],
+    "exit": 0,
+    "wall_ns": 488992000,
+    "libraries": {
+      "libbirnam_id.dylib": "e7c367c4e9ef04f5c88babedc47416fdffce50cad417b86b1355b9c37ae651b3",
+      "libbirnam_root_registry.dylib": "5e327132906f1f76b620d16949a66a16ff4cd979d56c6b4d885c14f134a63eb2",
+      "rejected-version.dylib": "e9f550865ee1fa725dd08b5b03d3d11d7a344dba7c90abe3a3f626dd528595fa",
+      "native.dylib": "2e1d658daa807cba39052f47bd4bd122d389d6a7222f161130976068dc01e427",
+      "continuation.dylib": "6fc20d29efbd3c61fa82e063381556dea515fa371e141cf2566afd570e0a3ca1",
+      "rejected-convention.dylib": "ecf6e428270924b85ae24ea1d3bc7c7cfac7f8ad853388f8c488277dde5889ea",
+      "libbirnam_collect.dylib": "aff34cf5578f941983d2ac3d826fb62fcc8e2759b9eb5bf3f3e8aeb8bfa09a44"
+    },
+    "absent": [
+      "Execution",
+      "Codegen",
+      "NativeBackend",
+      "Bootstrap",
+      "MethodInvocation",
+      "Store",
+      "Generation"
+    ],
+    "log": ".cargo-target/oop-current-qualification/necessity-core/run.log",
+    "log_sha256": "f6f9a9fe05d57cb8d1441016aa962477fb9d240bd1b4449f2f57a1d9eb6d1fde",
+    "passed": true,
+    "limits": "Independent native control probe, not the complete language task scheduler."
+  },
+  "continuation_transparency": {
+    "passed": false,
+    "exit": 101,
+    "log": ".cargo-target/oop-current-qualification/necessity-core/forwarding-final.log",
+    "log_sha256": "863e60ee869db554ec69c696a5594ed1f0315a7d9ef7ca14becda8518451c625",
+    "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/closure-shell-8r8jkv59/prefix",
+    "normal_results": {
+      "direct": 42,
+      "wrapped": 42,
+      "twice": 42
+    },
+    "control_results": {
+      "direct": "parks; resumes to 42; effect count 1 then 2",
+      "wrapped": "invalidRequest instead of suspension after effect 1",
+      "twice": "invalidRequest instead of suspension after effect 1"
+    },
+    "private_alias_registration": false,
+    "limits": [
+      "This proves a control difference under transparent answer forwarding; no runtime repair is claimed.",
+      "Failure delivery, cancellation, cleanup and frame-inspection equivalence need the full follow-up matrix."
+    ],
+    "setup_probe": {
+      "log": ".cargo-target/oop-current-qualification/necessity-core/forwarding-setup.log",
+      "cause": "asCell is provided by stdlib, not this Bootstrap composition; final probe uses the existing Cell with: constructor and checks results."
+    }
+  },
+  "source_sha256": {
+    "tests/fixtures/oop-continuation/caller.c": "f30abfa453a92ba2a9d5eb4a9694bde4ca1a51f5205d5da26b87303dc9272186",
+    "tests/fixtures/oop-continuation/module.c": "c478255b4c3669d5dc0b93cc7666fea916ebe0439f3a79c5ea2c2cd3faade37e",
+    "tests/fixtures/oop-continuation/transparent-answer.c": "068cf63f7fcfee28aecbb0263ca2248055ec5e980ba42e77aceaab249965fce1",
+    "rust/birnam-siphon/tests/continuation_transparency.rs": "e82bc1611fa1651114b841095546ba9855dd49dcaa4324d644e8c7b4d9711dd2",
+    "rust/birnam-codegen-runtime/src/lib.rs": "dc60cbf2ea0fd85c6c0ba7b451a7eeb40d9b663d4ed8165194c660c135118890",
+    "rust/birnam-execution/src/resumable_runtime.rs": "145f9386f18bd52048d334d522e6536fff6af87e8c38eccc9367bb5b2b456dc5",
+    "rust/birnam-native-backend/src/oop_emission.rs": "5fe1f29a34cef097a9a5cb4a10460020aa7f84d3bc0ed9bd9413aa223bc3d644",
+    "rust/birnam-native-backend/src/oop_resumable.rs": "29b2e683dcaf2485be50658c93fbccf93c3ef409e59adb69bcbd006b70245444",
+    "rust/birnam-tcc/src/lib.rs": "dfed8a93018ac7792370f38495af581d684e16fb728993f52f1a206efb0f9fa5",
+    "modules/method-invocation.birnam": "f9bc42457b2af6ffd8a63f7e30f4e4abc21d721f0359501233889f5e775d6e45",
+    "modules/stackless-control.birnam": "879f6a1a973626ec8a4cbbb0d971429fd972e81504fa81f053374b08d0f8cc1c"
+  },
+  "release_input_audit": {
+    "birnam_execution": {
+      "depfile": ".cargo-target/oop-slice/release/deps/birnam_execution.d",
+      "depfile_sha256": "4b675f26ec848ad8e44b69802a20a1a87a2c2596553ca840f0f4f28cf53e4d85",
+      "not_in_release_inputs": [
+        "rust/birnam-execution/src/binding_proof.rs",
+        "rust/birnam-execution/src/discarded_clone.rs",
+        "rust/birnam-execution/src/execution/inline_recovery_experiment.rs",
+        "rust/birnam-execution/src/execution/probe_descriptor.rs",
+        "rust/birnam-execution/src/image.rs",
+        "rust/birnam-execution/src/machine/frame_call.rs",
+        "rust/birnam-execution/src/machine.rs",
+        "rust/birnam-execution/src/names.rs",
+        "rust/birnam-execution/src/native_abi.rs",
+        "rust/birnam-execution/src/native_message.rs",
+        "rust/birnam-execution/src/native_tier.rs",
+        "rust/birnam-execution/src/numeric.rs",
+        "rust/birnam-execution/src/numeric_predicate.rs",
+        "rust/birnam-execution/src/pending_message_integration.rs",
+        "rust/birnam-execution/src/recovery.rs",
+        "rust/birnam-execution/src/word_helper.rs"
+      ]
+    },
+    "birnam_native_backend": {
+      "depfile": ".cargo-target/oop-slice/release/deps/birnam_native_backend.d",
+      "depfile_sha256": "cc0b629739fdd56d5e4b3ab094b00580374c405aac223ed03e2620eddfb41973",
+      "not_in_release_inputs": [
+        "rust/birnam-native-backend/src/helper_emission.rs",
+        "rust/birnam-native-backend/src/literal.rs",
+        "rust/birnam-native-backend/src/native.rs",
+        "rust/birnam-native-backend/src/native_sync.rs",
+        "rust/birnam-native-backend/src/pending_message_integration.rs",
+        "rust/birnam-native-backend/src/selector_capacity.rs",
+        "rust/birnam-native-backend/src/word_expression.rs"
+      ]
+    }
+  },
+  "runtime_changes": false,
+  "limits": [
+    "Release-input absence is not a complete test/script/bootstrap consumer audit.",
+    "Existing constructor/admission violations remain unresolved.",
+    "Recommended language/runtime simplifications require implementation and one corrected-candidate qualification; prior receipts do not prove the proposed design."
+  ]
+}

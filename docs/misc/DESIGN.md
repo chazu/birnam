@@ -68,6 +68,15 @@ of Id's design. Do not add them, preserve them as an alternative path, or rename
 them. Use `send` and the objects' defined data operations. Payload opacity,
 malleability, GC correctness and the dispatch contract must hold together.
 
+The 2026-10-28 simplification scope permits changing method-definition syntax and
+restricting what is installed as a Method. Existing callable-object forwarding,
+constructor caches and internal execution APIs are not requirements merely because
+they exist. Preserve Id's object model, construction purity, safe lifetimes,
+stackless execution and concurrency; specify intended behavior changes explicitly
+and test them. The [necessity audit](../design/minimal-id-stackless-machinery.md)
+separates these responsibilities from replaceable machinery. It is not an
+implemented replacement or permission to let incidental regressions define policy.
+
 ### Pure Method construction and coherent metadata ownership
 
 Default Method construction and its metadata initialization must not edit dispatch

@@ -24,6 +24,15 @@ preserve a differing current binding, but permit rollback when the expected valu
 is present again. The old Id atomic restoration/global-epoch ABA guarantee is
 retired. This choice does not weaken construction purity or ordinary invalidation.
 
+## Subsequent simplification scope (2026-10-28)
+
+The user permits changing method-definition syntax and restricting installed values
+to executable Methods, while retaining stackless execution, concurrency and Id's
+fundamental simplicity. Do not assume every current adapter or metadata API must
+survive. The [necessity audit](minimal-id-stackless-machinery.md) now precedes a
+concrete metadata redesign: establish what data the chosen language still needs,
+then repair/replace the mechanisms. Construction purity remains mandatory.
+
 ## When to do this work
 
 Address these items **before declaring the migration complete or doing final
@@ -125,7 +134,14 @@ Evidence: [admission failures](../measurements/closure-admission-regressions-oop
 
 ## 3. Continuation wrapping depends on Execution identity bookkeeping
 
-**Status: architectural concern to investigate, not a demonstrated defect.**
+**Status: observable continuation-transparency failure reproduced on 2026-10-28.**
+
+The independent forwarding probe returns 42 through direct, one-wrapper and
+nested-wrapper answers. Direct suspension/resumption succeeds; both wrapped cases
+return `invalidRequest` after the first effect instead of suspending. No private
+alias registration is used. This demonstrates a control difference in the current
+integration; it does not establish a new Id defect or qualify a repair.
+[Audit and scope](minimal-id-stackless-machinery.md#evidence-including-a-new-counterexample).
 
 [Execution's resumable driver](../../rust/birnam-execution/src/resumable_runtime.rs)
 uses `return_methods` to associate its answer Methods with pending calls. A known
