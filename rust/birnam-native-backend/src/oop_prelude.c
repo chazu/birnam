@@ -22,7 +22,7 @@ static inline O keep(Call*c,O result){
  if(c->error)return 0;
  if(c->count+1>=c->capacity){size_t cap=c->capacity?c->capacity*2:32;if(cap<=c->capacity||cap>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*p=realloc(c->tokens,cap*sizeof(O));if(!p){c->error=id.invalid;return 0;}c->tokens=p;c->capacity=cap;}
  O token=raw(c,roots,S_RETAIN,&result,1);if(c->error)return 0;
- if(!((uintptr_t)token&1)){c->error=id.invalid;return 0;}
+ if(!((uintptr_t)token&1)||token==size_oop(0)){c->error=id.invalid;return 0;}
  c->tokens[++c->count]=token;return result;
 }
 static inline O call(Call*c,O receiver,size_t selector,const O*a,size_t n){O result=raw(c,receiver,selector,a,n);return c->error?0:keep(c,result);}

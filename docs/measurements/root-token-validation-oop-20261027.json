@@ -1,0 +1,87 @@
+{
+  "passed": true,
+  "scope": "Generated Oop calls reject zero/absent root tokens before subsequent body effects",
+  "base_revision": "9c6896e5627d9bf72aefacce9e84e119ea9c01d4",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/root-token-d8qsh7zi/prefix",
+  "cold_qualified": false,
+  "source_sha256": {
+    "rust/birnam-native-backend/src/oop_prelude.c": "faa26e8bb6b11c0dc2e9444274142bd46c03528ded2c3f4e27988b11e5c18ba5",
+    "rust/birnam-siphon/tests/root_reuse.rs": "f408cd8817c26b2217f6367fa1d5472711ef9b11227a2ba2f69257e097b5a511",
+    "tests/fixtures/oop-host/root-reuse.c": "ad99c273291c016bdd7d769b06f96cba864153fc535d66620058a97628049e0e"
+  },
+  "library_sha256": "841de23ac19a408ddb780a93f6b59d1e98f2cfe8994164141fa78da91516d1aa",
+  "before": {
+    "log": ".cargo-target/oop-current-qualification/root-reuse-before-final-fixture.log",
+    "sha256": "91a0a15c340983894380656836873f788ebd85dcbbad66904cac3bf402c905fe",
+    "exit": 101,
+    "observed": "Encoded zero root token was accepted; subsequent collecting checkpoint executed instead of acquisition failure stopping the body."
+  },
+  "checks": [
+    {
+      "targets": [
+        "capture_access",
+        "invocation_inputs",
+        "result_cleanup",
+        "root_batches",
+        "root_reuse"
+      ],
+      "log": ".cargo-target/oop-current-qualification/root-token-final.log",
+      "sha256": "cdee224df09392d307d4801d4b1fa5cfbfd372c9096900396061bbc2c286b2a9",
+      "exit": 0
+    },
+    {
+      "command": "bash scripts/oop-id-slice-test.sh",
+      "log": ".cargo-target/oop-current-qualification/root-token-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0,
+      "details_sha256": {
+        ".cargo-target/oop-current-qualification/root-token-core-details/dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+        ".cargo-target/oop-current-qualification/root-token-core-details/numeric-integration.log": "025904e7c42909f819a890b820f938ab41e841e6e54214f97bfa8dfba2ac67f9",
+        ".cargo-target/oop-current-qualification/root-token-core-details/unit.log": "37d43d43c7002668616242d358b3a69b2746b6402c267dd4aaa32a6fa39124a4"
+      }
+    }
+  ],
+  "contract_review": {
+    "authority": "docs/design/fixed-names-and-local-protection.md requires a nonzero acquired Root token and excludes private registration multiplicity from required observables",
+    "before": "current retain: -> immediate token check -> store token -> continue",
+    "after": "current retain: -> immediate and nonzero token checks -> store token -> continue",
+    "new_required_mechanisms": [],
+    "id_changes": false,
+    "owner": "Roots owns tokens; generated code validates its acquired token through the established Oop contract. No payload classification or cross-module private access is introduced."
+  },
+  "retained_checks": [
+    "Duplicate local and capture aliases survive collection",
+    "Forty simultaneous locals remain live during the generated call",
+    "Caller marker root is dropped before exercising the captured marker",
+    "Fresh locals are reclaimed at call exit",
+    "Exact native acquisition failure is preserved",
+    "Zero and raw absent tokens stop before later body callbacks",
+    "A successful call after a failed call has no stale protection assumptions"
+  ],
+  "registration_counts": {
+    "historical_assertions_for_single_local": {
+      "local": 1,
+      "capture": 0
+    },
+    "current_single_local_runs": [
+      {
+        "local": 3,
+        "capture": 4
+      },
+      {
+        "local": 3,
+        "capture": 4
+      }
+    ],
+    "current_forty_locals": {
+      "local": 42,
+      "capture": 1
+    },
+    "timing_regression": "not measured"
+  },
+  "limits": [
+    "Only newly generated code receives the corrected token check; existing compiled artifacts must be rebuilt.",
+    "The ongoing cold Host run is for production revision 1fa7e3c2 and does not qualify this change.",
+    "Method construction purity and closure admission regressions remain unresolved; the complete native-message gate is not passing."
+  ]
+}

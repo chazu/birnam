@@ -3141,3 +3141,44 @@ worker-deadline change was made. [Receipt](../measurements/fixed-adapters-tasks-
 CLI and image groups remain outstanding. These task results do not cover or repair
 the independently reproduced Method-construction purity and closure-admission
 regressions; full integration acceptance remains open.
+
+## Generated root-token validation
+
+Porting `root_reuse` exposed a missing validation in the Oop generated-code
+prelude. `keep` accepted any immediate token, including encoded zero. A replacement
+`Roots retain:` returning zero could therefore let later body sends run without
+acquiring a root. The collecting checkpoint reproduced that continuation after
+failed acquisition. The same final fixture fails against the earlier prefix.
+
+The correction adds one zero-token check. Before: current `retain:` → check the
+immediate representation → remember token → continue. After: current `retain:` →
+check immediate representation and nonzero token → remember token → continue.
+A failed acquisition still returns the exact failure; zero or absent tokens
+produce the existing invalid-request failure. No message, lookup, allocation,
+registry or lifetime mechanism is added. Roots owns token meaning; Id remains
+unchanged and does not interpret the token or the protected object's payload.
+
+The migrated test retains duplicate aliases, a captured marker whose external
+root is dropped, forty simultaneous locals, precise collection during a body,
+call-exit reclamation, exact acquisition failures, zero/absent token rejection,
+and a successful call following failure. Observers retain only allocation
+identities for values whose collection is being tested.
+
+Root-registration multiplicity is recorded separately. The original synchronous
+probe expected one fresh-local registration and zero capture registrations; the
+current Oop emitter makes three and four, respectively. Its forty-local probe
+makes 42 local registrations and one capture registration. These are callback
+counts, not elapsed-time measurements. The
+[original optimization contract](fixed-names-and-local-protection.md#protection-within-a-call)
+explicitly excludes private registration multiplicity from required observables;
+no new cache or capture grant was added to chase those historical counts.
+
+This change affects newly generated code. The separate cold Host run still uses
+candidate `1fa7e3c2`, whose compiled artifacts predate this correction. Its results
+do not qualify the new generated prelude. The Method-construction purity and
+closure-admission regressions also remain open.
+
+Validation passes for the migrated test and four adjacent capture/input/cleanup
+tests, plus the Oop core check, including the negative dispatch-contract test,
+independent C caller, default and resumable compiler integration and 177 authored
+TaskControl checks. [Receipt](../measurements/root-token-validation-oop-20261027.json).
