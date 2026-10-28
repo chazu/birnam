@@ -1,0 +1,88 @@
+{
+  "passed": true,
+  "scope": "Typed native body invocation preserves callback-local error handling and explicit publication failure semantics",
+  "base_revision": "86b99ace4cb8d8ee354df5a4e34dc3803e2a67a1",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/callback-policy-h33k_dxl/prefix",
+  "cold_qualified": false,
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "2497c2e2a125abf83220dcf82ae71e0f46318c7283811bd92b4439ab87f1def2",
+    "rust/birnam-siphon/tests/publication_failure_boundary.rs": "05343b726ddaa677ef3640c85504611865519b4964aeba440f1f5c98605eb9f1",
+    "tests/fixtures/oop-host/publication-boundary.c": "4f03e3386c00c86b8d55d015eae9432532d87897fc6927b4e5e5cc7a58eeb5e8",
+    "tests/fixtures/publication-failure-boundary.birnam": "98218996c7531fb8a6419f544cf36a197bb07f90661d2c8bcd3660834fb10944"
+  },
+  "execution_library_sha256": "efcc21fdd00463a9d10f0397d98cb437ff3f3f91578f85f7b8a8dfce1d92190e",
+  "before": {
+    "log": ".cargo-target/oop-current-qualification/publication-boundary-before-final-fixture.log",
+    "sha256": "b7ed1e633e91c29d0cf5c5ccbfbe83475d932f91e525a0e2d72c05a25554b3f8",
+    "exit": 101,
+    "observed": "Native Store and directly materialized policy let the observer catch its native failure; compiled typed publisher returned that failure and omitted the caught event."
+  },
+  "checks": [
+    {
+      "targets": [
+        "publication_failure_boundary",
+        "publication_contract"
+      ],
+      "log": ".cargo-target/oop-current-qualification/callback-policy-publication.log",
+      "sha256": "da35f7909c2729a2b4e66d47eeafb8847f28d1b4eac2b31a36efcc38850a0e87",
+      "exit": 0,
+      "publication_matrix_cases": 27
+    },
+    {
+      "targets_passed": [
+        "byte_abi",
+        "fixed_abi",
+        "native_boundaries",
+        "native_incoming",
+        "native_values",
+        "publication_contract"
+      ],
+      "log": ".cargo-target/oop-current-qualification/callback-policy-probe.log",
+      "sha256": "4216fff6815805f429c58d03fa4064c5aad647c4dfc18351281e6779eaeb2c72",
+      "command_exit": 101,
+      "note": "All six adjacent targets passed, including mapped/rebuilt native-boundary images. The final publication target used an earlier classifier that compared Symbol display text including # against plain text; it failed. The final classifier compares Symbol identity, and the separate final publication run above passes."
+    },
+    {
+      "command": "bash scripts/oop-id-slice-test.sh",
+      "log": ".cargo-target/oop-current-qualification/callback-policy-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "exit": 0,
+      "details_sha256": {
+        ".cargo-target/oop-current-qualification/callback-policy-core-details/dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+        ".cargo-target/oop-current-qualification/callback-policy-core-details/numeric-integration.log": "d74dde5232709238d1e96d8aedd1d456b893ad16fcae3aa040d5cda977f8abf9",
+        ".cargo-target/oop-current-qualification/callback-policy-core-details/unit.log": "d2702f6e9425f92100a8765b32c5724959ef7d41e35c6d14955471479de1e51a"
+      }
+    }
+  ],
+  "contract_review": {
+    "contract": "Explicit native argument/result adaptation must not suppress ordinary error handling inside an entered callback; unhandled native failures keep their exact identities and callbacks are not replayed.",
+    "before": "validate signature -> set ambient preserve flag -> convert inputs -> invoke body/callbacks -> convert result -> restore flag -> report native failure or answer",
+    "after": "validate signature -> convert inputs -> invoke body/callbacks -> convert result -> report native failure or answer",
+    "new_required_mechanisms": [],
+    "production_change": "Remove two lines that implicitly changed the shared Execution failure policy during typed-body invocation.",
+    "id_changes": false,
+    "ownership": "Execution retains native conversion and Machine error handling; callbacks use only Id messages. No private cross-module interface is added."
+  },
+  "retained_checks": [
+    "Nine scenarios across native Store, directly materialized synchronous policy and explicit compiled native policy",
+    "Authorization failure and veto precede dictionary mutation",
+    "Notification failure occurs after mutation without rollback or callback replay",
+    "Ordinary Error notification results are void; Error authorization results veto",
+    "Callback-local caught and converted native errors retain their handling",
+    "Exact native failure identity and details 17/99",
+    "Current callback replacement",
+    "Ordinary source caller handles native publication failure at its own boundary",
+    "Subsequent callbacks still handle their errors"
+  ],
+  "superseded_experiments": {
+    "authority": "docs/design/publication-failure-boundary.md#subsequent-design-clarification and docs/design/method-publication-owner.md record the user rejection of dual language error conventions and backwards-compatibility requirements for the old experiment.",
+    "removed_from_active_gate": "Historical negative comparisons among whole/local ambient preservation and deferred request adapter variants; these rejected experimental paths are not restored as a new publication protocol.",
+    "observation_log": ".cargo-target/oop-current-qualification/publication-boundary-historical-probe.log",
+    "observation": "The initial mechanical port found local preservation now yields an ordinary outer result instead of the old experimental native escape. That historical observation was not used to change production semantics."
+  },
+  "limits": [
+    "Staged-prefix and Oop core validation, not a newly rebuilt cold installation.",
+    "The ongoing cold Host run at 1fa7e3c2 predates both the root-token check and this correction.",
+    "Method construction purity, closure admission and remaining compiler/harness work remain open."
+  ]
+}

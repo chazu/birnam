@@ -15,6 +15,18 @@ investigate shared invocation machinery before preserving adapter distinctions.
 The measured image mismatch remains valid evidence of the existing implementation;
 it does not establish that its two behaviors should become a language feature.
 
+## Oop integration checkpoint (2026-10-27)
+
+The active harness now retains nine native publication scenarios across Store,
+directly materialized synchronous policy and explicit compiled native policy.
+The superseded negative adapter comparisons below remain historical evidence.
+Porting the active contract exposed suppression of callback-local handling by the
+typed native adapter's ambient preservation flag. Removing that implicit flag
+change fixes the 27 comparisons without adding an Id protocol or publication
+owner. Native/conversion and core checks pass; this does not complete cold
+installation qualification or the remaining language migration.
+[Current receipt](../measurements/publication-callback-policy-oop-20261027.json).
+
 ## Required behavior
 
 Compare against actual Store `addMethod:on:with:`, not a rewritten reference:

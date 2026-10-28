@@ -3213,3 +3213,46 @@ Both targets and the adjacent guard/Word-query-order targets pass.
 [Receipt](../measurements/word-plans-oop-20261027.json). The metadata/admission
 regressions, automatic producer work and remaining native/compiler migrations are
 still open.
+
+
+## Native publication preserves callback-local handling
+
+Migrating the publication boundary harness exposed an implicit policy change in
+typed native invocation. The adapter set Execution's ambient failure-preservation
+flag while invoking its body. A compiled native-facing publisher consequently
+prevented an authored observer from handling the Error produced by its own inner
+native send. Native Store and the directly materialized synchronous policy both
+allowed that handling; the compiled policy returned the raw failure and omitted
+the callback's `caught` event. The final Oop fixture reproduces this on the earlier
+prefix.
+
+The fix removes the implicit flag change and its restoration. Before: validate
+signature → set ambient flag → convert inputs → invoke body/callbacks → convert
+result → restore flag → report failure or answer. After: validate signature →
+convert inputs → invoke body/callbacks → convert result → report failure or answer.
+There is no new message, lookup, allocation, registry or lifetime mechanism. Id is
+unchanged; Execution still owns conversions and Machine result handling. Existing
+explicit operations are not replaced by a private publication protocol.
+
+All 27 retained publication comparisons pass: nine scenarios against native Store,
+a directly materialized synchronous policy and an explicitly compiled native
+policy. They preserve pre-commit denial/failure, post-commit failure, ordinary Error
+values, callback-local handling, exact native identity, current replacement and
+non-replayed effects. A normal source caller handles the native failure at its own
+boundary. Six adjacent native/conversion targets pass, including native-boundary
+mapped/rebuilt images, and the Oop core check passes with its negative dispatch
+check and authored control coverage.
+
+The earlier document's adapter-comparison experiments are explicitly superseded
+by the recorded user rejection of dual language error conventions and backwards
+compatibility for that experiment. Their negative assertions are excluded from the
+active test; the initial local-preservation difference is retained as historical
+probe evidence, not repaired by restoring the rejected policy. The authored
+fixture itself remains unchanged. One intermediate test classifier used Symbol
+display text instead of identity; its failure is recorded, and the final rerun
+compares Symbol identities.
+
+[Receipt](../measurements/publication-callback-policy-oop-20261027.json). This is
+not a new cold installation qualification. The serial Host run on `1fa7e3c2`
+predates this correction and the root-token fix. The Method metadata/admission
+regressions and remaining compiler/harness work remain open.

@@ -243,7 +243,6 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             }
             return Err(invalid());
         }
-        let restore = Preserve(&s.preserve, s.preserve.replace(true));
         let answer = (|| {
             if args[1..]
                 .iter()
@@ -294,7 +293,6 @@ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                 _ => Err(invalid()),
             }
         })();
-        drop(restore);
         if let Err(error) = answer {
             if sig.observes_failure() {
                 notify(s, &q, args[0], error);
