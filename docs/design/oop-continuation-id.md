@@ -3468,3 +3468,22 @@ The compile-only native gate audit now accounts for 94 compiled targets and two
 legacy failures: `binding_undo` and `shared_invocation_probe`.
 [Audit](../measurements/native-gate-closure-audit-oop-20261028.json). Full runtime
 acceptance and cold qualification of the shell correction remain outstanding.
+
+
+## Confirmed construction and rollback contracts (2026-10-28)
+
+The user explicitly reaffirmed construction purity as a project invariant. The
+current per-Method metadata-vtable implementation is a violation, not a reason to
+allow constructor epoch advances. Current Invariants now expressly forbid that
+workaround and require coherent owner metadata above Id, with tracing/retirement
+and admission designed together. The failing purity and admission assertions are
+unchanged. The architecture-cleanup document records this decision; no particular
+replacement representation or new Id API has been approved.
+
+The user selected value-checked rollback for simplicity. The obsolete atomic Id
+undo/ABA harness is removed. Existing authored transaction acceptance now explicitly
+checks that a differing current binding conflicts, returning to the expected
+binding permits rollback despite epoch changes, completed rollback is idempotent,
+and loading coordination does not install the retired Id restore primitive.
+The transaction target passes for its synchronous and resumable candidate paths.
+No runtime change was needed. [Receipt](../measurements/value-checked-rollback-oop-20261028.json).

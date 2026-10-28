@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "scope": "User-confirmed value-checked rollback contract and prohibition of retired Id undo",
+  "decision_date": "2026-10-28",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/generation_transaction.rs": "731d8ad968740011bfa26bb9363e41dd1db8ae52972843fae1182514d2b727e3",
+    "docs/misc/DESIGN.md": "8121991bc631192f620a2bafa283b3b606e9d4e63f714f9e161c2a8379651ec7",
+    "scripts/native-message-test.sh": "5e18489abfa9a2d767eef95982601f2666e7ba47526032674f4707afcb2325b2"
+  },
+  "checks": [
+    {
+      "target": "generation_transaction",
+      "log": ".cargo-target/oop-current-qualification/value-checked-rollback.log",
+      "sha256": "5afd2bce53a60354d141ce91ae8f96e54545fffa84be3d464fd5f8dc1c8eea52",
+      "exit": 0
+    },
+    {
+      "command": "bash -n scripts/native-message-test.sh",
+      "exit": 0
+    }
+  ],
+  "retained_checks": [
+    "A different current Method returns undoConflict and is preserved",
+    "Restoring the expected Method permits rollback despite an intervening epoch change",
+    "Completed rollback is idempotent",
+    "Method additions/removals, unrelated callback writes and explicit user facts retain existing coverage",
+    "Loading authored coordination does not install the retired Id atomic restore operation"
+  ],
+  "changes": [
+    "Construction purity and coherent metadata ownership are explicit Current Invariants",
+    "Value-checked rollback replaces the old atomic Id/global-epoch ABA requirement",
+    "Retired binding_undo.rs and its native gate entry; existing authored transaction acceptance now names the chosen contract"
+  ],
+  "runtime_changes": false,
+  "limits": [
+    "Method construction purity and six admission failures remain unrepaired; their assertions are unchanged.",
+    "This does not promise arbitrary callback atomicity or add history tracking."
+  ]
+}

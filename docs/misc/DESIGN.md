@@ -68,6 +68,50 @@ of Id's design. Do not add them, preserve them as an alternative path, or rename
 them. Use `send` and the objects' defined data operations. Payload opacity,
 malleability, GC correctness and the dispatch contract must hold together.
 
+### Pure Method construction and coherent metadata ownership
+
+Default Method construction and its metadata initialization must not edit dispatch
+bindings or advance the global binding epoch. Preparing an unpublished Method is
+separate from installing it in a receiver's dictionary. Creating private metadata
+vtables, installing getter/binder Methods on them and reassociating the new Method
+are binding mutations; calling them private initialization does not exempt them
+from this invariant. The user explicitly reaffirmed this requirement on 2026-10-28.
+
+Fix the representation and ownership above minimal Id. Do not suppress or rewind
+epoch changes, exempt constructor mutations from invalidation, or relax the purity
+assertion to accommodate the implementation. Actual dictionary edits must retain
+their invalidation behavior. Explicit bootstrap/module installation and effects
+of user-replaced construction operations remain ordinary, observable operations;
+purity is not authority to bypass those replacements or undo their effects.
+
+Related admission facts must have one coherent authority: admitted CodeObject
+identity, checked parameter/capture counts and applicable descriptor agreement.
+This applies when portable code is admitted; native callables need not acquire a
+portable CodeObject.
+Validate before publishing; same-object admission is idempotent without another
+shape query, conflicting rebinding is rejected, and callbacks/reentry must not
+publish inconsistent facts. Metadata representation, tracing and retirement stay
+with their owner. A new weak table is not a simplification unless its necessity,
+lifetime and ownership are demonstrated. All communication between owners remains
+through Id messages, without foreign payload access or a second application
+protocol. Construction and admission must be designed together, not patched with
+independent metadata mechanisms.
+
+### Explicit rollback checks current values
+
+Explicit candidate rollback uses its recorded owner/key and before/after values.
+An already-restored value needs no write; a value matching the operation's expected
+after-value may be restored; a different current value produces a conflict and is
+preserved. Intervening edits that return the binding to the expected value do not
+by themselves prevent rollback. The user selected this simpler contract on
+2026-10-28, retiring the old Id atomic-undo/global-epoch ABA guarantee.
+
+Do not add universal mutation tracking, an Id rollback primitive or a global
+history fence to recreate that retired guarantee. This does not remove ordinary
+lookup invalidation or epoch observations used by other explicit operations.
+Rollback remains explicit owner policy: it may stop after partial progress and
+must not silently replay failed work or promise arbitrary callback atomicity.
+
 ### Architectural changes must preserve the contract
 
 An implementation or optimization task authorizes work within these invariants.

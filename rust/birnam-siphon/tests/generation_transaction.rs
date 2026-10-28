@@ -39,7 +39,17 @@ fn restore(h: &H<'_>, vt: Oop, name: &[u8], alias: &[u8], original: Oop) {
 fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
     let host = support::bootstrap();
     let h = H::new(&host);
+    let retired_undo = h.key(b"restoreBinding:of:in:expected:previous:atEpoch:");
+    assert!(
+        h.call(host.id.root, b"bind:to:", &[retired_undo, host.id.root])
+            .is_null()
+    );
     h.lifecycle();
+    assert!(
+        h.call(host.id.root, b"bind:to:", &[retired_undo, host.id.root])
+            .is_null(),
+        "loading explicit coordination must not restore Id atomic undo"
+    );
     let cg = h.named(b"Codegen");
     let generation = h.named(b"Generation");
     let globals = h.named(b"Globals");
@@ -163,6 +173,7 @@ fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
             &[h.key(b"txReplace"), ivt],
         );
         let outside = direct(b"txCallback");
+        let epoch_before_intervening_edit = h.call(host.id.root, b"behaviorEpoch", &[]);
         h.eval(b"[Reflect defineMethod: #txReplace on: Integer as: [:self | 999]]");
         assert_eq!(
             h.call(h.call(unit, b"rollback", &[]), b"kind", &[]),
@@ -178,7 +189,23 @@ fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
             20
         );
         h.call(ivt, b"addMethod:as:", &[installed, h.key(b"txReplace")]);
-        assert_eq!(h.call(unit, b"rollback", &[]), unit);
+        assert_eq!(direct(b"txReplace"), installed);
+        assert_ne!(
+            h.call(host.id.root, b"behaviorEpoch", &[]),
+            epoch_before_intervening_edit
+        );
+        // The selected contract checks the current binding, not its intervening
+        // history: expected -> different -> expected permits explicit rollback.
+        assert_eq!(
+            h.call(unit, b"rollback", &[]),
+            unit,
+            "value-checked rollback permits restored expected bindings"
+        );
+        assert_eq!(
+            h.call(unit, b"rollback", &[]),
+            unit,
+            "completed rollback is idempotent"
+        );
         assert_eq!(direct(b"txReplace"), old_replace);
         assert_eq!(direct(b"txRemove"), old_remove);
         assert_eq!(

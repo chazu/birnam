@@ -64,6 +64,16 @@ Id dispatch, GC/code ownership, calling conventions or deoptimization.
 This removes the candidate's use of Globals compensation reservations; the
 generic optional Globals reservation operations themselves are unchanged.
 
+### Value-checked rollback decision (2026-10-28)
+
+The user explicitly selected the existing authored before/after-value contract.
+If an intervening edit changes a binding and then restores the expected Method,
+rollback may proceed. A different current binding still reports `#undoConflict`.
+This retires the old atomic Id restoration/global-epoch ABA requirement; no new
+Id operation, universal observer or history tracker is needed. The contract is
+about recorded owners and current values, not proof that no intervening edit has
+occurred. Existing partial-progress and replaceable-callback limits remain.
+
 ## 3. Authored policy boundary
 
 The port puts preparation, construction sequencing, activation, explicit

@@ -10,8 +10,11 @@ recovery is needed, retain applied changes on failure, report partial applicatio
 and abandon stale capabilities. Sections 1–3's ordinary-edit/startup boundaries
 remain; maximal selective rollback is not pending work for basic loading.
 The unused conditional Store-exchange API described in that historical section
-was removed in the 2026-10-20 optional-Store cleanup. Explicit Id method undo
-and Store snapshot revision observations remain in use.
+was removed in the 2026-10-20 optional-Store cleanup. On 2026-10-28 the user also
+retired the old explicit Id atomic method-undo/global-epoch ABA contract in favor
+of authored value-checked candidate rollback. Store snapshot revision observations
+remain separate; historical atomic-undo descriptions below are not current
+requirements.
 
 ## 1. Explicit dictionary-description invalidation
 

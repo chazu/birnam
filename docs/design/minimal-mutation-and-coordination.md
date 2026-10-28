@@ -14,6 +14,14 @@ The destination remains a fully malleable, eventually self-hosted Birnam. Id own
 its dictionaries; Execution owns Method/code lifetimes; ordinary sends remain
 late-bound. Store and Relational remain available, self-describing opt-in facilities.
 
+**2026-10-28 confirmation:** default Method construction must preserve the binding
+epoch, including metadata initialization. The current per-Method metadata-vtable
+implementation violates this invariant and must be redesigned above Id together
+with admission. The historical passing probe below does not qualify that current
+implementation. Explicit rollback now uses recorded owner/value checks; the old
+atomic Id undo and global-epoch ABA guarantee are retired. See
+[Current Invariants](../misc/DESIGN.md#current-invariants).
+
 ## Decision
 
 An ordinary definition prepares a Method and changes the target dictionary through
