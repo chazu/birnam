@@ -515,8 +515,9 @@ recipe is a richer owner protocol. It must not force every native Method into on
 metadata schema.
 
 The current bootstrap Method does not expose its opaque context as a getter.
-For richer reflection/persistence, decide explicitly between suitable owner
-operations and a small bootstrap-Method reflection operation. Do not invent a
+The user selected provider-owned operations on 2026-10-28. Keep the bootstrap
+Method API unchanged; richer reflection and persistence use public operations on
+the relevant code provider. Do not invent a
 weak registry, inspect a foreign payload, use GC enumeration as a context-getter
 side channel, or encode a secret metadata request as an ordinary invocation to
 avoid acknowledging this interface question. Basic invocation and stackless
@@ -542,13 +543,22 @@ noun in this list.
 
 ## Source cleanup already identifiable
 
-Compiler dependency files and the crate module declarations show 14 legacy
-Execution source files and seven legacy NativeBackend source files outside the
-production release input closure. Two additional Execution files are deliberately
-`cfg(test)` inputs. The exact list is in the receipt. This is source/test burden,
-not proof of runtime cost. Check scripts, test-only includes and retained bootstrap
-consumers before deleting files; production absence alone is not a complete
-workspace-consumer audit.
+The disconnected source cleanup is complete for the audited set: 14 legacy
+Execution Rust files, seven legacy NativeBackend Rust files, two old generated-C
+files and three tests of that old carrier ABI were removed (26 files, 8,415 lines).
+The two test-only Execution helpers remain. The old driver had one source-string
+assertion consumer; that assertion now audits only the live engine functions.
+The three old prelude tests described obsolete carrier/cache mechanisms; their
+retained root/lifetime responsibilities remain covered through the production Oop
+prelude and owner tests. No live optimizer or recovery implementation was removed.
+
+The audit included release dependency inputs, crate roots, workspace include/path
+references, scripts, workflow/build configuration and test-only consumers.
+Historical documentation links are pinned to the prior commit, and formal source
+anchors identify the current code. Unit/doc tests, the core suite and focused
+root-lifetime/optimizer checks pass.
+[Removal manifest and evidence](../measurements/disconnected-runtime-source-removal-20261028.json).
+This reduces source and build burden; it is not a claim of runtime speedup.
 
 ## Source map
 

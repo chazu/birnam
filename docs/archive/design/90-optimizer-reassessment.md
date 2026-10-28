@@ -21,9 +21,9 @@ it does not port the retained allocation-elision implementations.
 
 Relevant production paths:
 [emitter](../../../rust/birnam-codegen/src/native.rs),
-[candidate selection](../../../rust/birnam-execution/src/native_tier.rs),
-[Machine guards](../../../rust/birnam-execution/src/machine.rs),
-[recovery](../../../rust/birnam-execution/src/recovery.rs),
+[candidate selection](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/native_tier.rs),
+[Machine guards](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/machine.rs),
+[recovery](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/recovery.rs),
 [GC accounting](../../../rust/birnam-collect/src/accounting.rs).
 No lazy compiler, new guard-description framework or alternate owner ABI replaces
 the removed code.

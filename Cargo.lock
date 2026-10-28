@@ -246,7 +246,6 @@ dependencies = [
  "birnam-abi",
  "birnam-artifact-codec",
  "birnam-codegen",
- "birnam-native-compiler",
  "sha2",
 ]
 

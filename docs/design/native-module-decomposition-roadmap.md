@@ -325,7 +325,7 @@ byte equality alone is not an adequate equivalence test.
 
 Sources: [source compiler facade](../../rust/birnam-codegen-runtime/src/lib.rs),
 [semantic lowering](../../rust/birnam-codegen/src/lib.rs),
-[native emission](../../rust/birnam-native-backend/src/native.rs),
+[native emission](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native.rs),
 [resumable lowering](../../rust/birnam-codegen/src/resumable.rs),
 [metadata persistence](../../rust/birnam-codegen-runtime/src/source_metadata.rs).
 

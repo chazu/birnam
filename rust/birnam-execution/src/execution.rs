@@ -2,7 +2,7 @@
 //!
 //! This module deliberately contains no dispatch or code-loader policy. It
 //! owns Machine capabilities, validated frame descriptors, and retained frame
-//! arenas. `machine` connects these algorithms to Id-owned objects and messages.
+//! arenas. `resumable_runtime` connects these algorithms to Id-owned objects and messages.
 #![allow(dead_code)] // Preserve private recovery/optimizer consumers for batch 2.
 
 use birnam_artifact_codec::frame_descriptor as canonical_descriptor;
@@ -5400,7 +5400,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_and_classify_fast_path_has_no_allocation_lock_atomic_or_refcount_surface() {
+    fn classification_and_turn_entry_have_no_allocation_lock_atomic_or_refcount_surface() {
         fn function_body<'a>(source: &'a str, start: &str, next: &str) -> &'a str {
             let start = source
                 .find(start)
@@ -5423,17 +5423,10 @@ mod tests {
             "    pub(crate) fn begin_managed_turn(",
             "    pub(crate) fn end_managed_turn(",
         );
-        let runtime_source = include_str!("machine.rs");
-        let resolution = function_body(
-            runtime_source,
-            "unsafe fn lookup_target(",
-            "unsafe fn loop_drive(",
-        );
 
         for (name, body) in [
             ("managed turn entry", read_entry),
             ("registry classification", classification),
-            ("resolve-and-pin", resolution),
         ] {
             for forbidden in [
                 "Vec", "Arc", "Rc", "Box", ".clone(", "Mutex", "Atomic", ".lock(", "fetch_",

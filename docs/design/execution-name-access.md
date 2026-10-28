@@ -8,7 +8,7 @@ namespace reads, cache their results or weaken admission checks.
 ## Retained change
 
 Execution already interns and retains its fixed names at construction. Its
-[`Names` inventory](../../rust/birnam-execution/src/names.rs) now gives direct
+[`Names` inventory](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/names.rs) now gives direct
 access to eight frequent names: `at:`, `Integer`, `behaviorEpoch`,
 `nativeBindingsMatch:`, `usesDefaultAllocation`, `usesDefaultLookup:`, `bind:to:`
 and `canOmitIndexing`. Other names use the existing HashMap. A byte comparison

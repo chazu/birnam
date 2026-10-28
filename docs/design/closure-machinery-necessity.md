@@ -325,9 +325,9 @@ python3 scripts/analyze-closure-machinery.py \
 ```
 
 Source evidence:
-[emitter](../../rust/birnam-native-backend/src/native_sync.rs),
-[generated roots/lookups](../../rust/birnam-native-backend/src/native_prelude.c),
-[Block construction/projection](../../rust/birnam-execution/src/machine.rs),
+[emitter](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native_sync.rs),
+[generated roots/lookups](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native_prelude.c),
+[Block construction/projection](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/machine.rs),
 [Execution scopes/reference tracing](../../rust/birnam-execution/src/lib.rs),
 [ObjectModel](../../rust/birnam-object-model/src/native.rs),
 [collector admission](../../rust/birnam-collect/src/construction.rs),

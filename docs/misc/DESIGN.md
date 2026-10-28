@@ -117,7 +117,14 @@ publish inconsistent facts. Metadata representation, tracing and retirement stay
 with their owner. A new weak table is not a simplification unless its necessity,
 lifetime and ownership are demonstrated. All communication between owners remains
 through Id messages, without foreign payload access or a second application
-protocol. Construction and admission must be designed together, not patched with
+protocol.
+
+For Method reflection and persistence, the user selected provider-owned operations
+on 2026-10-28. Keep the bootstrap Method API unchanged; do not add context/owner
+accessors there to complete this migration. Code providers expose their own data
+through public Id messages and interpret only their own representations. This is
+not permission to add a universal Method-metadata database or use GC inspection
+as a context-getter side channel. Construction and admission must be designed together, not patched with
 independent metadata mechanisms.
 
 ### Explicit rollback checks current values

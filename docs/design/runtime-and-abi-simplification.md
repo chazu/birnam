@@ -502,11 +502,11 @@ Implementation anchors for the first slices:
 
 - [Id operands/results](../../rust/birnam-abi/src/id_protocol.rs) and
   [signature vocabulary](../../rust/birnam-abi/src/native_signature.rs).
-- [Execution conversion](../../rust/birnam-execution/src/native_abi.rs),
-  [binding proofs](../../rust/birnam-execution/src/binding_proof.rs) and
-  [Block construction](../../rust/birnam-execution/src/machine.rs).
-- [Synchronous lowering](../../rust/birnam-native-backend/src/native_sync.rs) and
-  [generated call/root helpers](../../rust/birnam-native-backend/src/native_prelude.c).
+- [Execution conversion](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/native_abi.rs),
+  [binding proofs](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/binding_proof.rs) and
+  [Block construction](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/machine.rs).
+- [Synchronous lowering](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native_sync.rs) and
+  [generated call/root helpers](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native_prelude.c).
 - [Root registration](../../rust/birnam-root-registry/src/lib.rs),
   [ObjectModel](../../rust/birnam-object-model/src/native.rs),
   [GC admission](../../rust/birnam-collect/src/construction.rs) and

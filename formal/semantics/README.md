@@ -143,8 +143,9 @@ instantiates them. Relevant concrete anchors are:
   native invocation and DNU. Id owns dictionary/header interpretation.
 - `rust/birnam-id/src/id/vtable.rs` and `native_id/objects.rs`: mutation and
   receiver reassociation must invalidate relevant dispatch facts.
-- `rust/birnam-execution/src/lib.rs`: invocation scopes and acquired code lifetime.
-- `rust/birnam-execution/src/recovery.rs`: concrete recovery/commit authority.
+- `rust/birnam-execution/src/resumable_runtime.rs`: invocation scopes and acquired code lifetime.
+- `rust/birnam-execution/src/execution/recovery.rs` and `oop_recovery.rs`:
+  concrete recovery/commit authority and its Oop message connection.
 - `rust/birnam-word/src/expression.rs`: owner-admitted pure Word plans.
 - `rust/birnam-string/src/native.rs`: String delegates backing storage to Bytes.
 - `rust/birnam-vector/src/lib.rs`: Vector owns nodes and index/error semantics.

@@ -25,9 +25,9 @@ that arithmetic itself costs enough to justify comparing and retaining results.
 | [Loop cache](../../rust/birnam-runtime/src/runtime/numeric/chain/loop_reuse.rs) | Compares current and previous raw inputs, copies previous results, recomputes changed dependencies, and updates retained vectors. Requires consecutive self-tail iteration stamps. | Defer. Reusing predictions is not the same as removing the surrounding messages, allocations and transitions. |
 | [Recovery maps](../../rust/birnam-codegen/src/numeric_chain/recovery_maps.rs) | Tracks which physical slots alias each intermediate result at action/transition boundaries. | Useful if an actual virtual numeric value must become inspectable. Do not require all these maps for a case that never exposes such state. |
 
-The production [native emitter](../../rust/birnam-native-backend/src/native.rs) does not
+The production [native emitter](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native.rs) does not
 install these legacy numeric-chain consumers. Production Execution has the
-separate [scalar shortcut](../../rust/birnam-execution/src/numeric.rs); this review
+separate [scalar shortcut](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/numeric.rs); this review
 does not establish that shortcut's profitability or change it.
 
 ## Requirements versus inherited policy

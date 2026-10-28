@@ -76,7 +76,7 @@ all those sends can be omitted under arbitrary method replacement or reflection.
 
 ## What closure construction actually does
 
-The [synchronous emitter](../../rust/birnam-native-backend/src/native_sync.rs)
+The [synchronous emitter](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native_sync.rs)
 lowers each Block literal into reference storage allocation, one ObjectModel write
 per capture, and a Block-owner constructor message. These disjoint subtrees and
 adjacent preparation account for the entire 2,241-send category:
@@ -89,7 +89,7 @@ adjacent preparation account for the entire 2,241-send category:
 | Adjacent ObjectModel/Block factory lookups | 220 |
 | Immediate roots of returned objects | 110 |
 
-The [Block constructor](../../rust/birnam-execution/src/machine.rs) requests
+The [Block constructor](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/machine.rs) requests
 `canonicalBytesOf:` from the current CodeObject owner, obtains Bytes through its
 owner, and parses the portable program shape to validate arity/capture count.
 It validates capture storage layout, reads its slots through ObjectModel, and

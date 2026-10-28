@@ -1,0 +1,186 @@
+{
+  "base_revision": "ec640c21aee5a245cebeb993ef7b7501decead3e",
+  "removed": [
+    {
+      "path": "rust/birnam-execution/src/binding_proof.rs",
+      "sha256": "53e1dd740d28804cce4ff6bacacb7c00bc45c2104683bbb1484a18f85697b309",
+      "lines": 17
+    },
+    {
+      "path": "rust/birnam-execution/src/discarded_clone.rs",
+      "sha256": "570c9f9bf99e2866ea807df3c9f659ce6524c6cd1527af0a5b86812f2042ce12",
+      "lines": 117
+    },
+    {
+      "path": "rust/birnam-execution/src/image.rs",
+      "sha256": "b73024c40eb5b1895ea4cd26739eb99aa6467ce46fd8c6ea05edc7682ce4be26",
+      "lines": 36
+    },
+    {
+      "path": "rust/birnam-execution/src/machine/frame_call.rs",
+      "sha256": "990cc350de6d3583594ebbb314f9bd1cf881869eced60a3acffa5e0e5d40cb43",
+      "lines": 352
+    },
+    {
+      "path": "rust/birnam-execution/src/machine.rs",
+      "sha256": "bad15e7bd5a689725d632a42f4c1c1883c26609aab076a80ba53d4d8b908f8ac",
+      "lines": 2685
+    },
+    {
+      "path": "rust/birnam-execution/src/names.rs",
+      "sha256": "a6ba9ae74d35ce3a8c6829d28642303f09a7996492322bd77ec95902a9e69147",
+      "lines": 72
+    },
+    {
+      "path": "rust/birnam-execution/src/native_abi.rs",
+      "sha256": "5148301a9c03004b511fcca4592b0360bf2446e3be44f2eff1b448c82ad16d80",
+      "lines": 345
+    },
+    {
+      "path": "rust/birnam-execution/src/native_message.rs",
+      "sha256": "862a948d4751829a3d2bd4f1200d8ea7a9b47e89e22d3a5e29e204ff668c4473",
+      "lines": 175
+    },
+    {
+      "path": "rust/birnam-execution/src/native_tier.rs",
+      "sha256": "2a771eebde4548d975ae27623a7d795447535872727a36b6a8b2abcf78364775",
+      "lines": 122
+    },
+    {
+      "path": "rust/birnam-execution/src/numeric.rs",
+      "sha256": "c5e6ee16a7d93ecb18e4332824c7c8d86cd2962027392ec740203530e0a77b06",
+      "lines": 100
+    },
+    {
+      "path": "rust/birnam-execution/src/numeric_predicate.rs",
+      "sha256": "d81e6f77327aa25d300e8caa32efa937661bcf6b3b0f2f9c57d5d2b0725ddf79",
+      "lines": 125
+    },
+    {
+      "path": "rust/birnam-execution/src/pending_message_integration.rs",
+      "sha256": "5f138addbc75018ee1ed32e9511a66295bc223b7ba59d84b4e07decaca69e9c0",
+      "lines": 1101
+    },
+    {
+      "path": "rust/birnam-execution/src/recovery.rs",
+      "sha256": "75e58cbf274457cb611d8fbf31eac44e1dfb567ddd865bb6962bcae09bb81e54",
+      "lines": 512
+    },
+    {
+      "path": "rust/birnam-execution/src/word_helper.rs",
+      "sha256": "fe61e697d65a7b9a993c9e27a402a3e668e89865afcd7836565d4370de408f5f",
+      "lines": 178
+    },
+    {
+      "path": "rust/birnam-native-backend/src/helper_emission.rs",
+      "sha256": "48cefa6077dd5005756d13529a0a1a5a52ccc88f31d5b535b4eb2ad56e3339e1",
+      "lines": 106
+    },
+    {
+      "path": "rust/birnam-native-backend/src/literal.rs",
+      "sha256": "d6cef15986fb24478769b96ad4594864564331672d4a24354e979e662000a6bf",
+      "lines": 28
+    },
+    {
+      "path": "rust/birnam-native-backend/src/native.rs",
+      "sha256": "2f5f0aab2408d71fe4d9ad44d1f5bbc129c7a02b429655bc89bf144cd2716e7f",
+      "lines": 775
+    },
+    {
+      "path": "rust/birnam-native-backend/src/native_sync.rs",
+      "sha256": "8bcdc46e32627b9ad1077bc01a4d52f8a819f4232eee92702d31eb48d8ec457f",
+      "lines": 152
+    },
+    {
+      "path": "rust/birnam-native-backend/src/pending_message_integration.rs",
+      "sha256": "6bd35bbbd2997f845653002953424a9ed4b4debe29f69b0ff7b8ec205a5ea02f",
+      "lines": 351
+    },
+    {
+      "path": "rust/birnam-native-backend/src/selector_capacity.rs",
+      "sha256": "2e2b71ab041c99dacf3553bb071f1e3f68af321bccd2fa32797bae51b9fa8d21",
+      "lines": 90
+    },
+    {
+      "path": "rust/birnam-native-backend/src/word_expression.rs",
+      "sha256": "8ea369f116073c205da00facebf231ec762346bb7d60f0b5d28ca444c7e7f432",
+      "lines": 514
+    },
+    {
+      "path": "rust/birnam-native-backend/src/native_inline_return.c",
+      "sha256": "af5555f00c5b886e2b658d11bc3bf02ba489aed22dd003605f6fc586da6cf920",
+      "lines": 40
+    },
+    {
+      "path": "rust/birnam-native-backend/src/native_prelude.c",
+      "sha256": "b25eb245d74f6d3024d2d0a23810d5962436ab2d124b6ca1d1e72e80316e70a5",
+      "lines": 205
+    },
+    {
+      "path": "rust/birnam-native-backend/tests/root_cleanup.rs",
+      "sha256": "726528be5d4b7f14b62192b40ea6199671e1deb8402c81b228dcf06575a1693c",
+      "lines": 66
+    },
+    {
+      "path": "rust/birnam-native-backend/tests/return_handoff.rs",
+      "sha256": "af3d60a2b0727aff23bbfe0ef06e4ef1e829d92f9d9cecab7714795de5272af8",
+      "lines": 65
+    },
+    {
+      "path": "rust/birnam-native-backend/tests/selector_cache.rs",
+      "sha256": "c7c72c6da70bbb2394060dc0a452e1caedeba120205ab6c0d8614b448b4afd17",
+      "lines": 86
+    }
+  ],
+  "removed_lines": 8415,
+  "retained_test_sources": [
+    "rust/birnam-execution/src/execution/inline_recovery_experiment.rs",
+    "rust/birnam-execution/src/execution/probe_descriptor.rs"
+  ],
+  "historical_documents_pinned": [
+    "docs/design/runtime-costs-exposed-by-logue.md",
+    "docs/design/90-numeric-chain-review.md",
+    "docs/design/80u-birnam-task-cleanup-slice.md",
+    "docs/design/runtime-and-abi-simplification.md",
+    "docs/design/native-module-decomposition-roadmap.md",
+    "docs/design/integer-send-totality.md",
+    "docs/design/90-self-optimization-review.md",
+    "docs/design/execution-name-access.md",
+    "docs/design/closure-machinery-necessity.md",
+    "docs/archive/design/90-optimizer-reassessment.md"
+  ],
+  "evidence": {
+    "unit_and_doc_tests": {
+      "path": ".cargo-target/oop-current-qualification/dead-source-milestone/unit_and_doc_tests.log",
+      "sha256": "1da55961bfb4eaa887ec153b592e0ebb269da2e19d7aefd09fad051c0308eb94",
+      "result": "passed"
+    },
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/dead-source-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "behavior": {
+      "path": ".cargo-target/oop-current-qualification/dead-source-milestone/behavior.log",
+      "sha256": "417655e93dc9a91ad30b8ea52d3089698a7d4b0ac87449bc540725b9d8491009",
+      "result": "passed"
+    }
+  },
+  "consumer_review": [
+    "release depfiles and crate module roots",
+    "workspace Rust path/include references",
+    "scripts and workflow references",
+    "legacy test-only C prelude consumers",
+    "formal source anchors and historical documentation links"
+  ],
+  "retained_production_features": [
+    "Oop emission and its prelude",
+    "Machine/frame engine",
+    "PC candidates and inline/recovery integration",
+    "frame capture/control/scheduling",
+    "numeric operator and recovery graph code shared by current compiler",
+    "current Oop root-order, collecting-cleanup, alias/lifetime and dispatch tests"
+  ],
+  "test_changes": "Removed only old carrier-ABI/prelude-cache tests. The engine source audit retains its live classification/managed-turn checks and drops its read of the disconnected old driver.",
+  "limits": "Source/build burden removal, not a measured runtime speedup. No production runtime behavior was changed by this cleanup."
+}

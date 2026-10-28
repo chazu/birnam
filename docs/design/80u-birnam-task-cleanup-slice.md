@@ -112,7 +112,7 @@ sketched in 80A or a background I/O executor.
 
 ## Runtime connection and invariants
 
-[machine.rs](../../rust/birnam-execution/src/machine.rs) supplies
+[machine.rs](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/machine.rs) supplies
 small generic Machine adapters: `runBlock:`, `resumeWith:`, `protectedBlock:`,
 `leaveBoundary:`, `park`, and `controlEligible`. Execution loading installs
 their registrations once. The eligibility query runs as a StepMethod and checks

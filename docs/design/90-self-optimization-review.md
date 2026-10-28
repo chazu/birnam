@@ -65,7 +65,7 @@ The current production prefix already has a suitable starting point:
 
 - [Execution recovery graphs](../../rust/birnam-execution/src/recovery_graph.rs)
   distinguish existing inputs, distinct virtual nodes and repeated aliases.
-  [Materialization](../../rust/birnam-execution/src/recovery.rs) constructs required
+  [Materialization](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/recovery.rs) constructs required
   values through owner messages with roots and validation. No global prepaid
   identity service is necessary for this representation.
 - [GC accounting](../../rust/birnam-collect/src/accounting.rs) and its construction

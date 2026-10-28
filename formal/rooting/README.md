@@ -204,9 +204,12 @@ logical root registrations.
 
 ## Source correspondence and references
 
-- `rust/birnam-native-backend/src/native_prelude.c`: `keep` creates a token for
-  every Object and `finish` releases scope tokens. The candidate rule applies
-  to that owned scope; message-activation overlap is not itself a scope proof.
+- `rust/birnam-native-backend/src/oop_prelude.c`: `keep` registers an Oop and
+  `finish` releases the scope through `releaseTokensProtecting`. The old carrier
+  prelude and its cache-specific tests were retired; current behavioral coverage
+  lives in `rust/birnam-siphon/tests/{root_batches,result_cleanup,root_reuse}.rs`.
+  These models are not a proof that the current prelude implements every modeled
+  optimization; message-activation overlap is not itself a scope proof.
 - `rust/birnam-root-registry/src/lib.rs`: unique token creation, exact release,
   swap removal and callback-visible `rootsDo:` enumeration.
 - `rust/birnam-collect/src/collection.rs`: explicit roots and transitive tracing.

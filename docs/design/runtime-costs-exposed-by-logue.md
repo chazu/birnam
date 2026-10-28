@@ -92,8 +92,8 @@ In the one-element case, 4,292 messages (36.2%) occur beneath
 Symbol string comparison it is 36.3%. Each message is counted once within that
 category even if nested. **These are message shares, not CPU shares.**
 
-The [generated prelude](../../rust/birnam-native-backend/src/native_prelude.c)
-and [Execution preparation](../../rust/birnam-execution/src/machine/frame_call.rs)
+The [generated prelude](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-native-backend/src/native_prelude.c)
+and [Execution preparation](https://github.com/chazu/birnam/blob/ec640c21aee5a245cebeb993ef7b7501decead3e/rust/birnam-execution/src/machine/frame_call.rs)
 explain the expansion. The prepared path resolves its optional protocol, checks
 allocation/lookup permissions and namespace behavior, obtains the Integer
 factory, checks index-box omission permission and machine controls, rechecks
