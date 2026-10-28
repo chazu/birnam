@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "0e12edad2ec8611a9da383322ded361ffd1c6769",
+  "scope": "Pure direct stackless Method construction. Default Reflect definitions and full language integration remain pending.",
+  "source_sha256": {
+    "rust/birnam-execution/src/resumable_runtime.rs": "747f9059b29787f5361115ef0052795c66b498e65dc9df4dffec9b28d6698ed1",
+    "rust/birnam-execution/src/synchronous.rs": "9bd4c3e04801b0b0af754c1edbc21fab0f77e4bac45cb8ade532b7fd93fbf9c4",
+    "rust/birnam-siphon/tests/direct_method_construction.rs": "5b87ae9ca016a4a9962af904690314459f3272ca270975071d197a382f5a806c",
+    "scripts/native-message-test.sh": "a4e84881d4334da9907f2ac1b9922a993e724b4fcec2b19f7a3defabed6dd4df"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/direct-method-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "units": {
+      "path": ".cargo-target/oop-current-qualification/direct-method-milestone/units.log",
+      "sha256": "597856c6ca0dd482a304a2d1ba0fbfbaa7da9c4775bc9f019874e781aeba3299",
+      "result": "passed"
+    },
+    "runtime": {
+      "path": ".cargo-target/oop-current-qualification/direct-method-milestone/runtime.log",
+      "sha256": "f2a89365ac071bd59e8483ac9f7ba99135989f9e9adc26f7134a685c5ec4cd74",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/direct-method-milestone/focused.log",
+      "sha256": "36a673a0b8e89f7a4d4a9a71917f2716b05a3e32edd25ff916c3404086933b76",
+      "result": "passed"
+    },
+    "construction_lifetime": {
+      "path": ".cargo-target/oop-current-qualification/direct-method-milestone/construction_lifetime.log",
+      "sha256": "252cd0704c9cfb98b6cba6690cc848224c03e64be8af5e06ec1bd85c76f0d496",
+      "result": "passed"
+    }
+  },
+  "focused_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/direct-method-tq4gp738/prefix",
+  "focused_execution_sha256": "014894a7481d61060a58a115a85de13dc420f3104084d33db20c3708d67565c0",
+  "core_execution_sha256": "c26376b19941078909c978b6219b73e3d5e91bc2e5d55965561a2c08eb8c0f6a",
+  "source_note": "Focused tests used the final runtime implementation before formatting; the core suite rebuilt the formatted runtime. Final test formatting does not alter its assertions.",
+  "verified": [
+    "unchanged binding epoch across repeated default construction",
+    "default Method behavior with no per-instance metadata vtable",
+    "actual receiver separated from lexical environment",
+    "no implicit source Block value or capture getter sends",
+    "optional CodeObject inspection not required",
+    "live captured Cells",
+    "future replacement versus captured Method meaning",
+    "inline candidate entry and decline preserve receiver/captures/arguments",
+    "reject unrelated/native bodies, missing receiver, unfinished shell, wrong capture counts and null captures",
+    "two suspended computations with shared code and independent receivers",
+    "installed Method alone retains environment and native mapping",
+    "mapping count returns to baseline after final binding removal",
+    "continuation forwarding, existing Machines and optimizer recovery remain passing"
+  ],
+  "architecture_review": {
+    "id": "No changes to Id or its public contract",
+    "owner": "Execution alone reads its Block, entry and frame descriptions",
+    "added_state": "One environment Oop in the existing owned entry record; no universal metadata database",
+    "code_lifetime": "Shares the existing descriptor, registration and code owner; no second registration",
+    "constructor_api": "Execution methodFromBlock: creates a Method; ordinary sends still perform lookup then direct entry"
+  },
+  "remaining": [
+    "default definition/Reflect/bootstrap integration",
+    "ordinary arity and DNU behavior integration",
+    "explicit native signature body construction",
+    "synchronous code-provider environment binding",
+    "optional reflection/image protocol migration",
+    "remove old forwarding/cache/private metadata vtables and generic admission",
+    "full native and same-revision cold/relocated/Host qualification"
+  ]
+}

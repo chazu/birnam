@@ -63,6 +63,11 @@ document does not approve weakening purity, admission or malleability.
 
 ## 1. Per-Method metadata behavior changes the global binding epoch
 
+A pure direct-construction path is now available as `Execution methodFromBlock:`;
+see [its contract and evidence](minimal-id-stackless-machinery.md#implementation-checkpoint-direct-stackless-method-construction-2026-10-28).
+The default Reflect/template path below is still pending migration, so this issue
+remains open until that path and its per-Method metadata mutation are removed.
+
 **Status: confirmed, unresolved contract violation.**
 
 [Codegen Method construction](../../rust/birnam-codegen-runtime/src/lib.rs)

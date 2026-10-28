@@ -27,6 +27,8 @@ struct Registered {
     lease: GenerationLeaseCapability,
     inline: Option<recovery::Inline>,
     candidate: Option<std::rc::Rc<native_tier::Candidate>>,
+    // The lexical environment is instance state; the code registration is shared.
+    environment: Option<Oop>,
 }
 #[derive(Default)]
 pub(super) struct Runtime {
@@ -48,6 +50,7 @@ pub(super) struct Runtime {
     controls: Vec<(&'static [u8], Oop)>,
 }
 pub(super) const METHOD_NAMES: &[&[u8]] = &[
+    b"methodFromBlock:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:callPlans:",
     b"prepareCall:selector:",
@@ -320,11 +323,85 @@ unsafe fn register_descriptor(
                 lease,
                 inline: None,
                 candidate: None,
+                environment: None,
             },
         );
         Ok(method)
     }
 }
+pub(super) unsafe extern "C" fn method_from_block(
+    _: Oop,
+    c: Oop,
+    _: Oop,
+    a: *const Oop,
+    n: usize,
+) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [body] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let q = s.scope(&[*body]);
+        if s.storage.borrow().image_shell(*body) {
+            return Err(invalid());
+        }
+        let count = {
+            let storage = s.storage.borrow();
+            if *body == s.block || storage.family_of(*body) != Some(s.block_vt) {
+                return Err(invalid());
+            }
+            storage
+                .payload_size(*body)
+                .and_then(|bytes| (bytes / size_of::<Oop>()).checked_sub(1))
+                .ok_or_else(invalid)?
+        };
+        let code = q.keep(s.field(*body, 0)?);
+        // Ask Id about executable identity; only Execution reads its own
+        // Block representation and code descriptions.
+        let records: Vec<_> = s.resume.borrow().records.values().cloned().collect();
+        for record in &records {
+            q.keep(record.method);
+        }
+        let mut selected = None;
+        for record in records {
+            if s.send(s.id.root, b"sameNativeMethod:as:", &[code, record.method])?
+                == abi::size(1).unwrap()
+            {
+                selected = Some(record);
+                break;
+            }
+        }
+        let mut record = selected.ok_or_else(invalid)?;
+        let binding = record.descriptor.v2_entry_binding().ok_or_else(invalid)?;
+        if record.environment.is_some()
+            || binding.argument_count == 0
+            || binding.implementation_slot.is_some()
+            || count != record.descriptor.entry_capture_slots().len()
+        {
+            return Err(invalid());
+        }
+        for i in 0..count {
+            if s.field(*body, i + 1)?.is_null() {
+                return Err(invalid());
+            }
+        }
+        let (context_vt, template) = {
+            let runtime = s.resume.borrow();
+            (runtime.context_vt, runtime.template)
+        };
+        let context = q.keep(allocate(s, context_vt, 0)?);
+        let method = q.keep(s.send(template, b"withContext:", &[context])?);
+        record.method = method;
+        record.environment = Some(*body);
+        record.candidate = None;
+        // Retain the original descriptor/code owner and registration. No
+        // per-instance dictionary, code admission or second registration.
+        s.resume.borrow_mut().records.insert(context.addr(), record);
+        Ok(method)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+
 unsafe fn new_machine(s: &State) -> Result<Oop, Oop> {
     unsafe {
         let o = s.engine.borrow().objects().ok_or_else(invalid)?;
@@ -390,7 +467,7 @@ unsafe fn materialize_entry(
         }
         let result = (|| {
             let (_, count) = checked(s.engine.borrow().acquired_entry_capture_layout(entry))?;
-            if count != 0 {
+            if count != 0 && r.environment.is_none() {
                 let storage = s.storage.borrow();
                 if storage.family_of(receiver) != Some(s.block_vt)
                     || storage
@@ -402,11 +479,12 @@ unsafe fn materialize_entry(
             }
             let mut captures = Vec::new();
             for i in 0..count {
-                captures.push(q.keep(s.send(
-                    receiver,
-                    b"captureWordAt:",
-                    &[abi::size(i).unwrap()],
-                )?));
+                let value = if let Some(environment) = r.environment {
+                    s.field(environment, i + 1)?
+                } else {
+                    s.send(receiver, b"captureWordAt:", &[abi::size(i).unwrap()])?
+                };
+                captures.push(q.keep(value));
             }
             checked(
                 s.engine
@@ -1098,6 +1176,18 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             .get(&c.addr())
             .cloned()
             .ok_or_else(invalid)?;
+        // A bound method's first formal is its actual receiver. Captures
+        // come from its environment, independently of that receiver's storage.
+        let body_receiver = record.environment.unwrap_or(r);
+        let bound_arguments;
+        let args = if record.environment.is_some() {
+            bound_arguments = std::iter::once(r)
+                .chain(args.iter().copied())
+                .collect::<Vec<_>>();
+            bound_arguments.as_slice()
+        } else {
+            args
+        };
         let q = s.scope(&[c, r, *k]);
         for &arg in args {
             q.keep(arg);
@@ -1124,7 +1214,15 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             // invocation. Only the optional candidate needs the exact shape.
             if !site.tail && exact_arity {
                 if let Some(inline) = record.inline {
-                    if recovery::try_inline(s, &site, capability, acquired, inline, r, args)? {
+                    if recovery::try_inline(
+                        s,
+                        &site,
+                        capability,
+                        acquired,
+                        inline,
+                        body_receiver,
+                        args,
+                    )? {
                         // Recovery may have installed the child frame already.
                         // Its authority validated the original pending call.
                         s.resume.borrow_mut().returns.remove(&context);
@@ -1132,7 +1230,7 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                     }
                 }
             }
-            let value = materialize_entry(s, acquired, &record, r, args)?;
+            let value = materialize_entry(s, acquired, &record, body_receiver, args)?;
             let site = match take_return(s, context) {
                 Ok(site) => site,
                 Err(e) => {
@@ -1163,7 +1261,7 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
             new_machine(s)?
         });
         let capability = cap(s, machine)?;
-        let (acquired, value) = acquire(s, &record, r, args)?;
+        let (acquired, value) = acquire(s, &record, body_receiver, args)?;
         // Establish a real transfer boundary instead of inferring one from
         // the answer Method's identity. An accepted pause hands control back to
         // our drive; a synchronous native caller makes Id reject that transfer.
@@ -1745,6 +1843,7 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
     if let Some(record) = s.resume.borrow().records.get(&object.addr()) {
         let mut values = vec![record.method, record.step, record.owner,
             record.descriptor.executable_owner.get()];
+        values.extend(record.environment);
         if let Some(inline) = record.inline {
             values.extend([inline.method, inline.owner]);
         }
@@ -1947,7 +2046,9 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             ) {
                 continue;
             }
-            let target = if name.starts_with(b"fromStep:descriptor:selection:owner:") {
+            let target = if name.starts_with(b"fromStep:descriptor:selection:owner:")
+                || name == b"methodFromBlock:"
+            {
                 execution_type
             } else if matches!(name, b"withInline:at:owner:" | b"optimizeWith:") {
                 q.keep(s.send(s.id.root, b"methodBehavior", &[])?)

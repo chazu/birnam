@@ -77,6 +77,59 @@ checks retain custom lookup, native boundaries, task control, optimizer recovery
 and lifetime coverage. This checkpoint does not complete direct Method definition,
 construction purity, code-owner admission or full language/release qualification.
 
+## Implementation checkpoint: direct stackless Method construction (2026-10-28)
+
+`Execution methodFromBlock:` now constructs an executable Method from a Block
+whose code is already owned by Execution. This is the first direct-construction
+slice, not a switch of `Reflect` or the language's default definition path.
+[Qualification](../measurements/direct-method-construction-oop-20261028.json).
+
+The constructor checks the owned Block representation, rejects unfinished image
+shells, verifies the executable against Execution's existing code registrations,
+and checks the receiver formal and capture layout. It rejects arbitrary native
+bodies, unrelated callable objects, missing/extra captures and null capture values.
+It does not query optional `codeObject` metadata or attach unrelated code after
+construction.
+
+Before, defining a Method constructs a forwarder that later sends `value:` to a
+body Block. The new constructor instead binds that Block as the lexical environment
+of the already-compiled body. On entry, the actual message receiver supplies the
+first formal parameter and the remaining message arguments supply the remaining
+formals. Captures come from the bound environment, independently of the actual
+receiver's representation. The original compiled body and descriptor are shared;
+there is no second registration or recompilation per definition.
+
+The one added owner operation is construction, not an application protocol.
+The one additional instance reference is the lexical environment in Execution's
+existing owned entry record. Default construction allocates a context and Method
+without adding dictionary entries or reassociating behavior. Execution traces the
+environment and retains the existing code owner. It reads only its own Block
+format; executable identity queries and all cross-owner work use Id.
+
+The existing body layout still uses its former Block-receiver slot for the lexical
+environment. Keeping that layout preserves the input contract of existing inline
+candidates and recovery descriptions while separating the actual Method receiver
+at entry. An entered candidate or a declined candidate both produce the correct
+receiver, captures and arguments in the new path. PC candidates remain attached
+to the shared code registration. This does not introduce optimization metadata on
+arbitrary native Methods.
+
+The acceptance test poisons the source Block's `value:` and capture-access methods,
+and separately poisons optional CodeObject inspection: direct entry still works.
+It also checks an unchanged binding epoch across repeated construction, default
+Method behavior, live captured Cells, replacement versus captured invocation,
+optimizer entry/fallback, two independently suspended computations, and native
+mapping retention/release after source roots disappear and the binding is removed.
+
+Remaining integration is explicit: connect ordinary definitions and bootstrap,
+preserve ordinary arity and DNU behavior, handle explicit native conversion at its
+real boundary, replace optional reflection/image consumers, and remove the old
+forwarding/templates/per-instance metadata behavior. Synchronous provider binding
+and generic admission cleanup are not completed by this constructor. Construction
+currently finds its existing code registration through Id identity queries; this
+is construction work, not a new lookup on every Method send. No performance claim
+is made for complete programs by this checkpoint.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code

@@ -760,6 +760,7 @@ const NAMES: &[&[u8]] = &[
     b"callPlan:field:",
     b"optimizeWith:",
     b"numericOperation:left:right:",
+    b"methodFromBlock:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1000,6 +1001,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"callPlan:field:"),
     Literal::new(b"optimizeWith:"),
     Literal::new(b"numericOperation:left:right:"),
+    Literal::new(b"methodFromBlock:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1566,6 +1568,11 @@ static METHODS: &[MethodSpec] = &[
         name: 231,
         entry: Some(native_adapters::deferred_answer),
         convention: 1,
+    },
+    MethodSpec {
+        name: 238,
+        entry: Some(resumable::method_from_block),
+        convention: 0,
     },
 ];
 unsafe extern "C" fn initialize(
