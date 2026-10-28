@@ -1,0 +1,42 @@
+{
+  "passed": true,
+  "scope": "Generated normal/tail calls, ordered aliases and live frame inspection through current Oop preparation",
+  "base_revision": "13e430e8421c2fd8d88efa83fc3c570da1c7d258",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/callback-policy-h33k_dxl/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/frame_call.rs": "1129ef03ccb1f40c0151b6de87dfaae0ad8449b794d40000d62e3ae6b3540e6f",
+    "rust/birnam-siphon/tests/compiler_source.rs": "e858a1fc7f46c58439b48ca2759b01dbd6dc80a0464b2050b149edc776e46640",
+    "rust/birnam-siphon/tests/compiler.rs": "abf0841aa10ed1e7c7b340aa39de5ff7bb8b30291c0d97caaa6ea9f46b0435e5"
+  },
+  "checks": [
+    {
+      "target": "compiler_source",
+      "log": ".cargo-target/oop-current-qualification/compiler-frame-calls-oop.log",
+      "sha256": "a2f3e0ce2409879d1db192b2512d554b5301d2a0656b9d0599ca80e5f1b2aac9",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "retained_checks": [
+    "Both original source programs return the exact input identity through normal and tail calls",
+    "Replacing the callee value method affects both calls without replay",
+    "Current prepareCall:selector:, frame reads/writes, normal/tail call operations, Namespace lookup and allocation preparation each execute a collecting replacement",
+    "A preparation failure is returned exactly and entered once; a later call succeeds",
+    "Budget-one execution exposes actual argument identities in live frames across collection",
+    "Completed frame views report staleFrameView and the Machine has no current frame",
+    "Generated native units and bytes return to their pre-test baseline"
+  ],
+  "contract_review": {
+    "operation_sequence": "Generated code invokes current Machine preparation and frame operations through Id; unchanged",
+    "new_required_mechanisms": [],
+    "ownership": "Execution retains its admitted call plans and frame storage; the compiler and test use public owner operations only."
+  },
+  "adaptation_note": "The former candidate/baseline optimization masks and optional tryPrepareCall:slots:... entry points belong to the old emitter. The current compiler uses prepareCall:selector: and immediate Oop indices. No former Integer-index boxing guard, mask API, repeated optimization benchmark or allocation-reduction assertion was reinstated. This migration establishes source behavior and current operation effects, not the old optimization performance claim.",
+  "remaining": [
+    "compiler.rs retains discarded-clone, numeric-predicate and alias-return groups",
+    "Shared-invocation and closure-construction legacy harnesses remain to resolve",
+    "Method construction purity, closure admission and binding undo contract issues remain open",
+    "Current production fixes still need a later cold-install qualification"
+  ]
+}

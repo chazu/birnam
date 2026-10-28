@@ -3256,3 +3256,28 @@ compares Symbol identities.
 not a new cold installation qualification. The serial Host run on `1fa7e3c2`
 predates this correction and the root-token fix. The Method metadata/admission
 regressions and remaining compiler/harness work remain open.
+
+
+## Generated call preparation acceptance through Oops
+
+The former compiler call-window group now runs in `compiler_source` through the
+current `prepareCall:selector:` and frame operations. Both original source programs
+remain: ordinary/tail calls and ordered local aliases. Exact identities survive
+collecting replacements of preparation, frame reads/writes, call/tail-call entry,
+Namespace lookup and allocation preparation. A failed preparation is entered once
+and returned without replay. Budget-one runs expose actual argument identities,
+collect between resumptions and reject stale views after completion. Native units
+and bytes return to their pre-test baseline.
+
+This uses the existing declared test callbacks and changes no runtime or Id code.
+The old optimization-mask comparison, optional `tryPrepareCall:slots:...` routes
+and Integer-index boxing guard are not recreated for the current emitter, which
+uses immediate Oop indices and the established owner preparation operation. The
+new check establishes behavior and live operations, not the former optimization's
+allocation/timing claim. Authored preparation remains separately exercised before
+and after compiled stdlib loading by the same suite.
+
+The full `compiler_source` target passes. The old compiler target now retains
+three groups: discarded-clone, numeric-predicate and alias-return. Other legacy
+harnesses and the documented metadata/admission regressions remain open.
+[Receipt](../measurements/compiler-frame-calls-oop-20261027.json).

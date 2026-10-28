@@ -2,8 +2,6 @@
 //! General source/control/lifetime acceptance lives in compiler_source.rs.
 #[path = "compiler/discarded_clone.rs"]
 mod discarded_clone;
-#[path = "compiler/frame_call.rs"]
-mod frame_call;
 #[path = "compiler/inline_return.rs"]
 mod inline_return;
 #[path = "compiler/numeric_predicate.rs"]
@@ -180,7 +178,6 @@ fn compiler_optimizations_preserve_current_language_behavior() {
             tokens: vec![],
             floor: CompiledFloor::pin(id, ns, roots),
         };
-        frame_call::check(&mut h);
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         inline_return::check(&mut h);
