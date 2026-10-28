@@ -49,8 +49,11 @@ release qualification**. Do not defer them to a general cleanup after migration.
    an unresolved violation. Finish the full native gate and qualify one corrected
    cold-built revision after these items are resolved.
 
-Automatic optimization work is a separate decision. It should not delay these
-correctness repairs or become a reason to add dispatch machinery.
+The user explicitly retains optimizer/deoptimization support, targeting near-native
+speed while preserving liveness. Keep its necessary guards, recovery state and code
+lifetime with optimized code. This does not justify the current default forwarding
+or metadata machinery, nor adding an application protocol to Id. Correctness
+repairs remain prerequisites for qualifying optimized execution.
 
 Before any core-path repair, state its contract, show the actual before/after
 operations, and inventory any new messages, lookups, allocations, registries and

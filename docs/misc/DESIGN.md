@@ -77,6 +77,20 @@ and test them. The [necessity audit](../design/minimal-id-stackless-machinery.md
 separates these responsibilities from replaceable machinery. It is not an
 implemented replacement or permission to let incidental regressions define policy.
 
+### Optimization preserves liveness and malleability
+
+Optimizer and deoptimization support are retained requirements, confirmed by the
+user on 2026-10-28. Optimized code must preserve the same logical values, identity,
+current lookup/replacement semantics and effects as baseline execution. Its guards,
+root maps and recovery descriptions belong to the code/version that needs them;
+they are not universal Method metadata or a new Id dispatch protocol.
+
+Deoptimization resumes the remaining computation without replaying completed
+effects. Running and suspended work retains the code and values it needs. Optimized
+loops retain bounded scheduling/cancellation/GC opportunities, and supported
+inspection has a correct logical state. Near-native speed is a goal to measure
+under these requirements, not an exemption from them.
+
 ### Pure Method construction and coherent metadata ownership
 
 Default Method construction and its metadata initialization must not edit dispatch

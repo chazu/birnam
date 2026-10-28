@@ -11,6 +11,15 @@ point for redesign. First identify which data and operations the chosen language
 actually needs. A historical test of an implementation detail is not a reason to
 rebuild that detail in another layer.
 
+## Optimizer/deoptimization retained (user decision, 2026-10-28)
+
+The user explicitly retains optimizer and deoptimization support, with near-native
+performance as a goal while preserving liveness. This supersedes any suggestion
+below that those capabilities might be dropped as unwanted features. Their current
+implementation is still subject to simplification. Optimized-code metadata belongs
+to the optimized code/version that needs it; it is not a reason for every Method
+to acquire a general metadata record or for Id to learn optimization policy.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code
@@ -20,8 +29,9 @@ scheduling, waiting/resumption ownership and cleanup policy.
 
 None of these properties requires the present MethodInvocation cache,
 per-definition forwarding Method, per-Method metadata vtable, post-hoc portable
-code attachment to arbitrary native Methods, or speculative optimization and
-reconstruction framework.
+code attachment to arbitrary native Methods. Stacklessness alone does not require
+speculative optimization or reconstruction; the user's performance requirement
+retains them as a separate capability with the obligations described below.
 
 Some implementation must provide each required responsibility below. This is not
 proof that the proposed replacement is already implemented or that every current
@@ -101,7 +111,7 @@ metadata database merely because execution is stackless.
 | Machine action objects plus Id work objects | Consolidation candidate | Both encode control transitions. Continue/call/return/wait are necessary operations, but two complete encodings/drivers are not a consequence of stacklessness. Prove one coherent execution path before removal. |
 | Per-PC root maps and edge clearing | Keep a sufficient liveness mechanism | May be replaced by compiler-managed clearing/owner-specific layouts, but cannot simply be removed while stale references remain in frames. |
 | Oop call-preparation plans | Optional implementation optimization | Argument order, aliases and current cross-owner operations are necessary. The compact plan format and admission protocol are not fundamental to sending or concurrency. |
-| Inline candidates, hot tiers, discarded-clone/numeric producers, recovery graphs and reconstruction recipes | Remove from the minimum runtime; retain only for a separately justified optimization feature | Stacklessness does not require deoptimization. Unoptimized code can expose its actual state. Authored task code has no calls to these optimization APIs in the audited source. Existing explicit optimizer APIs are a separate feature decision, not a reason to burden every call. |
+| Optimizer, guarded specialized code and deoptimization | Retain as an explicitly requested capability; simplify the mechanisms | Optimized execution needs justified assumptions, safe points, baseline recovery state and code lifetime. Associate these with optimized code, not every Method. Current inline/PC candidates and reconstruction algorithms must earn their complexity against this contract; retaining optimization does not require restoring every historical producer or API. |
 | First-class frame capture/restore | Optional control feature | Basic wait/resume needs a valid one-shot suspension, not arbitrary stack snapshots or replay. Retained structured cleanup/exit behavior must be implemented independently of speculative deoptimization. |
 | Synchronous versus resumable language-body modes | Prefer one continuation-capable language path | A second language execution/error convention is not required. Real synchronous native calls still need a boundary; their ABI declarations are not universal language metadata. |
 | Explicit native signature conversion and byte snapshots | Keep at actual native/foreign boundaries | They validate real argument/result contracts and keep borrowed data safe. They are not required by every pure Birnam Method. |
@@ -164,6 +174,49 @@ by that code's owner, with captures validated at binding. Removing generic post-
 admission does not authorize unchecked shapes, false code associations, or unsafe
 image reconstruction. Tests for those obligations move to the actual constructors.
 The existing implementation remains defective until a replacement is verified.
+
+## How optimization fits the smaller runtime
+
+Baseline and optimized execution implement the same language contract. Optimized
+code specializes regions whose assumptions can be checked, and returns to a valid
+baseline continuation when those assumptions no longer hold. Deoptimization must
+not restart an already-effectful computation.
+
+The necessary additional information is specific:
+
+| Optimized-code information | Purpose |
+| --- | --- |
+| Baseline code identity and resume point | Identify the remaining computation after leaving optimized code. |
+| Guarded assumptions and dependencies | Prove that omitted lookups, calls, allocation or conversions preserve current meanings. Recheck after callbacks, mutation and resumption where required. |
+| Live-value/materialization description at exit points | Recover correct logical values, aliases, captures and observable frames when optimization removed or changed their physical representation. |
+| Root information and owned code references | Preserve values and the precise code version needed by running or suspended work. |
+| Safe-point/control information | Permit bounded scheduling progress, cancellation, GC and required inspection without retaining an invalid native stack. |
+
+These descriptions can be shared per compiled region/version. Simple or
+unoptimized Methods do not need speculative assumptions or reconstruction recipes.
+Some guard/invalidation and recovery coordination is real machinery and must stay;
+per-definition forwarding, arity-template caching, private metadata vtables and
+recognition of particular answer wrappers are not prerequisites for it.
+
+Specialized regions can keep temporary values in native registers and use native
+operations when justified. Oop-only Id messages do not prohibit unboxed internal
+temporaries: owner-boundary arguments/results remain Oops, and safepoints must have
+a valid root/materialization plan. Long-running optimized loops need bounded
+polling/yield opportunities; native speed is not permission to starve other tasks.
+
+Malleability constrains specialization. Inlining or omitting an operation requires
+valid proofs about its selected meaning and actual effects; replacements or changed
+lookup behavior must force an appropriate current path. Code and live data cannot
+be frozen merely to keep an optimization enabled. Failed guards and deoptimization
+must not replay lookup effects, calls, allocations with required effects or cleanup.
+Ordinary Id sends retain lookup followed by direct entry of the selected Method.
+
+Performance qualification must compare representative complete programs, including
+guards, safepoints, compilation, allocation/GC and native boundaries as applicable.
+Use matched native implementations with equivalent arithmetic/error semantics as
+reference points. Record mutation-heavy and suspension/cancellation cases as well
+as stable hot loops. Near-native performance is a goal, not a claim established by
+this audit or a promise for inherently dynamic message-heavy code.
 
 ## Reflection and persistence are explicit design constraints
 
@@ -239,8 +292,10 @@ workspace-consumer audit.
 4. Keep code-shape validation at the code owner. Remove general Method metadata
    requirements that no longer serve a retained feature. Do not claim the current
    admission failures repaired merely by removing their old API tests.
-5. Strip optimizer-only and obsolete source machinery after consumer/feature audit;
-   simplify frame/action representations against the control/lifetime tests.
+5. Retain and reconnect optimizer/deoptimization support against the direct-method
+   baseline. Remove obsolete or redundant optimization machinery only after its
+   required role is covered; simplify frame/action representations against the
+   control/lifetime tests.
 6. Qualify one corrected revision: architectural review, full native acceptance,
    clean cold build, relocated archive and end-to-end Host/concurrency checks.
 
