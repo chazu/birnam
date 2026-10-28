@@ -1,6 +1,5 @@
 //! Producer-proven alias returns reuse existing inline admission and fallback.
 use super::*;
-use super::discarded_clone::{lookup, restore, run, vt};
 use std::time::Instant;
 unsafe extern "C" fn baseline(_: *mut c_void, r: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::object(r))

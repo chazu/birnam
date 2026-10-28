@@ -3281,3 +3281,30 @@ The full `compiler_source` target passes. The old compiler target now retains
 three groups: discarded-clone, numeric-predicate and alias-return. Other legacy
 harnesses and the documented metadata/admission regressions remain open.
 [Receipt](../measurements/compiler-frame-calls-oop-20261027.json).
+
+
+## Discarded clone acceptance through Oops
+
+The discarded-clone group now runs in `compiler_source`. It retains the original
+source cases for ignored results, selector aliases, lexical bindings and escaping
+clones. Replaced clone methods execute once, collecting callbacks preserve the
+operation, and actual allocation/GC operations remain current. The explicit
+`ObjectModel canDiscardClone:of:` query accepts the canonical empty clone and
+rejects a different Method, nonempty source or changed declared dependency.
+Paused-frame reads use no test root for the returned slot value; weak allocation
+identity confirms that the frame keeps its discarded clone alive during collection.
+Generated native units and bytes return to their prior baseline.
+
+The first port assumed that clone entered public `ObjectModel allocate:bytes:`.
+Source history before the Oop migration (`cf655b68^`) already uses the private
+`m.allocate` helper, exactly as the current clone does. The old broad callback
+count also included runtime bookkeeping. The final test preserves the explicit
+permission dependency and observes clone's actual behavior allocator; no extra
+public self-send or runtime mechanism was introduced to reproduce that counter.
+
+Ordinary execution currently creates one physical discarded clone. The former
+automatic elision and its timing/allocation-reduction comparison are not restored
+or claimed by this test migration. The full compiler-source and ObjectModel targets
+pass. Shared old helpers now live in the legacy compiler harness solely for its
+two remaining groups, numeric predicates and alias returns.
+[Receipt](../measurements/compiler-clone-oop-20261027.json).

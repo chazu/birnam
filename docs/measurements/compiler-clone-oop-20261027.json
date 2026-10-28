@@ -1,0 +1,55 @@
+{
+  "passed": true,
+  "scope": "Discarded clone behavior, explicit owner permission and frame visibility through Oops",
+  "base_revision": "d2d5818c926191e1ceca9946daf5bd9e7364829c",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/callback-policy-h33k_dxl/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/compiler/discarded_clone.rs": "37bb5d9c9f3a96b68770478700e4482e252d98522fd61942309b1fcdf0770a69",
+    "rust/birnam-siphon/tests/compiler_source.rs": "86d983c7de2d04f3dba40de898c36b3080c9f6540d3fc5eee29786e35eba98d1",
+    "rust/birnam-siphon/tests/compiler.rs": "3c4cb765e0c7f7d7c74fec069d01b39af9e771aa1916a55c9c3ca878a8cb7506",
+    "tests/fixtures/oop-host/compiler-clone.c": "2a13ebb150ac11102541a637f3a01152939f4f05868d765d0e28c2021f44f566"
+  },
+  "checks": [
+    {
+      "targets": [
+        "compiler_source",
+        "object_model"
+      ],
+      "log": ".cargo-target/oop-current-qualification/compiler-clone-oop.log",
+      "sha256": "e2874833c923ba85b4c1cadd99a1ea78515a1e9c95c2c7b266b87fb6a477e66b",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "retained_checks": [
+    "Original discarded, aliased, lexical-binding and escaping-clone source cases",
+    "Clone and collecting clone replacements execute exactly once",
+    "Actual current allocation and GC preparation operations remain observable",
+    "Explicit canDiscardClone:of: permission accepts the canonical empty clone and rejects another Method, nonempty source or changed declared dependency",
+    "Returning an aliased source preserves exact identity; escaping clones remain distinct",
+    "A paused frame retains its discarded clone across precise collection without the test retaining that slot value",
+    "All generated native units and bytes return to the pre-test baseline"
+  ],
+  "observed_physical_copies": 1,
+  "historical_automatic_elision_expectation": 0,
+  "adaptation_note": "Automatic discarded-clone production is not restored. Historical timing/allocation-reduction assertions are separated from the retained language behavior and explicit permission checks. Shared old helpers moved to compiler.rs only for numeric-predicate and alias-return, the two remaining legacy groups.",
+  "bookkeeping_probe": {
+    "log": ".cargo-target/oop-current-qualification/compiler-clone-bookkeeping-probe.log",
+    "exit": 101,
+    "observed": "The public ObjectModel allocate:bytes: callback was not entered by clone.",
+    "source_audit": "cf655b68^:rust/birnam-object-model/src/native.rs clone_object already called the private m.allocate helper, matching the current Op::Clone. The old broad test also counted runtime bookkeeping. No public allocation self-send was added to satisfy that incidental counter.",
+    "final_check": "Explicit discard permission still declines when public ObjectModel allocation is replaced; the clone uses its existing private helper and current behavior allocator."
+  },
+  "contract_review": {
+    "operation_sequence": "Current clone send -> existing ObjectModel snapshot/allocation behavior; unchanged. Explicit owner permission remains an Id query.",
+    "new_required_mechanisms": [],
+    "ownership": "ObjectModel retains payload copying and layout interpretation. Test observers use public vtable and allocation-identity queries only."
+  },
+  "remaining": [
+    "Numeric-predicate and alias-return legacy compiler groups",
+    "Automatic producer gaps and shared-invocation/closure-construction harness work",
+    "Method construction purity and closure admission regressions",
+    "Cold qualification of later production fixes"
+  ]
+}

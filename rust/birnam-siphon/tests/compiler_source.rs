@@ -1,6 +1,8 @@
 //! Source language, compilation failures and native code lifetime through Oops.
 #[path = "compiler/accounting.rs"]
 mod accounting;
+#[path = "compiler/discarded_clone.rs"]
+mod discarded_clone;
 #[path = "compiler/dispatch.rs"]
 mod dispatch;
 #[path = "compiler/frame_call.rs"]
@@ -204,6 +206,7 @@ fn source_compiles_and_runs_on_production_execution() {
     publication::check(&h);
     dispatch::check(&h);
     frame_call::check(&h);
+    discarded_clone::check(&h);
     prepared_call::check(&h);
     let module_manager = host.global(&floor, b"Module").unwrap();
     h.call(

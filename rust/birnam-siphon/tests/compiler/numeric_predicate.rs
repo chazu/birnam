@@ -1,6 +1,5 @@
 //! The real source producer and Integer/Execution consumer, against an unannotated
 //! baseline. Inventory counts are actual objects, never synthetic elision charges.
-use super::discarded_clone::{instances, lookup, restore, run, vt};
 use super::*;
 use std::time::Instant;
 const ATTACH: &[u8] = b"withNumericPredicate:then:left:right:limit:return:in:";
