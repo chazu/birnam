@@ -68,13 +68,9 @@ pub(super) unsafe extern "C" fn captured(_: Oop, c: Oop, r: Oop, _: *const Oop, 
             return Err(invalid());
         }
         let q = s.scope(&[r]);
-        let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
+        // The Method owner preserves behavior when it allocates the captured
+        // executable. Capturing does not mutate a dispatch binding.
         let method = q.keep(s.invoke(s.capture_seed, r, &[])?);
-        s.send(
-            s.id.root,
-            b"reassociateBehaviorOf:with:",
-            &[method, behavior],
-        )?;
         let admitted = s.admitted.borrow().get(&r.addr()).cloned();
         if let Some(admitted) = admitted {
             s.admitted.borrow_mut().insert(method.addr(), admitted);

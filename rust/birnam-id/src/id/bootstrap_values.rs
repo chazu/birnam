@@ -70,7 +70,7 @@ impl State {
     }
     pub(super) fn captured_method(&self, method: Oop) -> Result<Oop, Oop> {
         let data = self.native_method_fields(method)?;
-        self.new_method_index(data.entry_index, data.context, data.owner)
+        self.method_with_behavior(data.entry_index, data.context, data.owner, self.behavior(method)?)
     }
     fn native_method_fields(&self, o: Oop) -> Result<NativeMethod, Oop> {
         let (p, n) = self.payload(o)?;
@@ -190,11 +190,14 @@ impl State {
         Ok(o)
     }
     pub(super) fn new_method_index(&self, entry_index: usize, context: Oop, owner: Oop) -> Result<Oop, Oop> {
+        self.method_with_behavior(entry_index, context, owner, self.method)
+    }
+    fn method_with_behavior(&self, entry_index: usize, context: Oop, owner: Oop, behavior: Oop) -> Result<Oop, Oop> {
         let context=abi::object_reference(context);
         let owner=abi::object_reference(owner);
         self.native_entry(owner, entry_index)?;
         self.behavior(context)?;
-        let o = self.allocate(self.method, size_of::<NativeMethod>())?;
+        let o = self.allocate(behavior, size_of::<NativeMethod>())?;
         unsafe {
             o.cast::<NativeMethod>().write(NativeMethod {
                 entry_index,

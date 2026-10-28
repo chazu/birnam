@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "84c2f37387dafb7d7c0d669301c056d97d3137ab",
+  "scope": "Preserve Method behavior at capture allocation and remove Execution reassociation; default definition and admission purity remain pending.",
+  "source_sha256": {
+    "rust/birnam-id/src/id/bootstrap_values.rs": "7e63c75cd49da6aeae872ff915e22902be741896a72c27fd7e693eb41fd8f55e",
+    "rust/birnam-execution/src/oop_reflection.rs": "5a0b4d8c46c4aa2fc546ffbe3b0be354247e20a1b3ca6cddb8e9d85e0a5c8a82",
+    "rust/birnam-siphon/tests/direct_method_construction.rs": "5c380a87e322ee355cb1f0f9661e1acb9112097ad27bcd6b08abe2b0816a3a91"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/capture-purity-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "units": {
+      "path": ".cargo-target/oop-current-qualification/capture-purity-milestone/units.log",
+      "sha256": "58dc6d7d74867b40a10abc620751848158a6f529b9ceaf046c3ddba65a829200",
+      "result": "passed"
+    },
+    "runtime": {
+      "path": ".cargo-target/oop-current-qualification/capture-purity-milestone/runtime.log",
+      "sha256": "88755a72d7707970a1439ac5accbcf77d72b20f4dbb3e3d852cdf0c037a5ac80",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/capture-purity-milestone/focused.log",
+      "sha256": "72f196eaf01ca99a78bfee5b5911f92283fdf08aedd8d3ada29f0d58fb5c3fa3",
+      "result": "passed"
+    }
+  },
+  "focused_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/capture-purity-rb7euq_w/prefix",
+  "libraries": {
+    "id": "e041eeb5824cddcca3c08650bb08ac35b0a0b7be0e372b990d202a73607b7e37",
+    "execution": "a3740f18c0fc5aa2db672a4aa3cb60aaff2b74ed89038e8e062e6b128a21f142"
+  },
+  "verified": [
+    "capture does not advance binding epoch",
+    "custom Method behavior retained",
+    "distinct captured identity",
+    "captured invocation unchanged",
+    "Block arity/capture and Machine checks",
+    "core independent caller, lookup, continuation and native boundary checks"
+  ],
+  "architecture_review": "Same captured operation and Method-owner payload; behavior is supplied to allocation rather than changed afterward. Generic allocation/dispatch/GC contracts and all APIs remain unchanged."
+}

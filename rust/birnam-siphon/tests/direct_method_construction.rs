@@ -116,7 +116,10 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
     assert_eq!(hooks.count(failed, 1), 0);
 
     // Future sends see replacement; the selected Method retains its meaning.
+    let before = epoch();
     let captured = call(object, b"methodFor:", &[key(b"answer:")]);
+    assert_eq!(epoch(), before, "capturing an entered implementation is pure");
+    assert_eq!(call(h.id.root, b"behaviorOf:", &[captured]), call(h.id.root, b"behaviorOf:", &[method]));
     let replacement_body = eval(b"[:self :arg | arg]");
     let replacement = call(execution, b"methodFromBlock:", &[replacement_body]);
     call(behavior, b"addMethod", &[key(b"answer:"), replacement]);
@@ -167,6 +170,19 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
         assert_eq!(q.vector_at(tuple, 2).unwrap(), argument);
         assert_eq!(hooks.count(count, 1), 1);
     }
+
+    // Capturing custom Method behavior preserves it at allocation, without
+    // a reassociation after the new Method becomes visible.
+    let custom = hooks.method(b"fixed", argument);
+    let custom_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[custom]);
+    call(custom_vt, b"addMethod", &[key(b"annotation"), hooks.method(b"fixed", next)]);
+    let before = epoch();
+    let copy = call(custom, b"captured", &[]);
+    assert_eq!(epoch(), before);
+    assert_ne!(copy, custom);
+    assert_eq!(call(h.id.root, b"behaviorOf:", &[copy]), custom_vt);
+    assert_eq!(call(copy, b"annotation", &[]), next);
+    assert_eq!(call(copy, b"invokeOn:", &[object]), argument);
 
     // Construction checks actual executable ownership and capture shape.
     let no_receiver = eval(b"[| 42]");

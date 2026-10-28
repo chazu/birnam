@@ -246,6 +246,26 @@ This closes the code-provider interface gap. Generated body lowering, coherent
 code/shape construction, default definition migration, and optional reflection/image
 consumers still need integration; this checkpoint does not claim those completed.
 
+## Implementation checkpoint: pure Method capture (2026-10-28)
+
+The existing bootstrap Method `captured` implementation now allocates the captured
+Method with the original behavior. Execution no longer reassociates its behavior
+after allocation. This preserves the existing language-level capture behavior,
+including custom Method annotations, while eliminating the binding-epoch change.
+No selector, calling convention, payload format or Id contract was added.
+
+Before: allocate the captured executable with default Method behavior, query the
+original behavior, then reassociate the new Method. After: the Method owner copies
+its executable/context/code-owner data and uses the original behavior as the
+allocation argument. The generic allocator still receives an opaque size and
+vtable; it does not interpret Method data or suppress any invalidation.
+
+The regression checks an unchanged epoch for default and customized captures,
+retained annotation behavior, distinct identity and unchanged invocation. Core,
+Block arity/capture, direct Method/native Method and Machine checks pass.
+[Evidence](../measurements/method-capture-purity-oop-20261028.json).
+Default definition metadata and generic code admission remain separate open work.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code
