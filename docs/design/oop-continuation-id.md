@@ -3128,3 +3128,16 @@ inventory behavior. This distinction and the initial failure are retained in the
 [receipt](../measurements/root-batches-oop-20261027.json). The migrated test,
 result-cleanup and root-provider tests pass. Neither Id nor production runtime
 changed; open metadata/admission regressions and other unported harnesses remain.
+
+
+## Corrected cold candidate: task acceptance
+
+The existing serial Host run on cold candidate `1fa7e3c2` has completed all six
+task-group checks: task images, task fields, source-free worker concurrency,
+multicore workers, closure observation and TaskControl. The final authored suite
+reports 177 checks and zero failures, including quanta 128 and 1. No retry or
+worker-deadline change was made. [Receipt](../measurements/fixed-adapters-tasks-oop-20261027.json).
+
+CLI and image groups remain outstanding. These task results do not cover or repair
+the independently reproduced Method-construction purity and closure-admission
+regressions; full integration acceptance remains open.
