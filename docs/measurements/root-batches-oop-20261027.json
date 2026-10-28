@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "scope": "Root token cleanup through the current Oop API",
+  "base_revision": "e47b5f2e95b95db6e7118ce3066512d4dcf140fa",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/fixed-adapters-n864y1l8/prefix",
+  "source_sha256": {
+    "rust/birnam-siphon/tests/root_batches.rs": "f2d08e7b3273af10e374bac217f6a7c593bdc74780311fec47c2cd429e17a73e",
+    "tests/fixtures/oop-host/root-batches.c": "04635555ea23055927dd99f23a6634b7c38f635709e3ac13e184ea57e8a95cb0"
+  },
+  "checks": [
+    {
+      "targets": [
+        "root_batches",
+        "result_cleanup",
+        "roots"
+      ],
+      "log": ".cargo-target/oop-current-qualification/root-batches-oop.log",
+      "sha256": "91a7c01dc07f05301bc934948713e74ea6e0ec0500044b8c2703b069256d2160",
+      "exit": 0
+    }
+  ],
+  "runtime_changes": false,
+  "id_changes": false,
+  "contract_review": {
+    "operation_sequence": "releaseTokensProtecting(result, tokens...) -> validate all token representations -> current release: sends in reverse order -> report first failure after attempting all releases; unchanged",
+    "ownership": "Roots continues to own token inventory; Id retains only its normal entered-call references. The test uses public messages and a declared C observer.",
+    "new_runtime_mechanisms": []
+  },
+  "retained_checks": [
+    "Tokens are distinct and monotonically allocated; repeated object roots preserve registry observations",
+    "Successful cleanup leaves the same watched root order as ordinary reverse release",
+    "Malformed token input rejects before any token is released; empty cleanup is invalid and result-only cleanup succeeds",
+    "A release callback replaces release:; every later token enters the replacement",
+    "Collecting release callbacks complete cleanup on success, duplicate/absent tokens and multiple exact native failures",
+    "The first native failure wins while every later release is attempted",
+    "Retired raw-byte retain/release batching APIs remain absent"
+  ],
+  "adaptation_note": "The removed tryReleaseMany: shortcut had a different failure contract. Current releaseTokensProtecting reports duplicate/absent-token failure and temporarily roots its first failure while continuing. That temporary root can change swap-removal enumeration order. The final test requires exact successful inventory order, exact reverse callback order on both success and failure, and complete draining on failure; it does not require the error path inventory to match a loop without error protection.",
+  "development_probe": {
+    "log": ".cargo-target/oop-current-qualification/root-batches-error-order-probe.log",
+    "exit": 101,
+    "observation": "An initial comparison exposed different remaining-root enumeration order after a duplicate/absent-token error, due to temporary first-failure protection. No runtime change was made."
+  },
+  "limits": [
+    "Staged-prefix component checks, not full integration qualification",
+    "Method construction purity and closure admission regressions remain open",
+    "root_reuse and other legacy harnesses remain unported"
+  ]
+}

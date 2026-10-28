@@ -3103,3 +3103,28 @@ Method-metadata purity conflict must also be resolved before extending its
 construction mechanism. No new Id hook, private cross-module API or replacement
 application protocol is introduced by this checkpoint.
 [Receipt](../measurements/closure-admission-regressions-oop-20261027.json).
+
+
+## Root cleanup acceptance through Oops
+
+The `root_batches` harness now exercises `releaseTokensProtecting` with Oop
+tokens, replacing tests of the removed raw-byte batching APIs. Production behavior
+is unchanged: validate all token representations, send the current `release:` in
+reverse order, and return the first failure after attempting every release. Roots
+owns the token inventory; the fixture uses only public Id messages.
+
+The tests retain token identity, root inventory, malformed-input, replacement,
+collection and failure checks. Exact successful inventory order matches ordinary
+reverse release. Collecting callbacks replace `release:` during cleanup; logged
+calls prove later releases enter the replacement, including after failures and
+for repeated or absent tokens. Every successful token drains. Negative assertions
+require the removed raw-byte batching selectors to remain absent.
+
+An initial comparison found that the error path's temporary root protecting its
+first failure changes swap-removal enumeration order relative to a plain loop
+without error protection. The final test checks exact callback order and complete
+draining on that path, without imposing the removed shortcut's success-only
+inventory behavior. This distinction and the initial failure are retained in the
+[receipt](../measurements/root-batches-oop-20261027.json). The migrated test,
+result-cleanup and root-provider tests pass. Neither Id nor production runtime
+changed; open metadata/admission regressions and other unported harnesses remain.

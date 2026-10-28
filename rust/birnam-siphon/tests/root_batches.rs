@@ -1,288 +1,186 @@
-//! Guarded bulk cleanup must preserve tokens, order, reentry and live fallback.
-mod support;
-use birnam_abi::{
-    Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome, Protocol},
-};
-use std::{
-    cell::{Cell, RefCell},
-    ffi::c_void,
-};
-use support::*;
-struct Visitor(RefCell<Vec<usize>>);
-unsafe extern "C" fn visit(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
-    let [v] = unsafe { borrowed_slice(a, n) }.unwrap() else {
-        panic!("visit")
-    };
-    unsafe { &*c.cast::<Visitor>() }
-        .0
-        .borrow_mut()
-        .push(object(*v).addr());
-    Outcome::loaded(Operand::unit())
-}
-struct Hook {
-    id: Protocol,
-    behavior: Oop,
-    original: NativeEntry,
-    calls: RefCell<Vec<usize>>,
-    next: Cell<*mut Hook>,
-    collect: Cell<Oop>,
-}
-unsafe extern "C" fn release_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<Hook>() };
-    h.calls.borrow_mut().push(
-        unsafe { borrowed_slice(a, n) }.unwrap()[0]
-            .as_word()
-            .unwrap(),
-    );
-    let next = h.next.replace(std::ptr::null_mut());
-    if !next.is_null() {
-        unsafe { install(h.id, h.behavior, b"release:", release_hook, next.cast()) };
-    }
-    if !h.collect.get().is_null() {
-        unsafe { send(h.id, h.collect.get(), b"collectPrecisely", &[]) };
-    }
-    unsafe { (h.original.method.unwrap())(h.original.context, r, a, n) }
-}
-struct EpochHook {
-    id: Protocol,
-    original: NativeEntry,
-    behavior: Oop,
-    replacement: *mut Hook,
-    calls: Cell<usize>,
-}
-unsafe extern "C" fn epoch_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
-    let h = unsafe { &*c.cast::<EpochHook>() };
-    let calls = h.calls.get() + 1;
-    h.calls.set(calls);
-    if calls == 2 {
-        unsafe {
-            install(
-                h.id,
-                h.behavior,
-                b"release:",
-                release_hook,
-                h.replacement.cast(),
-            )
-        };
-    }
-    unsafe { (h.original.method.unwrap())(h.original.context, r, a, n) }
-}
-unsafe fn entry(id: Protocol, r: Oop, name: &[u8]) -> NativeEntry {
-    unsafe {
-        send(
-            id,
-            id.receiver,
-            b"bind:to:",
-            &[
-                Operand::object(id.intern_name(name).unwrap()),
-                Operand::object(r),
-            ],
-        )
-    }
-    .as_entry()
-    .unwrap()
-}
-unsafe fn bind(id: Protocol, b: Oop, name: &[u8], e: NativeEntry) {
-    unsafe {
-        send(
-            id,
-            b,
-            b"addMethod",
-            &[
-                Operand::object(id.intern_name(name).unwrap()),
-                Operand::entry(e),
-            ],
-        )
-    };
-}
-unsafe fn bulk(id: Protocol, roots: Oop, tokens: &[usize]) -> usize {
-    let bytes: Vec<_> = tokens.iter().flat_map(|t| t.to_ne_bytes()).collect();
-    unsafe { send(id, roots, b"tryReleaseMany:", &[Operand::bytes(&bytes)]) }
-        .as_word()
-        .unwrap()
-}
+//! Oop cleanup preserves reverse order, live replacement, and complete draining.
+#[path = "support/oop.rs"]
+mod oop;
+use birnam_abi::{Oop, as_size, size};
 #[test]
-#[ignore = "requires current production Roots dylib"]
-fn bulk_release_is_exact_or_declines_before_any_mutation() {
-    unsafe {
-        let id = id();
-        let roots = load(id, "root_registry", &[]);
-        let b = behavior(id);
-        let objects: Vec<_> = (0..4).map(|_| allocate(id, b, 0)).collect();
-        let log = Box::leak(Box::new(Visitor(RefCell::new(Vec::new()))));
-        let vb = behavior(id);
-        install(id, vb, b"visit:", visit, (log as *mut Visitor).cast());
-        let visitor = allocate(id, vb, 0);
-        let snapshot = || {
-            log.0.borrow_mut().clear();
-            send(id, roots, b"rootsDo:", &[Operand::object(visitor)]);
-            log.0.borrow().clone()
-        };
-        let baseline = snapshot();
-        let shape = [0, 1, 0, 2, 3, 1, 2, 0];
-        let tokens: Vec<_> = shape
+#[ignore = "requires production Oop Roots and GC"]
+fn oop_cleanup_preserves_order_and_current_release_methods() {
+    let host = oop::bootstrap();
+    let q = host.scope();
+    let hooks = oop::hooks::Hooks::new(&host);
+    let key = |n: &[u8]| hooks.symbol(n);
+    let named = |n: &[u8]| host.named(n).unwrap();
+    let call = |r, n: &[u8], a: &[Oop]| q.call(r, n, a).unwrap();
+    let path =
+        std::env::temp_dir().join(format!("birnam-root-batches-{}.dylib", std::process::id()));
+    assert!(
+        std::process::Command::new("clang")
+            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+            .arg(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/oop-host/root-batches.c")
+            )
+            .arg("-o")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let module = host.load_native(&q, &path, &[]).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let roots = host.roots;
+    let gc = named(b"GC");
+    call(gc, b"precisePayloads:", &[size(1).unwrap()]);
+    let objects: Vec<_> = (0..4)
+        .map(|_| call(named(b"Object"), b"clone", &[]))
+        .collect();
+    let state = hooks.context(&[roots, call(host.id.root, b"sequence", &objects)]);
+    let method = |n: &[u8], ctx| {
+        call(
+            call(module, b"methodAt:", &[key(n)]),
+            b"withContext:",
+            &[ctx],
+        )
+    };
+    let observer = call(named(b"Object"), b"clone", &[]);
+    let ovt = call(host.id.root, b"ensurePrivateVtableFor:", &[observer]);
+    for n in [b"snapshot".as_slice(), b"visit:", b"log", b"reset"] {
+        call(ovt, b"addMethod", &[key(n), method(n, state)]);
+    }
+    let sequence = |o| {
+        let n = as_size(host.send(o, b"size", &[]).unwrap()).unwrap();
+        (0..n)
+            .map(|i| host.send(o, b"at:", &[size(i).unwrap()]).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let snapshot = || sequence(call(observer, b"snapshot", &[]));
+    let baseline = snapshot();
+    let retain = key(b"retain:");
+    let release = key(b"release:");
+    let cleanup = key(b"releaseTokensProtecting");
+    let raw = |r, s, a: &[Oop]| unsafe { host.id.send(r, s, a) };
+    let retain_shape =
+        || [0, 1, 0, 2, 3, 1, 2, 0].map(|i| raw(roots, retain, &[objects[i]]).unwrap());
+    let tokens = retain_shape();
+    assert!(
+        tokens
+            .windows(2)
+            .all(|w| as_size(w[1]).unwrap() == as_size(w[0]).unwrap() + 1)
+    );
+    let absent = size(usize::MAX >> 1).unwrap();
+    let request = [tokens[1], tokens[4], tokens[0]];
+    for token in request.iter().rev() {
+        raw(roots, release, &[*token]).unwrap();
+    }
+    let expected = snapshot();
+    for token in tokens {
+        raw(roots, release, &[token]).unwrap();
+    }
+    assert_eq!(snapshot(), baseline);
+    let tokens = retain_shape();
+    let request = [named(b"nil"), tokens[1], tokens[4], tokens[0]];
+    assert_eq!(raw(roots, cleanup, &request), Ok(size(1).unwrap()));
+    assert_eq!(
+        snapshot(),
+        expected,
+        "successful cleanup preserves sequential reverse removal order"
+    );
+    for token in tokens {
+        raw(roots, release, &[token]).unwrap();
+    }
+    assert_eq!(snapshot(), baseline);
+
+    // Validate all token shapes before entering any current release callback.
+    let token = raw(roots, retain, &[objects[0]]).unwrap();
+    let before = snapshot();
+    assert!(raw(roots, cleanup, &[objects[1], objects[2], token]).is_err());
+    assert_eq!(snapshot(), before);
+    assert!(raw(roots, cleanup, &[]).is_err());
+    assert_eq!(
+        raw(roots, cleanup, &[objects[1]]).unwrap(),
+        size(1).unwrap()
+    );
+    assert_eq!(raw(roots, release, &[token]).unwrap(), size(1).unwrap());
+    assert_eq!(snapshot(), baseline);
+
+    let rv = call(host.id.root, b"behaviorOf:", &[roots]);
+    let original = call(rv, b"lookup", &[release]);
+    let add = key(b"addMethod");
+    let reset = key(b"reset");
+    let log = key(b"log");
+    call(rv, b"addMethod", &[key(b"batchOriginalRelease:"), original]);
+    let failure = hooks.fault(53);
+    let later_failure = hooks.fault(54);
+    let second_state = hooks.context(&[rv, std::ptr::null_mut(), gc, std::ptr::null_mut()]);
+    let second = method(b"second", second_state);
+    let first_state = hooks.context(&[rv, second, gc, std::ptr::null_mut()]);
+    let first = method(b"first", first_state);
+    for (fail, duplicate) in [(false, false), (true, false), (false, true)] {
+        hooks.put(first_state, 1, second);
+        hooks.put(
+            first_state,
+            3,
+            if fail { failure } else { std::ptr::null_mut() },
+        );
+        hooks.put(
+            second_state,
+            3,
+            if fail {
+                later_failure
+            } else {
+                std::ptr::null_mut()
+            },
+        );
+        let tokens: Vec<_> = objects
             .iter()
-            .map(|i| retain(id, roots, objects[*i]))
+            .map(|o| raw(roots, retain, &[*o]).unwrap())
             .collect();
-        let request = [tokens[1], tokens[4], tokens[0], tokens[1], usize::MAX];
-        for token in request.iter().rev() {
-            send(id, roots, b"release:", &[Operand::word(*token)]);
+        raw(observer, reset, &[]).unwrap();
+        raw(rv, add, &[release, first]).unwrap();
+        let mut args = vec![objects[0]];
+        args.extend_from_slice(&tokens);
+        if duplicate {
+            args.extend_from_slice(&[tokens[1], absent]);
         }
-        let expected = snapshot();
-        for t in tokens {
-            send(id, roots, b"release:", &[Operand::word(t)]);
+        let result = raw(roots, cleanup, &args);
+        // Restore before Host helpers create and release their own roots.
+        raw(rv, add, &[release, original]).unwrap();
+        if fail {
+            assert_eq!(
+                result,
+                Err(failure),
+                "first failure wins while later releases still run"
+            );
+        } else if duplicate {
+            assert_eq!(result, Err(birnam_abi::object_reference(host.id.invalid)));
+        } else {
+            assert_eq!(result, Ok(size(1).unwrap()));
         }
-        assert_eq!(snapshot(), baseline);
-        let tokens: Vec<_> = shape
+        let actual = sequence(q.keep(raw(observer, log, &[]).unwrap()).unwrap());
+        let expected: Vec<_> = args[1..]
             .iter()
-            .map(|i| retain(id, roots, objects[*i]))
+            .rev()
+            .enumerate()
+            .flat_map(|(i, t)| [size(if i == 0 { 1 } else { 2 }).unwrap(), *t])
             .collect();
-        let request = [tokens[1], tokens[4], tokens[0], tokens[1], usize::MAX];
-        assert_eq!(bulk(id, roots, &request), 1);
+        assert_eq!(
+            actual, expected,
+            "each release observes replacement installed by the preceding release"
+        );
         assert_eq!(
             snapshot(),
-            expected,
-            "swap removal order and duplicates must match"
+            baseline,
+            "all tokens drain even when current release callbacks fail"
         );
-        assert_eq!(bulk(id, roots, &tokens), 1);
-        assert_eq!(snapshot(), baseline);
-        // Bulk acquisition has the exact ordinary ids and enumeration order.
-        let before = snapshot();
-        let values = [objects[0], objects[1], objects[0]];
-        let data: Vec<_> = values.iter().flat_map(|o| o.addr().to_ne_bytes()).collect();
-        let result = send(id, roots, b"tryRetainMany:", &[Operand::bytes(&data)])
-            .as_bytes()
-            .unwrap();
-        let bytes = birnam_abi::borrowed_bytes(result.pointer, result.length)
-            .unwrap()
-            .to_vec();
-        let acquired: Vec<_> = bytes
-            .chunks_exact(size_of::<usize>())
-            .map(|b| usize::from_ne_bytes(b.try_into().unwrap()))
-            .collect();
-        assert_eq!(acquired.len(), 3);
-        assert_eq!(acquired[1], acquired[0] + 1);
-        assert_eq!(acquired[2], acquired[1] + 1);
-        let mut expected = before.clone();
-        expected.extend(values.iter().map(|o| o.addr()));
-        assert_eq!(snapshot(), expected);
-        let tokens: Vec<_> = acquired.iter().flat_map(|t| t.to_ne_bytes()).collect();
-        assert_eq!(
-            send(
-                id,
-                roots,
-                b"tryReleaseManyForward:",
-                &[Operand::bytes(&tokens)]
-            )
-            .as_word(),
-            Some(1)
-        );
-        assert_eq!(snapshot(), before);
-        // A forward checked cleanup must decline before any release if a token
-        // repeats or is absent; its ordinary caller stops on the first failure.
-        let t = retain(id, roots, objects[0]);
-        let before = snapshot();
-        let invalid: Vec<_> = [t, t].iter().flat_map(|t| t.to_ne_bytes()).collect();
-        assert_eq!(
-            send(
-                id,
-                roots,
-                b"tryReleaseManyForward:",
-                &[Operand::bytes(&invalid)]
-            )
-            .as_word(),
-            Some(0)
-        );
-        assert_eq!(snapshot(), before);
-        release(id, roots, t);
-        let rb = object(send(
-            id,
-            id.receiver,
-            b"behaviorOf:",
-            &[Operand::object(roots)],
-        ));
-        let original = entry(id, roots, b"release:");
-        let mut second = Hook {
-            id,
-            behavior: rb,
-            original,
-            calls: RefCell::new(Vec::new()),
-            next: Cell::new(std::ptr::null_mut()),
-            collect: Cell::new(std::ptr::null_mut()),
-        };
-        let mut first = Hook {
-            id,
-            behavior: rb,
-            original,
-            calls: RefCell::new(Vec::new()),
-            next: Cell::new(&raw mut second),
-            collect: Cell::new(std::ptr::null_mut()),
-        };
-        install(id, rb, b"release:", release_hook, (&raw mut first).cast());
-        let tokens: Vec<_> = objects.iter().map(|o| retain(id, roots, *o)).collect();
-        let before = snapshot();
-        assert_eq!(bulk(id, roots, &tokens), 0);
-        assert_eq!(snapshot(), before);
-        assert!(first.calls.borrow().is_empty());
-        for t in tokens.iter().rev() {
-            send(id, roots, b"release:", &[Operand::word(*t)]);
-        }
-        assert_eq!(*first.calls.borrow(), vec![tokens[3]]);
-        assert_eq!(
-            *second.calls.borrow(),
-            vec![tokens[2], tokens[1], tokens[0]]
-        );
-        bind(id, rb, b"release:", original);
-        // Epoch is not consulted by the atomic binding query. Replacing an
-        // unused service must neither invoke it nor disable valid batching.
-        let original_epoch = entry(id, id.receiver, b"behaviorEpoch");
-        let mut epoch = EpochHook {
-            id,
-            original: original_epoch,
-            behavior: rb,
-            replacement: &raw mut second,
-            calls: Cell::new(0),
-        };
-        install(
-            id,
-            id.receiver,
-            b"behaviorEpoch",
-            epoch_hook,
-            (&raw mut epoch).cast(),
-        );
-        let token = retain(id, roots, objects[0]);
-        assert_eq!(bulk(id, roots, &[token]), 1);
-        assert_eq!(snapshot(), baseline);
-        assert_eq!(epoch.calls.get(), 0, "batching does not invoke the unused epoch service");
-        bind(id, id.receiver, b"behaviorEpoch", original_epoch);
-        assert_eq!(send(id, roots, b"release:", &[Operand::word(token)]).as_word(), Some(0));
-        // The actual matcher is a dependency. Its forwarding wrapper cannot
-        // obtain a positive answer while its own binding is noncanonical.
-        let matcher = entry(id, id.receiver, b"nativeBindingsMatch:");
-        epoch.original = matcher;
-        epoch.calls.set(0);
-        install(id, id.receiver, b"nativeBindingsMatch:", epoch_hook, (&raw mut epoch).cast());
-        let token = retain(id, roots, objects[0]);
-        let before = snapshot();
-        assert_eq!(bulk(id, roots, &[token]), 0);
-        assert_eq!(snapshot(), before);
-        assert_eq!(epoch.calls.get(), 1);
-        bind(id, id.receiver, b"nativeBindingsMatch:", matcher);
-        release(id, roots, token);
-        bind(id, rb, b"release:", original);
-        assert_eq!(snapshot(), baseline);
-        // Bad ABI input rejects before touching the registry.
-        let token = retain(id, roots, objects[0]);
-        let before = snapshot();
+    }
+    for selector in [
+        b"tryRetainMany:".as_slice(),
+        b"tryReleaseMany:",
+        b"tryReleaseManyForward:",
+    ] {
         assert!(
-            id.send_named(roots, b"tryReleaseMany:", &[Operand::bytes(&[1])])
-                .is_err()
+            call(host.id.root, b"bind:to:", &[key(selector), roots]).is_null(),
+            "raw pointer/token byte-buffer protocols remain absent"
         );
-        assert_eq!(snapshot(), before);
-        release(id, roots, token);
-        let fresh = retain(id, roots, objects[0]);
-        assert!(fresh > token);
-        release(id, roots, fresh);
     }
 }
