@@ -725,19 +725,30 @@ unsafe extern "C" fn define_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usi
         if arity > 16 {
             return Err(invalid());
         }
-        let arity = q.keep(s.send(
-            s.named(b"Integer")?,
-            b"fromWord:",
-            &[abi::size(arity).unwrap()],
-        )?);
-        let method = q.keep(s.send(
-            r,
-            b"methodForArity:implementation:",
-            &[arity, *implementation],
-        )?);
-        if s.is_error(method)? {
-            return Ok(method);
-        }
+        let method = if s.send(
+            s.id.root,
+            b"sameNativeMethod:as:",
+            &[*implementation, *implementation],
+        )? == abi::size(1).unwrap() {
+            // An executable supplied by its owner is already a Method. Installing
+            // it must not turn it into a body-object forwarding definition.
+            *implementation
+        } else {
+            let arity = q.keep(s.send(
+                s.named(b"Integer")?,
+                b"fromWord:",
+                &[abi::size(arity).unwrap()],
+            )?);
+            let method = q.keep(s.send(
+                r,
+                b"methodForArity:implementation:",
+                &[arity, *implementation],
+            )?);
+            if s.is_error(method)? {
+                return Ok(method);
+            }
+            method
+        };
         let behavior = q.keep(s.send(s.id.root, b"ensurePrivateVtableFor:", &[*target])?);
         let result = s.send(behavior, b"addMethod:as:", &[method, *selector])?;
         Ok(if result == method { *target } else { result })
@@ -954,6 +965,7 @@ const NAMES: &[&[u8]] = &[
     b"count",
     b"nameAt:",
     b"nativeSignatureOf:",
+    b"sameNativeMethod:as:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1153,6 +1165,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"count"),
     Literal::new(b"nameAt:"),
     Literal::new(b"nativeSignatureOf:"),
+    Literal::new(b"sameNativeMethod:as:"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {

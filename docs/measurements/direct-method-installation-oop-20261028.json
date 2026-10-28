@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "4039fbf7c250713213ae8281be2fe5cc9e0d8675",
+  "scope": "Reflect installs supplied executable Methods directly. Default Block construction and optional reflection/image migration are not completed.",
+  "source_sha256": {
+    "rust/birnam-codegen-runtime/src/lib.rs": "f65ce72d09a8e68f1bd77afb8afef65769407d4e6400f2cb8ff9ac211fcf8129",
+    "rust/birnam-siphon/tests/direct_method_construction.rs": "438a0c3ee938b1a4509d88099e479d95e978ca1a8d9ca3eecc0c10286b2e6c05",
+    "rust/birnam-siphon/tests/direct_native_method.rs": "3565a2daef5b3ee0dedc7238efb10a2b97f3970e897eac115b456f7b4bf33834"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/direct-install-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "units": {
+      "path": ".cargo-target/oop-current-qualification/direct-install-milestone/units.log",
+      "sha256": "04aaa331ac1b615778fecaf6e935c92cceaff4572729d053ae9779d7f17e6a73",
+      "result": "passed"
+    },
+    "runtime": {
+      "path": ".cargo-target/oop-current-qualification/direct-install-milestone/runtime.log",
+      "sha256": "62f5d113be934ed10b4ec00a1050e05eb384feec6acf7de9f37ff33b10650fb1",
+      "result": "passed"
+    },
+    "legacy_binding_and_construction": {
+      "path": ".cargo-target/oop-current-qualification/direct-install-milestone/legacy_binding_and_construction.log",
+      "sha256": "7cf670a472d8bb04ee3c903535213a3cf8f1c95aa8e8747b826d3c5b3805afe2",
+      "result": "passed"
+    },
+    "final_direct_and_forbidden_paths": {
+      "path": ".cargo-target/oop-current-qualification/direct-install-milestone/final_direct_and_forbidden_paths.log",
+      "sha256": "03b313ae8a4de88d4b26aaaac46e9b68c42ef39a7a064c6a512f6bdb9cb04a7c",
+      "result": "passed"
+    }
+  },
+  "focused_prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-slice/host-qualification/direct-install-m4i22vkd/prefix",
+  "codegen_runtime_sha256": "ace26f04c145f670a5603db407e4c58e5188839bb41daf9496d045745717effd",
+  "source_note": "Legacy binding/construction checks preceded the final omission of isError on supplied Methods. The final negative tests and core suite include that omission.",
+  "verified": [
+    "provided Method identity preserved in dictionary",
+    "legacy constructor never invoked for supplied Method",
+    "no isError query on supplied Method",
+    "exactly one binding-epoch increment on already private target vtable",
+    "direct receiver/capture binding through existing Reflect form",
+    "direct native conversion and deferred suspension through Reflect",
+    "legacy Block arity/binding/construction and image tests",
+    "core lookup, continuation, native-boundary and task checks"
+  ],
+  "architecture_review": {
+    "id": "Existing sameNativeMethod:as: operation; no new Id contract or payload read",
+    "new_mechanisms": "None; selects direct installation before the existing body-construction branch",
+    "metadata": "No metadata query or per-instance vtable on the supplied Method"
+  },
+  "remaining": [
+    "default body construction, ordinary arity and DNU integration",
+    "synchronous code-provider environment binding",
+    "optional Method reflection and image recipes",
+    "generic admission and template removal",
+    "full same-revision native/cold/relocated/Host qualification"
+  ]
+}

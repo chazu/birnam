@@ -177,6 +177,35 @@ migration, direct-Method image recipes and removal of the old definition and
 admission machinery remain pending; this checkpoint does not qualify full startup
 or the entire language migration.
 
+## Implementation checkpoint: install supplied Methods directly (2026-10-28)
+
+`Reflect defineMethod:on:as:` now installs an already executable Method without
+constructing a body forwarder. The selector spelling and installation operation
+are unchanged. Id's existing executable-identity operation distinguishes that
+case; Reflect neither reads foreign Method payloads nor requests metadata from
+the supplied Method. The existing Block/body construction path remains pending
+migration, including its purity violation.
+
+Before, every supplied object passed through `methodForArity:implementation:`.
+After, an executable Method goes directly to the target's dictionary installation;
+a body still follows the existing construction policy. No new registry, template,
+context, descriptor, application protocol or Id operation was added by this step.
+The operation retains the supplied Method's identity and that Method's own argument
+contract. This permits both new Execution constructors to use the existing source
+form without another wrapper.
+
+The regression test makes the old constructor and the supplied Method's `isError`
+query fail. Installation still succeeds, invokes neither, preserves Method identity
+and advances the binding epoch only once for the requested binding on an already
+private vtable. Direct native conversion and deferred suspension work through this
+same Reflect operation. Legacy Block construction/binding tests and the core suite
+continue to pass. [Evidence](../measurements/direct-method-installation-oop-20261028.json).
+
+This is executable installation, not completion of default body construction or
+optional reflection/image migration. The remaining synchronous code-provider
+binding and owner descriptions must be completed before deleting the old path;
+no generic forwarding fallback was added for those missing pieces.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code

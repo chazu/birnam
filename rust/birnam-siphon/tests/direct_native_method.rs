@@ -59,7 +59,15 @@ fn direct_native_methods_preserve_conversion_failure_and_deferred_control() {
             .unwrap(),
         b"oO"
     );
-    call(vt, b"addMethod", &[key(b"native:"), method]);
+    assert_eq!(
+        call(
+            named(b"Reflect"),
+            b"defineMethod:on:as:",
+            &[key(b"native:"), target, method]
+        ),
+        target
+    );
+    assert_eq!(call(vt, b"lookup", &[key(b"native:")]), method);
     let body_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[body]);
     let poisoned = hooks.context(&[hooks.fault(91), size(0).unwrap()]);
     call(
@@ -138,7 +146,11 @@ fn direct_native_methods_preserve_conversion_failure_and_deferred_control() {
 
     // The deferred branch executes outside the native conversion/body boundary.
     let choose = construct(echo, b"!vO");
-    call(vt, b"addMethod", &[key(b"choose:"), choose]);
+    call(
+        named(b"Reflect"),
+        b"defineMethod:on:as:",
+        &[key(b"choose:"), target, choose],
+    );
     let machine = call(named(b"Machine"), b"new", &[]);
     let globals = named(b"Globals");
     call(globals, b"at:put:", &[key(b"DirectNativeTarget"), target]);

@@ -44,7 +44,45 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
 
     let object = call(named(b"Object"), b"clone", &[]);
     let behavior = call(h.id.root, b"ensurePrivateVtableFor:", &[object]);
-    call(behavior, b"addMethod", &[key(b"answer:"), method]);
+    let reflect = named(b"Reflect");
+    let reflect_vt = call(h.id.root, b"behaviorOf:", &[reflect]);
+    let constructor = key(b"methodForArity:implementation:");
+    let original_constructor = call(reflect_vt, b"lookup", &[constructor]);
+    let forbidden = hooks.context(&[hooks.fault(918), size(0).unwrap()]);
+    call(
+        reflect_vt,
+        b"addMethod",
+        &[constructor, hooks.method(b"deny", forbidden)],
+    );
+    let method_behavior = call(h.id.root, b"behaviorOf:", &[method]);
+    let private = call(h.id.root, b"ensurePrivateVtableFor:", &[method]);
+    call(private, b"addMethod", &[key(b"isError"), hooks.method(b"deny", forbidden)]);
+    let before = epoch();
+    assert_eq!(
+        call(
+            reflect,
+            b"defineMethod:on:as:",
+            &[key(b"answer:"), object, method]
+        ),
+        object
+    );
+    assert_eq!(
+        epoch(),
+        before + 1,
+        "installation adds only the requested binding"
+    );
+    assert_eq!(call(behavior, b"lookup", &[key(b"answer:")]), method);
+    assert_eq!(
+        hooks.count(forbidden, 1),
+        0,
+        "an executable must not pass through body construction"
+    );
+    call(
+        reflect_vt,
+        b"addMethod",
+        &[constructor, original_constructor],
+    );
+    call(h.id.root, b"reassociateBehaviorOf:with:", &[method, method_behavior]);
     let argument = call(named(b"Object"), b"clone", &[]);
     // Poison the source body's dispatch. The new Method must enter its code,
     // not send value: or query captures on this former Block receiver.
