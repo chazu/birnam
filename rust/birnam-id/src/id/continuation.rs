@@ -323,8 +323,9 @@ unsafe extern "C" fn enter_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usi
         let data = s.method_data(*method)?;
         scope.entered(*method, data.context, data.owner);
         if data.continuation {
-            let mut passed = vec![*k];
-            passed.extend_from_slice(args);
+            // The owned snapshot already contains the continuation and arguments
+            // contiguously, and stays rooted for the complete native call.
+            let passed = &values[2..];
             let value = (data.entry)(
                 s.root,
                 data.context,

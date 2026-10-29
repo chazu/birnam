@@ -1,0 +1,209 @@
+{
+  "baseline_revision": "95049046",
+  "change": "Enter a continuation Method using the continuation/argument slice of the already owned, rooted work snapshot instead of allocating and copying a second vector.",
+  "contract": {
+    "before": "Copy the work Sequence into an owned Oop vector, root it, copy its continuation/arguments into another vector, and call the selected entry.",
+    "after": "Keep the same owned snapshot and roots, and pass its contiguous continuation/argument slice to the same entry.",
+    "review": [
+      "The validated layout is [method, receiver, continuation, arguments...]; the existing destructure proves the slice starting at index 2 is valid.",
+      "The owned snapshot remains alive and rooted through the native call. Mutating the source Sequence cannot alter this snapshot.",
+      "The existing ABI requires the borrowed argument area to remain unchanged until return. No pointer escapes or new lifetime mechanism are introduced.",
+      "Arity, argument order, failure markers, lookup, entered code retention, native barriers, managed allocations and driver steps are unchanged.",
+      "Id reads only its own existing bootstrap work representation, not Execution or scheduler payloads."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Ordinary Id sends to an independent C continuation Method validating every argument and returning via answerTo:with:. Zero, one, eight and 64 arguments; seven samples/process, 10000 calls/sample, serial ABBA. Automatic GC disabled for timing; precise GC outside samples. Every result checked.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_arity_per_variant": 14,
+    "summary": {
+      "0": {
+        "median_cpu_ns_per_call": {
+          "baseline": 602.45835,
+          "candidate": 556.4542
+        },
+        "change_percent": -7.636071439627312
+      },
+      "1": {
+        "median_cpu_ns_per_call": {
+          "baseline": 664.7583,
+          "candidate": 582.20835
+        },
+        "change_percent": -12.418039759714162
+      },
+      "8": {
+        "median_cpu_ns_per_call": {
+          "baseline": 677.2645500000001,
+          "candidate": 594.81875
+        },
+        "change_percent": -12.173352348059563
+      },
+      "64": {
+        "median_cpu_ns_per_call": {
+          "baseline": 970.14585,
+          "candidate": 861.09795
+        },
+        "change_percent": -11.240361436375778
+      }
+    },
+    "library_sha256": {
+      "baseline": "504a999b4999e14f9c0c311f1280d2e7a7950a22b3a480b290f0cca7c7a39772",
+      "candidate": "a8ab047d7f62a23132a58f498375a3d03c658dea7994617b58619d72a1d5842d"
+    },
+    "caller_source": "//! Disposable benchmark of existing continuation entry at several arities.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::size;\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let fixture = h.load_native(&q, &std::path::PathBuf::from(std::env::args().nth(1).unwrap()), &[]).unwrap();\n    let selector = q.keep(h.intern(b\"probe\").unwrap()).unwrap();\n    let method = q.call(fixture, b\"methodAt:\", &[selector]).unwrap();\n    let receiver = q.call(h.named(b\"Object\").unwrap(), b\"clone\", &[]).unwrap();\n    let vt = q.call(h.id.root, b\"ensurePrivateVtableFor:\", &[receiver]).unwrap();\n    q.call(vt, b\"addMethod\", &[selector, method]).unwrap();\n    let gc = h.named(b\"GC\").unwrap();\n    q.call(gc, b\"automaticCollection:\", &[size(0).unwrap()]).unwrap();\n    for arity in [0, 1, 8, 64] {\n        let args: Vec<_> = (1..=arity).map(|i| size(i).unwrap()).collect();\n        let expected = args.last().copied().unwrap_or(receiver);\n        for _ in 0..100 { assert_eq!(unsafe { h.id.send(receiver, selector, &args).unwrap() }, expected); }\n        for _ in 0..7 {\n            q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n            let start = unsafe { clock_gettime_nsec_np(16) };\n            for _ in 0..10000 { assert_eq!(unsafe { h.id.send(receiver, selector, &args).unwrap() }, expected); }\n            println!(\"{arity} {}\", unsafe { clock_gettime_nsec_np(16) } - start);\n        }\n    }\n}\n",
+    "fixture_source": "#include \"id.h\"\nstatic IdContinuationProtocol api;\nstatic Oop answer_selector;\nstatic Oop probe(Oop root,Oop context,Oop receiver,const Oop *args,size_t count) {\n (void)root;(void)context;\n if(!count)return id_failure(api.common.invalid);\n for(size_t i=1;i<count;i++)if(args[i]!=id_size(i))return id_failure(api.common.invalid);\n Oop values[]={args[0],count==1?receiver:args[count-1]};\n return api.control(api.common.root,answer_selector,values,2);\n}\nstatic Oop initialize(const IdContinuationProtocol *p,Oop image,const Oop *symbols,size_t n,const Oop *args,size_t count) {\n (void)args;if(n!=2||count)return id_failure(p->common.invalid);api=*p;answer_selector=symbols[1];return image;\n}\nstatic const IdLiteral literals[]={LIT(\"probe\"),LIT(\"answerTo:with:\")};\nstatic const IdContinuationMethodSpec methods[]={{0,probe,1}};\nconst IdContinuationModule birnam_native_module_v3={3,sizeof(IdContinuationModule),literals,2,methods,1,initialize};\n"
+  },
+  "broader_comparison": {
+    "scope": "Serial ABBA fresh-process comparison; only Id dylib differs. Each process runs three language probes (500 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+    "prefixes": {
+      "baseline": "/tmp/birnam-perf-20261029.WOMt1t/string-scan-candidate",
+      "candidate": "/tmp/birnam-perf-20261029.WOMt1t/continuation-arguments-candidate",
+      "files_checked": 783,
+      "changed": [
+        "lib/libbirnam_id.dylib"
+      ],
+      "id_sha256": {
+        "baseline": "504a999b4999e14f9c0c311f1280d2e7a7950a22b3a480b290f0cca7c7a39772",
+        "candidate": "a8ab047d7f62a23132a58f498375a3d03c658dea7994617b58619d72a1d5842d"
+      }
+    },
+    "summary": {
+      "integer-loop": {
+        "baseline": {
+          "samples": [
+            68637084,
+            69779166,
+            69092459,
+            69584125,
+            68917750,
+            68421458
+          ],
+          "median_cpu_ns": 69005104.5
+        },
+        "candidate": {
+          "samples": [
+            66108959,
+            66724792,
+            66425375,
+            67897500,
+            66986833,
+            67895959
+          ],
+          "median_cpu_ns": 66855812.5
+        },
+        "cpu_change_percent": -3.1146855230108406
+      },
+      "range-loop": {
+        "baseline": {
+          "samples": [
+            108769333,
+            106883458,
+            107352833,
+            107391958,
+            120338708,
+            107803625
+          ],
+          "median_cpu_ns": 107597791.5
+        },
+        "candidate": {
+          "samples": [
+            107077750,
+            104696500,
+            104341625,
+            106742917,
+            106282125,
+            104973666
+          ],
+          "median_cpu_ns": 105627895.5
+        },
+        "cpu_change_percent": -1.8307959415691188
+      },
+      "method-loop": {
+        "baseline": {
+          "samples": [
+            69687042,
+            72086083,
+            71086541,
+            69752167,
+            71598875,
+            70382125
+          ],
+          "median_cpu_ns": 70734333.0
+        },
+        "candidate": {
+          "samples": [
+            67756042,
+            69053833,
+            70645250,
+            69612166,
+            71266208,
+            69236666
+          ],
+          "median_cpu_ns": 69424416.0
+        },
+        "cpu_change_percent": -1.851882875604416
+      },
+      "logue-quiet-turn": {
+        "baseline": {
+          "samples": [
+            778533.875,
+            743515.625,
+            763833.3125,
+            741197.9375,
+            800098.9375,
+            838515.625,
+            795471.3125,
+            731216.1875
+          ],
+          "median_cpu_ns": 771183.59375
+        },
+        "candidate": {
+          "samples": [
+            744333.375,
+            743804.6875,
+            735981.75,
+            732151.0,
+            766739.625,
+            737598.9375,
+            744994.8125,
+            741414.0625
+          ],
+          "median_cpu_ns": 742609.375
+        },
+        "cpu_change_percent": -3.705242043733503
+      }
+    },
+    "logue_oracle_passed": true
+  },
+  "validation": [
+    "Independent C continuation suite: custom/metacircular lookup, suspension/replacement, entered roots, GC, late replies, failure/data distinction, tail calls and allocation accounting.",
+    "Full Oop core/compiler/GC and negative dispatch/construction contracts.",
+    "Compiled invocation-input retention, continuation transparency, native incoming calls and pending-call recovery.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "Local serial ABBA measurements, not universal speed guarantees. Broader timing changes are smaller than the targeted microbenchmark.",
+    "Microbenchmark disables automatic GC only for timed work and performs precise collection between samples. Broader language timings keep normal GC.",
+    "Only Id differs between comparison prefixes; no installed user runtime was replaced.",
+    "This removes native temporary allocation/copying, not managed continuation objects or scheduling opportunities."
+  ],
+  "source_sha256": {
+    "rust/birnam-id/src/id/continuation.rs": "9a159ba3b378fa883419b80ae6676573db741d1384c638d716ef179cc149d691"
+  },
+  "evidence": {
+    ".cargo-target/continuation-arguments-20261029/micro.json": "252df46ec57b2016ddd4fc4d42d886623317e6b9b41aaa63231dcf55e8eb9cf0",
+    ".cargo-target/continuation-arguments-20261029/micro.py": "4e61de0c8836ff37dbf9de12a9af69e33a051ea1a61650b1ab7c86395bb0228b",
+    ".cargo-target/continuation-arguments-20261029/comparison.json": "96d80483a9591dfd824d1583dbb3bc24a6dc2a3a1b74c8d8652b30f09fe46b00",
+    ".cargo-target/continuation-arguments-20261029/compare.py": "5e5e7c5477414bff6bee144e6100e871d84c5cddf55ebc203b236db2e6ca897d",
+    ".cargo-target/continuation-arguments-20261029/continuations.log": "592837455fee163e1b942e0f2abdf4822d312e8139d3897afa96d9be9a91a2d6",
+    ".cargo-target/continuation-arguments-20261029/contracts.log": "bc0dfaa1a31dea2ed49cf1afe45b8d95e2cbf0ade582a3c7de7ba1ae0ea665c0",
+    ".cargo-target/continuation-arguments-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/continuation-arguments-20261029/check.log": "67b283a9eb3f75bb7ae2c2b386b456ad9f2dc87e55be4ed4d60005bab40da341"
+  }
+}
