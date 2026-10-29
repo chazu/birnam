@@ -20,6 +20,42 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: native conversion ownership (2026-10-28)
+
+Typed native Blocks now retain their source description and compilation mode in
+Execution's existing conversion context. `Execution methodFromBlock:` also accepts
+these Blocks and constructs the direct native entry with their lexical environment.
+The bootstrap Method API remains unchanged; shared Execution reflection finds its
+own conversion context using Id's executable-identity operation.
+
+Contract: explicit native argument/result conversion, failure observation, deferred
+control and lexical captures retain their meaning. Constructing the conversion,
+binding a Method, capturing it and reading its metadata do not edit bindings.
+Conflicting source admission is rejected; repeated admission of the same source
+is inert. Native code without portable source still needs no CodeObject.
+
+```text
+before: create conversion context/Method -> create private metadata vtable
+        -> install source/mode getters -> reassociate Method -> create Block
+        -> default definition forwarder sends Block value:...
+after:  derive source description -> create conversion context/Method -> create Block
+        -> explicit methodFromBlock: binds direct conversion entry/environment
+```
+
+The existing context grows from three Oops to five: original executable, optional
+bound environment, representative Method, optional source description and
+compilation mode. Sequence already traces these references. The parsed-signature
+index and its retirement remain unchanged; there is no additional registry, Id
+operation or foreign payload access. Binding checks the underlying compiled
+body's existing capture description. Image reconstruction retains an already
+matching signed CodeObject instead of replacing its metadata after construction.
+
+Default Reflect definition forwarding and MethodInvocation caching still remain;
+this checkpoint removes the native conversion constructor's metadata mutations,
+not all Method-construction mutations. Optimizer/deoptimization support is retained.
+[Qualification](../measurements/native-conversion-ownership-oop-20261028.json)
+records the final focused checks and the earlier native-boundary image check.
+
 ## Implementation checkpoint: frame-owned answers (2026-10-28)
 
 The continuation-forwarding repair is implemented independently of the pending

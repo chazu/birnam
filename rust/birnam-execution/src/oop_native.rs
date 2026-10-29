@@ -148,18 +148,57 @@ unsafe fn construct(c: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
             q.keep(value);
         }
         let method = *fields.first().ok_or_else(invalid)?;
-        // Executable and environment are program state. The final reference
-        // supports owner reflection without a second per-Method signature index.
+        let mut code = q.keep(s.send(method, b"codeObject", &[])?);
+        let synchronous = q.keep(s.send(method, b"isSynchronous", &[])?);
+        if code != s.nil {
+            let existing = q.keep(s.send(code, b"nativeSignature", &[])?);
+            if existing == s.nil || byte_snapshot(s, &q, existing)? != parsed.bytes() {
+                let sig = q.keep(new_bytes(s, &q, parsed.bytes())?);
+                code = q.keep(s.send(code, b"withNativeSignature:", &[sig])?);
+                if s.send(code, b"isError", &[])? == s.named(b"true")? {
+                    return Ok(code);
+                }
+            }
+        }
+        let declared = conversion(
+            s,
+            &q,
+            method,
+            if bound { *block } else { s.nil },
+            parsed,
+            code,
+            synchronous,
+        )?;
+        if bound {
+            return Ok(declared);
+        }
+        fields[0] = declared;
+        s.make_block(s.block_vt, &fields)
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
+// Code, environment, executable identity and source description share the
+// conversion's existing context. Sequence owns tracing; no Method binding changes.
+unsafe fn conversion(
+    s: &State,
+    q: &Scope<'_>,
+    method: Oop,
+    environment: Oop,
+    signature: std::sync::Arc<Signature>,
+    code: Oop,
+    synchronous: Oop,
+) -> Result<Oop, Oop> {
+    unsafe {
         let context = q.keep(s.send(
             s.id.root,
             b"sequence",
-            &[method, if bound { *block } else { s.nil }, s.nil],
+            &[method, environment, s.nil, code, synchronous],
         )?);
         let declared = q.keep(s.send(
-            if bound {
-                s.native_method_value
-            } else {
+            if environment == s.nil {
                 s.native_value
+            } else {
+                s.native_method_value
             },
             b"withContext:",
             &[context],
@@ -167,32 +206,67 @@ unsafe fn construct(c: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
         s.send(context, b"at:put:", &[abi::size(2).unwrap(), declared])?;
         s.native_signatures
             .borrow_mut()
-            .insert(context.addr(), parsed.clone());
-        if bound {
-            return Ok(declared);
-        }
-        let sig = q.keep(new_bytes(s, &q, parsed.bytes())?);
-        fields[0] = declared;
-        let code = q.keep(s.send(method, b"codeObject", &[])?);
-        if code != s.nil {
-            let code = q.keep(s.send(code, b"withNativeSignature:", &[sig])?);
-            if s.send(code, b"isError", &[])? == s.named(b"true")? {
-                return Ok(code);
-            }
-            let sync = q.keep(s.send(method, b"isSynchronous", &[])?);
-            s.send(fields[0], b"admitCodeObject:synchronous:", &[code, sync])?;
-        }
-        s.make_block(s.block_vt, &fields)
-    })()
-    .unwrap_or_else(abi::fault_reference)
+            .insert(context.addr(), signature);
+        Ok(declared)
+    }
 }
+
+pub(super) unsafe fn source(
+    s: &State,
+    method: Oop,
+    q: &Scope<'_>,
+) -> Result<Option<(Oop, bool)>, Oop> {
+    unsafe {
+        let Some((context, _)) = signature_for_method(s, method, q)? else {
+            return Ok(None);
+        };
+        let code = q.keep(context_value(s, context, 3)?);
+        let synchronous = context_value(s, context, 4)? == s.named(b"true")?;
+        Ok(Some((code, synchronous)))
+    }
+}
+
+pub(super) unsafe fn method_from_block(
+    s: &State,
+    body: Oop,
+    q: &Scope<'_>,
+) -> Result<Option<Oop>, Oop> {
+    unsafe {
+        let method = q.keep(s.field(body, 0)?);
+        let Some((context, signature)) = signature_for_method(s, method, q)? else {
+            return Ok(None);
+        };
+        if context_value(s, context, 1)? != s.nil {
+            return Err(invalid());
+        }
+        let executable = q.keep(context_value(s, context, 0)?);
+        if let Some(shape) = s.admitted.borrow().get(&executable.addr()).copied() {
+            let fields = s.fields(body)?;
+            if fields.len() != shape.captures + 1 || fields[1..].iter().any(|v| v.is_null()) {
+                return Err(invalid());
+            }
+        }
+        let code = q.keep(context_value(s, context, 3)?);
+        let synchronous = q.keep(context_value(s, context, 4)?);
+        Ok(Some(conversion(
+            s,
+            q,
+            executable,
+            body,
+            signature,
+            code,
+            synchronous,
+        )?))
+    }
+}
+
 // This index is the native executable's required signature state, not a
 // universal Method metadata table. Only construction and explicit reflection scan it.
 unsafe fn signature_for_method(
     s: &State,
     method: Oop,
     q: &Scope<'_>,
-) -> Result<Option<std::sync::Arc<Signature>>, Oop> {
+) -> Result<Option<(Oop, std::sync::Arc<Signature>)>, Oop> {
     unsafe {
         let entries: Vec<_> = s
             .native_signatures
@@ -205,14 +279,11 @@ unsafe fn signature_for_method(
             if s.send(s.id.root, b"sameNativeMethod:as:", &[method, declared])?
                 == abi::size(1).unwrap()
             {
-                return Ok(Some(signature));
+                return Ok(Some((context, signature)));
             }
         }
         Ok(None)
     }
-}
-pub(super) unsafe fn owns(s: &State, method: Oop, q: &Scope<'_>) -> Result<bool, Oop> {
-    unsafe { Ok(signature_for_method(s, method, q)?.is_some()) }
 }
 pub(super) unsafe extern "C" fn native_signature(
     _: Oop,
@@ -232,7 +303,7 @@ pub(super) unsafe extern "C" fn native_signature(
         } else {
             *value
         };
-        if let Some(sig) = signature_for_method(s, method, &q)? {
+        if let Some((_, sig)) = signature_for_method(s, method, &q)? {
             new_bytes(s, &q, sig.bytes())
         } else {
             Ok(s.nil)
@@ -249,7 +320,7 @@ unsafe fn runtime<'a>() -> Result<&'a State, Oop> {
         state((*p).ns)
     }
 }
-unsafe fn context(s: &State, c: Oop, index: usize) -> Result<Oop, Oop> {
+unsafe fn context_value(s: &State, c: Oop, index: usize) -> Result<Oop, Oop> {
     unsafe { s.send(c, b"at:", &[abi::size(index).unwrap()]) }
 }
 unsafe fn notify(s: &State, q: &Scope<'_>, receiver: Oop, error: Oop) {
@@ -259,7 +330,8 @@ unsafe fn notify(s: &State, q: &Scope<'_>, receiver: Oop, error: Oop) {
         if s.send(error, b"faultKind", &[]).ok() == Some(s.names[b"nativeFailure".as_slice()]) {
             if let Ok(details) = s.send(error, b"detail", &[]) {
                 q.keep(details);
-                if let (Ok(a), Ok(b)) = (context(s, details, 0), context(s, details, 1)) {
+                if let (Ok(a), Ok(b)) = (context_value(s, details, 0), context_value(s, details, 1))
+                {
                     args = [q.keep(a), q.keep(b)];
                 }
             }
@@ -298,8 +370,12 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
         for &a in args {
             q.keep(a);
         }
-        let method = q.keep(context(s, c, 0)?);
-        let environment = if bound { q.keep(context(s, c, 1)?) } else { r };
+        let method = q.keep(context_value(s, c, 0)?);
+        let environment = if bound {
+            q.keep(context_value(s, c, 1)?)
+        } else {
+            r
+        };
         let sig = s
             .native_signatures
             .borrow()
@@ -403,8 +479,8 @@ pub(super) unsafe extern "C" fn deferred_answer(
             return Err(invalid());
         };
         let q = s.scope(&[c, *value]);
-        let k = q.keep(context(s, c, 0)?);
-        let receiver = q.keep(context(s, c, 1)?);
+        let k = q.keep(context_value(s, c, 0)?);
+        let receiver = q.keep(context_value(s, c, 1)?);
         if abi::is_fault(*value) {
             notify(s, &q, receiver, abi::object_reference(*value));
         }

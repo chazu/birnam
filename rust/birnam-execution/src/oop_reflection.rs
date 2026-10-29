@@ -33,7 +33,10 @@ unsafe fn owned_source(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<(
         if let Some(code) = resumable::source_code(s, method, q)? {
             return Ok(Some((code, false)));
         }
-        Ok(native_code::source(s, method, q)?.map(|code| (code, true)))
+        if let Some(code) = native_code::source(s, method, q)? {
+            return Ok(Some((code, true)));
+        }
+        native_adapters::source(s, method, q)
     }
 }
 pub(super) unsafe extern "C" fn for_dnu(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
@@ -82,7 +85,7 @@ pub(super) unsafe extern "C" fn method_synchronous(
             return Err(invalid());
         }
         let q = s.scope(&[r]);
-        s.named(if resumable::source_code(s, r, &q)?.is_some() {
+        s.named(if owned_source(s, r, &q)?.is_some_and(|(_, synchronous)| !synchronous) {
             b"false"
         } else {
             b"true"
@@ -104,7 +107,7 @@ pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
                 Err(invalid())
             };
         }
-        let arity = if *code == s.nil || native_adapters::owns(s, r, &q)? {
+        let arity = if *code == s.nil {
             None
         } else {
             let factory = q.keep(s.named(b"CodeObject")?);
@@ -467,8 +470,6 @@ unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) ->
             if s.send(wrapped, b"isError", &[])? == s.named(b"true")? {
                 return Ok(wrapped);
             }
-            let method = q.keep(s.field(wrapped, 0)?);
-            s.send(method, b"admitCodeObject:", &[code])?;
             Ok(wrapped)
         }
     }

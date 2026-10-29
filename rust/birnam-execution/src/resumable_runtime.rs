@@ -473,6 +473,7 @@ pub(super) unsafe extern "C" fn method_from_block(
                 .ok_or_else(invalid)?
         };
         if let Some(method) = native_code::method_from_block(s, *body, &q)? { return Ok(method); }
+        if let Some(method) = native_adapters::method_from_block(s, *body, &q)? { return Ok(method); }
         let code = q.keep(s.field(*body, 0)?);
         // Ask Id about executable identity; only Execution reads its own
         // Block representation and code descriptions.

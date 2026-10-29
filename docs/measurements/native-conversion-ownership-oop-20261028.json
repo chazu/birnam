@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "e25efe277fa4d0475f42bd8b08f216e1b2bfa414",
+  "scope": "Native conversion metadata ownership and binding typed Blocks as direct Methods. Default definition forwarding remains pending.",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "e6c009dd6ba5d14f15f93480f1e4fa6c81bfc312fc2346f8c0eb78cd585bfea3",
+    "rust/birnam-execution/src/oop_reflection.rs": "51ad7e31e3c3d99607edb74e51a041a0dbe314bbb698c99ac5133dffc91b8b3b",
+    "rust/birnam-execution/src/resumable_runtime.rs": "e86314a46bfb215b459a89b44edc24dd2e86d6a6ffab5853fb8593d16a28b2ca",
+    "rust/birnam-siphon/tests/native_conversion_construction.rs": "f4169f280e112e2e9254ce1510a933fb1678d2fa4db3b0a45e5df56b91d2e9b5",
+    "scripts/native-message-test.sh": "0c0488031aaf3c84544a38a9b061d2bddae54b361b8b1a3dec13f2aa184d89b6"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/native-owner-milestone/native-owner-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed; before removal of an unreachable legacy native-ownership query"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/native-owner-milestone/native-owner-checked.log",
+      "sha256": "df4c83a4383a1ce1e2179516a72c428e0fc677204900191c2eb06bcaebe0b701",
+      "result": "passed on final Execution library"
+    },
+    "boundary_and_before_capture_check": {
+      "path": ".cargo-target/oop-current-qualification/native-owner-milestone/native-owner-focused.log",
+      "sha256": "33808a79097ee8030325d8ab302a3b74cc2cc91a15052cb1247031439890bf49",
+      "result": "native_boundaries passed; later construction subtest failed against the earlier library lacking the capture check"
+    },
+    "capture_check": {
+      "path": ".cargo-target/oop-current-qualification/native-owner-milestone/native-owner-construction.log",
+      "sha256": "c2a143d77c852578c3eaca975391ebe26beea05cb49a40819b4ae336df49f419",
+      "result": "passed with capture validation"
+    }
+  },
+  "verified": [
+    "construction/capture/reflection preserve binding epoch and shared Method behavior",
+    "synchronous and resumable source association remains stable; conflicting admission rejected",
+    "binding rejects missing and null captures of a checked compiled body",
+    "bound native Methods execute after both Block value methods are replaced with failures",
+    "native conversion, failure observers, deferred suspension, GC and code lifetime",
+    "portable materialization and native early bootstrap",
+    "native-boundary image save, mapped reload and rebuild subtest passed"
+  ],
+  "architecture_review": "The existing conversion context owns source and compilation mode. No new Id operation, Method API, registry or cross-owner payload read. Native conversion remains explicit; ordinary sends enter the selected Method.",
+  "limitations": [
+    "Focused checks used fresh diagnostic copies of the prior development prefix with rebuilt Execution, not a new cold installation.",
+    "The native-boundary image test ran before adding the capture-binding check and deleting the unreachable legacy native ownership query.",
+    "Default definition forwarders, MethodInvocation cache and remaining generic admission are not removed by this milestone."
+  ]
+}
