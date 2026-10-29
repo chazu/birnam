@@ -1985,9 +1985,9 @@ pub(super) unsafe extern "C" fn acknowledge(
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop> {
+pub(super) fn references(s: &State, object: Oop) -> Option<Vec<Oop>> {
     if let Some(site) = s.resume.borrow().returns.get(&object.addr()) {
-        return Ok(Some(vec![site.machine]));
+        return Some(vec![site.machine]);
     }
     if let Some(record) = s.resume.borrow().records.get(&object.addr()) {
         let mut values = vec![record.method, record.step, record.owner,
@@ -2000,15 +2000,15 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
         if let Some(candidate) = &record.candidate {
             values.extend(&candidate.steps);
         }
-        return Ok(Some(values));
+        return Some(values);
     }
     let family = s.storage.borrow().family_of(object);
     let objects = s.engine.borrow().objects();
     if family == Some(s.block_vt) {
-        return Ok(None);
+        return None;
     }
     if family.is_none() {
-        return Ok(None);
+        return None;
     }
     let mut values = Vec::new();
     if let Some(o) = objects {
@@ -2038,7 +2038,7 @@ pub(super) fn references(s: &State, object: Oop) -> Result<Option<Vec<Oop>>, Oop
                 .trace_continuation_roots(&s.storage.borrow(), object, |v| values.push(v));
         }
     }
-    Ok(Some(values))
+    Some(values)
 }
 pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
     let Some(o) = s.engine.borrow().objects() else {

@@ -1,0 +1,130 @@
+{
+  "baseline_revision": "e05e1885",
+  "change": "Evaluate resumable reference discovery only when native-code reference discovery returns no result, and remove its unused Result wrapper.",
+  "contract": {
+    "before": "Compute native-code references and resumable references eagerly, discard the latter when the former exists, then send each selected edge to the visitor.",
+    "after": "Compute native-code references; only when absent compute resumable references; send the same selected edges to the visitor.",
+    "preserved": [
+      "The native-code result has the same priority, including an empty result.",
+      "Resumable reference discovery has no error return, Id send or state mutation; its former Result was always Ok.",
+      "Selected edge order, live visitor sends, visitor failures, Block fallback, snapshots and roots are unchanged.",
+      "Representation-specific reads remain inside Execution. No Id or public ABI changes."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing Execution referencesOf:do: through Id. A declared native provider records the context supplied to its own factory; no Method introspection or new context accessor is used. Native context reports factory, source and Method; ordinary Block fallback reports its Method. Visitor checks every edge and its order. 50000 calls/sample, seven samples/process, ABBA. GC outside timing; automatic-GC policy unchanged.",
+    "summary": {
+      "native": {
+        "median_cpu_ns_per_call": {
+          "baseline": 199.09625,
+          "candidate": 184.91541999999998
+        },
+        "change_percent": -7.122600249879152
+      },
+      "block": {
+        "median_cpu_ns_per_call": {
+          "baseline": 115.34166,
+          "candidate": 117.63459
+        },
+        "change_percent": 1.9879460725638953
+      }
+    },
+    "library_sha256": {
+      "baseline": "e115898101326be6218367d2e5f9f6fd5aecf6db375eaadddaec791a5b83a8d3",
+      "candidate": "2599cc91204bbec299eb436c8efa802b065078caf4a7892f3fd26c1786293b5b"
+    },
+    "source": "//! Disposable benchmark of Execution's existing reference visitor operation.\n#[path = \"../tests/support/oop.rs\"] mod oop;\nuse birnam_abi::size;\nuse birnam_artifact_codec::portable_program::{encode,NodeSpec,ProgramSpec,StatementSpec};\nunsafe extern \"C\" {fn clock_gettime_nsec_np(clock:u32)->u64;}\nfn main(){\n let h=oop::bootstrap();let q=h.scope();let gc=h.named(b\"GC\").unwrap();let execution=h.named(b\"Execution\").unwrap();\n let module=h.load_native(&q,&std::env::current_dir().unwrap().join(\".cargo-target/reference-fallback-20261029/provider.dylib\"),&[h.named(b\"nil\").unwrap()]).unwrap();\n let key=|n:&[u8]|q.keep(h.intern(n).unwrap()).unwrap();let declared=|n:&[u8]|q.call(module,b\"methodAt:\",&[key(n)]).unwrap();\n let state=q.call(h.id.root,b\"sequence\",&[declared(b\"entry\"),std::ptr::null_mut()]).unwrap();\n let factory=q.call(declared(b\"factory\"),b\"withContext:\",&[state]).unwrap();\n let encoded=encode(ProgramSpec{parameters:&[],captures:&[],lets:&[],statements:&[StatementSpec::Expression{root_node:0}],nodes:&[NodeSpec::Nil]}).unwrap();\n let bytes=q.call(h.named(b\"Bytes\").unwrap(),b\"fromBytes:\",&[q.byte_values(&encoded).unwrap()]).unwrap();\n let code=q.call(h.named(b\"CodeObject\").unwrap(),b\"fromCanonicalBytes:\",&[bytes]).unwrap();\n let method=q.call(execution,b\"fromNativeCodeFactory:codeObject:\",&[factory,code]).unwrap();\n let context=q.call(state,b\"at:\",&[size(1).unwrap()]).unwrap();\n let block=q.call(h.named(b\"Block\").unwrap(),b\"fromMethod:captureOperands:\",&[method]).unwrap();\n let behavior=q.call(h.named(b\"ObjectVt\").unwrap(),b\"delegated\",&[]).unwrap();\n q.call(behavior,b\"addMethod\",&[key(b\"visit:\"),declared(b\"visit:\")]).unwrap();\n let visitor=q.call(behavior,b\"allocate\",&[size(0).unwrap()]).unwrap();let selector=key(b\"referencesOf:do:\");\n for (name,object,edges) in [(\"native\",context,vec![factory,code,method]),(\"block\",block,vec![method])] {\n  let arguments=q.call(h.id.root,b\"sequence\",&edges).unwrap();\n  q.call(declared(b\"configure\"),b\"invokeOn:arguments:\",&[module,arguments]).unwrap();\n  for sample in 0..7 {\n   q.call(gc,b\"collectPrecisely\",&[]).unwrap();let calls=50000;let start=unsafe{clock_gettime_nsec_np(16)};\n   for _ in 0..calls {assert!(unsafe{h.id.send(execution,selector,&[object,visitor]).unwrap()}.is_null());}\n   println!(\"{name} {sample} {calls} {}\",unsafe{clock_gettime_nsec_np(16)}-start);\n  }\n }\n assert_eq!(q.call(block,b\"value\",&[]).unwrap(),h.named(b\"nil\").unwrap());\n}\n",
+    "provider_source": "/* Test provider: records the context supplied to its own code factory. */\n#include \"../../tests/fixtures/oop-id-v2/id.h\"\nstatic IdProtocol id; static Oop names[7], expected[4], answer; static size_t count, visits;\nenum { AT, PUT, WITH, FACTORY, ENTRY, VISIT, CONFIGURE };\n#define CHECK(v) do { Oop checked=(v); if(id_fault(checked)) return checked; } while(0)\nstatic Oop factory(Oop root,Oop c,Oop r,const Oop*a,size_t n){\n (void)root;(void)r;if(n!=2)return id.invalid;\n Oop zero=id_size(0),entry=id.message(id.root,c,names[AT],&zero,1);CHECK(entry);\n Oop saved[]={id_size(1),a[0]};CHECK(id.message(id.root,c,names[PUT],saved,2));\n return id.message(id.root,entry,names[WITH],a,1);\n}\nstatic Oop entry(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(void)r;(void)a;(void)n;return answer;}\nstatic Oop visit(Oop root,Oop c,Oop r,const Oop*a,size_t n){\n (void)root;(void)c;(void)r;if(n!=1||!count||a[0]!=expected[visits%count])return id.invalid;visits++;return 0;\n}\nstatic Oop configure(Oop root,Oop c,Oop r,const Oop*a,size_t n){\n (void)root;(void)c;(void)r;if(!n||n>4)return id.invalid;count=n;visits=0;for(size_t i=0;i<n;i++)expected[i]=a[i];return 0;\n}\nstatic Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t n,const Oop*a,size_t argc){\n if(n!=7||argc!=1)return p->invalid;answer=a[0];id=*p;for(size_t i=0;i<n;i++)names[i]=s[i];return image;\n}\nstatic const IdLiteral literals[]={LIT(\"at:\"),LIT(\"at:put:\"),LIT(\"withContext:\"),LIT(\"factory\"),LIT(\"entry\"),LIT(\"visit:\"),LIT(\"configure\")};\nstatic const IdMethodSpec methods[]={{FACTORY,factory},{ENTRY,entry},{VISIT,visit},{CONFIGURE,configure}};\nconst IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,7,methods,4,initialize};\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 14
+  },
+  "full_collection": {
+    "scope": "Full precise collection after 1000 Integer/Range iterations; automatic GC disabled only while producing garbage, same policy in both lanes. Six collection timings per variant, two fresh processes, ABBA. Successful nonempty collections checked.",
+    "summary": {
+      "integer-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 273902083.0,
+          "candidate": 270623937.5
+        },
+        "change_percent": -1.1968311683120736
+      },
+      "range-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 340540479.0,
+          "candidate": 346833729.5
+        },
+        "change_percent": 1.8480183379315784
+      }
+    },
+    "library_sha256": {
+      "baseline": "e115898101326be6218367d2e5f9f6fd5aecf6db375eaadddaec791a5b83a8d3",
+      "candidate": "2599cc91204bbec299eb436c8efa802b065078caf4a7892f3fd26c1786293b5b"
+    },
+    "source": "[System preciseGc: true];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System println: \"CASE integer-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System println: \"CASE range-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n",
+    "process_median_cpu_ns": [
+      {
+        "lane": "baseline",
+        "integer-loop": 282645875,
+        "range-loop": 339517667
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 271351250,
+        "range-loop": 345153167
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 269896625,
+        "range-loop": 349039583
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 272037792,
+        "range-loop": 342564417
+      }
+    ]
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/block-fields-candidate",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/reference-fallback-candidate",
+    "files_checked": 783,
+    "differences": [
+      "lib/libbirnam_execution.dylib"
+    ],
+    "library_sha256": {
+      "baseline": "e115898101326be6218367d2e5f9f6fd5aecf6db375eaadddaec791a5b83a8d3",
+      "candidate": "2599cc91204bbec299eb436c8efa802b065078caf4a7892f3fd26c1786293b5b"
+    }
+  },
+  "validation": [
+    "capture_access, execution_machines and continuation_transparency passed, covering foreign-storage rejection, aliases, budgets, suspension, reentry and lifetimes.",
+    "The microbenchmark verifies every reference and order for native contexts and ordinary Blocks, collects between samples, and checks the provider body still executes correctly.",
+    "Full Oop core checks passed: owner unit tests, compiler/GC smoke, direct-dispatch and construction contracts, export audit, independent C cold caller, cross-thread rejection and finalizer containment."
+  ],
+  "contract_review": "Inspection of the entire resumable helper found only reads of private return/record maps, storage facts and engine roots. Its visitor closures only append to a temporary Vec. All return paths were Ok. Therefore the unused fallback can be skipped without suppressing a language error or callback. The externally visible visitor loop and its failure propagation are unchanged.",
+  "limits": [
+    "Native-context tracing used 7.1% less CPU; the ordinary Block control used 2.0% more in this run. Report this small mixed control result rather than claiming a uniform speedup.",
+    "Full-collection CPU changed -1.2% after the Integer loop and +1.8% after Range. These small mixed results do not establish a general GC or application speedup.",
+    "Four fresh processes, serial ABBA, seven focused samples per process. Automatic GC policy unchanged in the focused test; explicit collection outside its timer.",
+    "Only libbirnam_execution.dylib differs across 783 prefix files. Controlled library substitution, not a fresh installed release. User installation unchanged."
+  ],
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "a8405c27d340d051c9c3f24ecf651eaf13169cceddb3f12f55d27b14501ba906",
+    "rust/birnam-execution/src/resumable_runtime.rs": "d55a280233c10b3728db542c242e2e0abbd185b30a7a15d34d4e55e5c6f86dc4"
+  },
+  "evidence": {
+    ".cargo-target/reference-fallback-20261029/micro.json": "fbca2bf289c6583e3359d0aa5511ea29f6bb2fe0457875272afecd499f65c5bb",
+    ".cargo-target/reference-fallback-20261029/micro.py": "4ca35ebefa843b506974469de3f39cac0d05e00180e7617b194542dfe79f613b",
+    ".cargo-target/reference-fallback-20261029/provider.c": "798cc8639edba2c2e07ec74b22ac8429dfe4f73b5b2ecf5c48b62d1699b0d872",
+    ".cargo-target/reference-fallback-20261029/gc-comparison.json": "c06df923852df27b8f399d1928826790095d2d946bdc93e0c7653d7457dd7405",
+    ".cargo-target/reference-fallback-20261029/gc-comparison.py": "2429e35416e4b082d04438a460c32891ea3ec4e5300dae4d5ac8c5ce73732491",
+    ".cargo-target/reference-fallback-20261029/contracts.log": "7ea58775415d9c8218f665d889084c6b080a48cdb57299dae6d880ccf37992ec",
+    ".cargo-target/reference-fallback-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+  }
+}

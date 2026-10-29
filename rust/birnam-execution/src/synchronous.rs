@@ -461,7 +461,7 @@ unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
         let [block, v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        if let Some(values) = native_code::references(s, *block).or(resumable::references(s, *block)?) {
+        if let Some(values) = native_code::references(s, *block).or_else(|| resumable::references(s, *block)) {
             for value in values {
                 s.send(*v, b"visit:", &[value])?;
             }
