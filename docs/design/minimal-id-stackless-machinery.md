@@ -1,7 +1,8 @@
 # Necessary machinery for Id, stackless execution and concurrency
 
-2026-10-28. Source audit at `80b8a47c`, with new test-only probes. No runtime
-implementation is changed by this document. The user explicitly permits changing
+The original source audit began on 2026-10-28 at `80b8a47c`. Its rationale and
+chronological evidence are retained below; the completed state is summarized first.
+The user explicitly permits changing
 method-definition syntax and restricting what may be installed as a Method.
 Stackless execution, concurrency and the simplicity/malleability of Id are the
 requirements; preserving the present adapters and internal APIs is not.
@@ -20,22 +21,31 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
-## Production startup allowance (user decision, 2026-10-29)
+## Integration complete (2026-10-29, runtime `ae7bd2d1`)
 
-The user approved a 60-second worker startup allowance and explicitly deferred
-performance work in order to finish the migration. Isolate now waits up to 60
-seconds for Ready. Request deadlines, cancellation and cleanup are unchanged.
-This changes one existing policy value; it adds no Id operation, metadata or
-runtime mechanism.
+The agreed simplification and language integration are complete. Ordinary sends
+perform current lookup and enter the selected Method directly. Default definitions
+bind compiled code and captures without forwarding templates or private metadata
+vtables. Code providers own admission, reflection and persistence data; Id has no
+new application protocol or Method context accessor. Stackless execution,
+concurrency, optimizer/deoptimization and the retained language features remain.
 
-The complete native suite (103 targets), workspace/core checks, clean cold build,
-relocated archive, Host generation/interaction, and independent CLI/image checks
-passed on the preceding implementation. A separate build with exactly this
-60-second change passed workers, optional-provider images, authored concurrency,
-multicore operation and workers with Store/Relational physically absent.
-Production build and acceptance are being finalized with the approved value.
-Historical checkpoints below retain their original timing evidence and limits.
-[Acceptance evidence](../measurements/cold-integration-checkpoint-20261029.json).
+The user approved a 60-second worker startup allowance and deferred performance
+work. That one existing policy value is changed; request deadlines, cancellation
+and cleanup are unchanged. No additional runtime mechanism was introduced.
+
+Acceptance covers all 103 native targets, workspace/core contracts, abstract
+TLA/Lean checks, Host generation and interaction, and the CLI/image/task/project
+checks. The final production revision cold-builds with an exact 792-file manifest
+and passes relocated archive/startup checks. Its formerly failing optional-provider
+image and provider-absent worker paths now pass. Full worker, authored concurrency
+and multicore checks also passed on byte-identical non-documentation source.
+The final report distinguishes comprehensive baseline checks, the single policy
+delta, and fresh production validation. No near-native speed claim is made.
+
+[Final requirement audit and acceptance](../measurements/minimal-id-integration-completion-20261029.json).
+Historical checkpoints below retain their original failures, timings and limits;
+they describe the migration's intermediate states, not remaining work.
 
 ## Implementation checkpoint: bounded file-byte construction (2026-10-29)
 

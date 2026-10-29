@@ -1,0 +1,118 @@
+{
+  "date": "2026-10-29",
+  "status": "complete for the agreed migration scope",
+  "runtime_revision": "ae7bd2d1ff97b8e3e6527d3fd833cab88db6bdd4",
+  "user_decision": "60-second worker startup allowance; performance work deferred",
+  "production": {
+    "source": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-production-60-4qxon5fe/source",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-production-60-4qxon5fe/prefix",
+    "revision": "ae7bd2d1ff97b8e3e6527d3fd833cab88db6bdd4",
+    "status": "finished",
+    "startup_allowance_seconds": 60,
+    "build_exit_code": 0,
+    "build_seconds": 589.5816688749474,
+    "verified_files": 792,
+    "archive": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-production-60-4qxon5fe/candidate.tar.gz",
+    "archive_sha256": "dce2b7e0869d0fd08043957ca07a83a8aafbbbf2c31bf31a678c181dc734bfb3",
+    "archive_exit_code": 0,
+    "archive_seconds": 299.41811908292584
+  },
+  "production_worker_checks": [
+    {
+      "name": "optional-image",
+      "script": "optional-store-image-test.py",
+      "revision": "ae7bd2d1ff97b8e3e6527d3fd833cab88db6bdd4",
+      "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-production-worker-check-ifl2wcc0/prefix",
+      "excluded": [],
+      "startup_allowance_seconds": 60,
+      "exit_code": 0,
+      "seconds": 637.5302446250571,
+      "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/production-60-optional-image.log"
+    },
+    {
+      "name": "provider-absent-workers",
+      "script": "worker-test.py",
+      "revision": "ae7bd2d1ff97b8e3e6527d3fd833cab88db6bdd4",
+      "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-production-worker-check-_xwqyu1f/prefix",
+      "excluded": [
+        "libbirnam_relational.dylib",
+        "libbirnam_store.dylib"
+      ],
+      "startup_allowance_seconds": 60,
+      "exit_code": 0,
+      "seconds": 442.27705070900265,
+      "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/production-60-provider-absent-workers.log"
+    }
+  ],
+  "source_equivalence": {
+    "production_revision": "ae7bd2d1ff97b8e3e6527d3fd833cab88db6bdd4",
+    "diagnostic_base_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "approved_change": "worker Ready allowance 15000 -> 60000 milliseconds",
+    "checked_files": 1658,
+    "comparison": "All tracked non-documentation files match the completed 60-second diagnostic source exactly",
+    "non_documentation_tree_sha256": "c4658b7fd793a1f1a7206b5e7e34938b89bc793a3a019b3a5bfa1a0078448995"
+  },
+  "validation_scope": {
+    "comprehensive_native_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "native_targets": 103,
+    "native_exit_code": 0,
+    "native_instrumentation": "birnam-tcc/resource-metrics",
+    "delta": "Only the worker Ready timeout changed after comprehensive native/Host acceptance. All 1658 tracked non-documentation files match the successfully tested 60-second diagnostic source exactly.",
+    "fresh_production_checks": "Clean cold build, exact 792-file manifest, relocated archive, optional-provider image/worker round trip and full provider-absent worker suite.",
+    "worker_and_concurrency": "Full workers, optional-provider images, authored concurrency and multicore suites passed on source-identical 60-second code. The prior 15-second failures remain historical failures, not relabelled passes.",
+    "limits": "Formal models establish abstract contracts, not implementation correctness. No near-native performance claim; performance work explicitly deferred."
+  },
+  "requirements": [
+    {
+      "requirement": "direct_definitions",
+      "status": "verified",
+      "contract": "Compiled Blocks bind their executable and lexical environment directly; supplied Methods install directly. Arbitrary value responders are not implicit method bodies.",
+      "evidence": "direct_method_construction, direct_native_method, direct_definition_lifecycle, method_binding, dispatch-contract"
+    },
+    {
+      "requirement": "continuations",
+      "status": "verified",
+      "contract": "Opaque answer continuations preserve lookup, suspension, native boundaries, cancellation and exactly-once effects.",
+      "evidence": "continuation_transparency, pending_call_recovery, execution_machines, task-control, TLA/Lean abstract models"
+    },
+    {
+      "requirement": "bootstrap_and_migration",
+      "status": "verified",
+      "contract": "Default forwarding/template machinery and disconnected legacy carrier sources are retired; production cold-bootstrap and source-free image startup work.",
+      "evidence": "cold install, archive relocation, artifact/native-loader/image checks, removal manifest"
+    },
+    {
+      "requirement": "metadata_and_construction",
+      "status": "verified",
+      "contract": "Code providers own source association, checked shapes and environments. Same-source association is idempotent; default construction does not mutate bindings. No Method context getter or general admission API was added.",
+      "evidence": "closure_admission, native_code_construction, owned_code_construction, native_conversion_construction, source review"
+    },
+    {
+      "requirement": "optimizer_and_liveness",
+      "status": "verified",
+      "contract": "Code-specific guards, recovery, retained code lifetime and bounded scheduling remain; deoptimization does not replay completed effects.",
+      "evidence": "execution_candidates, pending_call_recovery, guard/capture/representation tests, native lifetime tests, generation group"
+    },
+    {
+      "requirement": "integration",
+      "status": "verified",
+      "contract": "Retained language, image, project, interactive, worker and concurrency behavior has acceptance evidence on the corrected code; the authorized 60-second startup policy resolves the remaining production failure.",
+      "evidence": "103 native targets; generation and interaction groups; independent CLI/image/task/project checks; source-identical 60-second worker/concurrency tests; fresh production cold/archive and previously failing worker cases"
+    }
+  ],
+  "architecture_review": {
+    "baseline": "80b8a47c",
+    "runtime_revision": "12a2b062",
+    "id_api": "No public primitive or export additions in this simplification interval. Internal capture now preserves current behavior; unused dispatch metrics removed.",
+    "dispatch": "Current lookup followed by selected Method entry. Separate dispatch-contract test rejects any lookup on the selected Method.",
+    "definition": "Codegen uses Execution methodFromBlock: or installs an already supplied executable Method. Default forwarding module and templates removed.",
+    "metadata": "Providers retain their own code, shape, environments and native conversion data. No bootstrap Method context accessor or generic admitCodeObject: operation.",
+    "construction": "Default construction avoids dictionary edits. Exact source association reuses checked provider data; distinct source still checks canonical program equivalence.",
+    "control": "Known return sites are an optimization. Unknown continuations use real transfer/pause boundaries, with native-barrier refusal handled explicitly.",
+    "gc": "Collector follows Id header edges and registered owner reference protocols; representation-specific reads remain with owners.",
+    "optimizer": "Per-code guards and recovery retained. Custom Method behavior can decline optimization without reassociation; completed effects are not replayed.",
+    "evidence": "Current core contract suite and all 103 native targets passed. Formal checks remain abstract-contract evidence, not implementation proof."
+  },
+  "baseline_evidence": "docs/measurements/cold-integration-checkpoint-20261029.json",
+  "open_items": []
+}
