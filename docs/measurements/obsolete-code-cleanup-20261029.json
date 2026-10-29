@@ -43,7 +43,21 @@
       "Optional native compiler allocation metrics and its C hooks, compiled by the feature build.",
       "Independent frozen artifact/image format references and fixtures; historical ABI descriptions there are evidence, not live runtime interfaces.",
       "Two dead-code allowances on shared Host path helpers used partially by isolated fixtures; the full helpers have live consumers."
-    ]
+    ],
+    "authored_modules": {
+      "source_files": 73,
+      "explicit_production_build_entries": 47,
+      "test_suites_and_runner": 20,
+      "other_live_sources": {
+        "app-config.birnam": "Source package feature and ordinary-record/configuration tests.",
+        "bench.birnam": "Public benchmark harness and harness ownership tests.",
+        "isolate.birnam": "Host startup include and provider-absent task checks.",
+        "project-policy.birnam": "HostProject include and project policy tests.",
+        "relational-query.birnam": "Authored query implementation exercised by relational_authored integration tests.",
+        "test.birnam": "Public test harness loaded by authored suites."
+      },
+      "retired_interface_search": "No live authored callers of the removed carrier constructors, method-template forwarding, post-construction code admission, universal method-change subscription or implicit application protocol. Remaining Rust matches are negative contract tests."
+    }
   },
   "checks": [
     {
