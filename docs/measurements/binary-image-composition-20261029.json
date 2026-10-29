@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-29",
+  "base_revision": "ecf2e2e1be477198eea206d6056fe0ece0e7f0f5",
+  "scope": "Simplify binary image composition using existing public Bytes and Word operations.",
+  "source_sha256": {
+    "modules/image-format.birnam": "e498c7cfa544c8c2e8372cfc6da8058c97d1de9446be424e9dd5871c0906acdf",
+    "rust/birnam-siphon/tests/image_integer_encoding.rs": "8f5b3070f6811a633672be5f3cd17501badebf4be24f68df277343770374cf1e",
+    "scripts/native-message-test.sh": "e72e25c3a285bbedc726816ecaca94a97cd0a497d293427f7d17514d312f6a8e"
+  },
+  "evidence": {
+    "conversion_and_headers": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/serialization-probe-before.log",
+      "sha256": "e8aa7abc2986464f59b5ef19476a6258e6fffa4a136e56098fbb7e15f964a5de",
+      "result": "baseline timings with exact output checks"
+    },
+    "word_headers": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/serialization-word-save.log",
+      "sha256": "bd08a06950cf85b741cd00eeb7581f29cf77295505bc43d0ad3de5d62619ebfe",
+      "result": "Word header probe and full-save timings"
+    },
+    "phases": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/image-phase-times.log",
+      "sha256": "0a499aa5b8c38bc02c415fe727819b08ed4319cc1b1bcb440558a28e5a939a89",
+      "result": "instrumented composition and validation boundaries"
+    },
+    "binary_save": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/serialization-binary-save.log",
+      "sha256": "6d8c63e75c74be7dbd8a1cfc58dd31c00b5cb683ed4bd6af61213f0e2c5f971f",
+      "result": "direct binary composition full-save probe passed"
+    },
+    "integer_before": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/image-binary-before.log",
+      "sha256": "17678fb8813f9c6818684ddf0d208b2cda39e154a47a64eafc50661ef1b885c9",
+      "result": "old helper fails the Bytes-builder call pattern"
+    },
+    "encoding": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/image-binary-after.log",
+      "sha256": "9642107390e9713c4286635ff7af96506a4d294d395bbab6408059c8c2380061",
+      "result": "full-width fields, collecting callback and six frozen image encodings passed"
+    },
+    "original_save": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/binary-optional-save.json",
+      "sha256": "383532948f02868b1c9dd006c1001738c45fbfa98111982987a80fa78020c874",
+      "result": "original optional-provider save body passed with source startup"
+    },
+    "workspace": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/binary-format-workspace.log",
+      "sha256": "f7c9fa7ed0cc0d4a8c74a5a3b4e42908c4a1f76a49cf1f9d1cac2f1a0e452ec8",
+      "result": "passed"
+    }
+  },
+  "cause": "Large binary sections repeatedly became Strings and complete intermediate payload builders before becoming Bytes again. The phase probe spent about 105 seconds composing a 78 MB native-code image before validation, versus 28 seconds in validation. Fixed-width signed arithmetic added smaller header costs.",
+  "change": "Append framing, hashes, authority and payload Bytes directly to the output; use Word masking/shifts for little-endian fields. Preserve full validation and existing format.",
+  "architecture_review": "No Id, String or Bytes API change, no private cross-owner read, no new metadata registry or runtime payload catalog. ImageFormat remains the format authority.",
+  "timings_seconds": {
+    "ten_u64_baseline": 1.526106,
+    "ten_u64_word": 0.218896,
+    "word_only_full_save": 169.010924,
+    "binary_full_save": 95.586462,
+    "optional_provider_save_source_startup": 243.682475709,
+    "optional_mapped_load_and_resave": 306.8401475
+  },
+  "limitations": [
+    "Timing probes are diagnostic, not a controlled whole-language performance qualification.",
+    "The original save body was rerun with source startup so the new compiled format artifact was selected; installed startup images still need rebuilding.",
+    "Mapped load/resave passed but exceeded the old 300-second harness limit. Rebuilt roundtrip is still running.",
+    "The broader native batch and installed Host groups are from the prior format; several image deadlines failed. They do not qualify this change."
+  ]
+}

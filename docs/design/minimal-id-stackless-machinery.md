@@ -20,6 +20,37 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: binary image composition (2026-10-29)
+
+Qualification exposed repeated image-save timeouts. A native sample and phase
+probe localized substantial work to binary payloads passing through Strings:
+with a 78 MB native-code payload, composition spent about 105 seconds before
+validation. Validation remained a separate 28-second phase. Ten fixed-width
+writes also took 1.53 seconds through the signed arithmetic loop.
+
+The authored ImageFormat implementation now builds Bytes directly, using existing
+public operations. Framed hashes and native code are appended in order instead
+of constructing intermediate payload Strings and then converting them back to
+Bytes. Fixed-width integer fields use the existing Word mask/shift operations.
+No Id, String or Bytes API is added or changed; no owner reads another owner's
+payload, and the complete validation pass remains in place.
+
+```text
+before: Bytes -> String -> payload StringBuilder -> String -> Bytes
+        -> output StringBuilder -> String -> Bytes -> validate
+now:    append headers and Bytes sections to one Bytes output -> validate
+```
+
+The tests preserve exact little-endian bits, including signed/high-bit values,
+collecting replacements of the byte append operation, and byte-for-byte output
+for all six portable image fixtures. A small fixed-width probe improved from
+1.53 to 0.22 seconds; exploratory full-save probes changed from 169 to 96 seconds
+when binary composition was added. These are scoped diagnostic measurements,
+not a near-native language-performance claim. The original optional-provider save
+body completed in 244 seconds using source startup; mapped load/resave passed in
+307 seconds. Installed-image startup and full qualification remain separate checks.
+[Diagnosis, exact-byte tests and timings](../measurements/binary-image-composition-20261029.json).
+
 ## Implementation checkpoint: workspace harnesses (2026-10-28)
 
 The full workspace compile exposed old Operand/Outcome test and profiling callers

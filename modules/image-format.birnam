@@ -163,27 +163,31 @@ let blockMask := "0000000000001000001";
   ]]
   ]]
 ]];
+// Binary framing stays in Bytes; Word operations preserve all 64 bits.
+let formatByteMask := [255 word]; let formatByteShift := [8 word];
 [Reflect defineMethod: #write:width:on: on: ImageFormat as: [:self :value :width :builder |
   [self checked: [|
-  let n := [self cell: value];
-  [self repeat: width do: [:i |
-    let raw := [[n value] mod: 256];
-    let byte := [[raw < 0] ifTrue: [| [raw + 256]] ifFalse: [| raw]];
-    [builder addByte: byte]; [n set: [[[n value] - byte] / 256]]]]; builder
+    let bits := [self cell: [Integer wordOf: value]];
+    [self repeat: width do: [:i |
+      [Execution discardResultOf: builder selector: #appendByteValues wordArgument: [[bits value] bitAnd: formatByteMask]];
+      [bits set: [[bits value] shiftRight: formatByteShift]]
+    ]]; builder
   ]]
 ]];
 [Reflect defineMethod: #appendRecord:kind:on: on: ImageFormat as: [:self :bytes :kind :builder |
   [self checked: [|
-  [self write: kind width: 4 on: builder];
-  [self write: [bytes size] width: 8 on: builder];
-  [builder add: [bytes asString]]; builder
+    [self write: kind width: 4 on: builder];
+    [self write: [bytes size] width: 8 on: builder];
+    [builder appendBytes: bytes]; builder
   ]]
 ]];
 [Reflect defineMethod: #appendHashed:kind:on: on: ImageFormat as: [:self :bytes :kind :builder |
   [self checked: [|
-  let payload := [StringBuilder new]; [payload add: [[bytes sha256] asString]];
-  [self write: [bytes size] width: 8 on: payload]; [payload add: [bytes asString]];
-  [self appendRecord: [[payload asString] asBytes] kind: kind on: builder]
+    [self write: kind width: 4 on: builder];
+    [self write: [40 + [bytes size]] width: 8 on: builder];
+    [builder appendBytes: [bytes sha256]];
+    [self write: [bytes size] width: 8 on: builder];
+    [builder appendBytes: bytes]; builder
   ]]
 ]];
 [Reflect defineMethod: #hex: on: ImageFormat as: [:self :bytes |
@@ -196,10 +200,10 @@ let blockMask := "0000000000001000001";
 ]];
 [Reflect defineMethod: #authority:binding:selection: on: ImageFormat as: [:self :programs :binding :selection |
   [self checked: [|
-  let bytes := [StringBuilder new]; [bytes add: "birnam.portable-image-authority.v1"];
-  [bytes addByte: 0]; [bytes add: [programs asString]];
-  [bytes add: [binding asString]]; [bytes add: [selection asString]];
-  [self hex: [[[bytes asString] asBytes] sha256]]
+  let bytes := ["birnam.portable-image-authority.v1" asBytes];
+  [Execution discardResultOf: bytes selector: #appendByteValues wordArgument: [0 word]];
+  [bytes appendBytes: programs]; [bytes appendBytes: binding]; [bytes appendBytes: selection];
+  [self hex: [bytes sha256]]
   ]]
 ]];
 // Fields are #[tag index data], with nil for absent index/data.
@@ -589,7 +593,7 @@ let blockMask := "0000000000001000001";
   [self require: [inventory notNil] context: composeContext];
   [self checked: [|
   let authority := [self authority: [programs sha256] binding: [inventory at: 1] selection: [selection sha256]];
-  let builder := [StringBuilder new]; [builder add: "BIRNAMIM"];
+  let builder := ["BIRNAMIM" asBytes];
   [self write: 8 width: 4 on: builder]; [self write: 16909060 width: 4 on: builder];
   [self write: arch width: 4 on: builder]; [self write: abi width: 8 on: builder];
   [self appendRecord: authority kind: 5 on: builder];
@@ -602,10 +606,11 @@ let blockMask := "0000000000001000001";
   [self each: facts do: [:bytes :i | [self appendRecord: bytes kind: 2 on: builder]]];
   [[code notNil] ifTrue: [|
     [self require: [[code size] > 0] context: composeContext];
-    let payload := [StringBuilder new]; [payload add: [[code wyhash64] asString]];
-    [payload add: [authority asString]]; [payload add: [code asString]];
-    [self appendRecord: [[payload asString] asBytes] kind: 4 on: builder]]];
-  let bytes := [[builder asString] asBytes];
+    [self write: 4 width: 4 on: builder];
+    [self write: [72 + [code size]] width: 8 on: builder];
+    [builder appendBytes: [code wyhash64]];
+    [builder appendBytes: authority]; [builder appendBytes: code]]];
+  let bytes := builder;
   [self inspectBytes: bytes architecture: arch abi: abi]; bytes
   ]]
   ]]
