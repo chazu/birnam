@@ -20,6 +20,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     let svt = named(b"StringVt");
     let evt = named(b"ErrorFactoryVt");
     let gc = named(b"GC");
+    let integer = named(b"Integer");
     let truth = named(b"true");
     let falsity = named(b"false");
     let nil = named(b"nil");
@@ -52,6 +53,20 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     }
     let raw = [0, 0xff, b'a', b' ', b'\t'];
     let value = q.string(&raw).unwrap();
+    let zero = call(integer, b"fromWord:", &[size(0).unwrap()]);
+    let one = call(integer, b"fromWord:", &[size(1).unwrap()]);
+    let two = call(integer, b"fromWord:", &[size(2).unwrap()]);
+    let negative = call(integer, b"fromWord:", &[q.word(usize::MAX).unwrap()]);
+    assert_eq!(text(call(value, b"at:", &[one])), &[0xff]);
+    let byte = call(value, b"byteAt:", &[one]);
+    assert_eq!(q.word_bits(call(integer, b"wordOf:", &[byte])).unwrap(), 255);
+    assert_eq!(text(call(value, b"copyFrom:to:", &[zero, two])), &[0, 0xff]);
+    assert_eq!(text(call(value, b"copyFrom:to:", &[one, one])), b"");
+    for index in [negative, call(integer, b"fromWord:", &[size(raw.len()).unwrap()])] {
+        assert_eq!(call(value, b"at:", &[index]), nil);
+        assert_eq!(call(value, b"byteAt:", &[index]), nil);
+    }
+    assert_eq!(call(value, b"copyFrom:to:", &[two, one]), nil);
     assert_eq!(text(value), raw);
     assert_eq!(as_size(call(value, b"length", &[])), Some(raw.len()));
     assert_eq!(call(value, b"printString", &[]), value);
@@ -110,6 +125,10 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         );
     }
     let builder = call(sb, b"new", &[]);
+    let byte_reader = call(svt, b"lookup", &[key(b"byteAt:")]);
+    let args = call(h.id.root, b"sequence", &[negative]);
+    assert!(h.send(byte_reader, b"invokeOn:arguments:", &[builder, args]).is_err(),
+            "the receiver representation is checked before rejecting the index");
     call(builder, b"add:", &[source]);
     call(builder, b"add:", &[truth]);
     assert_eq!(text(call(builder, b"asString", &[])), b"aaaaatrue");
@@ -163,9 +182,26 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     call(nil, b"printString", &[]);
     call(source, b"trimmed", &[]);
     call(builder, b"asString", &[]);
-    assert_eq!(hooks.count(counter, 1), 4);
+    assert_eq!(text(call(value, b"at:", &[one])), &[0xff]);
+    assert_eq!(text(call(value, b"copyFrom:to:", &[zero, two])), &[0, 0xff]);
+    assert_eq!(hooks.count(counter, 1), 6);
     install(svt, b"fromBytes:", original);
     call(svt, b"removeMethod:", &[alias]);
+
+    // Numeric conversion and result construction may both collect. Neither
+    // callback may run while String's private buffer table is borrowed.
+    let ivt = named(b"IntegerVt");
+    let word_of = selected(ivt, b"wordOf:");
+    let indices = hooks.context(&[word_of, gc, size(0).unwrap()]);
+    let results = hooks.context(&[original, gc, size(0).unwrap()]);
+    install(ivt, b"wordOf:", hooks.method(b"collectEvery", indices));
+    install(svt, b"fromBytes:", hooks.method(b"collectEvery", results));
+    assert_eq!(text(call(value, b"at:", &[one])), &[0xff]);
+    assert_eq!(text(call(value, b"copyFrom:to:", &[zero, two])), &[0, 0xff]);
+    assert!(hooks.count(indices, 2) >= 3);
+    assert_eq!(hooks.count(results, 2), 2);
+    install(ivt, b"wordOf:", word_of);
+    install(svt, b"fromBytes:", original);
 
     // Snapshot the byte provider before the String allocation callback mutates it.
     let meta = call(h.id.root, b"behaviorOf:", &[svt]);

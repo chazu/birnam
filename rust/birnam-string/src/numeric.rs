@@ -36,18 +36,15 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
         // Id already keeps this call's receiver and arguments alive.
         {
             let nil = t.nil;
-            let indices = if matches!(op, 1 | 2 | 3 | 9) {
-                let mut indices = Vec::new();
-                for arg in args {
+            let mut indices = [0; 2];
+            if matches!(op, 1 | 2 | 3 | 9) {
+                for (index, arg) in args.iter().enumerate() {
                     let Some(v) = n.index(*arg)? else {
                         return Ok(if op == 9 { r } else { nil });
                     };
-                    indices.push(v);
+                    indices[index] = v;
                 }
-                indices
-            } else {
-                Vec::new()
-            };
+            }
             if op == 0 || op == 8 {
                 return n.integer(
                     t.length(r, if op == 8 { Kind::Builder } else { Kind::String })? as i64,
@@ -58,27 +55,41 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                 t.append(r, &[indices[0] as u8])?;
                 return Ok(r);
             }
-            let bytes = t.copy(r, Kind::String)?;
             match op {
                 1 | 2 => {
-                    let index = indices[0];
-                    if index < 0 || index as usize >= bytes.len() {
-                        return Ok(nil);
-                    }
+                    let byte = {
+                        let buffers = t.buffers.borrow();
+                        let bytes = &buffers.get(&r.addr())
+                            .filter(|b| b.kind == Kind::String)
+                            .ok_or_else(invalid)?.bytes;
+                        let index = indices[0];
+                        if index < 0 || index as usize >= bytes.len() {
+                            return Ok(nil);
+                        }
+                        bytes[index as usize]
+                    };
                     if op == 1 {
-                        t.string(&[bytes[index as usize]])
+                        t.string(&[byte])
                     } else {
-                        n.integer(i64::from(bytes[index as usize]))
+                        n.integer(i64::from(byte))
                     }
                 }
                 3 => {
-                    let (from, to) = (indices[0], indices[1]);
-                    if from < 0 || to < from || to as usize > bytes.len() {
-                        return Ok(nil);
-                    }
-                    t.string(&bytes[from as usize..to as usize])
+                    let bytes = {
+                        let buffers = t.buffers.borrow();
+                        let bytes = &buffers.get(&r.addr())
+                            .filter(|b| b.kind == Kind::String)
+                            .ok_or_else(invalid)?.bytes;
+                        let (from, to) = (indices[0], indices[1]);
+                        if from < 0 || to < from || to as usize > bytes.len() {
+                            return Ok(nil);
+                        }
+                        bytes[from as usize..to as usize].to_vec()
+                    };
+                    t.string(&bytes)
                 }
                 4 => {
+                    let bytes = t.copy(r, Kind::String)?;
                     let Ok(needle) = t.copy(args[0], Kind::String) else {
                         return Ok(nil);
                     };
@@ -92,8 +103,9 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                         None => Ok(nil),
                     }
                 }
-                5 => n.integer(crate::text::bracket_depth(&bytes)),
+                5 => n.integer(crate::text::bracket_depth(&t.copy(r, Kind::String)?)),
                 6 | 7 => {
+                    let bytes = t.copy(r, Kind::String)?;
                     // Numeric parsing historically trims four ASCII spaces; trimmed
                     // recognizes six. Preserve that distinction and signed overflow.
                     let trim = |b: &u8| matches!(*b, b' ' | b'\t' | b'\r' | b'\n');

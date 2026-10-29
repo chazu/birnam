@@ -1,0 +1,125 @@
+{
+  "baseline_revision": "3f5239d2",
+  "change": "String at:, byteAt: and copyFrom:to: read only the requested bytes instead of cloning the entire source; their already-bounded numeric indices use a local array.",
+  "contract": {
+    "before": "Perform current index conversions, validate and clone the complete owned String, select the byte/range, then invoke current result constructors.",
+    "after": "Perform the same conversions and representation/bounds checks, snapshot only the selected byte/range under the String owner's private borrow, release that borrow, then invoke the same result constructors.",
+    "preserved": [
+      "String.fromBytes: remains replaceable; the change does not call the private allocator instead.",
+      "Integer/Float dependency context messages and numeric conversions retain their order.",
+      "Binary data, negative/out-of-range results and wrong-representation error precedence are unchanged.",
+      "No private buffer borrow spans a callback or collection.",
+      "Other string searches and numeric parsing retain their previous byte snapshots."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "benchmark": {
+    "scope": "Existing String operations through Id on 64-byte, 4-KiB and 1-MiB inputs. Read one byte/character or an eight-byte slice. Five samples/process; serial ABBA. Automatic GC disabled for timed work; explicit precise GC outside every sample. Results checked.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 10,
+    "summary": {
+      "64/byteAt:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1299.810425,
+          "candidate": 1236.5791749999999
+        },
+        "change_percent": -4.864651704882272
+      },
+      "64/at:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1564.745825,
+          "candidate": 1513.1948000000002
+        },
+        "change_percent": -3.2945302793825793
+      },
+      "64/copyFrom:to:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 2097.959375,
+          "candidate": 2096.39375
+        },
+        "change_percent": -0.07462608755232081
+      },
+      "4096/byteAt:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1365.46875,
+          "candidate": 1263.2791750000001
+        },
+        "change_percent": -7.48384574894152
+      },
+      "4096/at:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1630.8676999999998,
+          "candidate": 1536.0677249999999
+        },
+        "change_percent": -5.812855021900298
+      },
+      "4096/copyFrom:to:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 2118.764575,
+          "candidate": 2019.979175
+        },
+        "change_percent": -4.662405685162085
+      },
+      "1048576/byteAt:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 18249.0875,
+          "candidate": 1268.7625
+        },
+        "change_percent": -93.04752908878321
+      },
+      "1048576/at:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 18480.137600000002,
+          "candidate": 1533.1334
+        },
+        "change_percent": -91.70388536500941
+      },
+      "1048576/copyFrom:to:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 19485.0542,
+          "candidate": 1997.1208000000001
+        },
+        "change_percent": -89.7504991287117
+      }
+    },
+    "library_sha256": {
+      "baseline": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+      "candidate": "602929477a1221aa257801c19b0156af3b782cfb2449e0537d9001b3d6f52fda"
+    },
+    "source": "//! Disposable benchmark of existing String indexed operations.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::{size, Oop};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let integer = h.named(b\"Integer\").unwrap();\n    let gc = h.named(b\"GC\").unwrap();\n    let zero = q.call(integer, b\"fromWord:\", &[size(0).unwrap()]).unwrap();\n    let eight = q.call(integer, b\"fromWord:\", &[size(8).unwrap()]).unwrap();\n    q.call(gc, b\"automaticCollection:\", &[size(0).unwrap()]).unwrap();\n    let cases: &[(&[u8], &[Oop])] = &[(b\"byteAt:\", &[zero]), (b\"at:\", &[zero]), (b\"copyFrom:to:\", &[zero, eight])];\n    for length in [64, 4096, 1048576] {\n        let text = q.string(&vec![b'x'; length]).unwrap();\n        let calls = if length == 1048576 { 5000 } else { 20000 };\n        for &(name, args) in cases {\n            let selector = q.keep(h.intern(name).unwrap()).unwrap();\n            for _ in 0..100 { unsafe { h.id.send(text, selector, args).unwrap(); } }\n            for _ in 0..5 {\n                q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n                let mut last = text;\n                let start = unsafe { clock_gettime_nsec_np(16) };\n                for _ in 0..calls { last = unsafe { h.id.send(text, selector, args).unwrap() }; }\n                let elapsed = unsafe { clock_gettime_nsec_np(16) } - start;\n                if name == b\"byteAt:\" {\n                    let word = q.call(integer, b\"wordOf:\", &[last]).unwrap();\n                    assert_eq!(q.word_bits(word).unwrap(), usize::from(b'x'));\n                } else {\n                    let bytes = q.call(last, b\"bytes\", &[]).unwrap();\n                    assert_eq!(q.read_bytes(bytes).unwrap(), vec![b'x'; if name == b\"at:\" {1} else {8}]);\n                }\n                println!(\"{length} {} {calls} {elapsed}\", String::from_utf8_lossy(name));\n            }\n        }\n    }\n}\n"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_string.dylib"
+    ]
+  },
+  "validation": [
+    "Full Oop core/compiler/GC suite and negative dispatch/construction contracts.",
+    "Expanded String/Error ownership test: binary indexing/slicing, empty ranges, bounds, wrong receiver representation, live result-constructor replacement, and collection during both index conversion and result construction.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "Local CPU microbenchmarks; the large gains apply to small indexed results from large input strings. They are not whole-application speedups.",
+    "Automatic GC disabled only for timed benchmark work; explicit collection occurs outside samples. Runtime policy is unchanged.",
+    "This removes native temporary copies and an index vector; required managed result construction remains.",
+    "No installed user prefix was replaced. The temporary benchmark caller was removed, and its source is embedded here."
+  ],
+  "source_sha256": {
+    "rust/birnam-string/src/numeric.rs": "389f2e6a795a2e005710fcb2eb408b4363f897158aa4ab51e9f52312e310a880",
+    "rust/birnam-siphon/tests/text_error.rs": "132e94064b1fdc15d05a78b403cdc1e75614a23fc0ad90786814a343fad553ee"
+  },
+  "evidence": {
+    ".cargo-target/string-index-20261029/micro.json": "73947ba30c2f2728cf573a8b4a5f6b60776d42b84fcd4cf956400dcedf7d1737",
+    ".cargo-target/string-index-20261029/micro.py": "060ab943d17626f1da2999d1d1abc422a57e8c1635155225c2ea83b1404e553d",
+    ".cargo-target/string-index-20261029/contracts.log": "422fd41f4022db5235a8e497ac277d5293ca5167ad811fe00bb910f3f28be510",
+    ".cargo-target/string-index-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/string-index-20261029/check.log": "f1fe7760fa1a004cc9cf2e4e8c5e2f7cd9d9521dfc51a3c7cac4cae46f1bad69",
+    ".cargo-target/string-index-20261029/selective-copy-only.json": "7439dcc2d2e1482cd4d01b94faebb5a0003031e3889cd9c27dec27ad964fe53b"
+  }
+}
