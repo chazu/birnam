@@ -241,17 +241,15 @@ unsafe fn mark(s: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Oop> {
         if s.send(s.id.root, b"allocationEpoch", &[])? != epoch {
             return Err(s.invalid());
         }
-        let walk = s.walk.borrow();
-        let w = walk.as_ref().unwrap();
+        let mut walk = s.walk.borrow_mut();
+        let w = walk.as_mut().unwrap();
         if let Some(error) = w.failure {
             return Err(error);
         }
-        Ok(w.allocations
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| w.marked[*i] == 0)
-            .map(|(_, a)| *a)
-            .collect())
+        let mut dead = std::mem::take(&mut w.allocations);
+        let mut marks = w.marked.iter();
+        dead.retain(|_| *marks.next().unwrap() == 0);
+        Ok(dead)
     }
 }
 unsafe fn sweep(s: &Memory, dead: &[Allocation]) -> Result<usize, Oop> {

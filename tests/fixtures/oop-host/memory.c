@@ -40,7 +40,10 @@ static Oop trace(Oop root,Oop pair,Oop r,const Oop*a,size_t n){
 static Oop finalize(Oop root,Oop pair,Oop r,const Oop*a,size_t n){
  (void)root;(void)r;if(n!=1)return id.invalid;Oop context=get(pair,0);size_t tag=id_unbox(get(pair,1));EXPECT(tag<2);CHECK(phase(context,tag));
  Oop address=id_size((uintptr_t)a[0]);EXPECT(send(id.root,AT_ALLOC,&address,1)==0);EXPECT(*(uintptr_t*)a[0]==0xcafe);finalized[tag]++;Oop identity=send(id.root,IDENTITY,a,1);CHECK(identity);finalized_ids[tag]=id_unbox(identity);
- if(a[0]==first_final&&later_final){address=id_size((uintptr_t)later_final);EXPECT(send(id.root,AT_ALLOC,&address,1)==later_final);Oop args[]={later_final,get(context,4)};CHECK(send(get(context,0),FINALIZE,args,2));EXPECT(send(get(context,7),EXISTING,0,0)==0);EXPECT(send(id.root,IS_BEHAVIOR,&retired_behavior,1)==id_size(0));}
+ if(a[0]==first_final&&later_final){address=id_size((uintptr_t)later_final);EXPECT(send(id.root,AT_ALLOC,&address,1)==later_final);
+  /* Finalization still distinguishes marked owners from pending dead objects. */
+  Oop dead_owner[]={later_final,later_final};EXPECT(id_fault(send(get(context,0),FINALIZE,dead_owner,2)));
+  Oop args[]={later_final,get(context,4)};CHECK(send(get(context,0),FINALIZE,args,2));EXPECT(send(get(context,7),EXISTING,0,0)==0);EXPECT(send(id.root,IS_BEHAVIOR,&retired_behavior,1)==id_size(0));}
  return 0;
 }
 static Oop first_visit(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;first_visits++;CHECK(set_method(get(c,10),VISIT,get(c,13)));return send(r,SAVED_VISIT,a,n);}

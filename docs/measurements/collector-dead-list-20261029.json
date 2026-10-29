@@ -1,0 +1,207 @@
+{
+  "baseline_revision": "0cc3537e",
+  "change": "Reuse the collector allocation list to hold dead objects instead of building a second list.",
+  "contract": {
+    "before": "After successful marking and epoch validation, copy unmarked allocation rows into a growing Vec while retaining the original allocation list through sweeping.",
+    "after": "After the same validation, move the original Vec out of Walk and stably retain its unmarked rows in place. Retain the original address index and mark bits through finalization.",
+    "preserved": [
+      "The same objects are dead, in the same identity order. No payload interpretation or Id change.",
+      "All retirement, identity, detach, finalizer and release messages keep their original order and arguments.",
+      "Finalizer-owner replacement still distinguishes live owners from dead objects through the unchanged index and mark bits.",
+      "Marking failures still abort before any retirement or list compaction. No borrow spans a callback."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "isolated_list_microbenchmark": {
+    "scope": "Isolated native dead-list construction, same Allocation fields and old/new source algorithms; copied inventories and mark vectors prepared outside timers. Alternating AB/BA, eight samples per case. Every result checked for exact order and contents. Global allocator counts allocation/reallocation calls inside the phase; capacities report both inventory and dead-list storage, excluding marks/indexes and fixture storage.",
+    "summary": {
+      "1024/0": {
+        "baseline": {
+          "cpu_ns": 542.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 24576.0
+        },
+        "candidate": {
+          "cpu_ns": 542.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 24576.0
+        },
+        "cpu_change_percent": 0.0
+      },
+      "1024/50": {
+        "baseline": {
+          "cpu_ns": 1083.0,
+          "allocation_calls": 9.0,
+          "list_capacity_bytes": 49152.0
+        },
+        "candidate": {
+          "cpu_ns": 729.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 24576.0
+        },
+        "cpu_change_percent": -32.686980609418285
+      },
+      "1024/100": {
+        "baseline": {
+          "cpu_ns": 1208.5,
+          "allocation_calls": 9.0,
+          "list_capacity_bytes": 49152.0
+        },
+        "candidate": {
+          "cpu_ns": 542.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 24576.0
+        },
+        "cpu_change_percent": -55.151013653289205
+      },
+      "65536/0": {
+        "baseline": {
+          "cpu_ns": 26625.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 1572864.0
+        },
+        "candidate": {
+          "cpu_ns": 26604.5,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 1572864.0
+        },
+        "cpu_change_percent": -0.07699530516431796
+      },
+      "65536/50": {
+        "baseline": {
+          "cpu_ns": 63604.0,
+          "allocation_calls": 15.0,
+          "list_capacity_bytes": 3145728.0
+        },
+        "candidate": {
+          "cpu_ns": 41333.5,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 1572864.0
+        },
+        "cpu_change_percent": -35.01430727627193
+      },
+      "65536/100": {
+        "baseline": {
+          "cpu_ns": 86229.5,
+          "allocation_calls": 15.0,
+          "list_capacity_bytes": 3145728.0
+        },
+        "candidate": {
+          "cpu_ns": 26208.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 1572864.0
+        },
+        "cpu_change_percent": -69.60668912611114
+      },
+      "1048576/0": {
+        "baseline": {
+          "cpu_ns": 397937.5,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 25165824.0
+        },
+        "candidate": {
+          "cpu_ns": 398458.5,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 25165824.0
+        },
+        "cpu_change_percent": 0.13092508245642343
+      },
+      "1048576/50": {
+        "baseline": {
+          "cpu_ns": 3862833.0,
+          "allocation_calls": 19.0,
+          "list_capacity_bytes": 50331648.0
+        },
+        "candidate": {
+          "cpu_ns": 1600333.0,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 25165824.0
+        },
+        "cpu_change_percent": -58.57100216343808
+      },
+      "1048576/100": {
+        "baseline": {
+          "cpu_ns": 4412229.5,
+          "allocation_calls": 19.0,
+          "list_capacity_bytes": 50331648.0
+        },
+        "candidate": {
+          "cpu_ns": 397145.5,
+          "allocation_calls": 0.0,
+          "list_capacity_bytes": 25165824.0
+        },
+        "cpu_change_percent": -90.9989836204123
+      }
+    },
+    "source": "use std::{alloc::{GlobalAlloc, Layout, System}, sync::atomic::{AtomicUsize, Ordering}, hint::black_box};\nstruct Counted;\nstatic ALLOCS: AtomicUsize = AtomicUsize::new(0);\nunsafe impl GlobalAlloc for Counted {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 { ALLOCS.fetch_add(1, Ordering::Relaxed); unsafe { System.alloc(l) } }\n    unsafe fn dealloc(&self,p:*mut u8,l:Layout) { unsafe { System.dealloc(p,l) } }\n    unsafe fn realloc(&self,p:*mut u8,l:Layout,n:usize)->*mut u8 { ALLOCS.fetch_add(1,Ordering::Relaxed); unsafe { System.realloc(p,l,n) } }\n}\n#[global_allocator] static ALLOCATOR: Counted = Counted;\n#[derive(Clone, Copy, Debug, PartialEq)]\nstruct Allocation { object: *mut (), size: usize, identity: usize }\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock:u32)->u64; }\n#[inline(never)] fn baseline(allocations:&[Allocation],marked:&[u8])->Vec<Allocation> {\n    allocations.iter().enumerate().filter(|(i,_)| marked[*i]==0).map(|(_,a)| *a).collect()\n}\n#[inline(never)] fn candidate(allocations:&mut Vec<Allocation>,marked:&[u8])->Vec<Allocation> {\n    let mut dead=std::mem::take(allocations);\n    let mut marks=marked.iter(); dead.retain(|_| *marks.next().unwrap()==0); dead\n}\nfn main(){\n    for n in [1024,65536,1048576] {\n        let source:Vec<_>=(0..n).map(|i|Allocation{object:std::ptr::without_provenance_mut((i+1)*16),size:i%24,identity:i+1}).collect();\n        for percent in [0,50,100] {\n            let marks:Vec<u8>=(0..n).map(|i|u8::from(i%100>=percent)).collect();\n            let expected:Vec<_>=source.iter().copied().zip(&marks).filter_map(|(v,&m)|(m==0).then_some(v)).collect();\n            for sample in 0..8 {\n                for lane in if sample%2==0 { [\"baseline\",\"candidate\"] } else { [\"candidate\",\"baseline\"] } {\n                    let mut allocations=source.clone();\n                    let before=ALLOCS.load(Ordering::Relaxed);\n                    let start=unsafe{clock_gettime_nsec_np(16)};\n                    let dead=if lane==\"baseline\" {baseline(black_box(&allocations),black_box(&marks))}else{candidate(black_box(&mut allocations),black_box(&marks))};\n                    let elapsed=unsafe{clock_gettime_nsec_np(16)}-start;\n                    let allocations_made=ALLOCS.load(Ordering::Relaxed)-before;\n                    assert_eq!(dead,expected);\n                    if lane==\"candidate\" { assert_eq!(allocations_made,0); }\n                    println!(\"{n} {percent} {sample} {lane} {elapsed} {allocations_made} {}\",(allocations.capacity()+dead.capacity())*size_of::<Allocation>());\n                }\n            }\n        }\n    }\n}\n"
+  },
+  "full_collection": {
+    "scope": "Full precise collection after 1000 Integer/Range iterations; automatic GC disabled only while producing garbage, same policy in both lanes. Six collection timings per variant, two fresh processes, ABBA. Successful nonempty collections checked.",
+    "summary": {
+      "integer-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 291013271.0,
+          "candidate": 290394604.0
+        },
+        "change_percent": -0.21259064848626608
+      },
+      "range-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 368979166.5,
+          "candidate": 365570833.0
+        },
+        "change_percent": -0.9237197677934517
+      }
+    },
+    "library_sha256": {
+      "baseline": "aff34cf5578f941983d2ac3d826fb62fcc8e2759b9eb5bf3f3e8aeb8bfa09a44",
+      "candidate": "da21b1f214ec96c60b912d5769b45309ac5b9ae88127d6b4c78274735a672ec1"
+    },
+    "source": "[System preciseGc: true];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System println: \"CASE integer-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System println: \"CASE range-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ]
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/layout-walk-candidate",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/collector-dead-list-candidate",
+    "files": 783,
+    "differences": [
+      "lib/libbirnam_collect.dylib"
+    ],
+    "library_sha256": {
+      "baseline": "aff34cf5578f941983d2ac3d826fb62fcc8e2759b9eb5bf3f3e8aeb8bfa09a44",
+      "candidate": "da21b1f214ec96c60b912d5769b45309ac5b9ae88127d6b4c78274735a672ec1"
+    }
+  },
+  "validation": [
+    "system_gc, object_model_slots and candidate_retirement passed against the candidate.",
+    "Expanded memory test passed against both candidate and baseline, including live finalizer replacement, rejection of dead replacement owners, ordered finalization, detach-before-finalize, retirement, trace failures and phase restrictions.",
+    "scripts/oop-id-slice-test.sh passed: owner unit tests, compiler/GC smoke, direct-dispatch and construction contracts, export audit, independent C cold caller, cross-thread rejection and finalizer failure containment."
+  ],
+  "contract_review": "The allocation rows are only read during marking/validation; after mark returns, finalizer-owner checks read indices and marked, which are untouched. retain is stable and consumes exactly one mark per original allocation row. Mark cardinality was established from that same allocation inventory. The detached-object lifecycle and retirement callbacks are unchanged.",
+  "limits": [
+    "The native microbenchmark isolates the old and new list algorithms with the same Allocation fields; it does not measure Id sends or marking. Its exact content/order checks and allocation counter run in addition to full runtime tests.",
+    "List capacities exclude mark bits, address indexes, the Oop argument list, object storage and benchmark fixtures. For 1048576 dead objects, this list storage falls from 48 MiB to 24 MiB; this is not a claim that total process memory halves.",
+    "List compaction is only one GC phase. Full-collection CPU changes (-0.21% Integer, -0.92% Range) are small and do not establish an application-wide speedup.",
+    "Controlled substitution of only libbirnam_collect.dylib across 783 files, not a fresh installed release. User installation and production GC policy unchanged."
+  ],
+  "source_sha256": {
+    "rust/birnam-collect/src/collection.rs": "c8321f727d85cb8384fd1b9db893796ad2f40ab69b58ce7d92791dd76cd1cd47",
+    "tests/fixtures/oop-host/memory.c": "38987848ebcd8bd573e9704834cfda959e3b37baa26b8d3ced15287e6550a6a8"
+  },
+  "evidence": {
+    ".cargo-target/collector-dead-list-20261029/list-micro.json": "54c8b813c1221d604bef1a77c078a5bfcfe8f9fc707e02451985f7516fe33e3d",
+    ".cargo-target/collector-dead-list-20261029/list-micro.txt": "e637f34d27a144a37d6204e899b694bf2f8110f4ecfedf0de27d80e1ef102603",
+    ".cargo-target/collector-dead-list-20261029/list_bench.rs": "01acf2d37774b27b337a114702753002f1c5f93254087bdc5ba0c6703f0ee35f",
+    ".cargo-target/collector-dead-list-20261029/gc-comparison.json": "b438d6fbf15b45d0601db0c866362e042a0d42df9b2ac8206b5e634230daa388",
+    ".cargo-target/collector-dead-list-20261029/gc-comparison.py": "c930fd11213021673f5a8676459cb23f96d1ec03f653c5743ac22b1e5dbb68a3",
+    ".cargo-target/collector-dead-list-20261029/contracts.log": "cefb97532d0d2928419724b63be21d1c62bd61c46236778f3dfb4729d698cccd",
+    ".cargo-target/collector-dead-list-20261029/memory-contract.log": "b43f475eeeb7c9669186f52367a8eae3bbc2e200dc20c57d828db20788cefbf4",
+    ".cargo-target/collector-dead-list-20261029/baseline-memory-contract.log": "f42b5222345d0e5b9e3a1735f6aeb8f38021c00b25b2b012e2da47faf72f6508",
+    ".cargo-target/collector-dead-list-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+  }
+}
