@@ -48,7 +48,7 @@ def check_qualification(path, install, runner, binding_path=None):
     return sha(path)
 
 
-def accept(archive, output, *, allow_dirty=False, deadline=14400, qualification=None):
+def accept(archive, output, *, allow_dirty=False, deadline=43200, qualification=None):
     archive = archive.resolve()
     output = output.resolve()
     commit = git('rev-parse', 'HEAD')
@@ -76,7 +76,7 @@ def accept(archive, output, *, allow_dirty=False, deadline=14400, qualification=
                     argv=[sys.executable, 'scripts/release_archive.py', str(archive)],
                     inputs=(str(archive), str(binding_path), 'scripts/release_archive.py',
                             'scripts/release-acceptance.py', 'scripts/install_contract.py',
-                            'scripts/host-cli-test.py', 'rust/birnam-host/**/*'), timeout=600)]
+                            'scripts/host-cli-test.py', 'rust/birnam-host/**/*'), timeout=2100)]
                 receipt['qualification'] = dict(path=str(qualification), sha256=qualified_hash)
             else:
                 # Standalone acceptance without prior qualification retains its
@@ -128,7 +128,7 @@ def main():
     parser.add_argument('evidence', type=Path)
     parser.add_argument('--qualification', type=Path, help='complete validate --candidate run.json for these exact artifacts')
     parser.add_argument('--allow-dirty', action='store_true')
-    parser.add_argument('--deadline', type=int, default=14400)
+    parser.add_argument('--deadline', type=int, default=43200)
     args = parser.parse_args()
     if args.deadline <= 0:
         parser.error('deadline must be positive')

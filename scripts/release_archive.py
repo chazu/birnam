@@ -59,7 +59,7 @@ def smoke(archive):
         # diagnostics, GC and a saved image. It is not the five Host groups.
         env = clean_environment()
         env['CARGO_TARGET_DIR'] = str(ROOT / '.cargo-target')
-        result = command([sys.executable, 'scripts/host-cli-test.py', str(prefix)], env=env, timeout=300)
+        result = command([sys.executable, 'scripts/host-cli-test.py', str(prefix)], env=env, timeout=1800)
         print(result['output'], end='', flush=True)
         if result['exit_code']:
             raise RuntimeError('archive relocation/source/image check failed')

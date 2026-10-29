@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-29",
+  "runtime_revision": "0272aef2a5e5082aa2029eceabad4cfa4820b137",
+  "scope": "Validation scheduling and library audit; not completion of native/Host acceptance.",
+  "evidence": {
+    "validation": {
+      "path": ".cargo-target/oop-current-qualification/outer-deadline-checkpoint/qualification-deadline-tools.log",
+      "sha256": "06f2f9314e1c54071012c1d2584e2ecf9efc7f7cccc8ef67a3e8d113c9441077",
+      "result": "passed"
+    },
+    "release": {
+      "path": ".cargo-target/oop-current-qualification/outer-deadline-checkpoint/qualification-deadline-release.log",
+      "sha256": "93ca98fdd39002fd0db52c713a60c19cf6ee6580cc337aa4253695617ea8c915",
+      "result": "passed"
+    },
+    "dylib": {
+      "path": ".cargo-target/oop-current-qualification/outer-deadline-checkpoint/dylib-audit-final.log",
+      "sha256": "ee2e7158d6e6b5f9dce27425a65d71c0ec494cfec4d778f161dece775deb50af",
+      "result": "passed"
+    }
+  },
+  "outer_limits_seconds": {
+    "native_suite": 14400,
+    "cold_install": 3600,
+    "host_group": 10800,
+    "archive_cli": 1800,
+    "archive_smoke_gate": 2100,
+    "independent_cold_builds": 7200,
+    "total_plan": 43200
+  },
+  "reason": "The observed complete image lifetime matrix alone took 6209 seconds. Older outer deadlines were shorter than the work and nested per-process allowances. Assertions and timing receipts are unchanged; these are correctness limits, not performance acceptance.",
+  "worker_deadline_seconds": 15,
+  "pending": [
+    "native batch still running",
+    "cold build with binary image encoder",
+    "installed Host groups",
+    "remaining image-owner checks",
+    "relocated archive acceptance"
+  ]
+}

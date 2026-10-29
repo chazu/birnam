@@ -48,15 +48,15 @@ def plan(suite, prefix, output, *, candidate=False):
                        ('scripts/install-contract-test.py', 'scripts/install_contract.py')))
     result.append(step('archive-test', ['python3', 'scripts/measurement-archive-test.py'], ('scripts/measurement*.py',)))
     result.append(step('native', ['bash', 'scripts/native-message-test.sh'],
-                       # Collecting loader hooks and full image/resave lifetimes
-                       # exceed 20 minutes before build and owner-image checks.
-                       PRODUCTION + ('scripts/native-message-test.sh', 'tests/fixtures/**/*'), timeout=2700))
+                       # Full image/resave lifetime coverage currently takes hours.
+                       # Keep the measured durations; this is a correctness allowance.
+                       PRODUCTION + ('scripts/native-message-test.sh', 'tests/fixtures/**/*'), timeout=14400))
     result.append(step('install', ['bash', 'scripts/rust-install.sh', 'install', '--root', ROOT,
                        '--prefix', prefix, '--profile', 'release'] + ([] if candidate else
                        ['--build-cache', ROOT / '.cargo-target/install']),
                        PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'docs/guide/**/*') +
                        ((str(output / 'candidate-source.json'),) if candidate else ()),
-                       artifacts=(str(prefix),), timeout=900))
+                       artifacts=(str(prefix),), timeout=3600))
     test_directory = output / 'artifacts/host-tests'
     result.append(step('host-test-binaries', ['python3', 'scripts/host_test_binaries.py',
                        'prepare', test_directory],
@@ -71,15 +71,15 @@ def plan(suite, prefix, output, *, candidate=False):
                             '--timings', output / 'timings' / (group + '.json')],
                            PRODUCTION + ('tests/**/*', 'examples/**/*') + SCRIPT_INPUTS,
                            depends=('install', 'host-test-binaries'),
-                           # Optional-provider and owner-image coverage exceeds
-                           # 20 minutes before the final reentry/Host cases.
-                           artifacts=(str(output / 'timings' / (group + '.json')),), timeout={'cli': 2400, 'image': 2400, 'interaction': 3600, 'generation': 2400, 'tasks': 2400}[group]))
+                           # Each group includes several independent image round trips.
+                           # The outer allowance must cover their individual deadlines.
+                           artifacts=(str(output / 'timings' / (group + '.json')),), timeout=10800))
     if suite == 'release':
         result.append(step('dylib-audit', ['bash', 'scripts/rust-dylib-audit.sh'],
                            PRODUCTION + ('scripts/rust-dylib-audit.sh', 'rust/birnam-id/exports.json'), timeout=300))
         result.append(step('cold-source', ['bash', 'scripts/rust-driver-cold-archive-smoke.sh'],
                            PRODUCTION + ('VERSION', 'scripts/rust-install.sh', 'scripts/rust-driver-cold-archive-smoke.sh',
-                                         'docs/guide/**/*', 'examples/fizzbuzz.birnam'), timeout=1200))
+                                         'docs/guide/**/*', 'examples/fizzbuzz.birnam'), timeout=7200))
     return result
 
 
@@ -157,7 +157,7 @@ def main():
         for step in reversed(steps):
             if step['name'] in selected: selected.update(step.get('depends', ()))
         steps = [step for step in steps if step['name'] in selected]
-    deadline = args.deadline if args.deadline is not None else 14400
+    deadline = args.deadline if args.deadline is not None else 43200
     if deadline <= 0: parser.error('deadline must be positive')
     if args.plan:
         print(json.dumps(dict(suite=args.suite, deadline_seconds=deadline, jobs=args.jobs, host_lanes=HOST_LANES, steps=steps), indent=2))
