@@ -28,7 +28,11 @@ exact installed-file verification passed. Relocated archive checks also passed,
 including compiled startup. All 103 native acceptance targets passed using a
 separate prefix with TCC resource metrics. Full Host generation and interaction
 groups, task image/field checks, and the independent later CLI checks passed.
-Remaining image and worker-dependent qualification is incomplete.
+All non-worker image checks, provider-absent project checks and closure
+observation passed. A separate 60-second startup diagnostic passed worker,
+optional-provider image, authored concurrency and multicore checks. The published
+candidate still has the user-selected 15-second deadline; worker-dependent
+production qualification remains blocked by that deadline.
 Worker requests return correct data after
 startup, but Ready took 25–35 seconds in diagnostic runs against the unchanged
 15-second deadline. No deadline change is authorized yet.

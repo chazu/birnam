@@ -23,7 +23,10 @@
     "full installed Host generation group, including 62 compiled-unit policy checks",
     "task images and owned task fields on the corrected cold runtime",
     "full 103-target native acceptance with TCC resource metrics in a separate cold-prefix copy",
-    "full installed Host interaction group: socket, REPL, compiled startup, CLI, golden REPL and LSP"
+    "full installed Host interaction group: socket, REPL, compiled startup, CLI, golden REPL and LSP",
+    "all 15 independent image checks except the separately blocked optional-provider worker case",
+    "all later CLI checks plus 177 task-control checks",
+    "closure observation and provider-absent project checks"
   ],
   "scope_notes": [
     "Workspace, core and formal commands ran from main at the runtime revision.",
@@ -70,10 +73,9 @@
   },
   "worker_deadline_seconds": 15,
   "remaining": [
-    "Complete the remaining independent image and provider-absent project checks",
-    "Resolve worker startup deadline failure; diagnostic 60-second build does not qualify production 15-second behavior",
-    "Complete worker-dependent CLI/image/concurrency acceptance on an authorized production configuration",
-    "Final requirement-by-requirement audit"
+    "Finish provider-absent worker diagnostic",
+    "User decision on production worker startup allowance: 15 seconds fails; 60-second diagnostic passes worker, optional-provider image, authored concurrency and multicore checks",
+    "Qualify the authorized production configuration; diagnostic results do not waive the production failure"
   ],
   "logs": [
     {
@@ -254,5 +256,236 @@
     "seconds": 2464.3757346669445,
     "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/host-interaction-completion.log",
     "timings": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/host-interaction-completion.json"
+  },
+  "independent_cli": {
+    "revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-cli-independent-wcw7wu_9/prefix",
+    "scope": "CLI checks after the worker failure; full CLI group NOT qualified",
+    "runs": [
+      {
+        "name": "optional-store-test.py",
+        "exit_code": 0,
+        "seconds": 35.38378566701431
+      },
+      {
+        "name": "image-format-test.py",
+        "exit_code": 0,
+        "seconds": 24.57025341608096
+      },
+      {
+        "name": "doc-render-test.py",
+        "exit_code": 0,
+        "seconds": 32.10765924991574
+      },
+      {
+        "name": "portable-execution-test.py",
+        "exit_code": 0,
+        "seconds": 82.93245141603984
+      },
+      {
+        "name": "rust-project-check-smoke",
+        "exit_code": 0,
+        "seconds": 731.722598124994
+      },
+      {
+        "name": "project_policy_values_survive_collecting_messages",
+        "exit_code": 0,
+        "seconds": 21.242659207899123
+      },
+      {
+        "name": "project_source_observation_uses_live_messages",
+        "exit_code": 0,
+        "seconds": 20.53128212504089
+      },
+      {
+        "name": "startup::tests::host_roots_survive_collecting_sends",
+        "exit_code": 0,
+        "seconds": 6.013791750068776
+      },
+      {
+        "name": "project-query",
+        "exit_code": 0,
+        "seconds": 20.771895957994275
+      },
+      {
+        "name": "task-control",
+        "exit_code": 0,
+        "seconds": 62.04491675004829
+      }
+    ]
+  },
+  "independent_images": {
+    "revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-image-independent-6ykf7dd4/prefix",
+    "scope": "Image checks excluding optional-store-image-test.py; full image group NOT qualified",
+    "excluded": [
+      "optional-store-image-test.py: worker Ready deadline unresolved"
+    ],
+    "runs": [
+      {
+        "name": "host-image-test.py",
+        "exit_code": 0,
+        "seconds": 1034.8291737500113
+      },
+      {
+        "name": "native-loader-image-smoke.sh",
+        "exit_code": 0,
+        "seconds": 284.7782044169726
+      },
+      {
+        "name": "trace-image-smoke.py",
+        "exit_code": 0,
+        "seconds": 102.10100704198703
+      },
+      {
+        "name": "frame-call-image-smoke.py",
+        "exit_code": 0,
+        "seconds": 99.15387812501285
+      },
+      {
+        "name": "collection-search-image-test.py",
+        "exit_code": 0,
+        "seconds": 250.06266166700516
+      },
+      {
+        "name": "string-builder-image-smoke.sh",
+        "exit_code": 0,
+        "seconds": 354.90762737498153
+      },
+      {
+        "name": "system-image-test.py",
+        "exit_code": 0,
+        "seconds": 531.6410757920239
+      },
+      {
+        "name": "alien-image-test.py",
+        "exit_code": 0,
+        "seconds": 272.9646838339977
+      },
+      {
+        "name": "alien-publication-test.py",
+        "exit_code": 0,
+        "seconds": 20.520746208028868
+      },
+      {
+        "name": "image-store-participation-test.py",
+        "exit_code": 0,
+        "seconds": 326.6469791670097
+      },
+      {
+        "name": "alien-recipes-test.py",
+        "exit_code": 0,
+        "seconds": 473.0983726250706
+      },
+      {
+        "name": "alien-recipes-reentry-test.py",
+        "exit_code": 0,
+        "seconds": 16.630921665928327
+      },
+      {
+        "name": "alien-recipes-hash-test.py",
+        "exit_code": 0,
+        "seconds": 486.2658066250151
+      },
+      {
+        "name": "alien-image-reentry-test.py",
+        "exit_code": 0,
+        "seconds": 353.8286145410966
+      },
+      {
+        "name": "image_entry_uses_saved_code_and_roots",
+        "exit_code": 0,
+        "seconds": 11.579361332929693
+      }
+    ]
+  },
+  "remaining_independent": {
+    "revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "scope": "Closure observation and provider-absent project paths only; worker-dependent acceptance remains pending",
+    "runs": [
+      {
+        "name": "closure-observation",
+        "exit_code": 0,
+        "seconds": 168.97046129100002
+      },
+      {
+        "name": "provider-absent-project",
+        "exit_code": 0,
+        "seconds": 704.871114125
+      }
+    ]
+  },
+  "diagnostic_workers": {
+    "diagnostic_only": true,
+    "production_qualified": false,
+    "base_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "startup_allowance_seconds": 60,
+    "runs": [
+      {
+        "name": "worker-test.py",
+        "exit_code": 0,
+        "seconds": 461.2275032500038,
+        "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-diagnostic-lane-6k76_9z6/prefix",
+        "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/diagnostic-worker-test.py.log",
+        "diagnostic_only": true,
+        "production_qualified": false,
+        "startup_allowance_seconds": 60
+      },
+      {
+        "name": "concurrency-cli-test.py",
+        "exit_code": 0,
+        "seconds": 355.12503162492067,
+        "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-diagnostic-lane-6k76_9z6/prefix",
+        "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/diagnostic-concurrency-cli-test.py.log",
+        "diagnostic_only": true,
+        "production_qualified": false,
+        "startup_allowance_seconds": 60
+      },
+      {
+        "name": "optional-store-image-test.py",
+        "exit_code": 0,
+        "seconds": 706.6216628749389,
+        "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-diagnostic-lane-g38da9cv/prefix",
+        "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/diagnostic-optional-store-image-test.py.log",
+        "diagnostic_only": true,
+        "production_qualified": false,
+        "startup_allowance_seconds": 60
+      },
+      {
+        "name": "multicore-smoke.sh",
+        "exit_code": 0,
+        "seconds": 265.95703108306043,
+        "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-diagnostic-lane-g38da9cv/prefix",
+        "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/diagnostic-multicore-smoke.sh.log",
+        "diagnostic_only": true,
+        "production_qualified": false,
+        "startup_allowance_seconds": 60
+      }
+    ]
+  },
+  "diagnostic_configuration": {
+    "source": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-startup-diagnostic-a75vx0id/source",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-startup-diagnostic-a75vx0id/prefix",
+    "base_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "diagnostic_only": true,
+    "production_qualified": false,
+    "startup_allowance_seconds": 60,
+    "production_startup_seconds": 15,
+    "isolate_sha256": "4348e59861e399fcbc7ed12044aa877dbc31a0b9b7d69dd3c97838875df9a81e",
+    "patch": "diff --git a/rust/birnam-isolate/src/native.rs b/rust/birnam-isolate/src/native.rs\nindex 7a290555..df5c6c21 100644\n--- a/rust/birnam-isolate/src/native.rs\n+++ b/rust/birnam-isolate/src/native.rs\n@@ -367,7 +367,7 @@ unsafe fn start(q: &Scope<'_>, a: &[Oop], service: bool) -> Answer {\n             .channel\n             .as_mut()\n             .ok_or(HostTransportError::Io)\n-            .and_then(|c| host_read_frame(c, 15_000));\n+            .and_then(|c| host_read_frame(c, 60_000));\n         match ready {\n             Ok(f) if f.header.kind == FrameKind::Ready => {}\n             Ok(f) => {\n",
+    "status": "ready"
+  },
+  "architecture_review": {
+    "baseline": "80b8a47c",
+    "runtime_revision": "12a2b062",
+    "id_api": "No public primitive or export additions in this simplification interval. Internal capture now preserves current behavior; unused dispatch metrics removed.",
+    "dispatch": "Current lookup followed by selected Method entry. Separate dispatch-contract test rejects any lookup on the selected Method.",
+    "definition": "Codegen uses Execution methodFromBlock: or installs an already supplied executable Method. Default forwarding module and templates removed.",
+    "metadata": "Providers retain their own code, shape, environments and native conversion data. No bootstrap Method context accessor or generic admitCodeObject: operation.",
+    "construction": "Default construction avoids dictionary edits. Exact source association reuses checked provider data; distinct source still checks canonical program equivalence.",
+    "control": "Known return sites are an optimization. Unknown continuations use real transfer/pause boundaries, with native-barrier refusal handled explicitly.",
+    "gc": "Collector follows Id header edges and registered owner reference protocols; representation-specific reads remain with owners.",
+    "optimizer": "Per-code guards and recovery retained. Custom Method behavior can decline optimization without reassociation; completed effects are not replayed.",
+    "evidence": "Current core contract suite and all 103 native targets passed. Formal checks remain abstract-contract evidence, not implementation proof."
   }
 }
