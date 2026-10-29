@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-28",
+  "runtime_revision": "659d0b5c4cea142028432e545d9ac2aad10ddfe2",
+  "runtime_source_inputs_unchanged": true,
+  "scope": "Qualification checkpoint, not completion of the full runtime/Host matrix.",
+  "passed": [
+    "validation tooling tests",
+    "independent stackless and portable byte fixtures",
+    "continuation TLA+ models and expected counterexamples",
+    "41 Lean theorems and 10 rejected mutations",
+    "Cell and Module registry on an isolated Store-free floor"
+  ],
+  "formal_scope": "passed abstract checks and required counterexamples; no implementation proof",
+  "tla_cases": 49,
+  "cell_export_seconds": 162.599470292,
+  "deadline_change": {
+    "test": "scripts/cell-without-store-test.py export",
+    "before_seconds": 120,
+    "after_seconds": 300,
+    "reason": "The unchanged export completed correctly in 125 seconds in a separate source-startup probe. The allowance is a correctness deadline, not a performance acceptance threshold.",
+    "worker_seconds": 15
+  },
+  "evidence": {
+    "continuations": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/continuations.json",
+      "sha256": "1b542f3b961351b023b12e6a9672ec4bb902381969dc66d5c3f0379461712995"
+    },
+    "cell_registry": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/cell_registry.json",
+      "sha256": "0582c26cf4e4afbaa091cc7d6d1db01e3fcd4d21082ec5ac1ac486ebc96ada8c"
+    },
+    "tooling": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/tooling.log",
+      "sha256": "b4de10398ce91662c86ede2199831b45cb9b69f25c1cdd7e18eee2088b6aea82"
+    },
+    "stackless_bytes": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/stackless_bytes.log",
+      "sha256": "250da2f22a0eb1a8a1b8eba83ab07523463d198b9f70dfe7730215cbe79bd901"
+    },
+    "portable_bytes": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/portable_bytes.log",
+      "sha256": "cc5100d836b33ed954aad0d105f1c1430703656f10d4752d784cae58418ac094"
+    },
+    "cell_timeout": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/cell_timeout.log",
+      "sha256": "b84ecede175539fc6d56445505328bfa21481afe2c226ca43aee215001dab398"
+    },
+    "cell_source_probe": {
+      "path": ".cargo-target/oop-current-qualification/qualification-checkpoint/cell_source_probe.log",
+      "sha256": "304201e763ee48cf0eebb2c1d95cd9b2405710ec9055ade1b0ada0884700683c"
+    }
+  },
+  "pending": [
+    "native runtime batch",
+    "remaining post-native scripts",
+    "cold installation",
+    "five installed Host groups",
+    "archive relocation and final completion audit"
+  ]
+}

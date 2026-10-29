@@ -58,7 +58,8 @@ let requests := REQUESTS;
        ' #[ProcResult #slotNames] #[ProcResult #stdout] #[ProcResult #exitCode] #[AppConfig #slotNames] #[AppConfig #values] #[AppConfig #origins] #[AppConfig #path] #[AppConfig #at:] #[AppConfig #originAt:]' if args.records else '') +
       (''.join(' #[%s #%s]' % (name, method) for name,fields,methods in HARNESS for method in methods) + ''.join(' #[Collection #%s]' % method for method in HARNESS_HELPERS) if args.harness else '') + ']'))
     env=clean_environment()
-    export=command([prefix/'bin/birnam',source],env=env,timeout=120)
+    # Export includes startup and owner reflection; its duration is recorded, not a speed gate.
+    export=command([prefix/'bin/birnam',source],env=env,timeout=300)
     (work/'export.log').write_text(export['output'])
     assert export['exit_code']==0 and not export['stderr'] and export['stdout']=='0\n'*((28 if args.registry else 9 if args.slots else 0) + (22 if args.records else 0) + (sum(len(methods) for name,fields,methods in HARNESS)+len(HARNESS_HELPERS) if args.harness else 0)),(work,export)
     for module in MODULES: shutil.copy2(prefix/'lib'/f'libbirnam_{module}.dylib',floor)
