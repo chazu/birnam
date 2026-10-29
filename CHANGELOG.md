@@ -8,6 +8,28 @@ loader ports are complete.
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-10-29
+
+- Complete the Oop-only Id integration across the language. Keep object payloads
+  with their owners and ordinary sends as current method lookup followed by direct
+  entry. Remove obsolete carriers, payload classifications and forwarding machinery.
+- Integrate opaque continuations with stackless Execution, scheduling, native
+  callbacks and compiled startup. Preserve live replacement, captured code
+  lifetimes, optimizer/deoptimization support and explicit concurrency features.
+- Keep Method construction free of binding mutations and use provider-owned
+  reflection. Retain explicit Store invalidation and simplify explicit binding
+  rollback to check current values.
+- Reduce runtime overhead in allocation, continuation transfers, code retirement,
+  collection, slot access and byte/string operations. Measured Integer/method loops
+  use about 33% less CPU, Range 15–29% less and quiet Logue turns 30–31% less than
+  the start of the post-refactor optimization pass. Complete measured processes,
+  including startup and source loading, improve by 4–5%; results vary by workload.
+- Add the presentation REPL and prepared Alien packaging. Remove obsolete runtime
+  code and fixtures while retaining the required cold-build seeds.
+
+Rebuild locally generated native modules and executable images against this
+release after the runtime/ABI migration. The release package targets arm64 macOS.
+
 ## [0.18.0] — 2026-10-20
 
 - Make Store and Relational optional facilities. Core source/compiled startup,
