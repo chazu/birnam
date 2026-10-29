@@ -1,7 +1,7 @@
 //! Direct compiled Method construction: receiver, environment and code have distinct roles.
 #[path = "support/oop.rs"]
 mod oop;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 
 #[test]
 #[ignore = "requires production Oop Execution"]
@@ -175,7 +175,13 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
         let count = hooks.context(&[candidate_answer, size(0).unwrap()]);
         let candidate = hooks.method(b"fixedCount", count);
         let slot = call(named(b"Integer"), b"fromWord:", &[size(1).unwrap()]);
+        let before = epoch();
         let optimized = call(plain, b"withInline:at:owner:", &[candidate, slot, object]);
+        assert_eq!(
+            epoch(),
+            before,
+            "optimizer construction must not edit bindings"
+        );
         call(behavior, b"addMethod", &[key(b"optimized:"), optimized]);
         let machine = call(named(b"Machine"), b"new", &[]);
         let result = call(machine, b"runBlock:", &[root]);
@@ -185,6 +191,53 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
         assert_eq!(q.vector_at(tuple, 2).unwrap(), argument);
         assert_eq!(hooks.count(count, 1), 1);
     }
+
+    // An optional optimization declines custom Method behavior rather than
+    // mutating a fresh Method to copy it or silently discarding it.
+    let custom_baseline = call(plain, b"captured", &[]);
+    let custom_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[custom_baseline]);
+    call(
+        custom_vt,
+        b"addMethod",
+        &[key(b"annotation"), hooks.method(b"fixed", next)],
+    );
+    let count = hooks.context(&[answer, size(0).unwrap()]);
+    let candidate = hooks.method(b"fixedCount", count);
+    let slot = call(named(b"Integer"), b"fromWord:", &[size(1).unwrap()]);
+    let before = epoch();
+    let declined = call(
+        custom_baseline,
+        b"withInline:at:owner:",
+        &[candidate, slot, object],
+    );
+    assert_eq!(declined, custom_baseline);
+    assert_eq!(epoch(), before);
+    assert_eq!(call(declined, b"annotation", &[]), next);
+    call(behavior, b"addMethod", &[key(b"optimized:"), declined]);
+    let machine = call(named(b"Machine"), b"new", &[]);
+    let result = call(machine, b"runBlock:", &[root]);
+    assert_eq!(
+        q.vector_at(q.vector_at(result, 0).unwrap(), 2).unwrap(),
+        argument
+    );
+    assert_eq!(hooks.count(count, 1), 0);
+
+    let dnu_body = eval(b"[:self :selector | selector]");
+    let dnu = call(execution, b"methodFromBlock:", &[dnu_body]);
+    let dnu = call(dnu, b"forDoesNotUnderstand", &[]);
+    let decline = hooks.method(b"fixed", std::ptr::null_mut());
+    let before = epoch();
+    let optimized_dnu = call(dnu, b"withInline:at:owner:", &[decline, slot, object]);
+    assert_eq!(epoch(), before);
+    let packet = call(
+        h.id.root,
+        b"sequence",
+        &[key(b"missing:with:"), object, argument],
+    );
+    assert_eq!(
+        call(optimized_dnu, b"invokeOn:arguments:", &[object, packet]),
+        key(b"missing:with:")
+    );
 
     // Capturing custom Method behavior preserves it at allocation, without
     // a reassociation after the new Method becomes visible.
@@ -223,10 +276,9 @@ fn direct_methods_bind_receivers_and_environments_without_forwarding_or_binding_
         let before = epoch();
         let mut inputs = vec![source_method];
         inputs.extend(captures);
-        assert!(
-            h.send(named(b"Block"), b"fromMethod:captureOperands:", &inputs)
-                .is_err()
-        );
+        assert!(h
+            .send(named(b"Block"), b"fromMethod:captureOperands:", &inputs)
+            .is_err());
         assert_eq!(
             epoch(),
             before,

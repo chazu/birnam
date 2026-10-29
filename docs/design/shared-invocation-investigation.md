@@ -1,5 +1,10 @@
 # Shared method invocation: adapter necessity investigation
 
+Historical report. The forwarding implementation and probe described here were
+retired by the [minimal stackless machinery simplification](minimal-id-stackless-machinery.md).
+Current definitions bind compiled bodies directly; the original measurements below
+are retained as historical evidence, not current runtime qualification.
+
 2026-10-15. **Investigation and executable prototypes; no production invocation
 path has been replaced.** Follows the [failure-boundary experiment](publication-failure-boundary.md)
 and the user's clarification that ordinary error behavior should follow message
@@ -59,7 +64,7 @@ rewrite an entered or explicitly captured Method. The prototype checks both.
 
 ## Prototypes and executable evidence
 
-[`shared_invocation_probe.rs`](../../rust/birnam-siphon/tests/shared_invocation_probe.rs)
+[`shared_invocation_probe.rs`](https://github.com/chazu/birnam/blob/e918e34b/rust/birnam-siphon/tests/shared_invocation_probe.rs)
 uses the existing `Method fromStep:descriptor:selection:owner:implementation:`
 interface. It gets the canonical descriptor/selection from the current NativeBackend
 and registers separate Methods against shared step code. No new runtime primitive

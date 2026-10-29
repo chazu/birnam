@@ -124,12 +124,15 @@ pub(in crate::synchronous) unsafe extern "C" fn with_inline(
             return Err(invalid());
         }
         let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[receiver])?);
-        let (context_vt, template) = {
-            let runtime = s.resume.borrow();
-            (runtime.context_vt, runtime.template)
-        };
+        if behavior != s.send(s.id.root, b"methodBehavior", &[])? {
+            // Optional optimization must not mutate a fresh Method to copy
+            // custom behavior, or silently discard that behavior.
+            return Ok(receiver);
+        }
+        let context_vt = s.resume.borrow().context_vt;
         let context = q.keep(allocate(s, context_vt, 0)?);
-        let copy = q.keep(s.send(template, b"withContext:", &[context])?);
+        // Preserve the selected entry, including DNU argument handling.
+        let copy = q.keep(s.send(receiver, b"withContext:", &[context])?);
         // This Method annotates the existing baseline; it does not create a
         // second registration or a frame owner containing the candidate recipe.
         let mut annotated = selected;
@@ -141,7 +144,6 @@ pub(in crate::synchronous) unsafe extern "C" fn with_inline(
             return_slot,
         });
         s.resume.borrow_mut().records.insert(context.addr(), annotated);
-        s.send(s.id.root, b"reassociateBehaviorOf:with:", &[copy, behavior])?;
         let admitted = s.admitted.borrow().get(&receiver.addr()).cloned();
         if let Some(admitted) = admitted {
             s.admitted.borrow_mut().insert(copy.addr(), admitted);

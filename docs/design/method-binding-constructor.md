@@ -1,5 +1,10 @@
 # Shared Method binding constructor
 
+Historical report. The forwarding implementation and probe described here were
+retired by the [minimal stackless machinery simplification](minimal-id-stackless-machinery.md).
+Current definitions bind compiled bodies directly; the original measurements below
+are retained as historical evidence, not current runtime qualification.
+
 2026-10-15. The first production slice following the
 [shared-invocation investigation](shared-invocation-investigation.md).
 

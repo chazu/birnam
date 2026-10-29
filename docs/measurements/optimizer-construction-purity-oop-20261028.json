@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "e918e34b32d31d8b25bbc50d2d8c492537b0018d",
+  "scope": "Pure inline-candidate construction, direct-definition lifecycle replacement for the retired forwarding probe, and deletion of uncompiled nonproduction experiments.",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_recovery.rs": "6c61af1605400960d9e7455d1675f40769fe70a50964d7ecdf5a69f7d9731db9",
+    "rust/birnam-siphon/tests/direct_method_construction.rs": "575b702793bb54c5e8be14a3e13fe2deebad52fa3e50121c2d8b8cd7168e8b77",
+    "scripts/method-invocation-test.py": "fd2646ddd08188417b41eb7a6ba5e9f3cfa8ee29b6f641bf4fddc742a91dbc04",
+    "scripts/native-message-test.sh": "2e93567a13e0a8fe1572315b7cf771cc3b5f3e4df0a1327ccf457bd67b7cc8fe",
+    "rust/birnam-siphon/tests/direct_definition_lifecycle.rs": "4d6c9504737cc93fc3139ebf6d527cf030021a6e5cd999f8c9f6f2c7de4f3a66"
+  },
+  "removed_files": [
+    "rust/birnam-codegen-runtime/src/pending_message_integration.rs",
+    "rust/birnam-siphon/tests/publication_result_proposal.rs",
+    "rust/birnam-siphon/tests/shared_invocation_probe.rs",
+    "tests/fixtures/publication-result-proposal.birnam"
+  ],
+  "evidence": {
+    "before": {
+      "path": ".cargo-target/oop-current-qualification/optimizer-purity-milestone/optimizer-purity-before.log",
+      "sha256": "415bd9f8cd1d0a5ad62f86fa529c5686d2025f4c3c7139948b5da60bbb996c2d",
+      "result": "expected failure: inline construction advanced binding epoch"
+    },
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/optimizer-purity-milestone/optimizer-purity-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "optimizer": {
+      "path": ".cargo-target/oop-current-qualification/optimizer-purity-milestone/optimizer-purity-focused.log",
+      "sha256": "d0822cedb4b8a883efba689c62584cac806107ec7c2ce5dff9fc83215b3de7df",
+      "result": "passed"
+    },
+    "lifecycle_publication": {
+      "path": ".cargo-target/oop-current-qualification/optimizer-purity-milestone/direct-lifecycle-focused.log",
+      "sha256": "c4c22d77960090872a6b09e25592a44fbd820f109f38559ca881bec8f142d16c",
+      "result": "passed"
+    },
+    "native_gate_compile": {
+      "path": ".cargo-target/oop-current-qualification/optimizer-purity-milestone/native-gate-compile.log",
+      "sha256": "f61fd45cd97a58a74b248a8f25986d8296627bc43aa145de5b4532ea2fddd53a",
+      "result": "all 100 native-gate targets compile"
+    }
+  },
+  "architecture_review": "Inline construction binds a new context to the selected executable entry without reassociation. Custom Method behavior makes this optional optimization decline and retain the original baseline. No Id or Method API changes; no added registry. Source and declared entry semantics, including DNU, remain owned by existing constructors.",
+  "retained_evidence": [
+    "pure optimizer construction",
+    "custom Method behavior preserved by baseline fallback",
+    "DNU selected entry preserved",
+    "candidate entry, decline and no-replay recovery",
+    "frame and candidate recipe lifetime",
+    "zero, one, two and sixteen named arguments in both compiler modes",
+    "current custom lookup with GC",
+    "captured meaning and replacement while a Method is suspended",
+    "ordinary Error result identity",
+    "production authorization, commit, notification and failure boundaries"
+  ],
+  "retirement_audit": {
+    "shared_invocation_probe": "Retired forwarding/implementation-slot and Operand/Outcome experiment; retained requirements mapped to current direct lifecycle, native boundary, recovery and lifetime tests in the design document.",
+    "publication_result_proposal": "Fixture explicitly declares experimental policy not installed in production. Current publication_contract and publication_failure_boundary tests pass.",
+    "pending_message_integration": "No crate module, include, script or release dependency consumer. Its production responsibilities live in the current Codegen runtime modules."
+  },
+  "full_native_batch": {
+    "path": ".cargo-target/oop-current-qualification/native-gate-current.log",
+    "status": "running; not yet qualified"
+  },
+  "limitations": [
+    "Focused checks use a diagnostic copy of the completed development prefix with rebuilt Execution, not a new cold release build.",
+    "The image correctness deadline is now 900 seconds after the observed 456-second save; the 240-second failure remains recorded. No performance qualification is claimed.",
+    "The 15-second worker deadline is unchanged."
+  ]
+}

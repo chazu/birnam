@@ -47,7 +47,9 @@ receipt = {'passed': False, 'prefix': str(prefix), 'source': source.read_text(),
                ROOT/'rust/birnam-host-entry/src/startup.rs', ROOT/'rust/birnam-codegen-runtime/src/lib.rs']}}
 
 def run(name, argv, expected, env):
-    result = command(argv, cwd=work, env=env, timeout=240)
+    # Large images currently take several minutes to serialize. This is a
+    # correctness deadline; measured durations remain in the receipt.
+    result = command(argv, cwd=work, env=env, timeout=900)
     receipt['runs'].append(dict(name=name, **result))
     save_json(work/'results.json', receipt)
     assert result['exit_code'] == 0 and not result['stderr'] and result['stdout'] == expected, (name, work, result)

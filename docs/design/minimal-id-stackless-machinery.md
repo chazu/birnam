@@ -20,6 +20,53 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: optimizer construction and retired probes (2026-10-28)
+
+The inline-candidate constructor previously allocated a Method and reassociated
+its behavior, advancing the binding epoch even when the behavior was unchanged.
+A behavioral test reproduced the increment. Construction now uses the selected
+entry's existing `withContext:` operation and performs no reassociation. This also
+preserves the DNU entry's argument convention instead of always selecting the
+ordinary entry. No Method API or Id operation changes.
+
+Custom Method behavior cannot be copied by the available constructor without a
+binding edit. Because optimization is optional, `withInline:at:owner:` declines
+that case and returns the original baseline Method. It preserves the custom
+behavior and executable meaning. It does not discard behavior, mutate a fresh
+Method, or require a new context/behavior constructor. Ordinary candidate entry,
+decline, recovery, code lifetime and replacement remain covered by the production
+Execution tests.
+
+The retired shared-invocation probe was an experiment for the removed forwarding
+architecture. Its required behavior is retained as follows:
+
+| Requirement | Current evidence |
+| --- | --- |
+| Receiver/argument order, zero through maximum named arity, captured meaning | `direct_definition_lifecycle`, `direct_method_contract` |
+| Current custom lookup, including GC in lookup | `direct_definition_lifecycle`, core compiled-lookup tests |
+| Replacement while a Method is suspended; exactly-once effects | `direct_definition_lifecycle`, `execution_machines`, `continuation_transparency` |
+| Native conversion, ordinary Error data and failure boundaries | `direct_native_method`, `native_boundaries`, `native_incoming` |
+| Code/environment lifetime and shared code without new compilation units | `direct_method_construction`, `method_invocation`, `artifact_templates`, `tcc_context` |
+| Optimized entry, decline, recovery without replay, recipe/frame lifetime | `pending_call_recovery`, `execution_machines`, `execution_candidates` |
+
+The probe's implicit second Block lookup, forwarding templates, per-binding
+registration-count expectations and old Operand/Outcome ABI are retired, not
+ported into another implementation. The experimental publication-result policy
+explicitly was never installed in production; its probe and fixture are removed.
+Production `publication_contract` and `publication_failure_boundary` retain the
+actual authorization, commit, notification and error semantics. The disconnected
+Codegen `pending_message_integration.rs` source has no module, include or release
+dependency consumer and is removed as well. Historical reports retain their
+original findings and link to the old source revision.
+
+[Qualification and retirement audit](../measurements/optimizer-construction-purity-oop-20261028.json)
+records the failing purity counterexample and passing replacement checks.
+All 100 selected native-gate test targets now compile. Focused optimizer,
+replacement, lifecycle and publication checks pass; the full native batch is
+running. The image correctness check permits 900 seconds after an observed
+456-second save, while preserving its duration receipt. This is not a performance
+qualification and does not change the 15-second worker deadline.
+
 ## Implementation checkpoint: code-owner admission only (2026-10-28)
 
 `Method admitCodeObject:` and `admitCodeObject:synchronous:` are removed, along
@@ -106,9 +153,8 @@ providers absent and tools-image generation/startup. Fresh-process image saving 
 240-second test deadline. A separate completion check passed without that deadline:
 saving took 456 seconds, mapped loading 47 seconds, and rebuilding 58 seconds.
 No performance or final cold-release qualification is claimed. The subsequent
-code-owner admission checkpoint removes the generic admission path. Older
-native-ABI probes (`shared_invocation_probe` and `publication_result_proposal`)
-still require audit and migration or retirement.
+code-owner admission checkpoint removes the generic admission path. The subsequent optimizer/probe checkpoint records the retirement audit for the
+older native-ABI experiments.
 
 ## Implementation checkpoint: native conversion ownership (2026-10-28)
 
