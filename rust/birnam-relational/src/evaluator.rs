@@ -985,8 +985,6 @@ pub fn project_negated(
 #[cfg(test)]
 #[path = "query_matching_tests.rs"]
 mod query_matching_tests;
-#[cfg(test)]
-pub(crate) use query_matching_tests::allocations;
 
 #[cfg(test)]
 mod tests {
