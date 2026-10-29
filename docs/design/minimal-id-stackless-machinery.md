@@ -393,6 +393,30 @@ not a cold/release qualification.
 Default reflected-body forwarding and remaining legacy/native-signature admission
 still need migration; this is not a completed language integration.
 
+## Implementation checkpoint: direct arity and DNU entries (2026-10-28)
+
+Direct compiled Methods now preserve the ordinary exact-arity rule: mismatches
+answer nil before entering the body. The existing `forDoesNotUnderstand` operation
+constructs a direct prefix-accepting entry for a bound compiled body. Id continues
+to supply the missing selector followed by the original arguments; the handler
+receives the prefix its body declares. Raw native Methods retain their own argument
+contract, and Method `clone` remains separate from DNU conversion.
+
+Before, only the definition forwarder carried ordinary/DNU argument policy. After,
+the actual selected compiled entry binds arguments directly. Synchronous producers
+supply a DNU entry alongside their ordinary Method entry; the stackless owner uses
+a corresponding continuation-aware entry. These share code descriptions and
+registrations. No per-instance metadata vtable, universal arity-policy record or
+Id API was added. Conversion allocates an executable instance without changing
+the original Method or any dictionary.
+
+Tests cover both compiler modes, wrong ordinary arities, DNU packets containing
+zero through sixteen original arguments, preserved original/captured meaning,
+GC, Reflect installation, and suspension/resumption inside a DNU handler. Core and
+focused compiler, Machine, continuation and optimizer checks pass.
+[Evidence](../measurements/direct-method-dnu-oop-20261028.json).
+Default definition forwarding remains pending migration.
+
 ## Finding
 
 Basic Id invocation needs an executable Method, its opaque context and code

@@ -41,7 +41,12 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<Oop, Oo
         Ok(vt)
     }
 }
-unsafe fn construct(s: &State, code: Rc<Code>, environment: Option<Oop>) -> Result<Oop, Oop> {
+unsafe fn construct(
+    s: &State,
+    code: Rc<Code>,
+    environment: Option<Oop>,
+    prefix: bool,
+) -> Result<Oop, Oop> {
     unsafe {
         let q = s.scope(&[code.factory, code.source]);
         if let Some(env) = environment {
@@ -60,7 +65,12 @@ unsafe fn construct(s: &State, code: Rc<Code>, environment: Option<Oop>) -> Resu
                 environment,
             },
         );
-        let mode = abi::size(usize::from(environment.is_some())).unwrap();
+        let mode = abi::size(if prefix {
+            2
+        } else {
+            usize::from(environment.is_some())
+        })
+        .unwrap();
         let method = q.keep(s.invoke(code.factory, s.receiver, &[context, mode])?);
         if s.send(s.id.root, b"sameNativeMethod:as:", &[method, method])? != abi::size(1).unwrap() {
             return Err(invalid());
@@ -108,6 +118,7 @@ pub(super) unsafe extern "C" fn from_factory(
                 captures,
             }),
             None,
+            false,
         )
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -171,7 +182,18 @@ pub(super) unsafe fn method_from_block(
                 return Err(invalid());
             }
         }
-        Ok(Some(construct(s, v.code, Some(body))?))
+        Ok(Some(construct(s, v.code, Some(body), false)?))
+    }
+}
+pub(super) unsafe fn for_dnu(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Oop>, Oop> {
+    unsafe {
+        let Some(v) = instance(s, method, q)? else {
+            return Ok(None);
+        };
+        let Some(environment) = v.environment else {
+            return Ok(Some(method));
+        };
+        Ok(Some(construct(s, v.code, Some(environment), true)?))
     }
 }
 pub(super) unsafe fn with_source(
@@ -202,6 +224,7 @@ pub(super) unsafe fn with_source(
                 captures: v.code.captures,
             }),
             None,
+            false,
         )?))
     }
 }

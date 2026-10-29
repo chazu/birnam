@@ -778,6 +778,8 @@ const NAMES: &[&[u8]] = &[
     b"environment",
     b"parameterCount",
     b"nativeCodeSource",
+    b"resumableDnuEntry",
+    b"methodClone",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1032,6 +1034,8 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"environment"),
     Literal::new(b"parameterCount"),
     Literal::new(b"nativeCodeSource"),
+    Literal::new(b"resumableDnuEntry"),
+    Literal::new(b"methodClone"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1526,7 +1530,7 @@ static METHODS: &[MethodSpec] = &[
     },
     MethodSpec {
         name: 208,
-        entry: Some(method_identity),
+        entry: Some(reflection::for_dnu),
         convention: 0,
     },
     MethodSpec {
@@ -1622,6 +1626,8 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec { name:247, entry:Some(native_code::field::<1>), convention:0 },
     MethodSpec { name:248, entry:Some(native_code::field::<2>), convention:0 },
     MethodSpec { name:251, entry:Some(native_code::field::<3>), convention:0 },
+    MethodSpec { name:252, entry:Some(resumable::dnu_entry), convention:1 },
+    MethodSpec { name:253, entry:Some(method_identity), convention:0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1741,6 +1747,8 @@ unsafe extern "C" fn initialize(
                     | b"nativeCodeParameters"
                     | b"nativeCodeCaptures"
                     | b"nativeCodeSource"
+                    | b"resumableDnuEntry"
+                    | b"methodClone"
                     | b"binding:value:weak:"
             ) {
                 continue;
@@ -1781,9 +1789,9 @@ unsafe extern "C" fn initialize(
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[names[name], method])?;
             if name == b"forDoesNotUnderstand" {
-                // Execution's Method cloning preserves callable identity. The
-                // same declared identity body serves both explicit operations.
-                send(target, b"addMethod", &[names[b"clone".as_slice()], method])?;
+                let clone = send(image, b"methodAt:", &[names[b"methodClone".as_slice()]])?;
+                let clone = send(clone, b"withContext:", &[*ns])?;
+                send(target, b"addMethod", &[names[b"clone".as_slice()], clone])?;
             }
         }
         let layout = keep(send(

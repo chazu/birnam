@@ -303,11 +303,12 @@ fn compile_mode(
     let native_bodies: Vec<_> = e.descriptors.iter().enumerate().filter_map(|(i,d)| d.is_none().then_some(i)).collect();
     let factory_names = native_bodies.iter().map(|i| e.name(format!("compiledFactory{i}").as_bytes())).collect::<Result<Vec<_>,_>>()?;
     let bound_names = native_bodies.iter().map(|i| e.name(format!("compiledMethod{i}").as_bytes())).collect::<Result<Vec<_>,_>>()?;
+    let dnu_names = native_bodies.iter().map(|i| e.name(format!("compiledDnu{i}").as_bytes())).collect::<Result<Vec<_>,_>>()?;
     writeln!(
         definitions,
         "#define SYMBOL_COUNT {}\n#define METHOD_COUNT {}",
         e.names.len(),
-        e.functions.len() + 2 * native_bodies.len()
+        e.functions.len() + 3 * native_bodies.len()
     )
     .unwrap();
     let mut out = definitions + include_str!("oop_prelude.c");
@@ -327,10 +328,13 @@ fn compile_mode(
         let p = portable_program::inspect(&e.programs[i]).map_err(|_| Error::InvalidProgram)?;
         let argc = p.parameter_count as usize;
         let capc = p.capture_count;
-        let bound_index = e.functions.len() + ordinal * 2 + 1;
+        let bound_index = e.functions.len() + ordinal * 3 + 1;
+        let dnu_index = bound_index + 1;
         let digest = Sha256::digest(&e.programs[i]).iter().map(u8::to_string).collect::<Vec<_>>().join(",");
-        writeln!(out,"static O bound_{i}(O root,O context,O receiver,const O*args,size_t n){{Call c={{0}};if({argc}==0||n+1!={argc})return finish(&c,named(&c,{nil_name}));O block=call(&c,context,{environment},0,0);if(c.error)return finish(&c,0);O values[{}];values[0]=receiver;for(size_t k=0;k<n;k++)values[k+1]=args[k];O result=function_{i}(root,context,block,values,n+1);if(failed(result))c.error=result;return finish(&c,result);}}",argc.max(1)).unwrap();
-        writeln!(out,"static O factory_{i}(O root,O unused,O receiver,const O*args,size_t n){{(void)root;(void)unused;(void)receiver;if(n!=2)return id.invalid;Call c={{0}};O context=args[0];O source=call(&c,context,{source_query},0,0);O bytes=call(&c,named(&c,{code_object}),{canonical},&source,1);O digest=call(&c,bytes,{sha},0,0);static const unsigned char expected[]={{{digest}}};if(call(&c,digest,{size_word},0,0)!=size_oop(32)){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}for(size_t k=0;k<32;k++){{O index=size_oop(k);if(call(&c,digest,{at_word},&index,1)!=size_oop(expected[k])){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}}}if(call(&c,context,{parameters},0,0)!=size_oop({argc})||call(&c,context,{captures},0,0)!=size_oop({capc})){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}size_t index;if(args[1]==size_oop(0))index={i};else if(args[1]==size_oop(1)&&{argc}!=0)index={bound_index};else{{c.error=id.invalid;return finish(&c,0);}}O at=size_oop(index),result;if(native_provider){{O m=call(&c,code_provider,{native_declared},&at,1);result=call(&c,m,{with_context},&context,1);}}else{{O a[]={{at,context}};result=call(&c,code_provider,{bind_context},a,2);}}return finish(&c,result);}}").unwrap();
+        for (label, test) in [("bound", format!("n+1!={argc}")), ("dnu", format!("n+1<{argc}"))] {
+            writeln!(out,"static O {label}_{i}(O root,O context,O receiver,const O*args,size_t n){{Call c={{0}};if({argc}==0||{test})return finish(&c,named(&c,{nil_name}));O block=call(&c,context,{environment},0,0);if(c.error)return finish(&c,0);O values[{}];values[0]=receiver;for(size_t k=1;k<{argc};k++)values[k]=args[k-1];O result=function_{i}(root,context,block,values,{argc});if(failed(result))c.error=result;return finish(&c,result);}}",argc.max(1)).unwrap();
+        }
+        writeln!(out,"static O factory_{i}(O root,O unused,O receiver,const O*args,size_t n){{(void)root;(void)unused;(void)receiver;if(n!=2)return id.invalid;Call c={{0}};O context=args[0];O source=call(&c,context,{source_query},0,0);O bytes=call(&c,named(&c,{code_object}),{canonical},&source,1);O digest=call(&c,bytes,{sha},0,0);static const unsigned char expected[]={{{digest}}};if(call(&c,digest,{size_word},0,0)!=size_oop(32)){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}for(size_t k=0;k<32;k++){{O index=size_oop(k);if(call(&c,digest,{at_word},&index,1)!=size_oop(expected[k])){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}}}if(call(&c,context,{parameters},0,0)!=size_oop({argc})||call(&c,context,{captures},0,0)!=size_oop({capc})){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}size_t index;if(args[1]==size_oop(0))index={i};else if(args[1]==size_oop(1)&&{argc}!=0)index={bound_index};else if(args[1]==size_oop(2)&&{argc}!=0)index={dnu_index};else{{c.error=id.invalid;return finish(&c,0);}}O at=size_oop(index),result;if(native_provider){{O m=call(&c,code_provider,{native_declared},&at,1);result=call(&c,m,{with_context},&context,1);}}else{{O a[]={{at,context}};result=call(&c,code_provider,{bind_context},a,2);}}return finish(&c,result);}}").unwrap();
     }
     for (i, descriptor) in e.descriptors.iter().enumerate() {
         if let Some(metadata) = descriptor {
@@ -387,7 +391,7 @@ fn compile_mode(
         .unwrap();
     }
     for (ordinal, &i) in native_bodies.iter().enumerate() {
-        writeln!(out,"{{{},factory_{i},0}},{{{},bound_{i},0}},",factory_names[ordinal],bound_names[ordinal]).unwrap();
+        writeln!(out,"{{{},factory_{i},0}},{{{},bound_{i},0}},{{{},dnu_{i},0}},",factory_names[ordinal],bound_names[ordinal],dnu_names[ordinal]).unwrap();
     }
     out.push_str("};\n");
     // TCC supplies its Unit owner. Standalone callers supply their own retention
@@ -404,7 +408,7 @@ fn compile_mode(
             writeln!(out,"O descriptor=blob(&c,descriptor_{i},sizeof(descriptor_{i}));O selection=blob(&c,selection_{i},sizeof(selection_{i}));O plans=blob(&c,plans_{i},sizeof(plans_{i}));O a[]={{method,descriptor,selection,owner,plans,code}};O execution=named(&c,{execution});method=call(&c,execution,{register},a,6);if(c.error)return finish(&c,0);").unwrap();
         } else {
             let ordinal = native_bodies.iter().position(|&index| index == i).unwrap();
-            let factory_index = e.functions.len() + 2 * ordinal;
+            let factory_index = e.functions.len() + 3 * ordinal;
             writeln!(out,"O at_factory=size_oop({factory_index});O factory=call(&c,unit,n==2?{native_declared}:{declared},&at_factory,1);O a[]={{factory,code}};method=call(&c,named(&c,{execution}),{native_register},a,2);if(c.error)return finish(&c,0);").unwrap();
         }
         writeln!(

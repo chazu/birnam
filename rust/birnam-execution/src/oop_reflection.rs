@@ -36,6 +36,20 @@ unsafe fn owned_source(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<(
         Ok(native_code::source(s, method, q)?.map(|code| (code, true)))
     }
 }
+pub(super) unsafe extern "C" fn for_dnu(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        let q = s.scope(&[r]);
+        if let Some(method) = native_code::for_dnu(s, r, &q)? {
+            return Ok(method);
+        }
+        Ok(resumable::for_dnu(s, r, &q)?.unwrap_or(r))
+    })()
+    .unwrap_or_else(abi::fault_reference)
+}
 pub(super) unsafe extern "C" fn method_code(
     _: Oop,
     c: Oop,

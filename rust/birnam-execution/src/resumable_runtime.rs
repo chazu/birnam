@@ -44,6 +44,7 @@ pub(super) struct Runtime {
     records: HashMap<usize, Registered>,
     context_vt: Oop,
     template: Oop,
+    dnu_template: Oop,
     run_descriptor: Option<Arc<FrameDescriptor>>,
     active: Vec<MachineCapability>,
     pending: HashSet<u64>,
@@ -519,6 +520,19 @@ pub(super) unsafe extern "C" fn method_from_block(
     .unwrap_or_else(abi::fault_reference)
 }
 
+pub(super) unsafe fn for_dnu(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Oop>, Oop> {
+    unsafe {
+        let Some(mut record) = owned_record(s, method, q)? else { return Ok(None); };
+        if record.environment.is_none() { return Ok(Some(method)); }
+        let (vt, template) = { let runtime = s.resume.borrow(); (runtime.context_vt, runtime.dnu_template) };
+        let context = q.keep(allocate(s, vt, 0)?);
+        let copy = q.keep(s.send(template, b"withContext:", &[context])?);
+        record.method = copy;
+        record.candidate = None;
+        s.resume.borrow_mut().records.insert(context.addr(), record);
+        Ok(Some(copy))
+    }
+}
 unsafe fn new_machine(s: &State) -> Result<Oop, Oop> {
     unsafe {
         let o = s.engine.borrow().objects().ok_or_else(invalid)?;
@@ -1281,6 +1295,12 @@ unsafe fn drive(
     }
 }
 pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { enter(c, r, a, n, false) }
+}
+pub(super) unsafe extern "C" fn dnu_entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    unsafe { enter(c, r, a, n, true) }
+}
+unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, prefix: bool) -> Oop {
     (|| unsafe {
         let s = runtime_state()?;
         let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
@@ -1298,8 +1318,13 @@ pub(super) unsafe extern "C" fn entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: 
         let body_receiver = record.environment.unwrap_or(r);
         let bound_arguments;
         let args = if record.environment.is_some() {
+            let expected = record.descriptor.v2_entry_binding().ok_or_else(invalid)?
+                .argument_count.checked_sub(1).ok_or_else(invalid)?;
+            if args.len() < expected || (!prefix && args.len() != expected) {
+                return s.transfer(b"answerTo:with:", &[*k, s.nil]);
+            }
             bound_arguments = std::iter::once(r)
-                .chain(args.iter().copied())
+                .chain(args[..expected].iter().copied())
                 .collect::<Vec<_>>();
             bound_arguments.as_slice()
         } else {
@@ -2141,6 +2166,7 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             b"methodAt:",
             &[s.names[b"resumableEntry".as_slice()]],
         )?);
+        let dnu_template = q.keep(s.send(image, b"methodAt:", &[s.names[b"resumableDnuEntry".as_slice()]])?);
         let step = q.keep(s.send(image, b"methodAt:", &[s.names[b"runBlockStep".as_slice()]])?);
         let step = q.keep(s.send(step, b"withContext:", &[s.ns])?);
         let descriptor = control::descriptor(s, step, 1, true)?;
@@ -2148,8 +2174,9 @@ pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<(), Oop
             let mut runtime = s.resume.borrow_mut();
             runtime.context_vt = context_vt;
             runtime.template = template;
+            runtime.dnu_template = dnu_template;
             runtime.run_descriptor = Some(descriptor);
-            runtime.roots.extend([template, step]);
+            runtime.roots.extend([template, dnu_template, step]);
         }
         let execution_type = q.keep(s.send(s.id.root, b"behaviorOf:", &[s.receiver])?);
         for &name in METHOD_NAMES {

@@ -13,7 +13,7 @@ mise exec -- cargo build --offline --locked --release --lib -p birnam-id -p birn
 mise exec -- cargo build --offline --locked --release -p birnam-siphon --example oop_slice > "$logs/caller-build.log" 2>&1
 # Code-construction purity uses this explicit native floor and build-only grammar
 # seed, not a published prefix or its old generated artifacts.
-BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/release" mise exec -- cargo test --offline --locked -p birnam-siphon --test owned_code_construction --test native_code_construction -- --include-ignored > "$logs/owned-code-construction.log" 2>&1
+BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/release" mise exec -- cargo test --offline --locked -p birnam-siphon --test owned_code_construction --test native_code_construction --test direct_method_contract -- --include-ignored > "$logs/owned-code-construction.log" 2>&1
 python3 - "$CARGO_TARGET_DIR/release" <<'PY_EXPORTS'
 from pathlib import Path
 import json,subprocess,sys

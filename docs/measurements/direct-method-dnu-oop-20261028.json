@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "236e94a1092591733da3064dd84bb3599f05d957",
+  "scope": "Direct compiled Method arity and DNU prefix entries, before default definition migration.",
+  "source_sha256": {
+    "rust/birnam-execution/src/native_code.rs": "128fb5c429c38b86d4548297b8ac74e97168fee75bc4b1f2f80bd9a565811946",
+    "rust/birnam-execution/src/oop_reflection.rs": "9396da8181771013c944c5243e373d1b76aa978fe2e7178579003fcc6b9b039c",
+    "rust/birnam-execution/src/resumable_runtime.rs": "6f25d89c24d96154a4ed17926483749f33ec78a98e2899fb6a7e10fe53756d2d",
+    "rust/birnam-execution/src/synchronous.rs": "01fbd8a5373ad793f3c27c3043f98dd7d081f46ef68e4a3ee137cbfa65bb8513",
+    "rust/birnam-native-backend/src/oop_emission.rs": "e5b4dab4a0f263d431e7af9b278c62b38fd14f1cd07a5f33b11b45814d144ce4",
+    "rust/birnam-siphon/tests/direct_method_contract.rs": "9c7bbe9d8cc76ba3680b8c7e55386cc910998cca4694a0e13a06c8b8648ab827",
+    "scripts/oop-id-slice-test.sh": "dd7f9a426a45fdee4f23201662632dfd2bcc8f5fed666dbdef9dc8ed9fe51eb0"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/direct-dnu-milestone/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/direct-dnu-milestone/focused.log",
+      "sha256": "9b1b9921877f202a3a90bbca853c69f23facda904c1f7629e8bb94b783f94622",
+      "result": "passed"
+    },
+    "contract": {
+      "path": ".cargo-target/oop-current-qualification/direct-dnu-milestone/contract.log",
+      "sha256": "3fc7dc8f8e0997b1de6d5ae8b6f1564283c02979930ec055c5812c4d4bdd4588",
+      "result": "passed"
+    }
+  },
+  "verified": [
+    "synchronous and resumable ordinary Methods reject missing/extra arguments with nil",
+    "DNU entries consume their declared prefix across zero through sixteen original message arguments",
+    "DNU conversion is pure and does not alter the original captured entry",
+    "Method clone remains identity, separate from DNU conversion",
+    "DNU captured invocation survives GC",
+    "Reflect installation selects DNU entry through existing operation",
+    "resumable DNU suspension/resumption retains selector across GC",
+    "core and focused compiler/continuation/Machine/optimizer checks"
+  ],
+  "architecture_review": "Calling policy is implemented by the selected code entry, not a forwarding body, per-Method vtable or new Id operation. Descriptors/registrations remain shared; only a fresh executable instance is constructed for DNU."
+}
