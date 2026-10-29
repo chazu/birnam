@@ -2538,6 +2538,8 @@ pub(crate) struct ExecutionState {
     generation_leases: Vec<GenerationLeaseSlot>,
     free_generation_lease_slots: Vec<usize>,
     managed_turn_depth: usize,
+    // A holder-free retirement was deferred by an active managed turn.
+    retirement_pending: bool,
     objects: Option<ExecutionObjects>,
     _owner_thread_only: PhantomData<Rc<()>>,
 }
@@ -2601,6 +2603,7 @@ impl ExecutionState {
             generation_leases: Vec::new(),
             free_generation_lease_slots: Vec::new(),
             managed_turn_depth: 0,
+            retirement_pending: false,
             objects: None,
             _owner_thread_only: PhantomData,
         }
@@ -3186,13 +3189,13 @@ impl ExecutionState {
             .managed_turn_depth
             .checked_sub(1)
             .ok_or(RegistrationError::StaleCapability)?;
-        if self.managed_turn_depth == 0 {
+        if self.managed_turn_depth == 0 && self.retirement_pending {
+            self.retirement_pending = false;
             for slot in &mut self.resumable_entries {
                 let Some(entry) = slot.entry.as_mut() else {
                     continue;
                 };
                 if entry.lifecycle == ResumableEntryLifecycle::Retiring
-
                     && entry.acquired_entries == 0
                     && entry.active_frame_pins == 0
                     && entry.continuation_frame_pins == 0
@@ -3206,9 +3209,6 @@ impl ExecutionState {
     }
 
     fn finish_entry_retirement(&mut self, capability: ResumableEntryCapability) {
-        if self.managed_turn_depth != 0 {
-            return;
-        }
         let Some(slot) = self.resumable_entries.get_mut(capability.index) else {
             return;
         };
@@ -3219,13 +3219,16 @@ impl ExecutionState {
             return;
         };
         if entry.lifecycle == ResumableEntryLifecycle::Retiring
-
             && entry.acquired_entries == 0
             && entry.active_frame_pins == 0
             && entry.continuation_frame_pins == 0
             && entry.explicit_generation_leases == 0
         {
-            entry.finish_retirement();
+            if self.managed_turn_depth == 0 {
+                entry.finish_retirement();
+            } else {
+                self.retirement_pending = true;
+            }
         }
     }
 
@@ -5230,6 +5233,103 @@ mod tests {
             assert!(matches!(engine.classify_resumable(INERT_THUNK), Err(RegistrationError::EntryRetired)));
             assert!(engine.unregister_code_generation(7).unwrap());
             assert!(engine.classify_resumable(INERT_THUNK).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn turns_without_pending_retirement_still_balance_and_preserve_live_code() {
+        let mut engine = ExecutionState::new(1);
+        let capability = engine.register_resumable(
+            1,
+            SemanticRegistrationV1::new(INERT_THUNK, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1),
+        ).unwrap();
+        let lease = engine.publish_owned(capability).unwrap();
+        engine.begin_managed_turn().unwrap();
+        engine.begin_managed_turn().unwrap();
+        engine.end_managed_turn().unwrap();
+        assert_eq!(engine.managed_turn_depth, 1);
+        engine.end_managed_turn().unwrap();
+        assert_eq!(engine.managed_turn_depth, 0);
+        assert!(!engine.retirement_pending);
+        assert_eq!(engine.registration_diagnostics().live_entries, 1);
+        assert!(!engine.unregister_code_generation(7).unwrap());
+        assert_eq!(engine.end_managed_turn(), Err(RegistrationError::StaleCapability));
+        engine.retire_owned(capability, lease).unwrap();
+        assert!(engine.unregister_code_generation(7).unwrap(),
+                "retirement outside a turn must not require another call to finish");
+    }
+
+    #[test]
+    fn retirement_during_nested_turns_waits_for_outer_return_and_last_holder() {
+        for release_inside in [false, true] {
+            let mut engine = ExecutionState::new(1);
+            let capability = engine.register_resumable(
+                1,
+                SemanticRegistrationV1::new(INERT_THUNK, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1),
+            ).unwrap();
+            let owner_lease = engine.publish_owned(capability).unwrap();
+            let holder = engine.acquire_explicit_generation_lease(INERT_THUNK).unwrap();
+            engine.begin_managed_turn().unwrap();
+            engine.begin_managed_turn().unwrap();
+            engine.retire_owned(capability, owner_lease).unwrap();
+            if release_inside {
+                engine.release_explicit_generation_lease(holder).unwrap();
+            }
+            engine.end_managed_turn().unwrap();
+            assert_eq!(engine.registration_diagnostics().retired_entries, 0,
+                       "a nested return cannot retire code still protected by the outer turn");
+            assert!(!engine.unregister_code_generation(7).unwrap());
+            engine.end_managed_turn().unwrap();
+            assert_eq!(engine.registration_diagnostics().retired_entries, usize::from(release_inside));
+            assert!(!engine.retirement_pending);
+            if !release_inside {
+                assert!(!engine.unregister_code_generation(7).unwrap());
+                engine.release_explicit_generation_lease(holder).unwrap();
+            }
+            assert!(engine.unregister_code_generation(7).unwrap());
+        }
+    }
+
+    #[test]
+    fn last_holder_release_rearms_deferred_retirement_after_reentry() {
+        for holder_kind in 0..4 {
+            let mut engine = ExecutionState::new(1);
+            let capability = engine.register_resumable(
+                1,
+                SemanticRegistrationV1::new(INERT_THUNK, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1),
+            ).unwrap();
+            let owner_lease = engine.publish_owned(capability).unwrap();
+            let holder = if holder_kind == 3 {
+                Some(engine.acquire_explicit_generation_lease(INERT_THUNK).unwrap())
+            } else {
+                assert_eq!(engine.classify_resumable(INERT_THUNK).unwrap(), Some(capability));
+                if holder_kind >= 1 { engine.transfer_acquired_entry_to_frame(capability).unwrap(); }
+                if holder_kind == 2 { engine.transfer_frame_pin_to_continuation(capability).unwrap(); }
+                None
+            };
+            engine.begin_managed_turn().unwrap();
+            engine.retire_owned(capability, owner_lease).unwrap();
+            assert!(!engine.retirement_pending, "the remaining holder still prevents retirement");
+            match holder_kind {
+                0 => engine.release_acquired_entry(capability).unwrap(),
+                1 => engine.release_entry_frame_pin(capability).unwrap(),
+                2 => engine.release_entry_continuation_pin(capability).unwrap(),
+                _ => engine.release_explicit_generation_lease(holder.unwrap()).unwrap(),
+            }
+            assert!(engine.retirement_pending);
+            // Reentry can acquire the retiring code before the outer call ends.
+            let reentered = engine.acquire_explicit_generation_lease(INERT_THUNK).unwrap();
+            engine.end_managed_turn().unwrap();
+            assert_eq!(engine.registration_diagnostics().retired_entries, 0);
+            assert!(!engine.retirement_pending, "the completed check must not repeat on every call");
+            assert!(!engine.unregister_code_generation(7).unwrap());
+            engine.begin_managed_turn().unwrap();
+            engine.release_explicit_generation_lease(reentered).unwrap();
+            assert!(engine.retirement_pending, "the later last-holder release needs a new check");
+            engine.end_managed_turn().unwrap();
+            assert_eq!(engine.registration_diagnostics().retired_entries, 1);
+            assert!(!engine.retirement_pending);
+            assert!(engine.unregister_code_generation(7).unwrap());
         }
     }
 

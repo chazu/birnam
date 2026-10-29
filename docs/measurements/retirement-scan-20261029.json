@@ -1,0 +1,199 @@
+{
+  "date": "2026-10-29",
+  "baseline_commit": "fe2f16bc",
+  "baseline_runtime_commit": "600b085253341fa51943ec3d0d5f32083a15f02f",
+  "status": "Implemented and validated; local controlled performance comparison, not release qualification.",
+  "contract": {
+    "preserved": "Retirement waits for the outermost managed return and every acquisition, frame, continuation and explicit lease holder. Reentry may acquire retiring code; later releases must still complete retirement.",
+    "before": "Every outer managed return walks every registered entry, even when there is no retirement to finish.",
+    "after": "When an entry has no remaining holders but an active turn prevents retirement, the engine sets one private Boolean. The outer return clears it and performs the existing checks. A subsequent last-holder release can set it again; retirement outside a turn remains immediate.",
+    "new_mechanisms": [
+      "One Boolean in ExecutionState; no new allocation, registry, public message, Id contract, payload interpretation or lifetime policy."
+    ],
+    "why_existing_state_was_insufficient": "The existing checkpoint set retains generations after retirement checks are complete, until later unregistration. An initial guard using that set showed no clear benefit and was discarded."
+  },
+  "contract_review": [
+    "The only production transition to Retiring is retire_owned, which calls finish_entry_retirement.",
+    "Each acquisition/frame/continuation/lease release calls finish_entry_retirement. Transfers preserve at least one holder and cannot enable retirement by themselves.",
+    "Only a retirement with no remaining holders deferred by a managed turn sets the Boolean. Nested returns preserve it. The outer scan rechecks all holders, so reentry cannot cause premature release.",
+    "If reentry adds a holder, clearing the Boolean after the scan is safe: the later release either retires immediately or requests a new check.",
+    "The private engine performs no messages/callbacks during these operations. Id and all public interfaces are unchanged."
+  ],
+  "regression_tests": [
+    "Turns without retirement still balance, detect underflow and preserve live code.",
+    "Retirement in nested turns waits for the outer return; a last lease released after the return still finishes retirement.",
+    "All four kinds of last-holder release request a deferred check. Reentry can acquire another lease, and its later release requests another check.",
+    "Existing tests retain publication, captured Methods, suspended frames, continuations, GC, native reentry, recovery and forbidden extra-dispatch/construction behavior."
+  ],
+  "checks": [
+    {
+      "name": "Execution unit tests (24)",
+      "log": ".cargo-target/retirement-scan-20261029/after-unit.log",
+      "sha256": "a6802556f853304869f4c3e8fc8681d34261e98589dddcedac0941029a0fb5db"
+    },
+    {
+      "name": "Oop core/compiler/GC and negative dispatch/construction contracts",
+      "log": ".cargo-target/retirement-scan-20261029/core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    },
+    {
+      "name": "Focused Method, Machine, continuation, reentry, input and recovery integration",
+      "log": ".cargo-target/retirement-scan-20261029/lifetime-integration.log",
+      "sha256": "22fe30fb56233e1ddbf3ecf771dc5bc2d174ca56dfcb44e1c272248396ed9dec"
+    },
+    {
+      "name": "Workspace all-target all-feature check",
+      "log": ".cargo-target/retirement-scan-20261029/workspace-check.log",
+      "sha256": "8028170218c1874639b6f1874bca941c83f4328c3bc65fda26540e6ce14e9fb1"
+    }
+  ],
+  "performance": {
+    "method": "Serial ABBA fresh-process comparison; only Execution dylib differs. Each process runs three language probes (500 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "prefixes": {
+      "baseline": "/tmp/birnam-perf-20261029.WOMt1t/prefix",
+      "candidate": "/tmp/birnam-perf-20261029.WOMt1t/retirement-candidate",
+      "scope": "Controlled library substitution, not a newly installed release; original installation receipt retained unchanged.",
+      "files_checked": 783,
+      "changed": [
+        "lib/libbirnam_execution.dylib"
+      ],
+      "execution_sha256": {
+        "baseline": "510a61667f771c98ec67f5010d62e0fb8046fedd7fc5952d73ac1a021204e2e3",
+        "candidate": "8139c3af2c3f6aa1660d6a7d7cd36dbfc516414557183fd39312aac9683103ea"
+      }
+    },
+    "changed_files_after_measurement": [
+      "lib/libbirnam_execution.dylib"
+    ],
+    "summary": {
+      "integer-loop": {
+        "baseline": {
+          "samples": [
+            213679333,
+            212501958,
+            208510917,
+            207890042,
+            214807708,
+            230876500
+          ],
+          "median_cpu_ns": 213090645.5
+        },
+        "candidate": {
+          "samples": [
+            155178875,
+            141002792,
+            160107792,
+            155693584,
+            155512083,
+            148664417
+          ],
+          "median_cpu_ns": 155345479.0
+        },
+        "cpu_change_percent": -27.09887445528434
+      },
+      "range-loop": {
+        "baseline": {
+          "samples": [
+            294758291,
+            307782834,
+            319947292,
+            297383000,
+            303375792,
+            312233583
+          ],
+          "median_cpu_ns": 305579313.0
+        },
+        "candidate": {
+          "samples": [
+            240577166,
+            245856125,
+            247367250,
+            238478917,
+            224164500,
+            229531166
+          ],
+          "median_cpu_ns": 239528041.5
+        },
+        "cpu_change_percent": -21.61509915430695
+      },
+      "method-loop": {
+        "baseline": {
+          "samples": [
+            223868417,
+            210929375,
+            213854542,
+            215645208,
+            215437042,
+            237558834
+          ],
+          "median_cpu_ns": 215541125.0
+        },
+        "candidate": {
+          "samples": [
+            158190542,
+            161680958,
+            146009958,
+            178338500,
+            159288958,
+            161269458
+          ],
+          "median_cpu_ns": 160279208.0
+        },
+        "cpu_change_percent": -25.638688208572724
+      },
+      "logue-quiet-turn": {
+        "baseline": {
+          "samples": [
+            2263921.875,
+            2063497.375,
+            2174234.375,
+            2305304.6875,
+            1987031.25,
+            2303606.75,
+            1917408.8125,
+            2039916.625
+          ],
+          "median_cpu_ns": 2118865.875
+        },
+        "candidate": {
+          "samples": [
+            1300479.125,
+            1801559.875,
+            2016023.4375,
+            1706437.5,
+            1371377.5625,
+            1463575.5,
+            2109729.1875,
+            2086713.5625
+          ],
+          "median_cpu_ns": 1753998.6875
+        },
+        "cpu_change_percent": -17.219928444031407
+      }
+    },
+    "logue_state_checks_passed": true,
+    "candidate_profile": "Invocation::drop is absent from the >=5-sample leaf list; the earlier baseline had 156 of 1591 samples in it. Separate windows and host load prevent treating these shares as exact CPU savings."
+  },
+  "limits": [
+    "Six timed observations per language case and eight Logue batch observations per variant, across two fresh processes each. These are observed local CPU reductions, not a universal speed claim.",
+    "Other host builds/applications were active; elapsed time is not the primary comparison.",
+    "The candidate prefix substitutes only the rebuilt Execution library into the baseline prefix. Images/generated code/other libraries are byte-identical, and published-image startup ran in every comparison process. This is not a fresh cold install or installed-user-prefix update.",
+    "No performance threshold, GC budget, scheduling budget or startup deadline was changed."
+  ],
+  "source_sha256": {
+    "rust/birnam-execution/src/execution.rs": "5b188988c9d2a67711dab2b0dbd6d990da2b36206666a1db45bfe383c2b72c70"
+  },
+  "raw_evidence": {
+    ".cargo-target/retirement-scan-20261029/comparison.json": "0cdde51502626cedb5ebc9dc9a8d1e905cea8ce587e98d7038a06af8dd4a1809",
+    ".cargo-target/retirement-scan-20261029/compare.py": "9ecc1d9fc13b38d6ac927ba4d3c7d96727da74436c2927824238f18f80f2c254",
+    ".cargo-target/retirement-scan-20261029/integer-loop.sample.txt": "6d5d056160e00f3c58bdbc9549cfd52e70aa34f9bf6d41f64d9b3214b6858ef1",
+    ".cargo-target/retirement-scan-20261029/checkpoint-set-comparison.json": "6c137e99e073bc6f7728d074ffa90fe42001127a164d793c359b01b2fbdebf30"
+  },
+  "benchmark_source": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 500 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 500];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 500 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[Globals at: #LogueBenchConfig put: {#phase -> \"arena\" #seed -> 12345 #width -> 16 #monsters -> 0 #turns -> 16 #batches -> 4 #samples -> 1 #allocation -> false #replace -> false}];\n[System load: \"logue-bench.birnam\"];\n"
+}
