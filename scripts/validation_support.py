@@ -87,8 +87,11 @@ def command(argv, *, cwd=ROOT, env=None, timeout=300, log=None, cancel_event=Non
         except PermissionError:
             # Darwin may report EPERM after the last member dies between the
             # census and signal. Ignore it only after confirming no live member.
-            if group_is_live():
-                raise
+            for _ in range(10):
+                if not group_is_live():
+                    return
+                time.sleep(.1)
+            raise
     def stop():
         if isolated:
             signal_group(signal.SIGTERM)

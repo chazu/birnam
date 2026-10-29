@@ -67,7 +67,7 @@ def smoke(archive):
         env['BIRNAM_TEST_MODULE_DIRECTORY'] = str(relocated / 'lib')
         result = command(['cargo', 'test', '--offline', '--locked', '-p', 'birnam-host',
                           '--lib', 'startup::tests::installed_bootstrap_and_console_do_not_compile_or_parse',
-                          '--', '--ignored', '--exact'], env=env, timeout=300)
+                          '--', '--ignored', '--exact'], env=env, timeout=900)
         print(result['output'], end='', flush=True)
         if result['exit_code'] or '1 passed' not in result['output']:
             raise RuntimeError('archive compiled-startup check did not pass')

@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-29",
+  "scope": "Validation cleanup race and Store-independent image evidence; full qualification remains open.",
+  "runtime_revision": "0272aef2a5e5082aa2029eceabad4cfa4820b137",
+  "cleanup": "After Darwin EPERM, wait up to one second for exiting group members to disappear; retain the error if any live member remains. The regression supplies two stale live snapshots before disappearance and separately verifies the persistent-live error.",
+  "limits_seconds": {
+    "archive_startup_metadata_test": 900,
+    "archive_smoke_outer": 3000,
+    "worker": 15
+  },
+  "evidence": {
+    "before": {
+      "path": ".cargo-target/oop-current-qualification/archive-startup-checkpoint/cleanup-settle-before.log",
+      "sha256": "07117d54f203c677993db719c90aff9497908e2e8c11d5150a5ed2bb70ccf1b7"
+    },
+    "validation": {
+      "path": ".cargo-target/oop-current-qualification/archive-startup-checkpoint/cleanup-settle-after.log",
+      "sha256": "d645b77caa192f17f25e1d8b3ed86bfa6b349669878fcbb29267351dfab4ff01"
+    },
+    "archive_tests": {
+      "path": ".cargo-target/oop-current-qualification/archive-startup-checkpoint/archive-deadline-test.log",
+      "sha256": "f956005d0fffd32ac4a36ab5c68098cf29abcd859b0dd83722c4ea73d78658fd"
+    },
+    "image_floor": {
+      "path": ".cargo-target/oop-current-qualification/archive-startup-checkpoint/image-without-store.json",
+      "sha256": "326101aadfea4375b0f24b9a72df951628b60ea157df80602ba386c9f9be7ac0",
+      "result": "passed on the cold binary-encoder prefix"
+    }
+  },
+  "pending": [
+    "archive retry",
+    "native batches",
+    "Host groups",
+    "remaining provider/source/image checks"
+  ]
+}

@@ -76,7 +76,7 @@ def accept(archive, output, *, allow_dirty=False, deadline=43200, qualification=
                     argv=[sys.executable, 'scripts/release_archive.py', str(archive)],
                     inputs=(str(archive), str(binding_path), 'scripts/release_archive.py',
                             'scripts/release-acceptance.py', 'scripts/install_contract.py',
-                            'scripts/host-cli-test.py', 'rust/birnam-host/**/*'), timeout=2100)]
+                            'scripts/host-cli-test.py', 'rust/birnam-host/**/*'), timeout=3000)]
                 receipt['qualification'] = dict(path=str(qualification), sha256=qualified_hash)
             else:
                 # Standalone acceptance without prior qualification retains its

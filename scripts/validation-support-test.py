@@ -56,12 +56,12 @@ class ValidationTests(unittest.TestCase):
                     if argv != ['ps', '-axo', 'pgid=,stat=']:
                         return actual_ps(argv, **kwargs)
                     observations.append(True)
-                    return f'{group[0]} R\n' if len(observations) == 1 or still_live else ''
+                    return f'{group[0]} R\n' if len(observations) <= 2 or still_live else ''
                 with patch('validation_support.os.killpg', side_effect=send), patch('validation_support.subprocess.check_output', side_effect=snapshot):
                     with self.assertRaises(PermissionError if still_live else subprocess.TimeoutExpired):
                         command([sys.executable, '-c', 'import time; time.sleep(20)'],
                                 timeout=.15, env={'PATH': os.environ['PATH']})
-                self.assertEqual(len(observations), 2)
+                self.assertGreaterEqual(len(observations), 3)
 
     def test_timeout_stops_descendants(self):
         with tempfile.TemporaryDirectory() as directory:
