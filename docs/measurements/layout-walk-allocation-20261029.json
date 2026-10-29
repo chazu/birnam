@@ -1,0 +1,298 @@
+{
+  "baseline_revision": "05f9075b",
+  "change": "Check the current vtable for an ObjectModel layout before allocating cycle-detection storage for parent traversal.",
+  "contract": {
+    "before": "Look up the current vtable; root it and insert it into a visited set; select its current layout; follow parents with cycle checks until a layout is found.",
+    "after": "Look up and root the current vtable; select its current layout; if none exists, start the visited set and follow the same live parents with cycle checks.",
+    "preserved": [
+      "Same vtable lookup, layout queries, identity validation and parent messages in the same order.",
+      "Each visited vtable is rooted before callbacks that inspect its layout. The visited set still terminates cycles before querying a repeated layout.",
+      "Selected layout snapshots remain owned copies across callbacks and replacement. No cache, cross-owner read or Id change."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing ObjectModel slotKindOf:at: and slotAt:in: through Id, layout lengths 0 and 8. Direct layout reads and slot access with 0, 1 or 16 parent traversals. Serial ABBA, seven samples/process. Automatic GC policy unchanged; precise GC outside samples. Every result checked.",
+    "summary": {
+      "0/kind": {
+        "median_cpu_ns_per_call": {
+          "baseline": 136.6354,
+          "candidate": 134.121875
+        },
+        "change_percent": -1.839585495413354
+      },
+      "0/slot": {
+        "median_cpu_ns_per_call": {
+          "baseline": 233.63647500000002,
+          "candidate": 200.46145
+        },
+        "change_percent": -14.199420274595397
+      },
+      "0/inherited": {
+        "median_cpu_ns_per_call": {
+          "baseline": 296.390625,
+          "candidate": 303.74582499999997
+        },
+        "change_percent": 2.4815899625705073
+      },
+      "0/deep": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1627.4989500000001,
+          "candidate": 1635.221875
+        },
+        "change_percent": 0.4745271878669799
+      },
+      "8/kind": {
+        "median_cpu_ns_per_call": {
+          "baseline": 154.315625,
+          "candidate": 154.09789999999998
+        },
+        "change_percent": -0.14109070290194703
+      },
+      "8/slot": {
+        "median_cpu_ns_per_call": {
+          "baseline": 250.1875,
+          "candidate": 218.69375
+        },
+        "change_percent": -12.588058955783165
+      },
+      "8/inherited": {
+        "median_cpu_ns_per_call": {
+          "baseline": 310.007275,
+          "candidate": 308.90415
+        },
+        "change_percent": -0.35583842346924577
+      },
+      "8/deep": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1640.891675,
+          "candidate": 1684.0989749999999
+        },
+        "change_percent": 2.6331598031905212
+      }
+    },
+    "library_sha256": {
+      "baseline": "d38b0666ec644452c897f628b52225d6a22463f8dc435f5539daf9ca9e8badf3",
+      "candidate": "9008bcf4a60df03bf0f61890ab898c18688df7315e475ca450e3f7f009d05b47"
+    },
+    "source": "//! Disposable benchmark of existing ObjectModel layout and slot queries.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::{size, Oop};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap(); let q = h.scope();\n    let model = h.named(b\"ObjectModel\").unwrap();\n    let base = h.named(b\"ObjectVt\").unwrap();\n    let gc = h.named(b\"GC\").unwrap();\n    for length in [0, 8] {\n        let behavior = q.call(base, b\"delegated\", &[]).unwrap();\n        let kinds = q.call(h.id.root, b\"sequence\", &vec![size(1).unwrap(); length]).unwrap();\n        q.call(model, b\"setLayoutOf:to:rest:\", &[behavior, kinds, size(1).unwrap()]).unwrap();\n        let object = q.call(model, b\"allocate:bytes:\", &[behavior, size(size_of::<Oop>()).unwrap()]).unwrap();\n        let mut parent = behavior;\n        let mut objects = Vec::new();\n        for _ in 0..16 {\n            parent = q.call(parent, b\"delegated\", &[]).unwrap();\n            objects.push(q.call(model, b\"allocate:bytes:\", &[parent, size(size_of::<Oop>()).unwrap()]).unwrap());\n        }\n        let cases: &[(&str, &[u8], &[Oop], Oop)] = &[\n            (\"kind\", b\"slotKindOf:at:\", &[behavior, size(0).unwrap()], size(1).unwrap()),\n            (\"slot\", b\"slotAt:in:\", &[size(0).unwrap(), object], std::ptr::null_mut()),\n            (\"inherited\", b\"slotAt:in:\", &[size(0).unwrap(), objects[0]], std::ptr::null_mut()),\n            (\"deep\", b\"slotAt:in:\", &[size(0).unwrap(), objects[15]], std::ptr::null_mut()),\n        ];\n        for &(name, selector, args, expected) in cases {\n            let selector = q.keep(h.intern(selector).unwrap()).unwrap();\n            let calls = 20000;\n            for _ in 0..10 { assert_eq!(unsafe { h.id.send(model, selector, args).unwrap() }, expected); }\n            for _ in 0..7 {\n                q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n                let start = unsafe { clock_gettime_nsec_np(16) };\n                for _ in 0..calls { assert_eq!(unsafe { h.id.send(model, selector, args).unwrap() }, expected); }\n                println!(\"{length} {name} {calls} {}\", unsafe { clock_gettime_nsec_np(16) } - start);\n            }\n        }\n    }\n}\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 14
+  },
+  "full_collection": {
+    "scope": "Full precise collection after 1000 Integer/Range iterations; automatic GC disabled only while producing garbage, same policy in both lanes. Twelve collection timings per variant, four fresh processes, ABBA then BAAB. Successful nonempty collections checked.",
+    "summary": {
+      "integer-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 292207771.0,
+          "candidate": 288495562.5
+        },
+        "change_percent": -1.2704003344250592
+      },
+      "range-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 371835604.0,
+          "candidate": 372124396.0
+        },
+        "change_percent": 0.07766658084737976
+      }
+    },
+    "library_sha256": {
+      "baseline": "d38b0666ec644452c897f628b52225d6a22463f8dc435f5539daf9ca9e8badf3",
+      "candidate": "9008bcf4a60df03bf0f61890ab898c18688df7315e475ca450e3f7f009d05b47"
+    },
+    "source": "[System preciseGc: true];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System println: \"CASE integer-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System println: \"CASE range-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline",
+      "candidate",
+      "baseline",
+      "baseline",
+      "candidate"
+    ],
+    "process_median_cpu_ns": [
+      {
+        "lane": "baseline",
+        "integer-loop": 290569250,
+        "range-loop": 372338083
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 286731792,
+        "range-loop": 366704083
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 306197500,
+        "range-loop": 381269875
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 291090042,
+        "range-loop": 369347167
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 288540458,
+        "range-loop": 385348166
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 292997375,
+        "range-loop": 368630583
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 295324167,
+        "range-loop": 373713167
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 285910500,
+        "range-loop": 364316334
+      }
+    ]
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/string-parse-candidate",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/layout-walk-candidate",
+    "files": 783,
+    "differences": [
+      "lib/libbirnam_object_model.dylib"
+    ],
+    "library_sha256": {
+      "baseline": "d38b0666ec644452c897f628b52225d6a22463f8dc435f5539daf9ca9e8badf3",
+      "candidate": "9008bcf4a60df03bf0f61890ab898c18688df7315e475ca450e3f7f009d05b47"
+    }
+  },
+  "validation": [
+    "object_model, object_model_slots and object_model_scopes passed against the final candidate.",
+    "New live-parent cycle/early-layout checks also passed against the baseline; existing replacement, failure, rooting and collection tests retained.",
+    "scripts/oop-id-slice-test.sh passed: owner unit tests, compiler/GC smoke, construction and direct-dispatch contracts, export audit, cross-thread rejection, independent C cold caller and finalizer containment."
+  ],
+  "contract_review": "Only host-side visited-set work moved. Initial null vtables still return no layout. The direct-layout path roots the same vtable before identity validation. Parent paths root each newly visited vtable before layout inspection and reject a repeated vtable without another layout callback. The old path briefly appended a duplicate root on cycle detection; no callback could observe that append before scope cleanup.",
+  "rejected_experiments": [
+    {
+      "change": "Experiment: share immutable Layout byte arrays with Rc instead of cloning a Box.",
+      "reason": "Strong wins on large layout descriptions, but empty descriptions were 2-3% slower and the full-collection probes showed no measurable improvement. Prefer eliminating unnecessary traversal bookkeeping first.",
+      "micro_summary": {
+        "0/kind": {
+          "median_cpu_ns_per_call": {
+            "baseline": 133.22292,
+            "candidate": 135.97584
+          },
+          "change_percent": 2.0664011868228194
+        },
+        "0/slot": {
+          "median_cpu_ns_per_call": {
+            "baseline": 237.08126,
+            "candidate": 243.48833
+          },
+          "change_percent": 2.7024784666658253
+        },
+        "8/kind": {
+          "median_cpu_ns_per_call": {
+            "baseline": 155.86292,
+            "candidate": 136.38875000000002
+          },
+          "change_percent": -12.494421380017762
+        },
+        "8/slot": {
+          "median_cpu_ns_per_call": {
+            "baseline": 243.21375,
+            "candidate": 241.65458999999998
+          },
+          "change_percent": -0.6410657292196809
+        },
+        "4096/kind": {
+          "median_cpu_ns_per_call": {
+            "baseline": 198.15125,
+            "candidate": 137.46875
+          },
+          "change_percent": -30.624333684496065
+        },
+        "4096/slot": {
+          "median_cpu_ns_per_call": {
+            "baseline": 302.56165999999996,
+            "candidate": 241.71582999999998
+          },
+          "change_percent": -20.11022480508601
+        },
+        "1048576/kind": {
+          "median_cpu_ns_per_call": {
+            "baseline": 15918.5283203125,
+            "candidate": 135.05029296875
+          },
+          "change_percent": -99.15161571314088
+        },
+        "1048576/slot": {
+          "median_cpu_ns_per_call": {
+            "baseline": 16847.473388671875,
+            "candidate": 246.91748046875
+          },
+          "change_percent": -98.53439459572154
+        }
+      },
+      "gc_summary": {
+        "integer-loop": {
+          "median_collection_cpu_ns": {
+            "baseline": 292787020.5,
+            "candidate": 293578249.5
+          },
+          "change_percent": 0.2702404630672506
+        },
+        "range-loop": {
+          "median_collection_cpu_ns": {
+            "baseline": 369020270.5,
+            "candidate": 370675562.5
+          },
+          "change_percent": 0.44856397665016257
+        }
+      },
+      "evidence": {
+        ".cargo-target/layout-snapshot-20261029/micro.json": "8c96b17b7f354c1055b4d2cbe2af67630c38105f6a4c32bbe22d99ee6268ddb5",
+        ".cargo-target/layout-snapshot-20261029/gc-comparison.json": "89fa22f565c0f4b97dd0a07fe8f7a5862574ee58643facf09d2a883850e3f20b",
+        ".cargo-target/layout-snapshot-20261029/contracts.log": "8ffd4ca7060ca628eee5762fba078409db4c28c03c366c7a7e5868ba8824e093"
+      }
+    },
+    {
+      "change": "Cycle membership check followed by insertion on each parent step.",
+      "reason": "Direct slot reads improved but a 16-parent chain regressed by about 15%.",
+      "evidence": ".cargo-target/layout-walk-20261029/double-hash-micro.json"
+    },
+    {
+      "change": "Seed the visited set conditionally inside each loop iteration.",
+      "reason": "Removed duplicate hashing but still regressed a 16-parent chain by 6-8%.",
+      "evidence": ".cargo-target/layout-walk-20261029/conditional-micro.json"
+    }
+  ],
+  "limits": [
+    "Controlled substitution of only libbirnam_object_model.dylib across 783 files; not a fresh installed release. User installation unchanged.",
+    "The clear gain is direct slot access, about 13-14% less CPU for empty and eight-slot descriptions. Inherited access varied by roughly 0-3%; no inherited-access speedup claimed.",
+    "Full-collection process variance is material; report its measurements separately from the direct-slot improvement. No application-wide speedup established.",
+    "Slot microbenchmarks preserve automatic GC and time every checked query; explicit collection and construction are outside those timers. Full-collection probes disable automatic GC only while producing garbage, then time explicit collection. Production GC policy unchanged."
+  ],
+  "source_sha256": {
+    "rust/birnam-object-model/src/native.rs": "c50d33982771ad0b3fc68862ad88d8b71daefb2a9e6bf4b9bb55581d45797080",
+    "rust/birnam-siphon/tests/object_model_slots.rs": "56bd625041eaa42598359480f6a0cda106e1d11b38b6bab80cb1c64ded5d5408"
+  },
+  "evidence": {
+    ".cargo-target/layout-walk-20261029/micro.json": "6d8c3da44d258a6314460cffc223e4916b54a34d9efe0643d938e84658220c18",
+    ".cargo-target/layout-walk-20261029/micro.py": "1a3a745057f3d9d9f0af2d4c753067acc5d787cf8529c9871ed73145d0368fe6",
+    ".cargo-target/layout-walk-20261029/gc-comparison.json": "818787352c8f594c18c6323f652bcd88655687c90acf2c79d0964436855e6fc1",
+    ".cargo-target/layout-walk-20261029/gc-extend.py": "be20f70e0437f2bdcd7f9ac14692235fc3dd57a4faf6d9caaa7da0dcd72ae7b0",
+    ".cargo-target/layout-walk-20261029/contracts.log": "ae68c9efde9e8bbb64fc52222e4df67a250d2fa7c52bb4d4d02483033d89420d",
+    ".cargo-target/layout-walk-20261029/baseline-contracts.log": "d62924868b16d7dd8b530ee910a1cd4dfd622514bd77e73fad17d26307aaa26a",
+    ".cargo-target/layout-walk-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/layout-walk-20261029/double-hash-micro.json": "062046b9b57a88eb1f11eefa8284037c51d6f0d86ae775657acf68d408d282e5",
+    ".cargo-target/layout-walk-20261029/conditional-micro.json": "94de913c05d6ed1769cec746529aecfbd859f3d77049765a5e204e3b13013fc4"
+  },
+  "decision": "Retained for the direct-slot improvement; the expanded full-collection comparison is effectively neutral (-1.27% Integer, +0.08% Range) relative to observed process variation. Do not claim a general GC speedup."
+}

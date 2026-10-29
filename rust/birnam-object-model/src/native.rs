@@ -122,18 +122,24 @@ impl Model {
         unsafe {
             let _scope = self.scope();
             let mut b = self.behavior(v)?;
-            let mut seen = HashSet::new();
-            while !b.is_null() {
-                self.keep(b);
-                if !seen.insert(b) {
+            if b.is_null() {
+                return Ok(None);
+            }
+            self.keep(b);
+            if let Some(layout) = self.layout(b)? {
+                return Ok(Some(layout));
+            }
+            let mut seen = HashSet::from([b]);
+            loop {
+                b = self.send(self.id.root, b"parentOf:", &[b])?;
+                if b.is_null() || !seen.insert(b) {
                     return Ok(None);
                 }
+                self.keep(b);
                 if let Some(layout) = self.layout(b)? {
                     return Ok(Some(layout));
                 }
-                b = self.send(self.id.root, b"parentOf:", &[b])?;
             }
-            Ok(None)
         }
     }
     unsafe fn extent(&self, v: Oop) -> Result<usize, Oop> {

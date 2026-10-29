@@ -297,4 +297,20 @@ fn reference_inventory_uses_owned_metadata_and_roots_its_snapshot() {
     assert_eq!(indices(&h, &held, snapshot), vec![0, 2]);
     assert!(unsafe { h.id.send(model, query, &[]) }.is_err());
     assert!(unsafe { h.id.send(model, query, &[std::ptr::null_mut()]) }.is_err());
+
+    // A live parent callback can report a cycle. Stop before revisiting its
+    // layout, while a directly described object needs no parent callback.
+    let undescribed = held.call(base, b"delegated", &[]).unwrap();
+    let allocate = |b| held.call(model, b"allocate:bytes:",
+        &[b, size(size_of::<Oop>()).unwrap()]).unwrap();
+    let cyclic = allocate(undescribed);
+    let direct = allocate(behavior);
+    let cycle = hooks.context(&[undescribed, size(0).unwrap()]);
+    let parent_hook = hooks.method(b"fixedCount", cycle);
+    h.send(root_vt, b"addMethod", &[parent_sel, parent_hook]).unwrap();
+    assert!(held.call(model, b"slotAt:in:", &[size(0).unwrap(), cyclic]).unwrap().is_null());
+    assert_eq!(hooks.count(cycle, 1), 1, "a reported cycle must terminate");
+    assert!(held.call(model, b"slotAt:in:", &[size(0).unwrap(), direct]).unwrap().is_null());
+    assert_eq!(hooks.count(cycle, 1), 1, "a direct layout must not query its parent");
+    h.send(root_vt, b"addMethod", &[parent_sel, parent]).unwrap();
 }
