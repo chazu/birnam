@@ -38,19 +38,20 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Oop], op: usize) -> Result<Oop, Oop> {
         if args.len() != expected {
             return Err(invalid());
         }
-        let mut values = vec![r];
-        for arg in args {
-            values.push(object(*arg)?);
+        // The operation arities above bound the receiver plus arguments to six.
+        let mut values = [r; 6];
+        for (index, arg) in args.iter().enumerate() {
+            values[index + 1] = object(*arg)?;
         }
-        t.rooted(&values, || {
+        t.rooted(&values[..args.len() + 1], || {
             let nil = t.nil;
-            let mut indices = Vec::new();
+            let mut indices = [0; 2];
             if matches!(op, 11 | 12 | 13 | 14) {
-                for arg in args {
+                for (index, arg) in args.iter().enumerate() {
                     let Some(value) = n.index(*arg)? else {
                         return Ok(nil);
                     };
-                    indices.push(value);
+                    indices[index] = value;
                 }
             }
             if op == 19 {
@@ -62,12 +63,12 @@ unsafe fn run(t: &Bytes, r: Oop, args: &[Oop], op: usize) -> Result<Oop, Oop> {
                 return t.make(bytes);
             }
             if op == 22 {
-                let mut values = Vec::new();
-                for arg in &args[..4] {
+                let mut values = [0; 4];
+                for (index, arg) in args[..4].iter().enumerate() {
                     let Some(v) = n.index(*arg)?.and_then(|v| usize::try_from(v).ok()) else {
                         return Ok(nil);
                     };
-                    values.push(v);
+                    values[index] = v;
                 }
                 let bytes = t.copy(r)?;
                 let schema = t.input_bytes(object(args[4])?)?;

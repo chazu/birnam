@@ -84,4 +84,31 @@ fn tagged_tables_preserve_positions_and_live_numeric_owners() {
     assert!(hooks.count(state, 2) > 0);
     assert_eq!(read(position), 1);
     call(vt, b"addMethod", &[from_word, original]);
+
+    // Exercise the five-argument operation with collection during each numeric
+    // conversion. Invalid arities and null arguments must fail before callbacks.
+    let records = call(named(b"Bytes"), b"fromByteValues",
+        &[99, 8, 9, 2, 7, 0, 0, 0, 4, 5, 0].map(|v| size(v).unwrap()));
+    let one = number(1);
+    let record_schema = q.string(b"002").unwrap();
+    let args = [one, two, two, one, record_schema];
+    let selector = b"readTaggedRecordsAt:count:prefixBytes:fields:schema:";
+    let original = call(vt, b"lookup", &[word_of]);
+    let state = hooks.context(&[original, gc, size(0).unwrap()]);
+    call(vt, b"addMethod", &[word_of, hooks.method(b"collectEvery", state)]);
+    let result = call(records, selector, &args);
+    q.check_result(result).unwrap();
+    assert!(hooks.count(state, 2) >= 4);
+    let before = hooks.count(state, 2);
+    for invalid_args in [&args[..0], &args[..4], &[one, two, two, one, record_schema, nil][..],
+                         &[one, two, two, one, std::ptr::null_mut()][..]] {
+        assert!(host.send(records, selector, invalid_args).is_err());
+    }
+    assert_eq!(hooks.count(state, 2), before);
+    call(vt, b"addMethod", &[word_of, original]);
+    assert_eq!(read(call(result, b"size", &[])), 2);
+    let row = call(result, b"at:", &[zero]);
+    let fields = call(row, b"at:", &[one]);
+    let field = call(fields, b"at:", &[zero]);
+    assert_eq!(read(call(field, b"at:", &[one])), 7);
 }

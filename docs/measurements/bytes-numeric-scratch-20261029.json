@@ -1,0 +1,96 @@
+{
+  "baseline_revision": "e139e438",
+  "change": "Replace temporary heap vectors in existing numeric Bytes operations with local arrays bounded by their existing checked arities.",
+  "contract": {
+    "before": "Validate arity, collect receiver/arguments in a heap vector, register the call roots, then decode numeric indices into heap vectors.",
+    "after": "Validate the same arity and arguments, put the same Oops in a six-slot local array, register only its used slice in the existing root scope, and decode at most two indices or four record parameters into local arrays.",
+    "preserved": [
+      "Same current Integer/Word conversions and their order.",
+      "Same receiver/argument roots across callbacks and GC; no private table borrow spans a message.",
+      "Same byte snapshots, result construction, errors and invalid-input behavior.",
+      "Bytes alone interprets its buffers; Id and language APIs are unchanged."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing Bytes operations through Id. Twenty thousand calls/sample, seven samples/process, serial ABBA. Automatic GC disabled for timing; explicit precise collection outside every sample. Results checked. Does not measure full application/GC performance.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 14,
+    "summary": {
+      "size": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1008.4073,
+          "candidate": 974.15625
+        },
+        "change_percent": -3.396549191978282
+      },
+      "at:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1423.551025,
+          "candidate": 1340.303125
+        },
+        "change_percent": -5.847904187347275
+      },
+      "readU32At:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1433.575025,
+          "candidate": 1364.3604249999999
+        },
+        "change_percent": -4.828111455136453
+      },
+      "readU64At:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1434.370825,
+          "candidate": 1366.5405999999998
+        },
+        "change_percent": -4.728918339509603
+      },
+      "copyFrom:to:": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1542.197925,
+          "candidate": 1468.4625
+        },
+        "change_percent": -4.781190780035571
+      }
+    },
+    "library_sha256": {
+      "baseline": "2fa0fa14a0b70901f57ca9747e75f2f8d4ff5f9962ed421d0a7ef76f68a814c0",
+      "candidate": "4e04a2796abd63d3485ec9abf5daa74ede5f86ed92a3c1d4fd683d20fd5badd4"
+    },
+    "source": "//! Disposable benchmark of existing numeric Bytes operations.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::{size, Oop};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let integer = h.named(b\"Integer\").unwrap();\n    let gc = h.named(b\"GC\").unwrap();\n    let bytes = q.call(h.named(b\"Bytes\").unwrap(), b\"fromByteValues\",\n        &[1,2,3,4,0,0,0,0].map(|v| size(v).unwrap())).unwrap();\n    let zero = q.call(integer, b\"fromWord:\", &[size(0).unwrap()]).unwrap();\n    let eight = q.call(integer, b\"fromWord:\", &[size(8).unwrap()]).unwrap();\n    q.call(gc, b\"automaticCollection:\", &[size(0).unwrap()]).unwrap();\n    let cases: &[(&[u8], &[Oop], usize)] = &[\n        (b\"size\", &[], 8), (b\"at:\", &[zero], 1),\n        (b\"readU32At:\", &[zero], 0x04030201),\n        (b\"readU64At:\", &[zero], 0x04030201),\n        (b\"copyFrom:to:\", &[zero, eight], 8),\n    ];\n    for &(name, args, expected) in cases {\n        let selector = q.keep(h.intern(name).unwrap()).unwrap();\n        for _ in 0..100 { unsafe { h.id.send(bytes, selector, args).unwrap(); } }\n        for _ in 0..7 {\n            q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n            let mut last = bytes;\n            let start = unsafe { clock_gettime_nsec_np(16) };\n            for _ in 0..20000 { last = unsafe { h.id.send(bytes, selector, args).unwrap() }; }\n            let elapsed = unsafe { clock_gettime_nsec_np(16) } - start;\n            if name == b\"copyFrom:to:\" {\n                assert_eq!(unsafe { h.id.send(last, h.intern(b\"sizeWord\").unwrap(), &[]).unwrap() }, size(expected as usize).unwrap());\n            } else {\n                let word = unsafe { h.id.send(integer, h.intern(b\"wordOf:\").unwrap(), &[last]).unwrap() };\n                assert_eq!(q.word_bits(word).unwrap(), expected);\n            }\n            println!(\"{} {elapsed}\", String::from_utf8_lossy(name));\n        }\n    }\n}\n"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_bytes.dylib"
+    ]
+  },
+  "validation": [
+    "Full Oop core/compiler/GC contracts, including binary values, full-width reads and direct-dispatch negatives.",
+    "Byte ABI, external allocation and tagged-row owner tests.",
+    "Added five-argument tagged-record decoding with GC during numeric conversion; wrong arities and null arguments must fail before callbacks.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "Local CPU microbenchmarks, not a whole-language or startup speed claim.",
+    "Automatic GC is disabled only in the benchmark process during timed work, with precise collection outside each sample. Runtime policy is unchanged.",
+    "This removes native temporary-vector allocations, not managed Integer/Bytes result objects.",
+    "Only Bytes is substituted into the comparison prefix; installed user runtime is unchanged."
+  ],
+  "source_sha256": {
+    "rust/birnam-bytes/src/numeric.rs": "d6ee433907eb6501b4de53deea946a202d4d1ce8d2d804c60fbfbc1bbfc1e0a6",
+    "rust/birnam-siphon/tests/tagged_rows.rs": "5c8ad91e4c029691e21078afe4eba78a4af7884c4cc9b6a28d9bd245e43f80f3"
+  },
+  "evidence": {
+    ".cargo-target/bytes-scratch-20261029/micro.json": "dd1dd4c2deb519086a8684eeabb245f8388e7aa647929a533754d47938597b94",
+    ".cargo-target/bytes-scratch-20261029/micro.py": "6aa7a981decf0089e62317655a3098ac7f40ffdbf3257fe04b4c518962a4b8b6",
+    ".cargo-target/bytes-scratch-20261029/contracts.log": "8d82075e4d0e80cad342246dc621ec3d9660f3b4d95ed27ee4afcfc699baa4a5",
+    ".cargo-target/bytes-scratch-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/bytes-scratch-20261029/check.log": "a3f67cff1de7a3da8f36103a67901ddc1406ef3e3e9530c5eac7ef1d2c8e4d00"
+  }
+}
