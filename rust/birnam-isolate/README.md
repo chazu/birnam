@@ -16,7 +16,7 @@ cycles, unsupported map keys and malformed input are refused.
 Host loads the saved image without evaluating stdlib or global main, rebases its
 Module library directory, resolves the receiver and selector, and enters Isolate
 through messages. Ready and boot failures
-travel over the inherited socket, with 15 seconds allowed for the ready handshake.
+travel over the inherited socket, with 60 seconds allowed for the ready handshake.
 Source/image stdout remains ordinary program
 output. `request:` and `request:timeout:` preserve synchronous replies and failure
 records. `submit:timeout:` admits one outstanding request; `pollRequest:` answers

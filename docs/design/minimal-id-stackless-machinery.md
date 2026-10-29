@@ -20,26 +20,22 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
-## Qualification status (2026-10-29, runtime `12a2b062`)
+## Production startup allowance (user decision, 2026-10-29)
 
-The corrected owners pass workspace/core checks and the previously failing
-AlienCompiler and documentation-generation diagnostics. A clean cold build and
-exact installed-file verification passed. Relocated archive checks also passed,
-including compiled startup. All 103 native acceptance targets passed using a
-separate prefix with TCC resource metrics. Full Host generation and interaction
-groups, task image/field checks, and the independent later CLI checks passed.
-All non-worker image checks, provider-absent project checks and closure
-observation passed. A separate 60-second startup diagnostic passed worker,
-optional-provider image, authored concurrency and multicore checks. The published
-candidate still has the user-selected 15-second deadline; worker-dependent
-production qualification remains blocked by that deadline. The same diagnostic
-worker suite also passed with Store and Relational physically absent. The final
-acceptance audit is awaiting the user's startup-policy decision, not claiming
-production completion.
-Worker requests return correct data after
-startup, but Ready took 25–35 seconds in diagnostic runs against the unchanged
-15-second deadline. No deadline change is authorized yet.
-[Scoped evidence and remaining checks](../measurements/cold-integration-checkpoint-20261029.json).
+The user approved a 60-second worker startup allowance and explicitly deferred
+performance work in order to finish the migration. Isolate now waits up to 60
+seconds for Ready. Request deadlines, cancellation and cleanup are unchanged.
+This changes one existing policy value; it adds no Id operation, metadata or
+runtime mechanism.
+
+The complete native suite (103 targets), workspace/core checks, clean cold build,
+relocated archive, Host generation/interaction, and independent CLI/image checks
+passed on the preceding implementation. A separate build with exactly this
+60-second change passed workers, optional-provider images, authored concurrency,
+multicore operation and workers with Store/Relational physically absent.
+Production build and acceptance are being finalized with the approved value.
+Historical checkpoints below retain their original timing evidence and limits.
+[Acceptance evidence](../measurements/cold-integration-checkpoint-20261029.json).
 
 ## Implementation checkpoint: bounded file-byte construction (2026-10-29)
 
