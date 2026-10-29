@@ -89,21 +89,36 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                     t.string(&bytes)
                 }
                 4 => {
-                    let bytes = t.copy(r, Kind::String)?;
-                    let Ok(needle) = t.copy(args[0], Kind::String) else {
-                        return Ok(nil);
-                    };
-                    let index = if needle.is_empty() {
-                        Some(0)
-                    } else {
-                        bytes.windows(needle.len()).position(|w| w == needle)
+                    let index = {
+                        let buffers = t.buffers.borrow();
+                        let bytes = &buffers.get(&r.addr())
+                            .filter(|b| b.kind == Kind::String)
+                            .ok_or_else(invalid)?.bytes;
+                        let Some(needle) = buffers.get(&args[0].addr())
+                            .filter(|b| b.kind == Kind::String) else {
+                            return Ok(nil);
+                        };
+                        if needle.bytes.is_empty() {
+                            Some(0)
+                        } else {
+                            bytes.windows(needle.bytes.len()).position(|w| w == needle.bytes)
+                        }
                     };
                     match index {
                         Some(v) => n.integer(v as i64),
                         None => Ok(nil),
                     }
                 }
-                5 => n.integer(crate::text::bracket_depth(&t.copy(r, Kind::String)?)),
+                5 => {
+                    let depth = {
+                        let buffers = t.buffers.borrow();
+                        let bytes = &buffers.get(&r.addr())
+                            .filter(|b| b.kind == Kind::String)
+                            .ok_or_else(invalid)?.bytes;
+                        crate::text::bracket_depth(bytes)
+                    };
+                    n.integer(depth)
+                }
                 6 | 7 => {
                     let bytes = t.copy(r, Kind::String)?;
                     // Numeric parsing historically trims four ASCII spaces; trimmed

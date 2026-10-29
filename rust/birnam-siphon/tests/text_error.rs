@@ -236,6 +236,27 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     install(ivt, b"wordOf:", word_of);
     install(svt, b"fromBytes:", original);
 
+    let from_word = selected(ivt, b"fromWord:");
+    let scan_results = hooks.context(&[from_word, gc, size(0).unwrap()]);
+    let needle = q.string(&[0xff, b'a']).unwrap();
+    let empty_needle = q.string(b"").unwrap();
+    let brackets = q.string(b"[ { \"[\\\"}]\" // }]\n").unwrap();
+    install(ivt, b"fromWord:", hooks.method(b"collectEvery", scan_results));
+    let position = call(value, b"indexOf:", &[needle]);
+    assert_eq!(q.word_bits(call(integer, b"wordOf:", &[position])).unwrap(), 1);
+    let position = call(value, b"indexOf:", &[empty_needle]);
+    assert_eq!(q.word_bits(call(integer, b"wordOf:", &[position])).unwrap(), 0);
+    let depth = call(brackets, b"bracketDepth", &[]);
+    assert_eq!(q.word_bits(call(integer, b"wordOf:", &[depth])).unwrap(), 2);
+    assert_eq!(hooks.count(scan_results, 2), 3);
+    install(ivt, b"fromWord:", from_word);
+    assert_eq!(call(value, b"indexOf:", &[q.string(b"absent-long-needle").unwrap()]), nil);
+    assert_eq!(call(value, b"indexOf:", &[builder]), nil);
+    let search = selected(svt, b"indexOf:");
+    let args = call(h.id.root, b"sequence", &[empty_needle]);
+    assert!(h.send(search, b"invokeOn:arguments:", &[builder, args]).is_err(),
+            "empty-needle matching must not bypass receiver validation");
+
     // Snapshot the byte provider before the String allocation callback mutates it.
     let meta = call(h.id.root, b"behaviorOf:", &[svt]);
     let allocation = selected(meta, b"allocate");

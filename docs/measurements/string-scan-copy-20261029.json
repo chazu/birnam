@@ -1,0 +1,144 @@
+{
+  "baseline_revision": "25848833",
+  "change": "Run existing String search and bracket scanning directly on owned buffers, then release their borrows before constructing the result.",
+  "contract": {
+    "before": "Clone the receiver and search needle, or the bracket-scan input; compute a scalar result; call the current Integer constructor.",
+    "after": "Perform the same owner representation checks and pure scan under a private buffer borrow; carry only the scalar result out of the borrow and call the same constructor.",
+    "preserved": [
+      "Receiver validation precedes empty-needle matching. A non-String needle still answers nil.",
+      "Search remains byte-oriented, including binary bytes, and returns the same first match.",
+      "The existing bracket scanner and its quoted-string/comment/escape rules are unchanged.",
+      "No private borrow spans the current Integer constructor or GC.",
+      "Dependency-context access, result identities, errors and Id semantics are unchanged."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing indexOf: and bracketDepth through Id, input sizes 64 bytes/4 KiB/1 MiB. Early match, empty needle, absent needle, and bracket-free scan. Serial ABBA, five samples/process. Automatic GC disabled only for timed work; precise GC outside samples. Results checked.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 10,
+    "summary": {
+      "64/early": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1018.9875,
+          "candidate": 967.527075
+        },
+        "change_percent": -5.0501527251315625
+      },
+      "64/empty": {
+        "median_cpu_ns_per_call": {
+          "baseline": 995.6354249999999,
+          "candidate": 961.93645
+        },
+        "change_percent": -3.3846701467055484
+      },
+      "64/miss": {
+        "median_cpu_ns_per_call": {
+          "baseline": 364.050025,
+          "candidate": 319.74585
+        },
+        "change_percent": -12.16980413612112
+      },
+      "64/depth": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1040.178125,
+          "candidate": 1035.468775
+        },
+        "change_percent": -0.4527445719933687
+      },
+      "4096/early": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1056.94580078125,
+          "candidate": 960.540771484375
+        },
+        "change_percent": -9.121094877865676
+      },
+      "4096/empty": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1037.750244140625,
+          "candidate": 982.82861328125
+        },
+        "change_percent": -5.2923746507866465
+      },
+      "4096/miss": {
+        "median_cpu_ns_per_call": {
+          "baseline": 11200.25634765625,
+          "candidate": 11291.158203125
+        },
+        "change_percent": 0.811605133375104
+      },
+      "4096/depth": {
+        "median_cpu_ns_per_call": {
+          "baseline": 5434.631591796875,
+          "candidate": 5492.136474609375
+        },
+        "change_percent": 1.0581192458252175
+      },
+      "1048576/early": {
+        "median_cpu_ns_per_call": {
+          "baseline": 16774.759765625,
+          "candidate": 979.0751953125
+        },
+        "change_percent": -94.16340258226033
+      },
+      "1048576/empty": {
+        "median_cpu_ns_per_call": {
+          "baseline": 15090.596435546875,
+          "candidate": 966.552734375
+        },
+        "change_percent": -93.59499978345308
+      },
+      "1048576/miss": {
+        "median_cpu_ns_per_call": {
+          "baseline": 2827289.703125,
+          "candidate": 2810986.328125
+        },
+        "change_percent": -0.576643241829089
+      },
+      "1048576/depth": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1139515.625,
+          "candidate": 1124292.3125
+        },
+        "change_percent": -1.3359459200043888
+      }
+    },
+    "library_sha256": {
+      "baseline": "38e5bdfcf23e88e9e164b6eb597b1632807e0db59bfffccfc79f8cf79af8a0e3",
+      "candidate": "96ada578f71fa97ad8b94e7c4d27919ee6fc449bfa14b9f9b2da46df6302b31e"
+    },
+    "source": "//! Disposable benchmark of existing String search and bracket scanning.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::{size, Oop};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let integer = h.named(b\"Integer\").unwrap();\n    let gc = h.named(b\"GC\").unwrap();\n    let nil = h.named(b\"nil\").unwrap();\n    let hit = q.string(b\"x\").unwrap();\n    let miss = q.string(b\"y\").unwrap();\n    let empty = q.string(b\"\").unwrap();\n    q.call(gc, b\"automaticCollection:\", &[size(0).unwrap()]).unwrap();\n    for length in [64, 4096, 1048576] {\n        let source = q.string(&vec![b'x'; length]).unwrap();\n        let cases: &[(&str, &[u8], &[Oop], bool)] = &[\n            (\"early\", b\"indexOf:\", &[hit], false),\n            (\"empty\", b\"indexOf:\", &[empty], false),\n            (\"miss\", b\"indexOf:\", &[miss], true),\n            (\"depth\", b\"bracketDepth\", &[], false),\n        ];\n        for &(name, selector, args, expect_nil) in cases {\n            let selector = q.keep(h.intern(selector).unwrap()).unwrap();\n            let calls = if length == 1048576 {\n                if name == \"early\" || name == \"empty\" {2048} else {32}\n            } else if length == 4096 {2048} else {20000};\n            for _ in 0..10 { unsafe { h.id.send(source, selector, args).unwrap(); } }\n            for _ in 0..5 {\n                q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n                let mut last = nil;\n                let start = unsafe { clock_gettime_nsec_np(16) };\n                for _ in 0..calls { last = unsafe { h.id.send(source, selector, args).unwrap() }; }\n                let elapsed = unsafe { clock_gettime_nsec_np(16) } - start;\n                if expect_nil { assert_eq!(last, nil); } else {\n                    let word = q.call(integer, b\"wordOf:\", &[last]).unwrap();\n                    assert_eq!(q.word_bits(word).unwrap(), 0);\n                }\n                println!(\"{length} {name} {calls} {elapsed}\");\n            }\n        }\n    }\n}\n"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_string.dylib"
+    ]
+  },
+  "validation": [
+    "Expanded String/Error test: binary search, empty needle, missing/invalid needle, quoted/escaped/commented brackets, receiver-error precedence, and GC during current result construction.",
+    "Full Oop core/compiler/GC and negative dispatch/construction contracts.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "The large gain is early-match/empty-needle search on large Strings. Full misses and bracket scans remain dominated by scanning and show no clear speedup.",
+    "Microbenchmark timing excludes explicit GC and uses disabled automatic GC for bounded timed work; runtime policy is unchanged.",
+    "Only String differs between prefixes. The installed user runtime was not replaced."
+  ],
+  "source_sha256": {
+    "rust/birnam-string/src/numeric.rs": "7fb3e624c19cdad42ff0b3654759d4265dd7653c89cda582c2564e35d970d583",
+    "rust/birnam-siphon/tests/text_error.rs": "c50ffe347369a4da9d49357c9815ff2c659a403d88d305db5ea28d6855209193"
+  },
+  "evidence": {
+    ".cargo-target/string-scan-20261029/micro.json": "28d6cef64fb16fe3ac164afdd086129f1f36d10e0be5059d7c186f1500373121",
+    ".cargo-target/string-scan-20261029/micro.py": "30ca382cee16e3ebe1f775f86c4fdc3626a89eb7edc42e8f5f6e1b6696a9a60b",
+    ".cargo-target/string-scan-20261029/contracts.log": "88dee480428586fd9a9542adaddb61124b4a5501a7275fd7d0efdc775a103ab0",
+    ".cargo-target/string-scan-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/string-scan-20261029/check.log": "b2a508a629ab9d682196e44457b0fa6d1a140e71c58c9cfeb1598a6a54310d68"
+  }
+}
