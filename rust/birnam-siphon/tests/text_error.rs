@@ -257,6 +257,55 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     assert!(h.send(search, b"invokeOn:arguments:", &[builder, args]).is_err(),
             "empty-needle matching must not bypass receiver validation");
 
+    // Parsing may borrow String storage, but result constructors remain live
+    // and may collect or reenter String. Integer overflow falls back only for asNumber.
+    for selector in [b"asInteger".as_slice(), b"asNumber"] {
+        for (input, expected) in [
+            (b" \t\r\n-42\n".as_slice(), -42i64),
+            (b"+17", 17),
+            (b"9223372036854775807", i64::MAX),
+            (b"-9223372036854775808", i64::MIN),
+        ] {
+            let parsed = call(q.string(input).unwrap(), selector, &[]);
+            assert_eq!(q.word_bits(call(integer, b"wordOf:", &[parsed])).unwrap() as i64, expected);
+        }
+        for input in [b"".as_slice(), b" \t\r\n", b"\x0b42", b"42\x0c", b"\xff42", b"42\0", b"42x"] {
+            assert_eq!(call(q.string(input).unwrap(), selector, &[]), nil);
+        }
+        let parser = selected(svt, selector);
+        let no_args = call(h.id.root, b"sequence", &[]);
+        assert!(h.send(parser, b"invokeOn:arguments:", &[builder, no_args]).is_err(),
+                "parsing must validate String storage");
+    }
+    let float = named(b"Float");
+    for (input, expected) in [
+        (b"1.25".as_slice(), 1.25f64),
+        (b"-2e3", -2000.0),
+        (b"9223372036854775808", 9223372036854775808.0),
+        (b"-0.0", -0.0),
+    ] {
+        let source = q.string(input).unwrap();
+        assert_eq!(call(source, b"asInteger", &[]), nil);
+        let parsed = call(source, b"asNumber", &[]);
+        assert_eq!(q.word_bits(call(float, b"bitsOf:", &[parsed])).unwrap(), expected.to_bits() as usize);
+    }
+    let integer_results = hooks.context(&[from_word, gc, size(0).unwrap()]);
+    let fvt = named(b"FloatVt");
+    let from_bits = selected(fvt, b"fromBits:");
+    let float_results = hooks.context(&[from_bits, gc, size(0).unwrap()]);
+    install(ivt, b"fromWord:", hooks.method(b"collectEvery", integer_results));
+    install(fvt, b"fromBits:", hooks.method(b"collectEvery", float_results));
+    for selector in [b"asInteger".as_slice(), b"asNumber"] {
+        let parsed = call(q.string(b"42").unwrap(), selector, &[]);
+        assert_eq!(q.word_bits(call(integer, b"wordOf:", &[parsed])).unwrap(), 42);
+    }
+    let parsed = call(q.string(b"1.25").unwrap(), b"asNumber", &[]);
+    assert_eq!(q.word_bits(call(float, b"bitsOf:", &[parsed])).unwrap(), 1.25f64.to_bits() as usize);
+    assert_eq!(hooks.count(integer_results, 2), 2);
+    assert_eq!(hooks.count(float_results, 2), 1);
+    install(ivt, b"fromWord:", from_word);
+    install(fvt, b"fromBits:", from_bits);
+
     // Snapshot the byte provider before the String allocation callback mutates it.
     let meta = call(h.id.root, b"behaviorOf:", &[svt]);
     let allocation = selected(meta, b"allocate");

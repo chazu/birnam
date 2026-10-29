@@ -1,0 +1,129 @@
+{
+  "baseline_revision": "18d82fbd",
+  "change": "Parse String-owned bytes without cloning the input; release the buffer-table borrow before calling existing result constructors.",
+  "contract": {
+    "before": "Validate and clone String storage, trim and parse the copy, then call the current Integer or Float constructor.",
+    "after": "Validate and borrow String storage, perform the same pure trim and parse, release the borrow, then call the same constructor.",
+    "preserved": [
+      "Only the String owner reads its byte buffers. Id and all object representations are unchanged.",
+      "Integer limits, float fallback, UTF-8 validation, four-byte whitespace set, invalid-input nil, and invalid-receiver errors are unchanged.",
+      "Dependency access and current Word, Integer and Float constructors remain live. No borrow spans a message or GC callback."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing asInteger and asNumber through Id, input sizes 16 bytes/4 KiB/1 MiB. Leading whitespace followed by integer/float, and invalid UTF-8 at the beginning of the buffer. Serial ABBA, five samples/process. Automatic GC disabled only for timed work; precise GC outside samples. Results checked.",
+    "summary": {
+      "16/integer": {
+        "median_cpu_ns_per_call": {
+          "baseline": 986.785425,
+          "candidate": 992.272925
+        },
+        "change_percent": 0.5560986067462359
+      },
+      "16/float": {
+        "median_cpu_ns_per_call": {
+          "baseline": 902.58645,
+          "candidate": 897.2594
+        },
+        "change_percent": -0.5901983128596688
+      },
+      "16/invalid": {
+        "median_cpu_ns_per_call": {
+          "baseline": 169.86042500000002,
+          "candidate": 136.574975
+        },
+        "change_percent": -19.595765170138968
+      },
+      "4096/integer": {
+        "median_cpu_ns_per_call": {
+          "baseline": 2315.622802734375,
+          "candidate": 2264.109375
+        },
+        "change_percent": -2.2246035785079554
+      },
+      "4096/float": {
+        "median_cpu_ns_per_call": {
+          "baseline": 2218.892333984375,
+          "candidate": 2153.310302734375
+        },
+        "change_percent": -2.9556202545545363
+      },
+      "4096/invalid": {
+        "median_cpu_ns_per_call": {
+          "baseline": 224.436279296875,
+          "candidate": 137.48193359375
+        },
+        "change_percent": -38.743444676386474
+      },
+      "1048576/integer": {
+        "median_cpu_ns_per_call": {
+          "baseline": 324357.74609375,
+          "candidate": 310786.1328125
+        },
+        "change_percent": -4.18414958319736
+      },
+      "1048576/float": {
+        "median_cpu_ns_per_call": {
+          "baseline": 325513.51171875,
+          "candidate": 311188.47265625
+        },
+        "change_percent": -4.400750981691082
+      },
+      "1048576/invalid": {
+        "median_cpu_ns_per_call": {
+          "baseline": 16539.22265625,
+          "candidate": 165.0390625
+        },
+        "change_percent": -99.0021353123411
+      }
+    },
+    "library_sha256": {
+      "baseline": "96ada578f71fa97ad8b94e7c4d27919ee6fc449bfa14b9f9b2da46df6302b31e",
+      "candidate": "dc54ea1bbfc441f926277a7cbb9ce25ebea8cc4d67f41a4dc5993bdb7b606a99"
+    },
+    "source": "//! Disposable benchmark of existing String numeric conversions.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::size;\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let integer = h.named(b\"Integer\").unwrap();\n    let float = h.named(b\"Float\").unwrap();\n    let gc = h.named(b\"GC\").unwrap();\n    let nil = h.named(b\"nil\").unwrap();\n    q.call(gc, b\"automaticCollection:\", &[size(0).unwrap()]).unwrap();\n    for length in [16, 4096, 1048576] {\n        for name in [\"integer\", \"float\", \"invalid\"] {\n            let mut bytes = vec![b' '; length];\n            let (tail, selector) = match name {\n                \"integer\" => (b\"42\".as_slice(), b\"asInteger\".as_slice()),\n                \"float\" => (b\"1.25\".as_slice(), b\"asNumber\".as_slice()),\n                _ => (b\"x\".as_slice(), b\"asNumber\".as_slice()),\n            };\n            if name == \"invalid\" { bytes.fill(0xff); }\n            bytes[length-tail.len()..].copy_from_slice(tail);\n            let source = q.string(&bytes).unwrap();\n            let selector = q.keep(h.intern(selector).unwrap()).unwrap();\n            let calls = match length { 16 => 20000, 4096 => 2048, _ => 128 };\n            for _ in 0..10 { unsafe { h.id.send(source, selector, &[]).unwrap(); } }\n            for _ in 0..5 {\n                q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n                let mut last = nil;\n                let start = unsafe { clock_gettime_nsec_np(16) };\n                for _ in 0..calls { last = unsafe { h.id.send(source, selector, &[]).unwrap() }; }\n                let elapsed = unsafe { clock_gettime_nsec_np(16) } - start;\n                match name {\n                    \"integer\" => assert_eq!(q.word_bits(q.call(integer, b\"wordOf:\", &[last]).unwrap()).unwrap(), 42),\n                    \"float\" => assert_eq!(q.word_bits(q.call(float, b\"bitsOf:\", &[last]).unwrap()).unwrap(), 1.25f64.to_bits() as usize),\n                    _ => assert_eq!(last, nil),\n                }\n                println!(\"{length} {name} {calls} {elapsed}\");\n            }\n        }\n    }\n}\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 10
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/continuation-capacity-candidate",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/string-parse-candidate",
+    "files": 783,
+    "differences": [
+      "lib/libbirnam_string.dylib"
+    ],
+    "string_sha256": {
+      "baseline": "96ada578f71fa97ad8b94e7c4d27919ee6fc449bfa14b9f9b2da46df6302b31e",
+      "candidate": "dc54ea1bbfc441f926277a7cbb9ce25ebea8cc4d67f41a4dc5993bdb7b606a99"
+    }
+  },
+  "limits": [
+    "Controlled library substitution into the previous exact benchmark prefix, not a fresh release installation. Only the String library differs across 783 files.",
+    "Serial ABBA, two fresh processes per variant and five samples per case per process; thread CPU clock. Result construction is timed; input creation and explicit GC are not. Automatic GC is disabled only for bounded benchmark work. Runtime policy stays unchanged.",
+    "Short successful parsing is effectively unchanged (+0.6% Integer, -0.6% Float). Large whitespace-padded parsing uses 2-4% less CPU. Large early-invalid UTF-8 avoids a whole-buffer copy; this is not an application-wide speedup.",
+    "No concurrent test/build workloads were launched by this task during measurement; unrelated host processes remained active."
+  ],
+  "validation": [
+    "Candidate text_error and numbers integration tests passed, including signed limits, overflow fallback, invalid bytes, whitespace distinctions, receiver validation and replaced constructors that collect.",
+    "Expanded text_error also passed against the baseline library, independently checking preservation of existing behavior.",
+    "scripts/oop-id-slice-test.sh passed: owner unit tests, compiler/GC smoke, negative direct-dispatch and construction contracts, cross-thread rejection, export audit, independent C cold caller and finalizer containment."
+  ],
+  "contract_review": "The removed host Vec was used only by callback-free Rust parsing. Both successful integer and float paths now explicitly drop the buffer borrow before any result-construction message. All early failures return while Rust releases the borrow. No message was removed, cached or reordered.",
+  "source_sha256": {
+    "rust/birnam-string/src/numeric.rs": "d6192e132eadce203d6848f432a9e0714ae8247995ed9db517fca2ebe2086eda",
+    "rust/birnam-siphon/tests/text_error.rs": "db7295991ebfc793c5d5df8fd3398182583c9db48c9e2fb0922768e895a7b65f"
+  },
+  "evidence": {
+    ".cargo-target/string-parse-20261029/micro.json": "90360a80b8c4454fb9fdd0e210242e0581071157341b7043b68874a00e273da9",
+    ".cargo-target/string-parse-20261029/micro.py": "70d2c9607d7eadcb516872d143f42ac2c509ee2b64ba7b412ad639694bc70425",
+    ".cargo-target/string-parse-20261029/contracts.log": "a6f4a1ffb72ac4ed93a967994fa2659c6da166f2895d1f67e8963209c8a22456",
+    ".cargo-target/string-parse-20261029/baseline-contracts.log": "b1cfe4356239954e67305d15513c7bf2aeb02abc09d4d00bb7f71a937ea52e15",
+    ".cargo-target/string-parse-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+  }
+}

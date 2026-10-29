@@ -120,7 +120,10 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                     n.integer(depth)
                 }
                 6 | 7 => {
-                    let bytes = t.copy(r, Kind::String)?;
+                    let buffers = t.buffers.borrow();
+                    let bytes = &buffers.get(&r.addr())
+                        .filter(|b| b.kind == Kind::String)
+                        .ok_or_else(invalid)?.bytes;
                     // Numeric parsing historically trims four ASCII spaces; trimmed
                     // recognizes six. Preserve that distinction and signed overflow.
                     let trim = |b: &u8| matches!(*b, b' ' | b'\t' | b'\r' | b'\n');
@@ -134,13 +137,16 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                     };
                     if op == 6 || !text.contains(['.', 'e', 'E']) {
                         if let Ok(v) = text.parse::<i64>() {
+                            drop(buffers);
                             return n.integer(v);
                         }
                         if op == 6 {
                             return Ok(nil);
                         }
                     }
-                    match text.parse::<f64>() {
+                    let value = text.parse::<f64>();
+                    drop(buffers);
+                    match value {
                         Ok(v) => n.send(n.float, b"fromBits:", &[t.word(v.to_bits())?]),
                         Err(_) => Ok(nil),
                     }
