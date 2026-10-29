@@ -1,0 +1,50 @@
+{
+  "baseline": "07a958f1745ce7fd08ec360cee60f28f3638952d",
+  "scope": "Id representation cleanup and necessity review",
+  "removed": [
+    "unused RawVtable pointer/capacity mirror and synchronization",
+    "manual dictionary capacity tracking used only by that mirror",
+    "unused add-method result abstraction",
+    "unused RawSymbol C-string pointer mirror and trailing NUL storage"
+  ],
+  "contract": {
+    "before": "Owner records are authoritative, but updates also maintain unused C-layout payload copies.",
+    "after": "Vtable and Symbol Oops retain identity/header only; existing owner records hold dictionaries and bytes. Public owner operations, tracing and lookup remain current.",
+    "representation_change": "Native vtable and Symbol payload extents become zero. Extent queries still report actual allocation facts; no public payload layout is promised to foreign owners.",
+    "new_mechanisms": []
+  },
+  "necessity_review": {
+    "allocation": "Retain contiguous allocations, vtable headers, identity/extent and detach/release ordering. No payload catalog.",
+    "dictionaries": "Retain ordered strong key/Method Oop pairs, parent links, lookup indexes and explicit invalidation. They serve current lookup and reflection.",
+    "symbols": "Retain canonical identity, owned bytes and weak retirement. No selector-name-specific cache or C-string mirror.",
+    "bootstrap": "Retain native Method/Name/Fault/Sequence constructors and module declarations required to cold-load owners. Their payload formats stay in bootstrap implementations.",
+    "continuations": "Retain direct work entry, lookup continuation, answer delivery, budget/pause and native ancestry checks. No Execution or scheduler payload is read.",
+    "live_queries": "Retain sameNativeMethod/nativeMethodIndex and current binding/allocation/representation facts used by Integer, Word and other owners. These are generic owner facts; no new public query was introduced.",
+    "removed": "Unreachable old ABI files, weak/non-callable dictionary entries, constructor epoch bypass, unused queries/helpers and redundant raw mirrors."
+  },
+  "source_lines": {
+    "start_of_goal": 4842,
+    "after": 3235
+  },
+  "checks": [
+    {
+      "name": "23 Id unit tests",
+      "exit_code": 0,
+      "log_sha256": "d49697bd87c4d6a5cba135e02d81c4fa238d5332b9059750e197cccba73b4dc3"
+    },
+    {
+      "name": "independent C continuation contract",
+      "exit_code": 0,
+      "log_sha256": "592837455fee163e1b942e0f2abdf4822d312e8139d3897afa96d9be9a91a2d6"
+    },
+    {
+      "name": "complete Oop core/source/GC contract suite",
+      "exit_code": 0,
+      "log_sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    }
+  ],
+  "limitations": [
+    "This establishes the reasons for retained mechanisms, not a proof of unique mathematical minimality.",
+    "The other-module obsolete-source audit is still in progress."
+  ]
+}

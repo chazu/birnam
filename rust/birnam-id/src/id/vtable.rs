@@ -1,8 +1,6 @@
-//! Raw vtable objects, ordered method dictionaries, and exact membership.
+//! Vtable identities and their owned ordered method dictionaries.
 
 use core::cell::Cell;
-use core::mem::offset_of;
-use core::ptr::NonNull;
 
 use crate::abi::Oop;
 
@@ -10,33 +8,10 @@ use crate::boundary;
 use crate::id::object_memory::ObjectMemory;
 use crate::raw::AddressMap;
 
-/// The payload shape retained for vtable objects themselves.
-#[allow(non_snake_case)]
-#[repr(C)]
-pub(crate) struct RawVtable {
-    pub(crate) size: usize,
-    pub(crate) tally: usize,
-    pub(crate) keys: *mut Oop,
-    pub(crate) values: *mut Oop,
-    pub(crate) parent: Oop,
-}
-
-const _: () = {
-    assert!(size_of::<RawVtable>() == 40);
-    assert!(align_of::<RawVtable>() == 8);
-    assert!(offset_of!(RawVtable, size) == 0);
-    assert!(offset_of!(RawVtable, tally) == 8);
-    assert!(offset_of!(RawVtable, keys) == 16);
-    assert!(offset_of!(RawVtable, values) == 24);
-    assert!(offset_of!(RawVtable, parent) == 32);
-};
-
 pub(crate) struct VtableRecord {
-    pub(crate) raw: NonNull<RawVtable>,
-    pub(crate) logical_capacity: usize,
     pub(crate) keys: Vec<Oop>,
     pub(crate) values: Vec<Oop>,
-    // Derived identity lookup only. Ordered vectors retain raw-view and GC
+    // Derived identity lookup only. Ordered vectors retain lookup and GC
     // authority; these integer addresses never add roots or cache dispatch.
     pub(crate) key_indices: AddressMap<usize>,
     pub(crate) parent: Oop,
@@ -78,43 +53,6 @@ impl VtableRecord {
         }
     }
 
-    fn sync_raw_view(&mut self) {
-        // SAFETY: raw is the live, uniquely runtime-owned payload allocated for
-        // this record. No foreign call or other reference overlaps this update.
-        let raw = unsafe { self.raw.as_mut() };
-        raw.size = self.logical_capacity;
-        raw.tally = self.keys.len();
-        raw.keys = if self.keys.is_empty() {
-            core::ptr::null_mut()
-        } else {
-            self.keys.as_mut_ptr()
-        };
-        raw.values = if self.values.is_empty() {
-            core::ptr::null_mut()
-        } else {
-            self.values.as_mut_ptr()
-        };
-        raw.parent = self.parent;
-    }
-
-    fn grow_dictionary(&mut self) {
-        let next_capacity = if self.logical_capacity == 0 {
-            4
-        } else {
-            self.logical_capacity
-                .checked_mul(2)
-                .unwrap_or_else(|| boundary::fatal_invariant("vtable dictionary capacity overflow"))
-        };
-        self.keys.reserve_exact(next_capacity - self.keys.len());
-        self.values.reserve_exact(next_capacity - self.values.len());
-        self.logical_capacity = next_capacity;
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AddMethod<T = Oop> {
-    Added,
-    Overwrote(T),
 }
 
 // Position hints contain no Objects, selected methods, contexts or parent links.
@@ -163,7 +101,6 @@ impl Vtables {
     pub(crate) fn binding_epoch(&self) -> u64 {
         self.binding_epoch
     }
-    pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();
 
     /// Construct a behavior using Id allocation alone.
     pub(crate) fn create(
@@ -172,40 +109,22 @@ impl Vtables {
         parent: Oop,
         metavtable: Oop,
     ) -> Oop {
-        let object = memory.allocate(Self::PAYLOAD_SIZE);
+        let object = memory.allocate(0);
         assert!(memory.set_vtable(object, metavtable));
-        // SAFETY: the fresh allocation has the exact behavior payload extent.
-        unsafe { self.register(object, parent) };
+        self.register(object, parent);
         object
     }
 
-    /// Register a fresh behavior allocation supplied by the caller.
-    /// # Safety
-    /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.
-    pub(crate) unsafe fn register(&mut self, object: Oop, parent: Oop) {
+    /// Register the identity of a fresh vtable. Its dictionary is owned here;
+    /// the object needs no duplicate native pointer/capacity payload.
+    fn register(&mut self, object: Oop, parent: Oop) {
         boundary::require_invariant(
             parent.is_null() || self.is_registered(parent),
             "vtable parent is not registered",
         );
-        let raw = NonNull::new(object.cast::<RawVtable>())
-            .unwrap_or_else(|| boundary::fatal_invariant("new vtable payload is null"));
-        // SAFETY: object owns a zeroed, aligned payload of exactly RawVtable's
-        // size, and no typed value or reference exists there yet.
-        unsafe {
-            raw.as_ptr().write(RawVtable {
-                size: 0,
-                tally: 0,
-                keys: core::ptr::null_mut(),
-                values: core::ptr::null_mut(),
-                parent,
-            });
-        }
-
         let previous = self.by_address.insert(
             object.addr(),
             VtableRecord {
-                raw,
-                logical_capacity: 0,
                 keys: Vec::new(),
                 values: Vec::new(),
                 key_indices: AddressMap::default(),
@@ -241,7 +160,6 @@ impl Vtables {
         );
         let record = self.record_mut(vtable);
         record.parent = parent;
-        record.sync_raw_view();
         self.note_mutation();
     }
     /// Owner-local proof, valid until the next dictionary/graph mutation. The
@@ -302,26 +220,17 @@ impl Vtables {
         }
         None
     }
-    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Oop) -> AddMethod<Oop> {
+    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Oop) {
         assert!(!method.is_null(), "method binding requires a Method object");
         self.note_mutation();
-        self.insert_method(vtable, selector, method)
-    }
-    fn insert_method(&mut self, vtable: Oop, selector: Oop, method: Oop) -> AddMethod<Oop> {
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(selector) {
-            let previous = core::mem::replace(&mut record.values[index], method);
-            record.sync_raw_view();
-            return AddMethod::Overwrote(previous);
-        }
-        if record.keys.len() == record.logical_capacity {
-            record.grow_dictionary();
+            record.values[index] = method;
+            return;
         }
         record.keys.push(selector);
         record.values.push(method);
         record.index_appended_key();
-        record.sync_raw_view();
-        AddMethod::Added
     }
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<Oop> {
         self.note_mutation();
@@ -330,7 +239,6 @@ impl Vtables {
         record.keys.remove(index);
         let removed = record.values.remove(index);
         record.rebuild_key_indices();
-        record.sync_raw_view();
         Some(removed)
     }
     /// Retire dictionary records before the caller releases their allocations.
@@ -401,9 +309,7 @@ mod core_tests {
         assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         // Positive facts must not survive registry retirement/address reuse.
         tables.remove_objects(&[meta]);
-        unsafe {
-            tables.register(meta, core::ptr::null_mut());
-        }
+        tables.register(meta, core::ptr::null_mut());
         assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
         assert!(tables.default_lookup_fact(meta, key, expected).is_some());
@@ -483,9 +389,7 @@ mod core_tests {
         // Re-register the same still-allocated payload after retiring its record.
         // Hints do not keep a record or its previous entries alive.
         tables.remove_objects(&[child]);
-        unsafe {
-            tables.register(child, parent);
-        }
+        tables.register(child, parent);
         tables.add_method(child, keys[0], entry(9999));
         assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));
         for &key in &keys {
@@ -569,7 +473,7 @@ mod core_tests {
             memory
                 .get(child.addr())
                 .map(|allocation| allocation.requested_size()),
-            Some(40)
+            Some(0)
         );
         let identity = memory.allocate(0);
         let mut symbols = crate::id::symbol::Symbols::new();

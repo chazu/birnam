@@ -1,8 +1,5 @@
 //! Weakly canonicalized Symbol objects and byte-oriented interning.
 
-use core::ffi::c_char;
-use core::mem::offset_of;
-use core::ptr::NonNull;
 use std::collections::{HashMap, hash_map::RandomState};
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher};
 
@@ -11,27 +8,16 @@ use crate::boundary;
 use crate::id::object_memory::ObjectMemory;
 use crate::raw::AddressMap;
 
-#[repr(C)]
-struct RawSymbol {
-    string: *mut c_char,
-}
-
-const _: () = {
-    assert!(size_of::<RawSymbol>() == 8);
-    assert!(align_of::<RawSymbol>() == 8);
-    assert!(offset_of!(RawSymbol, string) == 0);
-};
-
 struct SymbolRecord {
     object: Oop,
-    nul_terminated_bytes: Box<[u8]>,
+    bytes: Box<[u8]>,
     name_hash: u64,
     next_same_hash: Option<usize>,
 }
 
 impl SymbolRecord {
     fn bytes(&self) -> &[u8] {
-        &self.nul_terminated_bytes[..self.nul_terminated_bytes.len() - 1]
+        &self.bytes
     }
 
 }
@@ -127,31 +113,15 @@ impl Symbols {
             return existing;
         }
 
-        let mut owned_name = Vec::with_capacity(bytes.len() + 1);
-        owned_name.extend_from_slice(bytes);
-        owned_name.push(0);
-        let mut owned_name = owned_name.into_boxed_slice();
-        let name_pointer = owned_name.as_mut_ptr().cast::<c_char>();
-
-        let object = heap.allocate(size_of::<RawSymbol>());
+        let object = heap.allocate(0);
         boundary::require_invariant(
             heap.set_vtable(object, symbol_vtable),
             "new Symbol block was not registered",
         );
-        let raw = NonNull::new(object.cast::<RawSymbol>())
-            .unwrap_or_else(|| boundary::fatal_invariant("new Symbol payload is null"));
-        // SAFETY: object owns an aligned payload of exactly RawSymbol's size,
-        // and name_pointer targets the boxed bytes retained by the record.
-        unsafe {
-            raw.as_ptr().write(RawSymbol {
-                string: name_pointer,
-            })
-        };
-
         let index = self.ordered.len();
         self.ordered.push(SymbolRecord {
             object,
-            nul_terminated_bytes: owned_name,
+            bytes: bytes.into(),
             name_hash: hash,
             next_same_hash: self.by_name_hash.insert(hash, index),
         });
