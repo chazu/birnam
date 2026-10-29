@@ -11,11 +11,14 @@ layouts, factory catalogs or fingerprint checks to repair callers. Production Ru
 
 Retained evidence:
 
-- [Id protocol](tests/fixtures/id-protocol-v1/README.md), its C header and independent
-  C-entry round trip exercise the common native message boundary.
+- [Oop-only Id fixtures](../../tests/fixtures/oop-id-v2/) and the
+  [independent continuation caller](../../tests/fixtures/oop-continuation/)
+  exercise the current message calling convention, custom lookup, bootstrap
+  and native callback boundaries. `scripts/oop-id-slice-test.sh` and
+  `scripts/id-continuation-test.py` run these checks.
 - [Stackless/recovery formats](../../tests/fixtures/stackless-s2/README.md) retain registration,
-  frame, generation and image fixtures, including the registration-envelope C
-  header and layout check. These describe recovery formats, not a module API catalog.
+  frame, generation and image fixtures. Their old registration-envelope header
+  records the frozen format history; it is not a current runtime calling convention.
 - [Portable Code formats](../../tests/fixtures/portable-code-v1/README.md) retain independent
   binary readers and fixtures for programs, bindings and images.
 - Each native crate's `exports.json` inventories its exported symbols. Retired

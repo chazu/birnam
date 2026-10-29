@@ -1,17 +1,10 @@
 //! Frozen record value helpers used by live heap projection/restoration.
 //! Complete container admission and composition live in modules/image-format.birnam.
-pub const FORMAT_VERSION: u32 = 8;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     CanonicalValue,
     Quantity,
-    Header,
-    Record,
-    Authority,
     Heap,
-    Facts,
-    Code,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -29,15 +22,6 @@ pub struct ImageSpec<'a> {
     pub providers: Option<&'a [u8]>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Image {
-    pub architecture: u32,
-    pub runtime_abi: u64,
-    pub heap_objects: u32,
-    pub has_code: bool,
-}
-
-#[allow(dead_code)]
 pub struct DecodedImage<'a> {
     pub programs: &'a [u8],
     pub bindings: &'a [u8],

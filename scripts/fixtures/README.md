@@ -2,7 +2,10 @@
 
 Current native integration runs through `rust/birnam-siphon/tests/` and
 `scripts/native-message-test.sh`. Independent C consumers of the Id message
-carrier and Execution descriptors live in `rust/birnam-abi/tests/fixtures/id-protocol-v1/`.
+calling convention and continuation transfer live in `tests/fixtures/oop-id-v2/`
+and `tests/fixtures/oop-continuation/`. The disconnected non-Oop v1 C callers
+have been removed; their useful cases run against the current Id in
+`scripts/oop-id-slice-test.sh` and `scripts/id-continuation-test.py`.
 
 The former table-based construction, adoption, service-selection and image
 fixtures are retired. They required deleted IdApi headers, Runtime constructors,

@@ -1,7 +1,6 @@
 //! Frozen image-v8 codecs and protocol value helpers. No native owner or heap
 //! restoration state; production format admission lives in ImageFormat.
 pub mod behavior_links;
-pub mod native_code;
 pub mod retained_facts;
 pub mod v8;
 pub mod support {

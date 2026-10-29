@@ -1,0 +1,75 @@
+{
+  "baseline": "7565e480879bd8b868cabbf2d0f91c3c13f70037",
+  "scope": "Obsolete implementation and necessity audit across Id and the remaining Rust workspace; source review is separate from runtime acceptance.",
+  "conclusion": "Oop-only messaging and opacity of foreign payloads are preserved. Known disconnected code and unused migration mechanisms were removed. No payload catalog, application protocol or cross-owner private entry was added.",
+  "id": {
+    "source_lines_before": 4842,
+    "source_lines_after": 3235,
+    "net_removed": 1607,
+    "detail": "id-necessity-review-20261029.json",
+    "qualification": "The crate still owns bootstrap Method/Name/Fault/Sequence and module formats. Minimal allocation and generic reference enumeration do not classify those payloads; Execution and Scheduler representations remain opaque."
+  },
+  "rust_physical_lines": {
+    "before": 135977,
+    "after": 132416,
+    "net_removed": 3561,
+    "counting": "Tracked .rs files, including tests, comments and blank lines; code moves counted once. No Birnam source was changed."
+  },
+  "removed_elsewhere": [
+    "Three disconnected ABI/CodegenRuntime carrier modules and an unused Relational test-helper re-export.",
+    "ArtifactCodec provider feature: pure codec source now excludes the native owner under every feature combination.",
+    "Retired image runtime-shim/registration ABI hash derivation; its exact compatibility seed remains unchanged.",
+    "Unused CLI early classifier; its tests now exercise the production classifier.",
+    "Execution dictionary-binding counters, staged binding removal/rollback, collected-block republication and unused host-root APIs.",
+    "Disconnected Execution tail-restart and loop-stamp experiments, cached plan and unused action/diagnostic helpers.",
+    "Empty generation lease token, unused result variants and the obsolete alternate-target enum.",
+    "Unused image container/native-code helpers whose independent frozen-format reference remains in tests/reference.",
+    "Retired v1 C callers/header and unused v1 comparison build; the current Oop benchmark workload and keys remain.",
+    "Stale Execution migration documentation replaced with the current ownership contract."
+  ],
+  "execution_contract": {
+    "before": "Production publishes owned Methods and retains code through Method, frame and continuation ownership; unused binding-based lifetime operations and tests remain alongside it.",
+    "after": "Only the current ownership path remains. Retirement still waits for acquisitions, active/suspended frames, explicit leases and managed turns. Tests now exercise that path.",
+    "new_mechanisms": [],
+    "kept": "Descriptor admission, frame arenas, scheduling/control boundaries, roots, optimizer candidates, recovery and deoptimization. The live Codegen tail planner moved into its sole consuming crate."
+  },
+  "inventory": {
+    "rust_src_files": 253,
+    "rust_files_including_tests_and_build_scripts": 435,
+    "uncompiled_rust_files": [],
+    "method": "Compare every tracked Rust path with the Cargo dependency-file union for default and all-feature, all-target builds; review remaining dead-code allowances and retired identifiers manually.",
+    "retained_exceptions": [
+      "Cold compiler and language seeds needed for source-only bootstrap.",
+      "Optional native compiler allocation metrics and its C hooks, compiled by the feature build.",
+      "Independent frozen artifact/image format references and fixtures; historical ABI descriptions there are evidence, not live runtime interfaces.",
+      "Two dead-code allowances on shared Host path helpers used partially by isolated fixtures; the full helpers have live consumers."
+    ]
+  },
+  "checks": [
+    {
+      "name": "Workspace all-feature tests: 331 passed, 0 failed, 151 explicitly ignored",
+      "log": ".cargo-target/obsolete-audit/final-workspace-test.log",
+      "sha256": "8f751d80216245144aa9bde8d3195af77591332e774651616c46c526a8174c2c"
+    },
+    {
+      "name": "Workspace all-target all-feature check: no warnings",
+      "log": ".cargo-target/obsolete-audit/final-check.log",
+      "sha256": "0bdd603ff6d6c7fcb9e8d994c2448b8319f34ad5b3187be1d55679cb7b91e03c"
+    },
+    {
+      "name": "Rebuilt Oop core, compiler/Execution, GC and negative dispatch/construction contracts",
+      "log": ".cargo-target/obsolete-audit/final-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    },
+    {
+      "name": "Cold compilation, full published startup, callback and 177 task-control checks",
+      "log": ".cargo-target/obsolete-audit/final-bootstrap.log",
+      "sha256": "d42560dda2f8f54b391c89636a8b81e1242aafb856e10f5362dd806fce27cdae"
+    }
+  ],
+  "limits": [
+    "Build reachability is not proof that every branch or exported helper is necessary; retained mechanisms were reviewed against actual consumers and invariants.",
+    "The Id independent C continuation check is recorded in id-necessity-review-20261029.json; Id source is unchanged since that check.",
+    "This cleanup does not requalify a release archive or establish performance. The 60-second startup policy is unchanged."
+  ]
+}

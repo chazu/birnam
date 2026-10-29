@@ -29,8 +29,7 @@ for name in fixture failure rejected rejected-null; do
 done
 clang -dynamiclib -O2 -Itests/fixtures/oop-continuation tests/fixtures/oop-continuation/module.c -o "$fixture/continuation.dylib"
 clang -dynamiclib -O2 -Itests/fixtures/oop-continuation tests/fixtures/oop-continuation/native.c -o "$fixture/continuation-native.dylib"
-clang -O2 -DV2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v2"
-clang -O2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v1"
+clang -O2 -Itests/fixtures/oop-id-v2 tests/fixtures/oop-id-v2/bench.c -o "$fixture/bench-v2"
 # Explicit paths supply the entire runtime closure. There is no installed-prefix
 # lookup or image bootstrap fallback. The numeric gate separately compiles
 # the retained control sources directly from this checkout.
