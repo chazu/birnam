@@ -1,7 +1,7 @@
 {
   "date": "2026-10-29",
   "runtime_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
-  "status": "partial qualification; not completion",
+  "status": "production qualification blocked on user startup-deadline decision",
   "cold_build": {
     "source": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-completion-cold-uqqoromz/source",
     "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-completion-cold-uqqoromz/prefix",
@@ -73,9 +73,8 @@
   },
   "worker_deadline_seconds": 15,
   "remaining": [
-    "Finish provider-absent worker diagnostic",
-    "User decision on production worker startup allowance: 15 seconds fails; 60-second diagnostic passes worker, optional-provider image, authored concurrency and multicore checks",
-    "Qualify the authorized production configuration; diagnostic results do not waive the production failure"
+    "User decision: authorize 60-second worker startup allowance, or retain 15 seconds and pursue further performance work",
+    "Integrate and qualify the authorized production configuration; do not treat diagnostic results as a production pass"
   ],
   "logs": [
     {
@@ -487,5 +486,49 @@
     "gc": "Collector follows Id header edges and registered owner reference protocols; representation-specific reads remain with owners.",
     "optimizer": "Per-code guards and recovery retained. Custom Method behavior can decline optimization without reassociation; completed effects are not replayed.",
     "evidence": "Current core contract suite and all 103 native targets passed. Formal checks remain abstract-contract evidence, not implementation proof."
-  }
+  },
+  "diagnostic_provider_absent_workers": {
+    "diagnostic_only": true,
+    "production_qualified": false,
+    "startup_allowance_seconds": 60,
+    "excluded": [
+      "libbirnam_relational.dylib",
+      "libbirnam_store.dylib"
+    ],
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-worker-diagnostic-no-store-ff47jugx/prefix",
+    "exit_code": 0,
+    "seconds": 357.710917542
+  },
+  "completion_audit": [
+    {
+      "requirement": "Direct definition contract and pure construction",
+      "status": "verified",
+      "evidence": "Direct construction/lifecycle/native-conversion tests, dispatch-contract counterexample, source review"
+    },
+    {
+      "requirement": "General continuation forwarding and native boundaries",
+      "status": "verified within tested/modelled scope",
+      "evidence": "Continuation transparency, task-control, boundary tests and TLA/Lean checks"
+    },
+    {
+      "requirement": "Migrate bootstrap/definition sites and retire forwarding machinery",
+      "status": "verified",
+      "evidence": "Clean cold build, source audit, deleted forwarding/template paths, all native targets"
+    },
+    {
+      "requirement": "Provider-owned admission and minimal Method metadata",
+      "status": "verified",
+      "evidence": "Closure admission/capture checks, same-source idempotence regression, no Method context accessor or generic admission API"
+    },
+    {
+      "requirement": "Retain optimizer/deoptimization and liveness",
+      "status": "verified within acceptance scope",
+      "evidence": "Native candidate/recovery/guard tests, task-control, generation acceptance; no near-native performance claim"
+    },
+    {
+      "requirement": "One corrected production revision passes end-to-end qualification",
+      "status": "incomplete",
+      "evidence": "Runtime 12a2b062 passes cold/archive/native/generation/interaction and independent checks; production worker startup fails at 15 seconds. Separate 60-second diagnostic passes all worker/concurrency checks."
+    }
+  ]
 }

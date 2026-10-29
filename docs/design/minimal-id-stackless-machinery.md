@@ -32,7 +32,10 @@ All non-worker image checks, provider-absent project checks and closure
 observation passed. A separate 60-second startup diagnostic passed worker,
 optional-provider image, authored concurrency and multicore checks. The published
 candidate still has the user-selected 15-second deadline; worker-dependent
-production qualification remains blocked by that deadline.
+production qualification remains blocked by that deadline. The same diagnostic
+worker suite also passed with Store and Relational physically absent. The final
+acceptance audit is awaiting the user's startup-policy decision, not claiming
+production completion.
 Worker requests return correct data after
 startup, but Ready took 25–35 seconds in diagnostic runs against the unchanged
 15-second deadline. No deadline change is authorized yet.
