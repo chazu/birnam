@@ -247,35 +247,31 @@ pub(super) unsafe extern "C" fn block_synchronous(
     .unwrap_or_else(abi::fault_reference)
 }
 // Checked code shapes establish capture layout at construction. Reflection
-// is needed only for legacy entries without such a description.
-pub(super) unsafe fn inspect_captures(s: &State, r: Oop) -> Result<Option<usize>, Oop> {
-    unsafe {
-        if r == s.block || s.storage.borrow().family_of(r) != Some(s.block_vt) {
-            return Ok(None);
-        }
-        let q = s.scope(&[r]);
-        let method = q.keep(s.field(r, 0)?);
-        let checked = s.admitted.borrow().get(&method.addr()).copied();
-        if let Some(shape) = checked {
-            let expected = shape
-                .captures
-                .checked_add(1)
-                .and_then(|words| words.checked_mul(size_of::<Oop>()))
-                .ok_or_else(invalid)?;
-            return if s.storage.borrow().payload_size(r) == Some(expected) {
-                Ok(Some(shape.captures))
-            } else {
-                Err(invalid())
-            };
-        }
-        if s.send(method, b"codeObject", &[])? == s.nil {
-            return Ok(None);
-        }
-        Ok(s.storage
-            .borrow()
-            .payload_size(r)
-            .and_then(|bytes| (bytes / size_of::<Oop>()).checked_sub(1)))
+// does not participate in reading the already constructed environment.
+pub(super) fn inspect_captures(s: &State, r: Oop) -> Result<Option<usize>, Oop> {
+    if r == s.block || s.storage.borrow().family_of(r) != Some(s.block_vt) {
+        return Ok(None);
     }
+    let method = s.field(r, 0)?;
+    let checked = s.admitted.borrow().get(&method.addr()).copied();
+    if let Some(shape) = checked {
+        let expected = shape
+            .captures
+            .checked_add(1)
+            .and_then(|words| words.checked_mul(size_of::<Oop>()))
+            .ok_or_else(invalid)?;
+        return if s.storage.borrow().payload_size(r) == Some(expected) {
+            Ok(Some(shape.captures))
+        } else {
+            Err(invalid())
+        };
+    }
+    // Execution owns this Block's bounded storage even when its executable
+    // has no portable source. Capture access needs no Method reflection.
+    Ok(s.storage
+        .borrow()
+        .payload_size(r)
+        .and_then(|bytes| (bytes / size_of::<Oop>()).checked_sub(1)))
 }
 pub(super) unsafe fn capture_index(s: &State, value: Oop) -> Result<Option<usize>, Oop> {
     unsafe {

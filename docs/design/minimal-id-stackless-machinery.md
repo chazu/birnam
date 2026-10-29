@@ -20,6 +20,48 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: capture access without source metadata (2026-10-29)
+
+A worker failed the unchanged 15-second Ready deadline. A direct channel probe
+finished correctly after 81.3 seconds. Native samples located repeated Method
+reflection in ImageFormat capture reads. Native-conversion Methods were absent
+from the checked portable-code shape map, so every capture inspection sent
+`codeObject`; reflection searched the resumable and synchronous provider records
+before reaching the native conversion's own source description.
+
+The needed contract is bounded access to an Execution-owned lexical environment.
+Portable source is not needed to read those stored references. Construction still
+checks known code layouts; unknown native Methods still need no portable source.
+
+```text
+before: check owned Block -> check known layout, otherwise query Method source
+        -> derive bounds from owned storage -> current capture reader
+now:    check owned Block -> check known layout or owned storage bounds
+        -> current capture reader
+```
+
+No message, registry, allocation or lifetime mechanism is added. The redundant
+root scope is removed because inspection now makes no callbacks. This owner reads
+only its own Block storage. Current capture readers, constructor admission checks,
+image-shell restrictions on execution, and native failure observers are unchanged.
+`captureAt:`, `captureCount`, and the factory capture reader can now inspect owned
+native Blocks without requiring a portable source description, consistent with
+`captureWordAt:`. An unrelated object's payload remains inaccessible.
+
+An experiment checking exact identities before equivalent-Method searches reduced
+one metadata probe from 601 comparisons to zero, but worker startup still took
+73.0 seconds. That experiment was removed: deleting the capture dependency is the
+smaller correction. The resulting worker probe completed in 26.7 seconds, including
+Ready/Stop exchange. This is diagnostic evidence, **not** a pass of the 15-second
+worker requirement or final integration qualification. Remaining samples locate
+work in image heap restoration and code reconstruction.
+
+The native-conversion regression makes Method source lookup and executable-identity
+comparison fail, then checks capture values, bounds, count and construction epoch
+for synchronous and resumable code. It failed before the change. Existing capture,
+closure admission, direct-definition, GC and stackless checks cover the adjacent
+contracts. See [the evidence](../measurements/capture-metadata-dependency-20261029.json).
+
 ## Qualification correction: Word helper contract (2026-10-29)
 
 The broad native run completed with one failing target, `word_helper`. Its test

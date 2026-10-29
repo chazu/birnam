@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-29",
+  "scope": "Execution-owned Block capture inspection; bootstrap Method API and Id unchanged",
+  "contract": {
+    "before": "Owned storage and checked shape, otherwise Method codeObject lookup, then bounded current capture reader",
+    "after": "Owned storage and checked shape or storage bounds, then bounded current capture reader",
+    "new_mechanisms": [],
+    "removed": [
+      "portable source prerequisite for capture inspection",
+      "call roots in inspection with no callbacks"
+    ],
+    "preserved": [
+      "constructor layout checks",
+      "replaceable capture readers",
+      "native failure observers",
+      "GC and image execution lifetime rules"
+    ]
+  },
+  "reproduction": {
+    "before_result": "captureAt: fails when Method codeObject is replaced with a failing Method",
+    "sample": "/tmp/birnam-worker-ready.sample",
+    "cause": "Native conversion capture reads queried portable source; provider reflection scanned unrelated executable records"
+  },
+  "tests": {
+    "targets": [
+      "native_conversion_construction",
+      "capture_access",
+      "capture_dependencies",
+      "closure_admission",
+      "closure_construction",
+      "word_helper",
+      "direct_native_method",
+      "direct_method_construction",
+      "direct_definition_lifecycle"
+    ],
+    "exit_code": 0,
+    "final_negative_check": "An unrelated Object returns nil from the factory capture reader"
+  },
+  "worker": {
+    "baseline": {
+      "seconds": 81.275988583,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "image": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1h6gzw3t/optional.image",
+      "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-binary-cold-ajdx4uwp/prefix"
+    },
+    "after": {
+      "seconds": 26.659141792,
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": "",
+      "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-capture-owner-z4a99hwv/prefix",
+      "image": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1h6gzw3t/optional.image"
+    },
+    "required_deadline_seconds": 15,
+    "qualified": false,
+    "measurement_limit": "One diagnostic run per variant with other qualification processes active; Ready/Stopped framing and clean exit checked; no whole-language performance claim"
+  },
+  "rejected_experiment": {
+    "change": "Check exact provider Method identities before scanning for captured equivalents",
+    "comparisons_before": 601,
+    "comparisons_after": 0,
+    "worker_seconds": 73.026546459,
+    "disposition": "Removed; capture access should not require this reflection at all"
+  },
+  "runtime": {
+    "base_cold_revision": "0272aef2a5e5082aa2029eceabad4cfa4820b137",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-capture-owner-z4a99hwv/prefix",
+    "execution_sha256": "87817ad5d5bd233c646128234d7f35f624e3c2d326b55acd76ef7d017dc84ea5",
+    "description": "Fresh copy of cold prefix with only Execution rebuilt from the working change; no debug instrumentation"
+  },
+  "logs": [
+    {
+      "path": ".cargo-target/oop-current-qualification/capture-metadata-before.log",
+      "sha256": "68f12ece99a51d446388d49d897e34e09e06f13baf0c1d25eba130392f823996"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/capture-metadata-after.log",
+      "sha256": "c97a1f0be8b3d06b6ec4fec6b951aff67b98e484aa968a1cb2443acd280dde21"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/capture-metadata-final.log",
+      "sha256": "9d42a27dc0d612e186ef499e9b9b709c333fdf031f306277baab8ea9752b150d"
+    }
+  ],
+  "remaining": [
+    "15-second worker Ready requirement still fails; image heap restoration and code reconstruction remain in samples",
+    "Complete source-consistent native, Host and cold/archive qualification after runtime changes"
+  ]
+}

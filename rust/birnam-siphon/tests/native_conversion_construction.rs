@@ -55,6 +55,57 @@ fn typed_blocks_bind_direct_methods_without_metadata_mutation() {
             before,
             "construction, capture and reflection must not edit bindings"
         );
+        // Reading an owned lexical environment does not need portable-code
+        // reflection or a search for equivalent Methods in other providers.
+        let method_vt = call(h.id.root, b"methodBehavior", &[]);
+        let source_key = key(b"codeObject");
+        let source_reader = call(method_vt, b"lookup", &[source_key]);
+        let id_vt = call(h.id.root, b"behaviorOf:", &[h.id.root]);
+        let identity_key = key(b"sameNativeMethod:as:");
+        let identity_reader = call(id_vt, b"lookup", &[identity_key]);
+        let forbidden = hooks.context(&[hooks.fault(921), size(0).unwrap()]);
+        let deny = hooks.method(b"deny", forbidden);
+        let index = call(named(b"Integer"), b"fromWord:", &[size(0).unwrap()]);
+        let expected = call(body, b"captureWordAt:", &[size(0).unwrap()]);
+        call(method_vt, b"addMethod", &[source_key, deny]);
+        call(id_vt, b"addMethod", &[identity_key, deny]);
+        let capture_epoch = epoch();
+        assert_eq!(call(typed, b"captureAt:", &[index]), expected);
+        assert_eq!(
+            call(
+                named(b"Block"),
+                b"captureWord:of:",
+                &[size(0).unwrap(), typed]
+            ),
+            expected
+        );
+        assert_eq!(
+            call(
+                named(b"Block"),
+                b"captureWord:of:",
+                &[size(1).unwrap(), typed]
+            ),
+            named(b"nil")
+        );
+        assert_eq!(
+            call(
+                named(b"Block"),
+                b"captureWord:of:",
+                &[size(0).unwrap(), target]
+            ),
+            named(b"nil")
+        );
+        let count = call(typed, b"captureCount", &[]);
+        assert_eq!(
+            q.word_bits(call(named(b"Integer"), b"wordOf:", &[count]))
+                .unwrap(),
+            1
+        );
+        assert_eq!(hooks.count(forbidden, 1), 0);
+        assert_eq!(epoch(), capture_epoch);
+        call(method_vt, b"addMethod", &[source_key, source_reader]);
+        call(id_vt, b"addMethod", &[identity_key, identity_reader]);
+        let before = epoch();
         let typed_code = call(typed, b"methodFor:", &[key(b"value:value:")]);
         for fields in [vec![typed_code], vec![typed_code, std::ptr::null_mut()]] {
             if let Ok(malformed) = h.send(named(b"Block"), b"fromMethod:captureOperands:", &fields)
