@@ -1,0 +1,124 @@
+{
+  "baseline_revision": "c5df5fa8",
+  "change": "Remove temporary String copies from collectionHash and collectionEquals:, retaining the existing current-vtable queries and identity policy.",
+  "contract": {
+    "before": "Query current vtables, then copy the owned bytes for hashing or content equality. Non-default vtables use the existing identity policy.",
+    "after": "Perform the same queries in the same order, then borrow the owned buffers only for the pure hash/comparison. Identical Oops still compare equal before any vtable query.",
+    "preserved": [
+      "Exact FNV-1a byte hash and identity fallback algorithm.",
+      "Left-to-right vtable-query order and short-circuit behavior.",
+      "Identity semantics for Strings with changed behavior and captured collection equality on other Oops.",
+      "Existing errors when content comparison is selected but owned String storage is absent.",
+      "No private borrow crosses a dependency message; no foreign payload is read."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing collectionHash, collectionEquals: and one-entry Map lookup using distinct equal String keys. Input lengths 16 bytes, 4 KiB, 1 MiB. Serial ABBA, five samples per process. Normal GC policy; every hash/equality/lookup result checked.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 10,
+    "summary": {
+      "16/hash": {
+        "median_cpu_ns_per_call": {
+          "baseline": 118.982085,
+          "candidate": 105.14146
+        },
+        "change_percent": -11.632528544108133
+      },
+      "16/equal": {
+        "median_cpu_ns_per_call": {
+          "baseline": 192.09229499999998,
+          "candidate": 160.58521000000002
+        },
+        "change_percent": -16.40205558479062
+      },
+      "16/lookup": {
+        "median_cpu_ns_per_call": {
+          "baseline": 496.795625,
+          "candidate": 450.17271
+        },
+        "change_percent": -9.384727371542368
+      },
+      "4096/hash": {
+        "median_cpu_ns_per_call": {
+          "baseline": 4640.31982421875,
+          "candidate": 4519.989013671875
+        },
+        "change_percent": -2.593157693977144
+      },
+      "4096/equal": {
+        "median_cpu_ns_per_call": {
+          "baseline": 410.451171875,
+          "candidate": 246.2972412109375
+        },
+        "change_percent": -39.99353441097115
+      },
+      "4096/lookup": {
+        "median_cpu_ns_per_call": {
+          "baseline": 5242.3807373046875,
+          "candidate": 4947.245361328125
+        },
+        "change_percent": -5.629796666167042
+      },
+      "1048576/hash": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1145016.6015625,
+          "candidate": 1140853.3515625
+        },
+        "change_percent": -0.36359734822348777
+      },
+      "1048576/equal": {
+        "median_cpu_ns_per_call": {
+          "baseline": 66018.23046875,
+          "candidate": 20436.19921875
+        },
+        "change_percent": -69.04461226293613
+      },
+      "1048576/lookup": {
+        "median_cpu_ns_per_call": {
+          "baseline": 1221591.796875,
+          "candidate": 1173447.265625
+        },
+        "change_percent": -3.941130856736297
+      }
+    },
+    "library_sha256": {
+      "baseline": "854da6a14dffc1d3bc32aabacd4a1b6e84087317232ce6a614105b9732ad4047",
+      "candidate": "38e5bdfcf23e88e9e164b6eb597b1632807e0db59bfffccfc79f8cf79af8a0e3"
+    },
+    "source": "//! Disposable benchmark of existing String key operations and Map lookup.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::{size, Oop};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let yes = h.named(b\"true\").unwrap();\n    for length in [16, 4096, 1048576] {\n        let bytes = vec![b'x'; length];\n        let left = q.string(&bytes).unwrap();\n        let right = q.string(&bytes).unwrap();\n        let expected_hash = bytes.iter().fold(2_166_136_261u32,\n            |hash, &byte| (hash ^ u32::from(byte)).wrapping_mul(16_777_619));\n        let map = q.call(h.named(b\"Map\").unwrap(), b\"at:put:\", &[left, yes]).unwrap();\n        let calls = match length { 16 => 100000, 4096 => 4096, _ => 128 };\n        let cases: &[(&str, Oop, &[u8], &[Oop], Oop)] = &[\n            (\"hash\", left, b\"collectionHash\", &[], size(expected_hash as usize).unwrap()),\n            (\"equal\", left, b\"collectionEquals:\", &[right], yes),\n            (\"lookup\", map, b\"at:\", &[right], yes),\n        ];\n        for &(name, receiver, selector, args, expected) in cases {\n            let selector = q.keep(h.intern(selector).unwrap()).unwrap();\n            for _ in 0..10 { assert_eq!(unsafe { h.id.send(receiver, selector, args).unwrap() }, expected); }\n            for _ in 0..5 {\n                let start = unsafe { clock_gettime_nsec_np(16) };\n                for _ in 0..calls { assert_eq!(unsafe { h.id.send(receiver, selector, args).unwrap() }, expected); }\n                println!(\"{length} {name} {calls} {}\", unsafe { clock_gettime_nsec_np(16) } - start);\n            }\n        }\n    }\n}\n"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_string.dylib"
+    ]
+  },
+  "validation": [
+    "String/Error tests plus added checks for the exact byte hash, live query counts, self-equality query omission, changed-vtable identity policy and captured collection equality.",
+    "Persistent collection tests with independent sequences, hash collisions and reentrant equality.",
+    "Full Oop core/compiler/GC and negative dispatch/construction contracts.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "The Map measurements use one entry and distinct equal String keys. They are not whole-application speedups.",
+    "Hashing remains linear in input size; its 1 MiB timing is essentially unchanged.",
+    "Only String differs in the comparison prefixes; no installed user prefix was replaced."
+  ],
+  "source_sha256": {
+    "rust/birnam-string/src/native.rs": "0a5fb64398ef0cb0dee3006cbb7261263445139b8ba2d203db057ba947832fe1",
+    "rust/birnam-siphon/tests/text_error.rs": "79a8f03acfe456313fcbb66b19cdb156ed0f2b9a66c82919f508a6c6eaea9caa"
+  },
+  "evidence": {
+    ".cargo-target/string-keys-20261029/micro.json": "5763904e2e7ff9cb599a52e3661790401f5b07621390855f9601653645366bac",
+    ".cargo-target/string-keys-20261029/micro.py": "c3e39d41b296d53f26de2402833327b3529530e79b6cdeec1595ba0e15dece57",
+    ".cargo-target/string-keys-20261029/contracts.log": "f76f7a8d139cb143312544675ed30a3abf9f487c9f70a797e613b9fea83025c7",
+    ".cargo-target/string-keys-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/string-keys-20261029/check.log": "01b8427e31ed24b26a3c76087b8190bc12e76238a4ef895f1c79a648d22c1f63"
+  }
+}

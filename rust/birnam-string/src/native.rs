@@ -387,8 +387,11 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 let hash = if t.send(t.id.root, b"behaviorOf:", &[r])? != t.behavior {
                     mix(r.addr() as u64)
                 } else {
-                    t.copy(r, Kind::String)?
-                        .iter()
+                    let buffers = t.buffers.borrow();
+                    let string = buffers.get(&r.addr())
+                        .filter(|b| b.kind == Kind::String)
+                        .ok_or_else(invalid)?;
+                    string.bytes.iter()
                         .fold(2_166_136_261u32, |h, &b| {
                             (h ^ u32::from(b)).wrapping_mul(16_777_619)
                         }) as usize
@@ -396,10 +399,21 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 Ok(abi::size(hash).unwrap())
             }
             17 => {
-                let equal = r == a[0]
-                    || (t.send(t.id.root, b"behaviorOf:", &[r])? == t.behavior
-                        && t.send(t.id.root, b"behaviorOf:", &[a[0]])? == t.behavior
-                        && t.copy(r, Kind::String)? == t.copy(a[0], Kind::String)?);
+                let equal = if r == a[0] {
+                    true
+                } else if t.send(t.id.root, b"behaviorOf:", &[r])? != t.behavior
+                    || t.send(t.id.root, b"behaviorOf:", &[a[0]])? != t.behavior {
+                    false
+                } else {
+                    let buffers = t.buffers.borrow();
+                    let left = buffers.get(&r.addr())
+                        .filter(|b| b.kind == Kind::String)
+                        .ok_or_else(invalid)?;
+                    let right = buffers.get(&a[0].addr())
+                        .filter(|b| b.kind == Kind::String)
+                        .ok_or_else(invalid)?;
+                    left.bytes == right.bytes
+                };
                 Ok(if equal { t.truth } else { t.falsity })
             }
             _ => Err(invalid()),

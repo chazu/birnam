@@ -179,6 +179,32 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     };
     let selected = |vt, name: &[u8]| call(vt, b"lookup", &[key(name)]);
 
+    // Collection keys retain live vtable queries and identity semantics for
+    // objects with changed behavior. The byte hash itself stays unchanged.
+    let key_left = q.string(&raw).unwrap();
+    let key_right = q.string(&raw).unwrap();
+    let expected_hash = raw.iter().fold(2_166_136_261u32,
+        |hash, &byte| (hash ^ u32::from(byte)).wrapping_mul(16_777_619));
+    let root_vt = call(h.id.root, b"behaviorOf:", &[h.id.root]);
+    let original_behavior = selected(root_vt, b"behaviorOf:");
+    let behavior_alias = key(b"fixtureBehaviorOf:");
+    call(root_vt, b"addMethod", &[behavior_alias, original_behavior]);
+    let queries = hooks.context(&[behavior_alias, size(0).unwrap()]);
+    install(root_vt, b"behaviorOf:", method(b"counted", queries));
+    assert_eq!(as_size(h.send(key_left, b"collectionHash", &[]).unwrap()), Some(expected_hash as usize));
+    assert_eq!(h.send(key_left, b"collectionEquals:", &[key_right]).unwrap(), truth);
+    assert_eq!(hooks.count(queries, 1), 3);
+    assert_eq!(h.send(key_left, b"collectionEquals:", &[key_left]).unwrap(), truth);
+    assert_eq!(hooks.count(queries, 1), 3, "self-equality needs no vtable query");
+    install(root_vt, b"behaviorOf:", original_behavior);
+    call(root_vt, b"removeMethod:", &[behavior_alias]);
+    call(h.id.root, b"ensurePrivateVtableFor:", &[key_right]);
+    assert_eq!(call(key_left, b"collectionEquals:", &[key_right]), falsity);
+    assert_eq!(call(key_right, b"collectionEquals:", &[key_right]), truth);
+    let key_equality = selected(svt, b"collectionEquals:");
+    assert_eq!(call(key_equality, b"invokeOn:arguments:", &[builder, self_argument]), truth,
+               "collection identity differs from ordinary String content equality");
+
     // Printing and text operations must observe the current String factory.
     let original = selected(svt, b"fromBytes:");
     let alias = key(b"fixtureFromBytes:");
