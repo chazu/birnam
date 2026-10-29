@@ -9,7 +9,7 @@ mod native_code;
 mod numeric;
 #[path = "resumable_runtime.rs"]
 mod resumable;
-use crate::{execution::ExecutionState, objects::Objects};
+use crate::{execution::ExecutionState, objects::Objects, word_index::WordIndex};
 use birnam_abi::{
     self as abi, Oop, borrowed_slice,
     id_protocol::{
@@ -49,10 +49,10 @@ struct State {
     scoped: RefCell<Vec<Oop>>,
     storage: RefCell<Objects>,
     // Checked compiled-code shapes; native callables need no such description.
-    admitted: RefCell<HashMap<usize, CodeShape>>,
+    admitted: RefCell<WordIndex<CodeShape>>,
     // Parsed signatures belong only to explicit native entry contexts. The
     // context's Sequence owns its executable, environment and declared Method.
-    native_signatures: RefCell<HashMap<usize, std::sync::Arc<abi::native_signature::Signature>>>,
+    native_signatures: RefCell<WordIndex<std::sync::Arc<abi::native_signature::Signature>>>,
     engine: RefCell<ExecutionState>,
     resume: RefCell<resumable::Runtime>,
     native_code: RefCell<native_code::Runtime>,
@@ -1696,8 +1696,8 @@ unsafe extern "C" fn initialize(
             names: names.clone(),
             scoped: RefCell::new(Vec::new()),
             storage: RefCell::new(Objects::default()),
-            admitted: RefCell::new(HashMap::new()),
-            native_signatures: RefCell::new(HashMap::new()),
+            admitted: RefCell::new(WordIndex::default()),
+            native_signatures: RefCell::new(WordIndex::default()),
             engine: RefCell::new(ExecutionState::new(1)),
             resume: RefCell::new(resumable::Runtime::default()),
             native_code: RefCell::new(native_code::Runtime::default()),

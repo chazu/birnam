@@ -1,0 +1,240 @@
+{
+  "baseline_revision": "c5b4c3bf",
+  "change": "Use Execution's existing WordIndex for its code-shape and native-signature maps keyed by Oop addresses. No new APIs, primitives, registries, cache entries or payload formats.",
+  "contract": {
+    "before": "Hash each private object-address key with the general randomized hasher, then use full usize equality.",
+    "after": "Use the existing private address hasher, still with full usize equality. All validation, current messages, metadata ownership, roots and removal before address reuse are unchanged.",
+    "review": [
+      "Both maps contain process-created object addresses, not arbitrary language Map keys or names.",
+      "No lookup results are cached and no live message is omitted. Selector/name hashing is unchanged.",
+      "Metadata remains with Execution. Id does not interpret any additional representation."
+    ]
+  },
+  "microbenchmark": {
+    "case": "Existing captureWord:of: send on an admitted one-capture Block; one million calls/sample; seven samples per fresh process after warmup. Return identity and Integer value checked.",
+    "runs": [
+      {
+        "lane": "baseline",
+        "exit_code": 0,
+        "stdout": "139689916\n139478667\n139447750\n139477333\n139422583\n139917875\n140028792\n",
+        "stderr": "",
+        "cpu_ns_per_call": [
+          139.689916,
+          139.478667,
+          139.44775,
+          139.477333,
+          139.422583,
+          139.917875,
+          140.028792
+        ]
+      },
+      {
+        "lane": "candidate",
+        "exit_code": 0,
+        "stdout": "133154500\n133162625\n132841125\n132607041\n132996167\n132678875\n134366583\n",
+        "stderr": "",
+        "cpu_ns_per_call": [
+          133.1545,
+          133.162625,
+          132.841125,
+          132.607041,
+          132.996167,
+          132.678875,
+          134.366583
+        ]
+      },
+      {
+        "lane": "candidate",
+        "exit_code": 0,
+        "stdout": "131848500\n132345000\n132638917\n132346166\n132833959\n132654584\n132813667\n",
+        "stderr": "",
+        "cpu_ns_per_call": [
+          131.8485,
+          132.345,
+          132.638917,
+          132.346166,
+          132.833959,
+          132.654584,
+          132.813667
+        ]
+      },
+      {
+        "lane": "baseline",
+        "exit_code": 0,
+        "stdout": "142877833\n140908666\n141435375\n141752125\n140847625\n140896959\n141184250\n",
+        "stderr": "",
+        "cpu_ns_per_call": [
+          142.877833,
+          140.908666,
+          141.435375,
+          141.752125,
+          140.847625,
+          140.896959,
+          141.18425
+        ]
+      }
+    ],
+    "medians_ns": {
+      "baseline": 140.4382085,
+      "candidate": 132.746271
+    },
+    "change_percent": -5.477097423953536,
+    "library_sha256": {
+      "baseline": "8139c3af2c3f6aa1660d6a7d7cd36dbfc516414557183fd39312aac9683103ea",
+      "candidate": "7f2bd99476ed3b2301679e80ea3668a6dbcc07b96239c6114da8ea2cfc33113f"
+    },
+    "source": "//! Disposable microbenchmark of the existing captureWord:of: operation.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::size;\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let host = oop::bootstrap();\n    let q = host.scope();\n    let source = q.string(b\"[[:captured | [| captured]] value: 41]\").unwrap();\n    let block = q.call(host.named(b\"Codegen\").unwrap(), b\"eval:\", &[source]).unwrap();\n    q.check_result(block).unwrap();\n    let expected = q.call(block, b\"value\", &[]).unwrap();\n    let word = q.call(host.named(b\"Integer\").unwrap(), b\"wordOf:\", &[expected]).unwrap();\n    assert_eq!(q.word_bits(word).unwrap(), 41);\n    let selector = q.keep(host.intern(b\"captureWord:of:\").unwrap()).unwrap();\n    let index = [size(0).unwrap(), block];\n    let receiver = host.named(b\"Block\").unwrap();\n    let read = || unsafe { host.id.send(receiver, selector, &index).unwrap() };\n    for _ in 0..10000 { assert_eq!(read(), expected); }\n    for _ in 0..7 {\n        let start = unsafe { clock_gettime_nsec_np(16) };\n        for _ in 0..1000000 { assert_eq!(read(), expected); }\n        println!(\"{}\", unsafe { clock_gettime_nsec_np(16) } - start);\n    }\n}\n"
+  },
+  "broader_comparison": {
+    "scope": "Serial ABBA fresh-process comparison; only Execution dylib differs. Each process runs three language probes (500 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+    "summary": {
+      "integer-loop": {
+        "baseline": {
+          "samples": [
+            70324000,
+            71511250,
+            74779458,
+            70194042,
+            72526166,
+            72496833
+          ],
+          "median_cpu_ns": 72004041.5
+        },
+        "candidate": {
+          "samples": [
+            69941792,
+            70569917,
+            70412667,
+            69373208,
+            76351750,
+            70380667
+          ],
+          "median_cpu_ns": 70396667.0
+        },
+        "cpu_change_percent": -2.2323392777890083
+      },
+      "range-loop": {
+        "baseline": {
+          "samples": [
+            108712000,
+            109086750,
+            109239250,
+            110804292,
+            112102125,
+            109946708
+          ],
+          "median_cpu_ns": 109592979.0
+        },
+        "candidate": {
+          "samples": [
+            108385917,
+            108704875,
+            107504042,
+            110230125,
+            108924500,
+            108042833
+          ],
+          "median_cpu_ns": 108545396.0
+        },
+        "cpu_change_percent": -0.9558851393208334
+      },
+      "method-loop": {
+        "baseline": {
+          "samples": [
+            70602042,
+            72074292,
+            73896250,
+            73870500,
+            72402709,
+            74260541
+          ],
+          "median_cpu_ns": 73136604.5
+        },
+        "candidate": {
+          "samples": [
+            71189375,
+            71822500,
+            71035208,
+            72716083,
+            72129458,
+            73819625
+          ],
+          "median_cpu_ns": 71975979.0
+        },
+        "cpu_change_percent": -1.5869283349078667
+      },
+      "logue-quiet-turn": {
+        "baseline": {
+          "samples": [
+            799096.3125,
+            711731.8125,
+            766932.25,
+            791242.1875,
+            779244.8125,
+            782955.75,
+            803304.6875,
+            773973.9375
+          ],
+          "median_cpu_ns": 781100.28125
+        },
+        "candidate": {
+          "samples": [
+            752567.6875,
+            792231.8125,
+            788177.0625,
+            763708.3125,
+            764265.625,
+            781309.875,
+            747242.1875,
+            785187.5
+          ],
+          "median_cpu_ns": 772787.75
+        },
+        "cpu_change_percent": -1.0642079448105468
+      }
+    },
+    "limits": "Small roughly 1-2% CPU reductions are not treated as a robust whole-language speedup. Main evidence is the targeted microbenchmark.",
+    "prefixes": {
+      "baseline": "/tmp/birnam-perf-20261029.WOMt1t/retirement-candidate",
+      "candidate": "/tmp/birnam-perf-20261029.WOMt1t/execution-index-candidate",
+      "files_checked": 783,
+      "changed": [
+        "lib/libbirnam_execution.dylib"
+      ],
+      "execution_sha256": {
+        "baseline": "8139c3af2c3f6aa1660d6a7d7cd36dbfc516414557183fd39312aac9683103ea",
+        "candidate": "7f2bd99476ed3b2301679e80ea3668a6dbcc07b96239c6114da8ea2cfc33113f"
+      }
+    },
+    "logue_oracle_passed": true
+  },
+  "validation": {
+    "unit_tests": 24,
+    "checks": [
+      "Existing address-index membership/growth/retirement/reuse tests.",
+      "Capture reader replacement, aliases, reentry and GC; unrelated services are not capture dependencies.",
+      "Code identity/count admission, native incoming signatures and conversion construction.",
+      "Oop core/compiler/GC suite, direct-dispatch negative contract, and pure native/resumable construction.",
+      "Workspace all-target all-feature check."
+    ],
+    "harness_correction": "The direct captureWordAt: control does not query admission metadata; the measured operation is captureWord:of:. Construction tests require the build-only Lang seed and passed in the core harness with the byte-identical candidate library; running one against the published prefix initially failed because that seed is intentionally absent."
+  },
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "4e22eceede40b62e202936401713af861b1a4d9ac9ed3018820e30814dae007c"
+  },
+  "evidence": {
+    ".cargo-target/execution-index-20261029/micro.json": "3f48f647686451ca418b30dab8b3d4fc94c8c56f9988c1f23eede7adb70705e2",
+    ".cargo-target/execution-index-20261029/comparison.json": "9fc5c1ab73cb9701338092917d29db67742f9a5f0b3e171191ef7e243465a5ab",
+    ".cargo-target/execution-index-20261029/unit.log": "b18ca5288bbcfbc67c9671d43f208ac99c2d9fac9a554a2fbef8fd6f9c5b204f",
+    ".cargo-target/execution-index-20261029/contracts.log": "fbc1eb9a4421eeaabbc6a23c270b80b40a309d9c6eddec2ebd33ec9cf9af0cc1",
+    ".cargo-target/execution-index-20261029/native-contracts.log": "4d9819186ac57026bafa7ff209cc66c1b6dc784ed68781ae39fa4be3b941364e",
+    ".cargo-target/execution-index-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/execution-index-20261029/check.log": "835d397fe82827eedccdf124e51e590679c38980ac106f4f544ef4f79e410187",
+    ".cargo-target/oop-slice/qualification/owned-code-construction.log": "bcb6ec42f5e5525c7d0f19a9bd1992ecebcbb1d13943d0e81ff566aae0d25948"
+  },
+  "limits": [
+    "Diagnostic local measurements, serial ABBA with two fresh processes per variant and seven million-call samples per process. No timing threshold.",
+    "Only Execution differs between benchmark prefixes; images and generated code are identical. The installed user runtime was not replaced.",
+    "The benchmark caller was temporary and removed; its source is embedded in this report."
+  ]
+}
