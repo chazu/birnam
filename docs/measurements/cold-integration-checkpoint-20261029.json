@@ -19,7 +19,9 @@
     "AlienCompiler reference, ABI and real adapter checks",
     "docgen diagnostic with corrected owners",
     "clean cold install and exact installed manifest",
-    "relocated archive smoke: signatures, exact layout, source, GC, image and compiled startup"
+    "relocated archive smoke: signatures, exact layout, source, GC, image and compiled startup",
+    "full installed Host generation group, including 62 compiled-unit policy checks",
+    "task images and owned task fields on the corrected cold runtime"
   ],
   "scope_notes": [
     "Workspace, core and formal commands ran from main at the runtime revision.",
@@ -66,7 +68,7 @@
   },
   "worker_deadline_seconds": 15,
   "remaining": [
-    "Complete all source-consistent native and Host acceptance",
+    "Complete remaining source-consistent native, interaction, image and CLI acceptance",
     "Resolve worker startup deadline failure; no deadline change authorized yet",
     "Final requirement-by-requirement audit"
   ],
@@ -103,5 +105,30 @@
     "verified_files": 792,
     "smoke_exit_code": 0,
     "smoke_seconds": 403.11545258411206
+  },
+  "host_generation": {
+    "group": "generation",
+    "revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "exit_code": 0,
+    "seconds": 2817.7482005408965,
+    "log": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/host-generation-completion.log",
+    "timings": "/Users/chazu/dev/zig/birnam/.cargo-target/oop-current-qualification/host-generation-completion.json"
+  },
+  "task_persistence": {
+    "revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-task-persistence-completion-0du6eblb/prefix",
+    "scope": "Task image and owned fields only; full concurrency acceptance remains pending",
+    "runs": [
+      {
+        "name": "task-image-test.py",
+        "exit_code": 0,
+        "seconds": 260.069268208
+      },
+      {
+        "name": "task-fields-test.py",
+        "exit_code": 0,
+        "seconds": 274.892487917
+      }
+    ]
   }
 }

@@ -25,7 +25,8 @@ to acquire a general metadata record or for Id to learn optimization policy.
 The corrected owners pass workspace/core checks and the previously failing
 AlienCompiler and documentation-generation diagnostics. A clean cold build and
 exact installed-file verification passed. Relocated archive checks also passed,
-including compiled startup. Full native and Host qualification remain incomplete.
+including compiled startup. The full Host generation group and task image/field
+checks passed. Remaining native and Host qualification is incomplete.
 Worker requests return correct data after
 startup, but Ready took 25–35 seconds in diagnostic runs against the unchanged
 15-second deadline. No deadline change is authorized yet.
