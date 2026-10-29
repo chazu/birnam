@@ -18,7 +18,8 @@
     "abstract TLA and Lean checks",
     "AlienCompiler reference, ABI and real adapter checks",
     "docgen diagnostic with corrected owners",
-    "clean cold install and exact installed manifest"
+    "clean cold install and exact installed manifest",
+    "relocated archive smoke: signatures, exact layout, source, GC, image and compiled startup"
   ],
   "scope_notes": [
     "Workspace, core and formal commands ran from main at the runtime revision.",
@@ -67,7 +68,6 @@
   "remaining": [
     "Complete all source-consistent native and Host acceptance",
     "Resolve worker startup deadline failure; no deadline change authorized yet",
-    "Complete relocated archive checks",
     "Final requirement-by-requirement audit"
   ],
   "logs": [
@@ -95,5 +95,13 @@
       "path": ".cargo-target/oop-current-qualification/completion-cold-install.log",
       "sha256": "134e6b32ff4844e9fb9c1769ebdbf2322093e7cf8f9e36ce4de80f6373b66c2d"
     }
-  ]
+  ],
+  "archive": {
+    "archive": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-completion-cold-uqqoromz/candidate.tar.gz",
+    "sha256": "5ae2aca7c0feab590ab5d62ff5ad1a51a71719ecc34a2374a0512f54af3b1f1c",
+    "cold_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "verified_files": 792,
+    "smoke_exit_code": 0,
+    "smoke_seconds": 403.11545258411206
+  }
 }
