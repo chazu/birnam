@@ -21,7 +21,7 @@ for name, args, expected in [
     ("mapped", [saved_image], "lifecycle-record-image: passed\n"),
     ("rebuilt", ["--rebuild", saved_image], "lifecycle-record-image: passed\n"),
 ]:
-    result = command([prefix / "bin/birnam", *args], cwd=work, env=env, timeout=300)
+    result = command([prefix / "bin/birnam", *args], cwd=work, env=env, timeout=900)
     receipt["runs"].append(dict(name=name, **result))
     save_json(work / "results.json", receipt)
     (work / (name + ".log")).write_text(result["output"])

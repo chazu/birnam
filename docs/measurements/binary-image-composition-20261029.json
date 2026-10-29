@@ -47,6 +47,11 @@
       "path": ".cargo-target/oop-current-qualification/binary-image-milestone/binary-format-workspace.log",
       "sha256": "f7c9fa7ed0cc0d4a8c74a5a3b4e42908c4a1f76a49cf1f9d1cac2f1a0e452ec8",
       "result": "passed"
+    },
+    "roundtrip": {
+      "path": ".cargo-target/oop-current-qualification/binary-image-milestone/optional-roundtrip.json",
+      "sha256": "1a00dca71fdcaf66134e806a71dc0fc1d84ba8ace8a2e2d201a35e6f1e845c65",
+      "result": "mapped and rebuilt load/resave passed; both exceed the old 300-second deadline"
     }
   },
   "cause": "Large binary sections repeatedly became Strings and complete intermediate payload builders before becoming Bytes again. The phase probe spent about 105 seconds composing a 78 MB native-code image before validation, versus 28 seconds in validation. Fixed-width signed arithmetic added smaller header costs.",
@@ -58,12 +63,13 @@
     "word_only_full_save": 169.010924,
     "binary_full_save": 95.586462,
     "optional_provider_save_source_startup": 243.682475709,
-    "optional_mapped_load_and_resave": 306.8401475
+    "optional_mapped_load_and_resave": 306.8401475,
+    "optional_rebuilt_load_and_resave": 321.507171917
   },
   "limitations": [
     "Timing probes are diagnostic, not a controlled whole-language performance qualification.",
     "The original save body was rerun with source startup so the new compiled format artifact was selected; installed startup images still need rebuilding.",
-    "Mapped load/resave passed but exceeded the old 300-second harness limit. Rebuilt roundtrip is still running.",
+    "Mapped load/resave passed but exceeded the old 300-second harness limit. Rebuilt load/resave also passed, in 322 seconds.",
     "The broader native batch and installed Host groups are from the prior format; several image deadlines failed. They do not qualify this change."
   ]
 }

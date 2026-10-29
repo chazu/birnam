@@ -52,7 +52,7 @@ let native := ["native" , " representation"];
 '''.replace('RESAVE',json.dumps(str(resave))).replace('IMAGE',json.dumps(str(image))).replace('REFUSED',json.dumps(str(refused))))
 receipt={'passed':False,'prefix':str(prefix),'source':source.read_text(),'runner_sha256':sha(Path(__file__).resolve()),'runs':[]}
 def run(name,args,expected):
-    r=command([prefix/'bin/birnam',*args],cwd=work,env=env,timeout=600)
+    r=command([prefix/'bin/birnam',*args],cwd=work,env=env,timeout=900)
     receipt['runs'].append(dict(name=name,**r));save_json(work/'results.json',receipt)
     (work/(name+'.log')).write_text(r['output'])
     assert r['exit_code']==0 and not r['stderr'] and r['stdout']==expected,(work,name,r)

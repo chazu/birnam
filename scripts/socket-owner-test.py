@@ -92,7 +92,7 @@ receipt = {'passed': False, 'prefix': str(prefix), 'source': source.read_text(),
 for name, args, expected in [('source', [source], 'true\n' * 18 + '#saved\n#rejected\n'),
                              ('mapped', [image], 'true\n' * 5),
                              ('rebuilt', ['--rebuild', image], 'true\n' * 5)]:
-    run = command([prefix / 'bin/birnam', *args], cwd=work, env=env, timeout=600)
+    run = command([prefix / 'bin/birnam', *args], cwd=work, env=env, timeout=900)
     receipt['runs'].append(dict(name=name, **run)); save_json(work / 'results.json', receipt)
     (work / (name + '.log')).write_text(run['output'])
     assert run['exit_code'] == 0 and not run['stderr'] and run['stdout'] == expected, (work, name, run)

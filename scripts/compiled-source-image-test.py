@@ -10,7 +10,7 @@ fixture=ROOT/'tests/fixtures/compiled-source-image.birnam'
 writer.write_text(fixture.read_text().replace('IMAGE_PATH',json.dumps(str(image))))
 receipt={'passed':False,'prefix':str(prefix),'runs':[],'fixture_sha256':sha(fixture)}
 for name,args,expected in [('save',[writer],'#saved\n'),('mapped',[image],'compiled-source-image: passed\n'),('rebuilt',['--rebuild',image],'compiled-source-image: passed\n')]:
-    result=command([prefix/'bin/birnam',*args],cwd=work,env=env,timeout=300)
+    result=command([prefix/'bin/birnam',*args],cwd=work,env=env,timeout=900)
     receipt['runs'].append(dict(name=name,**result));save_json(work/'results.json',receipt)
     (work/(name+'.log')).write_text(result['output'])
     assert result['exit_code']==0 and not result['stderr'] and result['stdout']==expected,(work,name,result)

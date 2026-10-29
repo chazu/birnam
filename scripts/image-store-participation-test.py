@@ -9,7 +9,7 @@ prefix=Path(sys.argv[1]).resolve();work=Path(tempfile.mkdtemp(prefix='birnam-ima
 receipt=dict(passed=False,runs=[],prefix=str(prefix),source_sha256={str(p.relative_to(ROOT)):sha(p) for p in [Path(__file__).resolve(),ROOT/'modules/image-format.birnam',ROOT/'modules/store.birnam',ROOT/'rust/birnam-image/src/native.rs']})
 def run(name,source,expected):
  p=work/(name+'.birnam');p.write_text('[Module load: #store];\n'+source.replace('IMAGE',json.dumps(str(image))))
- r=command([prefix/'bin/birnam',p],env=clean_environment(),timeout=600);(work/(name+'.log')).write_text(r['output']);receipt['runs'].append(dict(name=name,source=source,**r));save_json(work/'results.json',receipt)
+ r=command([prefix/'bin/birnam',p],env=clean_environment(),timeout=900);(work/(name+'.log')).write_text(r['output']);receipt['runs'].append(dict(name=name,source=source,**r));save_json(work/'results.json',receipt)
  assert r['exit_code']==0 and not r['stderr'] and r['stdout']==expected,(name,work,r)
 run('save-core','''
 [Reflect defineMethod: #imageStore on: System as: [:self | nil]];

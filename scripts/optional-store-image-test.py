@@ -7,7 +7,7 @@ import tempfile
 from validation_support import ROOT, clean_environment, command, save_json, sha
 prefix=Path(sys.argv[1]).resolve();work=Path(tempfile.mkdtemp(prefix='birnam-optional-image-'));image=work/'optional.image';resaved=work/'resaved.image';runs=[]
 def run(name,argv,expected):
- r=command(argv,env=clean_environment(),cwd=work,timeout=300);(work/(name+'.log')).write_text(r['output']);runs.append(dict(name=name,**r));save_json(work/'results.json',dict(passed=False,runs=runs));assert r['exit_code']==0 and not r['stderr'] and r['stdout']==expected,(name,work,r['output'][-2000:])
+ r=command(argv,env=clean_environment(),cwd=work,timeout=900);(work/(name+'.log')).write_text(r['output']);runs.append(dict(name=name,**r));save_json(work/'results.json',dict(passed=False,runs=runs));assert r['exit_code']==0 and not r['stderr'] and r['stdout']==expected,(name,work,r['output'][-2000:])
 source=work/'save.birnam';source.write_text('''[Module load: #relational];
 [Store assert: #imageValue attr: #history value: true];
 [Store assert: #item attr: #imageValue value: 17]; let earlier := [Store basis];

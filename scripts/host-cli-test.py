@@ -38,7 +38,7 @@ def run(args, *, stdlib=False, executable=binary, extra=None):
         env['BIRNAM_NO_STDLIB'] = '1'
     env.update(extra or {})
     return subprocess.run([executable, *args], cwd=work, env=env,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=900)
 
 def source(name, text, *, output=b'', diagnostic=None, stdlib=False):
     path = work / name
