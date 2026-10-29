@@ -584,7 +584,7 @@ unsafe fn acquire(
     unsafe { materialize_entry(s, entry, r, receiver, args).map(|v| (entry, v)) }
 }
 fn acquire_entry(s: &State, r: &Registered) -> Result<ResumableEntryCapability, Oop> {
-    let Some(StacklessTarget::Registered { entry }) =
+    let Some(entry) =
         checked(s.engine.borrow_mut().classify_resumable(r.key))?
     else {
         return Err(invalid());

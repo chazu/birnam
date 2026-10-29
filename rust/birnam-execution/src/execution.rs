@@ -3,10 +3,8 @@
 //! This module deliberately contains no dispatch or code-loader policy. It
 //! owns Machine capabilities, validated frame descriptors, and retained frame
 //! arenas. `resumable_runtime` connects these algorithms to Id-owned objects and messages.
-#![allow(dead_code)] // Preserve private recovery/optimizer consumers for batch 2.
 
 use birnam_artifact_codec::frame_descriptor as canonical_descriptor;
-use birnam_artifact_codec::materialization_selection::Row as PortableRow;
 use birnam_artifact_codec::stackless_selection::SelectionSpec;
 use core::marker::PhantomData;
 use std::rc::Rc;
@@ -23,14 +21,10 @@ pub(crate) mod boundary;
 #[cfg(test)]
 #[path = "execution/inline_recovery_experiment.rs"]
 mod inline_recovery_experiment;
-#[path = "execution/loop_iteration.rs"]
-pub(crate) mod loop_iteration;
 #[path = "execution/recovery.rs"]
 pub(crate) mod recovery;
 #[path = "execution/scheduling.rs"]
 mod scheduling;
-#[path = "execution/tail_entry.rs"]
-pub(crate) mod tail_entry;
 
 #[cfg(test)]
 #[path = "execution/probe_descriptor.rs"]
@@ -246,7 +240,6 @@ pub(crate) struct FrameDescriptor {
     max_edge_copy_count: usize,
     v2_entry_binding: Option<V2EntryBinding>,
     entry_capture_slots: Arc<[usize]>,
-    tail_entry_plan: std::sync::OnceLock<Option<Box<crate::entry_plan::Plan>>>,
     step_method: Method,
 }
 
@@ -261,7 +254,6 @@ pub(crate) struct V2EntryBinding {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DescriptorError {
     InvalidCanonicalDescriptor,
-    UnsupportedLayoutVersion,
     EmptyProgramCounterRange,
     InvalidDriverArgumentCount,
     ZeroArgumentDescriptorHasMultipleEntries,
@@ -282,7 +274,8 @@ pub(crate) enum DescriptorError {
 
 impl FrameDescriptor {
     /// A new binding owns its executable anchor and generation. Immutable
-    /// admitted tables are shared; derived entry plans belong to that binding.
+    /// admitted tables are shared. This helper constructs independent test bindings.
+    #[cfg(test)]
     pub(crate) fn for_binding(&self, generation: u64) -> Arc<Self> {
         Arc::new(Self {
             executable_owner: core::cell::Cell::new(core::ptr::null_mut()),
@@ -300,35 +293,9 @@ impl FrameDescriptor {
             max_edge_copy_count: self.max_edge_copy_count,
             v2_entry_binding: self.v2_entry_binding,
             entry_capture_slots: self.entry_capture_slots.clone(),
-            tail_entry_plan: std::sync::OnceLock::new(),
             step_method: self.step_method,
         })
     }
-    #[cfg(test)]
-    pub(crate) fn owned_byte_size(&self) -> usize {
-        core::mem::size_of::<Self>()
-            + core::mem::size_of_val(self.slot_kinds.as_ref())
-            + core::mem::size_of_val(self.call_sites.as_ref())
-            + core::mem::size_of_val(self.call_plans.as_ref())
-            + self.call_plans.iter().map(|p| core::mem::size_of_val(p.sources.as_ref()) + core::mem::size_of_val(p.copies.as_ref())).sum::<usize>()
-            + core::mem::size_of_val(self.root_bitmap_words.as_ref())
-            + core::mem::size_of_val(self.edges.as_ref())
-            + self
-                .edges
-                .iter()
-                .map(|edge| {
-                    core::mem::size_of_val(edge.copies.as_ref())
-                        + core::mem::size_of_val(edge.clear_bitmap_words.as_ref())
-                })
-                .sum::<usize>()
-            + core::mem::size_of_val(self.entry_capture_slots.as_ref())
-            + self
-                .tail_entry_plan
-                .get()
-                .and_then(Option::as_ref)
-                .map_or(0, |plan| plan.owned_bytes())
-    }
-
     /// Admit canonical descriptor-v2 bytes, copy only Runtime execution
     /// metadata into owned storage, and retain no artifact pointer.
     pub(crate) fn admit_v2(
@@ -387,18 +354,6 @@ impl FrameDescriptor {
         if !input.is_empty() { return Err(bad); }
         self.call_plans = plans.into();
         Ok(())
-    }
-
-    /// Admit the source-independent portable profile of descriptor-v2 bytes.
-    pub(crate) fn admit_portable_v2(
-        bytes: &[u8],
-        row: PortableRow<'_>,
-        code_generation_identity: u64,
-        step_method: Method,
-    ) -> Result<Arc<Self>, DescriptorError> {
-        let descriptor = canonical_descriptor::inspect_portable(bytes, row)
-            .map_err(|_| DescriptorError::InvalidCanonicalDescriptor)?;
-        Self::admit_canonical_v2(descriptor, code_generation_identity, step_method)
     }
 
     fn admit_canonical_v2(
@@ -692,7 +647,6 @@ impl FrameDescriptor {
                 implementation_slot: spec.implementation_slot,
             }),
             entry_capture_slots: spec.entry_capture_slots.into(),
-            tail_entry_plan: std::sync::OnceLock::new(),
             step_method: spec.step_method,
             executable_owner: core::cell::Cell::new(core::ptr::null_mut()),
         }))
@@ -937,13 +891,6 @@ pub(crate) struct ArenaDiagnostics {
     pub(crate) reserved_bytes: usize,
     pub(crate) current_synchronous_boundary_depth: usize,
     pub(crate) high_water_synchronous_boundary_depth: usize,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RuntimeExecutionDiagnostics {
-    pub(crate) live_machines: usize,
-    pub(crate) live_frames: usize,
-    pub(crate) reserved_arena_bytes: usize,
 }
 
 struct ArenaSlot {
@@ -1214,16 +1161,6 @@ impl FrameArena {
         handle: FrameHandle,
     ) -> Result<Option<ResumableEntryCapability>, FrameError> {
         Ok(self.require_live(handle)?.resumable_entry)
-    }
-
-    pub(crate) fn replace_current(
-        &mut self,
-        descriptor: Arc<FrameDescriptor>,
-        program_counter: usize,
-        nil: Oop,
-        initial_oops: &[(usize, Oop)],
-    ) -> Result<FrameHandle, FrameError> {
-        self.replace_current_with_entry(descriptor, program_counter, nil, initial_oops, None)
     }
 
     pub(crate) fn replace_current_with_entry(
@@ -1601,31 +1538,6 @@ impl FrameArena {
         Ok(self.require_live(handle)?.root_state_program_counter)
     }
 
-    /// Private no-callback kernel boundary. Validate the complete Frame shape
-    /// before handing the existing storage to an owned compiler-produced kernel.
-    pub(crate) fn with_native_words(
-        &mut self,
-        handle: FrameHandle,
-        descriptor_key: usize,
-        pc: usize,
-        slot_count: usize,
-        body: impl FnOnce(&mut [usize]),
-    ) -> Result<(), FrameError> {
-        let slot = self.require_live_mut(handle)?;
-        let descriptor = slot.descriptor.as_deref().ok_or(FrameError::StaleHandle)?;
-        if descriptor as *const FrameDescriptor as usize != descriptor_key
-            || slot.program_counter != pc
-            || slot.root_state_program_counter != pc
-            || slot.pending_edge.is_some()
-            || slot.words.len() != slot_count
-            || (0..slot_count).any(|i| descriptor.slot_kind(i) != Some(SlotKind::Oop))
-        {
-            return Err(FrameError::InvalidSlot);
-        }
-        body(&mut slot.words);
-        Ok(())
-    }
-
     pub(crate) fn read_oop(&self, handle: FrameHandle, index: usize) -> Result<Oop, FrameError> {
         let slot = self.require_live(handle)?;
         match slot
@@ -1813,20 +1725,13 @@ pub(crate) struct ResumableEntryCapability {
 #[derive(Clone, Debug)]
 pub(crate) struct RegistrationGenerationLease {
     generation_identity: u64,
-    token: Arc<()>,
 }
 
 impl RegistrationGenerationLease {
     pub(crate) fn new(generation_identity: u64) -> Self {
         Self {
             generation_identity,
-            token: Arc::new(()),
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn holder_count(&self) -> usize {
-        Arc::strong_count(&self.token)
     }
 }
 
@@ -1834,16 +1739,6 @@ impl RegistrationGenerationLease {
 pub(crate) struct GenerationLeaseCapability {
     index: usize,
     generation: u64,
-}
-
-impl GenerationLeaseCapability {
-    pub(crate) fn into_raw_parts(self) -> (usize, u64) {
-        (self.index, self.generation)
-    }
-
-    pub(crate) fn from_raw_parts(index: usize, generation: u64) -> Self {
-        Self { index, generation }
-    }
 }
 
 pub(crate) struct SemanticRegistrationV1 {
@@ -1886,21 +1781,8 @@ impl SemanticRegistrationV1 {
         }
     }
 
-    pub(crate) fn with_generation_lease(
-        mut self,
-        generation_lease: RegistrationGenerationLease,
-    ) -> Self {
-        self.generation_lease = generation_lease;
-        self
-    }
-
     pub(crate) fn with_implementation_anchor(mut self, implementation: Oop) -> Self {
         self.implementation_anchor = Some(implementation);
-        self
-    }
-
-    pub(crate) fn with_receiver_capture_offset_words(mut self, offset: usize) -> Self {
-        self.receiver_capture_offset_words = offset;
         self
     }
 }
@@ -1928,9 +1810,7 @@ pub(crate) enum MachineError {
     DriveEpochExhausted,
     RegistryGenerationExhausted,
     MachineNotSuspended,
-    ContinuationConsumed,
     ContinuationBarrier,
-    ContinuationWrongMachine,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1940,7 +1820,6 @@ pub(crate) enum ExecutionError {
     InvalidAction,
     StaleAction,
     ActionWrongMachine,
-    MissingImplementation,
     Registration(RegistrationError),
     MachineNotSuspended,
     ContinuationConsumed,
@@ -1956,7 +1835,6 @@ pub(crate) enum DriverFailureKind {
     StaleStepAction,
     StepActionWrongMachine,
     InvalidFrameSlot,
-    MissingImplementation,
     CodeGenerationUnavailable,
     ResumableEntryUnregistered,
     ResumableEntryRetired,
@@ -1965,7 +1843,6 @@ pub(crate) enum DriverFailureKind {
     ContinuationConsumed,
     ContinuationBarrier,
     ContinuationWrongMachine,
-    ContinuationNotImageable,
 }
 
 impl DriverFailureKind {
@@ -1977,7 +1854,6 @@ impl DriverFailureKind {
             Self::StaleStepAction => "staleStepAction",
             Self::StepActionWrongMachine => "stepActionWrongMachine",
             Self::InvalidFrameSlot => "invalidFrameSlot",
-            Self::MissingImplementation => "missingImplementation",
             Self::CodeGenerationUnavailable => "codeGenerationUnavailable",
             Self::ResumableEntryUnregistered => "resumableEntryUnregistered",
             Self::ResumableEntryRetired => "resumableEntryRetired",
@@ -1986,7 +1862,6 @@ impl DriverFailureKind {
             Self::ContinuationConsumed => "continuationConsumed",
             Self::ContinuationBarrier => "continuationBarrier",
             Self::ContinuationWrongMachine => "continuationWrongMachine",
-            Self::ContinuationNotImageable => "continuationNotImageable",
         }
     }
 }
@@ -2006,14 +1881,13 @@ impl ExecutionError {
             Self::Machine(MachineError::MachineNotSuspended) | Self::MachineNotSuspended => {
                 DriverFailureKind::MachineNotSuspended
             }
-            Self::Machine(MachineError::ContinuationConsumed) | Self::ContinuationConsumed => {
+            Self::ContinuationConsumed => {
                 DriverFailureKind::ContinuationConsumed
             }
             Self::Machine(MachineError::ContinuationBarrier) | Self::ContinuationBarrier => {
                 DriverFailureKind::ContinuationBarrier
             }
-            Self::Machine(MachineError::ContinuationWrongMachine)
-            | Self::ContinuationWrongMachine => DriverFailureKind::ContinuationWrongMachine,
+            Self::ContinuationWrongMachine => DriverFailureKind::ContinuationWrongMachine,
             Self::Frame(FrameError::InvalidSlot) => DriverFailureKind::InvalidFrameSlot,
             Self::Frame(
                 FrameError::StaleHandle
@@ -2024,7 +1898,6 @@ impl ExecutionError {
             | Self::InvalidAction => DriverFailureKind::InvalidStepAction,
             Self::StaleAction => DriverFailureKind::StaleStepAction,
             Self::ActionWrongMachine => DriverFailureKind::StepActionWrongMachine,
-            Self::MissingImplementation => DriverFailureKind::MissingImplementation,
             Self::Registration(RegistrationError::EntryRetired) => {
                 DriverFailureKind::ResumableEntryRetired
             }
@@ -2111,20 +1984,6 @@ pub(crate) enum DecodedAction {
         delimiter: Option<DelimiterHandle>,
         reason_slot: usize,
     },
-}
-
-pub(crate) enum StacklessTarget {
-    Registered {
-        entry: ResumableEntryCapability,
-    },
-    Resumable {
-        descriptor: Arc<FrameDescriptor>,
-        initial_oops: Vec<(usize, Oop)>,
-        entry: Option<ResumableEntryCapability>,
-    },
-    Synchronous(Method),
-    NativeFailure(Oop),
-    Unbound,
 }
 
 pub(crate) struct MaterializedEntry {
@@ -2223,6 +2082,7 @@ impl MachineState {
                 .all(|index| self.delimiters[*index].kind != DelimiterKind::EntryBarrier)
     }
 
+    #[cfg(test)]
     pub(crate) fn drive_epoch(&self) -> u64 {
         self.drive_epoch
     }
@@ -2233,26 +2093,6 @@ impl MachineState {
 
     pub(crate) fn arena_mut(&mut self) -> &mut FrameArena {
         &mut self.arena
-    }
-
-    #[cfg(test)]
-    pub(crate) fn scratch_actions(&self) -> (Oop, Oop, Oop, Oop) {
-        (
-            self.continue_action,
-            self.call_action,
-            self.tail_call_action,
-            self.return_action,
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn s3_scratch_actions(&self) -> [Oop; 4] {
-        [
-            self.suspend_action,
-            self.capture_action,
-            self.restore_action,
-            self.abort_action,
-        ]
     }
 
     pub(crate) fn begin_initial_drive(&mut self, owner: u64) -> Result<u64, MachineError> {
@@ -2316,6 +2156,7 @@ impl MachineState {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn enter_synchronous_boundary(&mut self, owner: u64) -> Result<(), MachineError> {
         self.require_driving(owner)?;
         let diagnostics = self
@@ -2330,6 +2171,7 @@ impl MachineState {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn leave_synchronous_boundary(&mut self, owner: u64) -> Result<(), MachineError> {
         self.require_driving(owner)?;
         let diagnostics = self
@@ -2595,7 +2437,6 @@ struct MachineSlot {
 }
 
 struct ContinuationState {
-    owner: u64,
     machine: MachineCapability,
     delimiter: DelimiterHandle,
     boundary_depth: usize,
@@ -2633,28 +2474,18 @@ struct ResumableEntry {
     receiver_capture_offset_words: usize,
     code_generation_identity: u64,
     lifecycle: ResumableEntryLifecycle,
-    binding_references: usize,
     active_frame_pins: usize,
     continuation_frame_pins: usize,
     acquired_entries: usize,
     explicit_generation_leases: usize,
     registration_generation_lease: Option<RegistrationGenerationLease>,
-    unpublish_after_collection: bool,
 }
 
 impl ResumableEntry {
     fn finish_retirement(&mut self) {
-        if self.unpublish_after_collection {
-            // A collected Block vtable can be reconstructed by another live
-            // factory in this admitted generation. It has no current dispatch
-            // authority until an actual new binding publishes it again.
-            debug_assert!(self.implementation_anchor.is_none());
-            self.lifecycle = ResumableEntryLifecycle::Unpublished;
-        } else {
-            self.lifecycle = ResumableEntryLifecycle::Retired;
-            self.registration_generation_lease = None;
-            self.implementation_anchor = None;
-        }
+        self.lifecycle = ResumableEntryLifecycle::Retired;
+        self.registration_generation_lease = None;
+        self.implementation_anchor = None;
     }
 }
 
@@ -2666,12 +2497,12 @@ enum ResumableEntryLifecycle {
     Retired,
 }
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct RegistrationDiagnostics {
     pub(crate) registered_entries: usize,
     pub(crate) live_entries: usize,
     pub(crate) retired_entries: usize,
-    pub(crate) direct_binding_references: usize,
     pub(crate) active_frame_pins: usize,
     pub(crate) continuation_frame_pins: usize,
     pub(crate) acquired_entries: usize,
@@ -2708,7 +2539,6 @@ pub(crate) struct ExecutionState {
     free_generation_lease_slots: Vec<usize>,
     managed_turn_depth: usize,
     objects: Option<ExecutionObjects>,
-    scoped_host_roots: Vec<Oop>,
     _owner_thread_only: PhantomData<Rc<()>>,
 }
 
@@ -2772,11 +2602,11 @@ impl ExecutionState {
             free_generation_lease_slots: Vec::new(),
             managed_turn_depth: 0,
             objects: None,
-            scoped_host_roots: Vec::new(),
             _owner_thread_only: PhantomData,
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn create_machine(&mut self, owner: u64) -> Result<MachineCapability, MachineError> {
         self.create_machine_with_objects(
             owner,
@@ -2873,57 +2703,14 @@ impl ExecutionState {
             receiver_capture_offset_words: carrier.receiver_capture_offset_words,
             code_generation_identity: carrier.code_generation_identity,
             lifecycle: ResumableEntryLifecycle::Unpublished,
-            binding_references: 0,
             active_frame_pins: 0,
             continuation_frame_pins: 0,
             acquired_entries: 0,
             explicit_generation_leases: 0,
             registration_generation_lease: Some(carrier.generation_lease),
-            unpublish_after_collection: false,
         });
         self.resumable_by_thunk.insert(thunk_key, capability);
         Ok(capability)
-    }
-
-    pub(crate) fn unregister_unpublished_resumable(
-        &mut self,
-        owner: u64,
-        capability: ResumableEntryCapability,
-    ) -> Result<(), RegistrationError> {
-        self.require_owner(owner)
-            .map_err(|_| RegistrationError::StaleCapability)?;
-        let slot = self
-            .resumable_entries
-            .get_mut(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let next_generation = slot
-            .generation
-            .checked_add(1)
-            .ok_or(RegistrationError::GenerationExhausted)?;
-        let entry = slot
-            .entry
-            .as_ref()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if entry.lifecycle != ResumableEntryLifecycle::Unpublished
-            || entry.binding_references != 0
-            || entry.active_frame_pins != 0
-            || entry.continuation_frame_pins != 0
-            || entry.acquired_entries != 0
-            || entry.explicit_generation_leases != 0
-        {
-            return Err(RegistrationError::EntryRetired);
-        }
-        let entry = slot
-            .entry
-            .take()
-            .expect("validated unpublished entry remains installed");
-        self.resumable_by_thunk.remove(&entry.thunk.key());
-        slot.generation = next_generation;
-        self.free_resumable_entry_slots.push(capability.index);
-        Ok(())
     }
 
     /// Remove every quiescent entry owned by one code generation. This is the
@@ -2956,8 +2743,7 @@ impl ExecutionState {
                 .entry
                 .as_ref()
                 .ok_or(RegistrationError::StaleCapability)?;
-            if entry.binding_references != 0
-                || entry.active_frame_pins != 0
+            if entry.active_frame_pins != 0
                 || entry.continuation_frame_pins != 0
                 || entry.acquired_entries != 0
                 || entry.explicit_generation_leases != 0
@@ -2983,16 +2769,10 @@ impl ExecutionState {
         Ok(true)
     }
 
-    /// Non-effectful guard query. Presence includes unpublished and retiring
-    /// entries: their normal classification may fail or require a lease.
-    pub(crate) fn has_resumable_thunk(&self, method: MethodAddress) -> bool {
-        self.resumable_by_thunk.contains_key(&method.key())
-    }
-
     pub(crate) fn classify_resumable(
         &mut self,
         method: MethodAddress,
-    ) -> Result<Option<StacklessTarget>, RegistrationError> {
+    ) -> Result<Option<ResumableEntryCapability>, RegistrationError> {
         let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(None);
         };
@@ -3034,7 +2814,7 @@ impl ExecutionState {
             entry.code_generation_identity,
             entry.descriptor.identity().generation
         );
-        Ok(Some(StacklessTarget::Registered { entry: capability }))
+        Ok(Some(capability))
     }
 
     pub(crate) fn materialize_acquired_entry(
@@ -3088,6 +2868,7 @@ impl ExecutionState {
 
     /// Inspect immutable metadata under an existing acquisition. The caller
     /// must retain that acquisition while using the descriptor for execution.
+    #[cfg(test)]
     pub(crate) fn acquired_entry_descriptor(
         &self,
         capability: ResumableEntryCapability,
@@ -3392,200 +3173,6 @@ impl ExecutionState {
         Ok(())
     }
 
-    pub(crate) fn note_direct_binding_added(
-        &mut self,
-        method: MethodAddress,
-    ) -> Result<(), RegistrationError> {
-        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
-            return Ok(());
-        };
-        let slot = self
-            .resumable_entries
-            .get_mut(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let entry = slot
-            .entry
-            .as_mut()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if entry.lifecycle == ResumableEntryLifecycle::Retired {
-            return Err(RegistrationError::EntryRetired);
-        }
-        entry.binding_references = entry
-            .binding_references
-            .checked_add(1)
-            .ok_or(RegistrationError::BindingReferenceOverflow)?;
-        entry.lifecycle = ResumableEntryLifecycle::Live;
-        entry.unpublish_after_collection = false;
-        Ok(())
-    }
-
-    pub(crate) fn note_direct_binding_removed(
-        &mut self,
-        method: MethodAddress,
-    ) -> Result<(), RegistrationError> {
-        self.remove_direct_binding(method, false)
-    }
-
-    /// The Runtime has identified a collected vtable's method as a BlockBody
-    /// in an admitted manifest. This is not explicit MOP method removal.
-    pub(crate) fn note_collected_block_binding_removed(
-        &mut self,
-        method: MethodAddress,
-    ) -> Result<(), RegistrationError> {
-        self.remove_direct_binding(method, true)
-    }
-
-    fn remove_direct_binding(
-        &mut self,
-        method: MethodAddress,
-        collected_block: bool,
-    ) -> Result<(), RegistrationError> {
-        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
-            return Ok(());
-        };
-        let slot = self
-            .resumable_entries
-            .get_mut(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let entry = slot
-            .entry
-            .as_mut()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if collected_block && entry.implementation_anchor.is_some() {
-            return Err(RegistrationError::InvalidDescriptor);
-        }
-        entry.binding_references = entry
-            .binding_references
-            .checked_sub(1)
-            .ok_or(RegistrationError::EntryUnpublished)?;
-        if entry.binding_references == 0 {
-            entry.unpublish_after_collection = collected_block;
-            if entry.acquired_entries != 0
-                || entry.active_frame_pins != 0
-                || entry.continuation_frame_pins != 0
-                || entry.explicit_generation_leases != 0
-                || self.managed_turn_depth != 0
-            {
-                entry.lifecycle = ResumableEntryLifecycle::Retiring;
-            } else {
-                entry.finish_retirement();
-            }
-        }
-        Ok(())
-    }
-
-    /// Remove one direct binding inside a staged unit transaction without
-    /// retiring the referenced entry. The transaction will either restore the
-    /// binding or explicitly settle retirement after commit.
-    pub(crate) fn note_staged_direct_binding_removed(
-        &mut self,
-        method: MethodAddress,
-    ) -> Result<(), RegistrationError> {
-        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
-            return Ok(());
-        };
-        let slot = self
-            .resumable_entries
-            .get_mut(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let entry = slot
-            .entry
-            .as_mut()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if matches!(
-            entry.lifecycle,
-            ResumableEntryLifecycle::Retiring | ResumableEntryLifecycle::Retired
-        ) {
-            return Err(RegistrationError::EntryRetired);
-        }
-        entry.binding_references = entry
-            .binding_references
-            .checked_sub(1)
-            .ok_or(RegistrationError::EntryUnpublished)?;
-        Ok(())
-    }
-
-    /// Restore a staged unit's own zero-binding entry to its pre-publication
-    /// state so rollback can unregister it, or commit can retain it as an
-    /// eagerly registered but not-yet-instantiated block entry.
-    pub(crate) fn settle_staged_registration(
-        &mut self,
-        capability: ResumableEntryCapability,
-    ) -> Result<(), RegistrationError> {
-        let slot = self
-            .resumable_entries
-            .get_mut(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let entry = slot
-            .entry
-            .as_mut()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if entry.binding_references == 0 {
-            if entry.active_frame_pins != 0
-                || entry.continuation_frame_pins != 0
-                || entry.acquired_entries != 0
-                || entry.explicit_generation_leases != 0
-            {
-                return Err(RegistrationError::EntryRetired);
-            }
-            entry.lifecycle = ResumableEntryLifecycle::Unpublished;
-        } else {
-            entry.lifecycle = ResumableEntryLifecycle::Live;
-        }
-        Ok(())
-    }
-
-    /// Complete retirement deferred while a staged transaction could still
-    /// restore the previous binding.
-    pub(crate) fn commit_staged_binding_removal(
-        &mut self,
-        method: MethodAddress,
-    ) -> Result<(), RegistrationError> {
-        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
-            return Ok(());
-        };
-        let slot = self
-            .resumable_entries
-            .get_mut(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let entry = slot
-            .entry
-            .as_mut()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if entry.binding_references != 0 {
-            return Ok(());
-        }
-        entry.unpublish_after_collection = false;
-        entry.lifecycle = if entry.acquired_entries != 0
-            || entry.active_frame_pins != 0
-            || entry.continuation_frame_pins != 0
-            || entry.explicit_generation_leases != 0
-            || self.managed_turn_depth != 0
-        {
-            ResumableEntryLifecycle::Retiring
-        } else {
-            entry.registration_generation_lease = None;
-            entry.implementation_anchor = None;
-            ResumableEntryLifecycle::Retired
-        };
-        Ok(())
-    }
-
     pub(crate) fn begin_managed_turn(&mut self) -> Result<(), RegistrationError> {
         self.managed_turn_depth = self
             .managed_turn_depth
@@ -3605,7 +3192,7 @@ impl ExecutionState {
                     continue;
                 };
                 if entry.lifecycle == ResumableEntryLifecycle::Retiring
-                    && entry.binding_references == 0
+
                     && entry.acquired_entries == 0
                     && entry.active_frame_pins == 0
                     && entry.continuation_frame_pins == 0
@@ -3632,7 +3219,7 @@ impl ExecutionState {
             return;
         };
         if entry.lifecycle == ResumableEntryLifecycle::Retiring
-            && entry.binding_references == 0
+
             && entry.acquired_entries == 0
             && entry.active_frame_pins == 0
             && entry.continuation_frame_pins == 0
@@ -3642,15 +3229,13 @@ impl ExecutionState {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn registration_diagnostics(&self) -> RegistrationDiagnostics {
         self.resumable_entries
             .iter()
             .filter_map(|slot| slot.entry.as_ref())
             .fold(RegistrationDiagnostics::default(), |mut total, entry| {
                 total.registered_entries = total.registered_entries.saturating_add(1);
-                total.direct_binding_references = total
-                    .direct_binding_references
-                    .saturating_add(entry.binding_references);
                 total.active_frame_pins = total
                     .active_frame_pins
                     .saturating_add(entry.active_frame_pins);
@@ -3680,75 +3265,6 @@ impl ExecutionState {
                 }
                 total
             })
-    }
-
-    pub(crate) fn push_scoped_host_root(&mut self, machine: Oop) {
-        self.scoped_host_roots.push(machine);
-    }
-
-    pub(crate) fn pop_scoped_host_root(&mut self, machine: Oop) {
-        let popped = self
-            .scoped_host_roots
-            .pop()
-            .expect("stackless drive root stack underflow");
-        assert_eq!(popped, machine, "stackless drive roots must unwind LIFO");
-    }
-
-    pub(crate) fn trace_scoped_host_roots(&self, mut mark: impl FnMut(Oop)) {
-        for root in &self.scoped_host_roots {
-            mark(*root);
-        }
-    }
-
-    pub(crate) fn can_suppress_registration_roots(&self, code_generation_identity: u64) -> bool {
-        if code_generation_identity == 0 || self.managed_turn_depth != 0 {
-            return false;
-        }
-        let mut found = false;
-        for entry in self
-            .resumable_entries
-            .iter()
-            .filter_map(|slot| slot.entry.as_ref())
-            .filter(|entry| entry.code_generation_identity == code_generation_identity)
-        {
-            found = true;
-            if entry.active_frame_pins != 0
-                || entry.continuation_frame_pins != 0
-                || entry.acquired_entries != 0
-                || entry.explicit_generation_leases != 0
-            {
-                return false;
-            }
-        }
-        found
-    }
-
-    pub(crate) fn managed_turn_depth(&self) -> usize {
-        self.managed_turn_depth
-    }
-
-    pub(crate) fn has_managed_turn(&self) -> bool {
-        self.managed_turn_depth != 0
-    }
-
-    pub(crate) fn has_code_generation(&self, code_generation_identity: u64) -> bool {
-        self.resumable_entries.iter().any(|slot| {
-            slot.entry
-                .as_ref()
-                .is_some_and(|entry| entry.code_generation_identity == code_generation_identity)
-        })
-    }
-
-    pub(crate) fn registration_roots_excluding_generation(
-        &self,
-        code_generation_identity: Option<u64>,
-    ) -> Vec<Oop> {
-        self.resumable_entries
-            .iter()
-            .filter_map(|slot| slot.entry.as_ref())
-            .filter(|entry| Some(entry.code_generation_identity) != code_generation_identity)
-            .filter_map(|entry| entry.implementation_anchor)
-            .collect()
     }
 
     pub(crate) fn create_machine_with_objects(
@@ -3922,7 +3438,6 @@ impl ExecutionState {
             generation: slot.generation,
         };
         slot.state = Some(ContinuationState {
-            owner,
             machine,
             delimiter,
             boundary_depth,
@@ -4265,24 +3780,6 @@ impl ExecutionState {
         Ok(diagnostics)
     }
 
-    pub(crate) fn runtime_diagnostics(&self) -> RuntimeExecutionDiagnostics {
-        self.machines
-            .iter()
-            .filter_map(|slot| slot.state.as_ref())
-            .fold(
-                RuntimeExecutionDiagnostics::default(),
-                |mut total, machine| {
-                    let arena = machine.arena.diagnostics();
-                    total.live_machines = total.live_machines.saturating_add(1);
-                    total.live_frames = total.live_frames.saturating_add(arena.live_frames);
-                    total.reserved_arena_bytes = total
-                        .reserved_arena_bytes
-                        .saturating_add(arena.reserved_bytes);
-                    total
-                },
-            )
-    }
-
     pub(crate) fn write_current_oop(
         &mut self,
         owner: u64,
@@ -4536,91 +4033,6 @@ impl ExecutionState {
             ],
         )?;
         Ok(machine.capture_action)
-    }
-
-    pub(crate) fn publish_restore(
-        &mut self,
-        heap: &mut Heap,
-        owner: u64,
-        capability: MachineCapability,
-        continuation_slot: usize,
-        supplied_value_slot: usize,
-    ) -> Result<Oop, ExecutionError> {
-        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
-        let machine = self.machine_mut(owner, capability)?;
-        machine.require_driving(owner)?;
-        let frame = machine
-            .arena
-            .current_handle()
-            .ok_or(FrameError::StaleHandle)?;
-        let _ = machine.arena.read_oop(frame, continuation_slot)?;
-        let _ = machine.arena.read_oop(frame, supplied_value_slot)?;
-        let generation = usize::try_from(capability.generation)
-            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
-        let drive_epoch =
-            usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
-        initialize_action(
-            heap,
-            machine.restore_action,
-            objects.restore_action_vtable,
-            &[
-                1,
-                capability.index,
-                generation,
-                drive_epoch,
-                continuation_slot,
-                supplied_value_slot,
-            ],
-        )?;
-        Ok(machine.restore_action)
-    }
-
-    pub(crate) fn publish_abort(
-        &mut self,
-        heap: &mut Heap,
-        owner: u64,
-        capability: MachineCapability,
-        delimiter: Option<DelimiterHandle>,
-        reason_slot: usize,
-    ) -> Result<Oop, ExecutionError> {
-        let objects = self.objects.ok_or(ExecutionError::InvalidAction)?;
-        let machine = self.machine_mut(owner, capability)?;
-        machine.require_driving(owner)?;
-        let frame = machine
-            .arena
-            .current_handle()
-            .ok_or(FrameError::StaleHandle)?;
-        let _ = machine.arena.read_oop(frame, reason_slot)?;
-        if let Some(delimiter) = delimiter {
-            let _ = machine.validate_delimiter(delimiter)?;
-        }
-        let generation = usize::try_from(capability.generation)
-            .map_err(|_| MachineError::RegistryGenerationExhausted)?;
-        let drive_epoch =
-            usize::try_from(machine.drive_epoch).map_err(|_| MachineError::DriveEpochExhausted)?;
-        let (delimiter_index, delimiter_generation) = match delimiter {
-            Some(delimiter) => (
-                delimiter.index,
-                usize::try_from(delimiter.generation)
-                    .map_err(|_| MachineError::RegistryGenerationExhausted)?,
-            ),
-            None => (usize::MAX, 0),
-        };
-        initialize_action(
-            heap,
-            machine.abort_action,
-            objects.abort_action_vtable,
-            &[
-                1,
-                capability.index,
-                generation,
-                drive_epoch,
-                delimiter_index,
-                delimiter_generation,
-                reason_slot,
-            ],
-        )?;
-        Ok(machine.abort_action)
     }
 
     pub(crate) fn apply_suspend(
@@ -4954,89 +4366,6 @@ impl ExecutionState {
         }
     }
 
-    pub(crate) fn action_kind(&self, heap: &Heap, action: Oop) -> Option<Oop> {
-        let objects = self.objects?;
-        match heap.vtable_of(action)? {
-            vtable if vtable == objects.continue_action_vtable => Some(objects.continue_kind),
-            vtable if vtable == objects.call_action_vtable => Some(objects.call_kind),
-            vtable if vtable == objects.tail_call_action_vtable => Some(objects.tail_call_kind),
-            vtable if vtable == objects.return_action_vtable => Some(objects.return_kind),
-            vtable if vtable == objects.suspend_action_vtable => Some(objects.suspend_kind),
-            vtable if vtable == objects.capture_action_vtable => Some(objects.capture_kind),
-            vtable if vtable == objects.restore_action_vtable => Some(objects.restore_kind),
-            vtable if vtable == objects.abort_action_vtable => Some(objects.abort_kind),
-            vtable if vtable == objects.boundary_call_action_vtable => {
-                Some(objects.boundary_call_kind)
-            }
-            vtable if vtable == objects.exit_boundary_action_vtable => {
-                Some(objects.exit_boundary_kind)
-            }
-            _ => None,
-        }
-    }
-
-    /// Test-floor snapshot of the original eight action buffers. Only Machine
-    /// identity is normalized, after validating the published owner fields.
-    #[cfg(test)]
-    pub(crate) fn snapshot_action_words(
-        &self,
-        heap: &Heap,
-        owner: u64,
-        capability: MachineCapability,
-    ) -> Vec<Vec<usize>> {
-        let machine = self.machine(owner, capability).unwrap();
-        let objects = self.objects.unwrap();
-        [
-            (machine.continue_action, objects.continue_action_vtable, 4),
-            (machine.call_action, objects.call_action_vtable, 9),
-            (machine.tail_call_action, objects.tail_call_action_vtable, 8),
-            (machine.return_action, objects.return_action_vtable, 5),
-            (machine.suspend_action, objects.suspend_action_vtable, 7),
-            (machine.capture_action, objects.capture_action_vtable, 7),
-            (machine.restore_action, objects.restore_action_vtable, 6),
-            (machine.abort_action, objects.abort_action_vtable, 7),
-        ]
-        .into_iter()
-        .map(|(action, vtable, count)| {
-            assert_eq!(heap.vtable_of(action), Some(vtable));
-            assert_eq!(heap.payload_size(action), Some(count * size_of::<usize>()));
-            let mut words: Vec<_> = (0..count)
-                .map(|index| self.action_word(heap, action, index).unwrap())
-                .collect();
-            if words[0] == 1 {
-                assert_eq!(words[1], capability.index);
-                assert_eq!(words[2], capability.generation as usize);
-                words[1] = 0;
-                words[2] = 0;
-            }
-            words
-        })
-        .collect()
-    }
-
-    pub(crate) fn action_word(&self, heap: &Heap, action: Oop, index: usize) -> Option<usize> {
-        let objects = self.objects?;
-        let expected_words = match heap.vtable_of(action)? {
-            vtable if vtable == objects.continue_action_vtable => 4,
-            vtable if vtable == objects.call_action_vtable => 9,
-            vtable if vtable == objects.tail_call_action_vtable => 8,
-            vtable if vtable == objects.return_action_vtable => 5,
-            vtable if vtable == objects.suspend_action_vtable => 7,
-            vtable if vtable == objects.capture_action_vtable => 7,
-            vtable if vtable == objects.restore_action_vtable => 6,
-            vtable if vtable == objects.abort_action_vtable => 7,
-            vtable if vtable == objects.boundary_call_action_vtable => 9,
-            vtable if vtable == objects.exit_boundary_action_vtable => 5,
-            _ => return None,
-        };
-        if heap.payload_size(action)? != expected_words * size_of::<usize>()
-            || index >= expected_words
-        {
-            return None;
-        }
-        heap.read_payload_word(action, index)
-    }
-
     pub(crate) fn current_frame_view_handle(
         &self,
         owner: u64,
@@ -5362,8 +4691,6 @@ mod tests {
             descriptor.executable_owner.set(core::ptr::without_provenance_mut(11));
             rebound.executable_owner.set(core::ptr::without_provenance_mut(12));
             assert_eq!(descriptor.executable_owner.get(), core::ptr::without_provenance_mut(11));
-            assert!(descriptor.tail_entry_plan.set(None).is_ok());
-            assert!(rebound.tail_entry_plan.get().is_none(), "derived entry state remains binding-local");
 
 
             let authority = SelectionSpec { source_revision, root_kind: RootKind::MethodOperation,
@@ -5721,10 +5048,10 @@ mod tests {
         let owner = 71;
         let mut engine = ExecutionState::new(owner);
         let callee = descriptor(vec![SlotKind::Oop], 1);
-        engine.register_resumable(owner, SemanticRegistrationV1::new(INERT_THUNK, callee, 0, 0, 1)).unwrap();
+        let capability = engine.register_resumable(owner, SemanticRegistrationV1::new(INERT_THUNK, callee, 0, 0, 1)).unwrap();
         let method = INERT_THUNK;
-        engine.note_direct_binding_added(method).unwrap();
-        let Some(StacklessTarget::Registered { entry }) = engine.classify_resumable(method).unwrap() else { panic!("registered") };
+        engine.publish_owned(capability).unwrap();
+        let Some(entry) = engine.classify_resumable(method).unwrap() else { panic!("registered") };
         let caller_descriptor = descriptor_v2(4, vec![7, 8], vec![CallSiteDescriptor {
             kind: CallSiteKind::Call, receiver_slot: 0, selector_slot: 1,
             argument_start: 2, argument_count: 1, result_slot: Some(3), continuation_pc: Some(1),
@@ -5833,15 +5160,11 @@ mod tests {
             registrations.push((thunk, cap, lease));
         }
         assert_eq!(
-            engine.registration_diagnostics().direct_binding_references,
-            0
-        );
-        assert_eq!(
             engine.registration_diagnostics().explicit_generation_leases,
             2
         );
         for (thunk, cap, _) in &registrations {
-            let Some(StacklessTarget::Registered { entry }) = engine
+            let Some(entry) = engine
                 .classify_resumable(*thunk)
                 .unwrap()
             else {
@@ -5865,6 +5188,52 @@ mod tests {
     }
 
     #[test]
+    fn owned_retirement_waits_for_every_kind_of_holder() {
+        for holder in 0..6 {
+            let mut engine = ExecutionState::new(1);
+            let capability = engine.register_resumable(
+                1,
+                SemanticRegistrationV1::new(INERT_THUNK, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1),
+            ).unwrap();
+            assert!(matches!(engine.classify_resumable(INERT_THUNK), Err(RegistrationError::EntryUnpublished)));
+            let owner_lease = engine.publish_owned(capability).unwrap();
+            let mut extra_lease = None;
+            match holder {
+                1 => engine.begin_managed_turn().unwrap(),
+                2 | 4 | 5 => {
+                    assert!(engine.classify_resumable(INERT_THUNK).unwrap().is_some());
+                    if holder >= 4 {
+                        engine.transfer_acquired_entry_to_frame(capability).unwrap();
+                    }
+                    if holder == 5 {
+                        engine.transfer_frame_pin_to_continuation(capability).unwrap();
+                    }
+                }
+                3 => extra_lease = Some(engine.acquire_explicit_generation_lease(INERT_THUNK).unwrap()),
+                _ => (),
+            }
+            engine.retire_owned(capability, owner_lease).unwrap();
+            // Retirement is terminal: publishing a different Method cannot
+            // revive the old registration. Existing holders still protect it.
+            assert_eq!(engine.publish_owned(capability), Err(RegistrationError::EntryRetired));
+            if holder != 0 {
+                assert!(!engine.unregister_code_generation(7).unwrap());
+            }
+            match holder {
+                1 => engine.end_managed_turn().unwrap(),
+                2 => engine.release_acquired_entry(capability).unwrap(),
+                3 => engine.release_explicit_generation_lease(extra_lease.unwrap()).unwrap(),
+                4 => engine.release_entry_frame_pin(capability).unwrap(),
+                5 => engine.release_entry_continuation_pin(capability).unwrap(),
+                _ => (),
+            }
+            assert!(matches!(engine.classify_resumable(INERT_THUNK), Err(RegistrationError::EntryRetired)));
+            assert!(engine.unregister_code_generation(7).unwrap());
+            assert!(engine.classify_resumable(INERT_THUNK).unwrap().is_none());
+        }
+    }
+
+    #[test]
     fn acquired_descriptor_matches_materialization_and_requires_a_live_acquisition() {
         let owner = 74;
         let mut execution = ExecutionState::new(owner);
@@ -5880,8 +5249,8 @@ mod tests {
             Err(RegistrationError::StaleCapability)
         ));
         let method = INERT_THUNK;
-        execution.note_direct_binding_added(method).unwrap();
-        let Some(StacklessTarget::Registered { entry }) =
+        let lease = execution.publish_owned(capability).unwrap();
+        let Some(entry) =
             execution.classify_resumable(method).unwrap()
         else {
             panic!("published entry must acquire");
@@ -5902,7 +5271,7 @@ mod tests {
             }),
             Err(RegistrationError::StaleCapability)
         ));
-        execution.note_direct_binding_removed(method).unwrap();
+        execution.retire_owned(capability, lease).unwrap();
         assert!(Arc::ptr_eq(
             &admitted,
             &execution.acquired_entry_descriptor(entry).unwrap()
@@ -5917,144 +5286,6 @@ mod tests {
             Err(RegistrationError::StaleCapability)
         ));
         assert_eq!(execution.registration_diagnostics().acquired_entries, 0);
-    }
-
-    #[test]
-    fn collected_block_bindings_republish_only_after_holders_release() {
-        for holder in 0..6 {
-            let owner = 74;
-            let mut execution = ExecutionState::new(owner);
-            let descriptor = descriptor(vec![SlotKind::Oop], 1);
-            let generation = descriptor.identity().generation;
-            let capability = execution
-                .register_resumable(
-                    owner,
-                    SemanticRegistrationV1::new(INERT_THUNK, descriptor, 0, 0, 1),
-                )
-                .unwrap();
-            let method = INERT_THUNK;
-            execution.note_direct_binding_added(method).unwrap();
-            let mut lease = None;
-            match holder {
-                1 => execution.begin_managed_turn().unwrap(),
-                2 | 4 | 5 => {
-                    assert!(matches!(
-                        execution.classify_resumable(method),
-                        Ok(Some(StacklessTarget::Registered { .. }))
-                    ));
-                    if holder >= 4 {
-                        execution
-                            .transfer_acquired_entry_to_frame(capability)
-                            .unwrap();
-                    }
-                    if holder == 5 {
-                        execution
-                            .transfer_frame_pin_to_continuation(capability)
-                            .unwrap();
-                    }
-                }
-                3 => lease = Some(execution.acquire_explicit_generation_lease(method).unwrap()),
-                _ => (),
-            }
-            execution
-                .note_collected_block_binding_removed(method)
-                .unwrap();
-            if holder != 0 {
-                assert!(!execution.unregister_code_generation(generation).unwrap());
-            }
-            match holder {
-                1 => execution.end_managed_turn().unwrap(),
-                2 => execution.release_acquired_entry(capability).unwrap(),
-                3 => execution
-                    .release_explicit_generation_lease(lease.unwrap())
-                    .unwrap(),
-                4 => execution.release_entry_frame_pin(capability).unwrap(),
-                5 => execution
-                    .release_entry_continuation_pin(capability)
-                    .unwrap(),
-                _ => (),
-            }
-            assert!(matches!(
-                execution.classify_resumable(method),
-                Err(RegistrationError::EntryUnpublished)
-            ));
-            assert_eq!(execution.registration_diagnostics().retired_entries, 0);
-            execution.note_direct_binding_added(method).unwrap();
-            assert!(matches!(
-                execution.classify_resumable(method),
-                Ok(Some(StacklessTarget::Registered { .. }))
-            ));
-            execution.release_acquired_entry(capability).unwrap();
-            // A subsequent explicit method removal remains terminal. A prior
-            // collection must not leave permission to revive a removed method.
-            execution.note_direct_binding_removed(method).unwrap();
-            assert!(matches!(
-                execution.classify_resumable(method),
-                Err(RegistrationError::EntryRetired)
-            ));
-            assert_eq!(
-                execution.note_direct_binding_added(method),
-                Err(RegistrationError::EntryRetired)
-            );
-            assert!(execution.unregister_code_generation(generation).unwrap());
-            assert!(!execution.has_resumable_thunk(method));
-        }
-    }
-
-    #[test]
-    fn collected_unpublished_block_generation_can_retire_without_republication() {
-        let owner = 74;
-        let mut execution = ExecutionState::new(owner);
-        let descriptor = descriptor(vec![SlotKind::Oop], 1);
-        let generation = descriptor.identity().generation;
-        execution
-            .register_resumable(
-                owner,
-                SemanticRegistrationV1::new(INERT_THUNK, descriptor, 0, 0, 1),
-            )
-            .unwrap();
-        let method = INERT_THUNK;
-        execution.note_direct_binding_added(method).unwrap();
-        execution
-            .note_collected_block_binding_removed(method)
-            .unwrap();
-        assert!(execution.unregister_code_generation(generation).unwrap());
-        assert!(!execution.has_code_generation(generation));
-    }
-
-    #[test]
-    fn rollback_binding_revives_a_generation_lease_pinned_retiring_entry() {
-        let owner = 73;
-        let mut execution = ExecutionState::new(owner);
-        let carrier =
-            SemanticRegistrationV1::new(INERT_THUNK, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1);
-        execution
-            .register_resumable(owner, carrier)
-            .expect("registration");
-        let method = INERT_THUNK;
-        execution
-            .note_direct_binding_added(method)
-            .expect("initial publication");
-        let lease = execution
-            .acquire_explicit_generation_lease(method)
-            .expect("rollback generation lease");
-        execution
-            .note_staged_direct_binding_removed(method)
-            .expect("candidate overwrite");
-        execution
-            .commit_staged_binding_removal(method)
-            .expect("committed overwrite");
-
-        execution
-            .note_direct_binding_added(method)
-            .expect("rollback restores the pinned predecessor binding");
-        assert!(matches!(
-            execution.classify_resumable(method),
-            Ok(Some(StacklessTarget::Registered { .. }))
-        ));
-        execution
-            .release_explicit_generation_lease(lease)
-            .expect("restored live binding outlives the rollback lease");
     }
 
     #[test]

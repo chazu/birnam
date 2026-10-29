@@ -44,32 +44,3 @@ pub(crate) fn probe_continue(source: usize, target: usize, slots: usize) -> Fram
         clear_bitmap_words: vec![0; slots.div_ceil(64)],
     }
 }
-
-pub(crate) fn probe_call(
-    source: usize,
-    target: usize,
-    site: usize,
-    result: usize,
-    slots: usize,
-) -> FrameEdgeSpec {
-    FrameEdgeSpec {
-        kind: EdgeTransitionKind::Call,
-        call_site_index: Some(site),
-        result_slot: Some(result),
-        ..probe_continue(source, target, slots)
-    }
-}
-
-/// A hand-written control operation has the same result-bearing edge as a
-/// compiled Call. It yields that invocation instead of executing its receiver.
-pub(crate) fn probe_control(result: usize, target: usize) -> CallSiteDescriptor {
-    CallSiteDescriptor {
-        kind: CallSiteKind::Call,
-        receiver_slot: result,
-        selector_slot: result,
-        argument_start: 0,
-        argument_count: 0,
-        result_slot: Some(result),
-        continuation_pc: Some(target),
-    }
-}

@@ -2,28 +2,6 @@
 use super::*;
 
 impl FrameArena {
-    pub(crate) fn recovery_experiment_logical_frames(&self) -> Vec<String> {
-        self.stack
-            .iter()
-            .map(|index| {
-                let slot = &self.slots[*index];
-                format!(
-                    "{:?}",
-                    (
-                        slot.descriptor.as_ref().map(Arc::as_ptr),
-                        slot.program_counter,
-                        slot.root_state_program_counter,
-                        slot.pending_edge,
-                        slot.return_destination,
-                        slot.resumable_entry,
-                        &slot.words,
-                        &slot.transfer_scratch,
-                    )
-                )
-            })
-            .collect()
-    }
-
     /// Complete logical arena state for atomic-rejection assertions, including
     /// pending edges, roots, ownership and scratch contents; excludes capacity.
     pub(crate) fn recovery_experiment_snapshot(&self) -> String {
