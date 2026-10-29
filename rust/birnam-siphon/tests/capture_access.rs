@@ -105,7 +105,19 @@ fn capture_reads_observe_current_methods_and_preserve_live_values() {
         }
         assert_eq!(call(target, b"captureWordAt:", &[size(2).unwrap()]), nil);
         assert_eq!(call(target, b"value", &[]), a);
+        let cloned = call(target, b"clone", &[]);
+        assert_ne!(cloned, target);
+        call(gc, b"collectPrecisely", &[]);
+        for (index, value) in expected.into_iter().enumerate() {
+            assert_eq!(call(cloned, b"captureWordAt:", &[size(index).unwrap()]), value);
+        }
+        assert_eq!(call(cloned, b"value", &[]), a);
     }
+    let clone_method = call(vt, b"lookup", &[key(b"clone")]);
+    let no_args = call(host.id.root, b"sequence", &[]);
+    let foreign = q.string(b"foreign storage").unwrap();
+    assert!(host.send(clone_method, b"invokeOn:arguments:", &[foreign, no_args]).is_err(),
+            "a capture snapshot must validate Execution ownership before reading storage");
     assert_eq!(call(block, b"captureWordAt:", &[q.word(1).unwrap()]), b);
     assert_eq!(call(block, b"captureWordAt:", &[std::ptr::null_mut()]), nil);
     let body = call(block, b"methodFor:", &[key(b"value")]);

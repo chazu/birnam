@@ -1,0 +1,259 @@
+{
+  "baseline_revision": "97b081d4",
+  "change": "Copy the validated Execution-owned Block extent into its field snapshot without repeating the same storage lookup for each word.",
+  "contract": {
+    "before": "Validate the owned payload size, then look up the same storage record again for each word while constructing a fallible Vec snapshot.",
+    "after": "Validate the same owned payload size under the same storage borrow, copy that bounded word region into an owned Vec, and return the snapshot before any callback.",
+    "preserved": [
+      "Exact current Execution ownership and minimum extent are checked before reading. Foreign storage remains rejected.",
+      "Each word is converted to an Oop using the same exposed-provenance conversion. No foreign payload access or Id changes.",
+      "The returned snapshot has the same order, aliases and values, and remains rooted by the same callers before callbacks.",
+      "Block cloning, image-shell state, reference visitor order and stackless/continuation behavior are unchanged."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing clone on admitted synchronous Blocks with 0, 1, 8 and 64 captures. 4096 clones/sample, seven samples/process, serial ABBA. Check final clone identity, every capture and executed result. Explicit GC and validation outside timing. Automatic GC disabled only for bounded timed work; production policy unchanged.",
+    "summary": {
+      "0": {
+        "median_cpu_ns_per_call": {
+          "baseline": 462.3006591796875,
+          "candidate": 391.5302734375
+        },
+        "change_percent": -15.308303013835934
+      },
+      "1": {
+        "median_cpu_ns_per_call": {
+          "baseline": 456.619140625,
+          "candidate": 428.4974365234375
+        },
+        "change_percent": -6.158678338159618
+      },
+      "8": {
+        "median_cpu_ns_per_call": {
+          "baseline": 547.44970703125,
+          "candidate": 407.8319091796875
+        },
+        "change_percent": -25.503310360451557
+      },
+      "64": {
+        "median_cpu_ns_per_call": {
+          "baseline": 873.392822265625,
+          "candidate": 624.0743408203125
+        },
+        "change_percent": -28.545973253886814
+      }
+    },
+    "library_sha256": {
+      "baseline": "52d935d1996f4bad5f10125a119a23cd23eeabb26437ca613961c5d17902a2b1",
+      "candidate": "e115898101326be6218367d2e5f9f6fd5aecf6db375eaadddaec791a5b83a8d3"
+    },
+    "source": "//! Disposable benchmark of cloning admitted synchronous Blocks.\n#[path = \"../tests/support/oop.rs\"] mod oop;\nuse birnam_abi::size;\nuse birnam_artifact_codec::portable_program::{encode,NodeSpec,ProgramSpec,StatementSpec};\nunsafe extern \"C\" {fn clock_gettime_nsec_np(clock:u32)->u64;}\nfn main(){\n let h=oop::bootstrap();let q=h.scope();let gc=h.named(b\"GC\").unwrap();let nil=h.named(b\"nil\").unwrap();\n let clone=q.keep(h.intern(b\"clone\").unwrap()).unwrap();\n q.call(gc,b\"automaticCollection:\",&[size(0).unwrap()]).unwrap();\n for count in [0,1,8,64] {\n  let names:Vec<_>=(0..count).map(|i|format!(\"c{i}\")).collect();let captures:Vec<_>=names.iter().map(|s|s.as_bytes()).collect();\n  let nodes=[if count==0 {NodeSpec::Nil}else{NodeSpec::LexicalRead(0)}];\n  let encoded=encode(ProgramSpec{parameters:&[],captures:&captures,lets:&[],statements:&[StatementSpec::Expression{root_node:0}],nodes:&nodes}).unwrap();\n  let bytes=q.call(h.named(b\"Bytes\").unwrap(),b\"fromBytes:\",&[q.byte_values(&encoded).unwrap()]).unwrap();\n  let code=q.call(h.named(b\"CodeObject\").unwrap(),b\"fromCanonicalBytes:\",&[bytes]).unwrap();\n  let values:Vec<_>=(0..count).map(|i|q.word(i+99).unwrap()).collect();\n  let mut vector=q.call(h.named(b\"Vector\").unwrap(),b\"new\",&[]).unwrap();\n  for &v in &values {vector=q.call(vector,b\"add:\",&[v]).unwrap();}\n  let block=q.call(h.named(b\"Codegen\").unwrap(),b\"materializeSynchronous:captures:\",&[code,vector]).unwrap();\n  let calls=4096;\n  for sample in 0..7 {\n   q.call(gc,b\"collectPrecisely\",&[]).unwrap();let mut last=nil;\n   let start=unsafe{clock_gettime_nsec_np(16)};\n   for _ in 0..calls {last=unsafe{h.id.send(block,clone,&[]).unwrap()};}\n   let elapsed=unsafe{clock_gettime_nsec_np(16)}-start;\n   q.keep(last).unwrap();assert_ne!(last,block);\n   for (i,&v) in values.iter().enumerate(){assert_eq!(q.call(last,b\"captureWordAt:\",&[size(i).unwrap()]).unwrap(),v);}\n   assert_eq!(q.call(last,b\"value\",&[]).unwrap(),values.first().copied().unwrap_or(nil));\n   println!(\"{count} {sample} {calls} {elapsed}\");\n  }\n }\n}\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_capture_count_per_variant": 14
+  },
+  "full_collection": {
+    "scope": "Full precise collection after 1000 Integer/Range iterations; automatic GC disabled only while producing garbage, same policy in both lanes. Twelve collection timings per variant, four fresh processes, ABBA then BAAB. Successful nonempty collections checked.",
+    "summary": {
+      "integer-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 278479667.0,
+          "candidate": 275648750.0
+        },
+        "change_percent": -1.0165614712545623
+      },
+      "range-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 351857291.5,
+          "candidate": 353732625.0
+        },
+        "change_percent": 0.5329812811339707
+      }
+    },
+    "library_sha256": {
+      "baseline": "52d935d1996f4bad5f10125a119a23cd23eeabb26437ca613961c5d17902a2b1",
+      "candidate": "e115898101326be6218367d2e5f9f6fd5aecf6db375eaadddaec791a5b83a8d3"
+    },
+    "source": "[System preciseGc: true];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System println: \"CASE integer-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System println: \"CASE range-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline",
+      "candidate",
+      "baseline",
+      "baseline",
+      "candidate"
+    ],
+    "process_median_cpu_ns": [
+      {
+        "lane": "baseline",
+        "integer-loop": 281604042,
+        "range-loop": 345102000
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 277590292,
+        "range-loop": 353875542
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 273019792,
+        "range-loop": 355296916
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 276375458,
+        "range-loop": 350399500
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 273448000,
+        "range-loop": 349092709
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 279103125,
+        "range-loop": 375012833
+      },
+      {
+        "lane": "baseline",
+        "integer-loop": 281242333,
+        "range-loop": 353337583
+      },
+      {
+        "lane": "candidate",
+        "integer-loop": 276160209,
+        "range-loop": 374661250
+      }
+    ]
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/allocation-header-candidate",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/block-fields-candidate",
+    "files_checked": 783,
+    "differences": [
+      "lib/libbirnam_execution.dylib"
+    ],
+    "library_sha256": {
+      "baseline": "52d935d1996f4bad5f10125a119a23cd23eeabb26437ca613961c5d17902a2b1",
+      "candidate": "e115898101326be6218367d2e5f9f6fd5aecf6db375eaadddaec791a5b83a8d3"
+    }
+  },
+  "validation": [
+    "capture_access, closure_construction and continuation_transparency passed against the candidate, including aliases, image shells, collection and suspension.",
+    "Expanded capture_access also passed against the baseline: cloned captures retain values/aliases through GC and execution; a captured clone Method rejects foreign storage.",
+    "Full Oop core checks passed: owner unit tests, direct-dispatch and construction contracts, compiler/GC smoke, native caller, cross-thread rejection and finalizer containment."
+  ],
+  "contract_review": "The existing storage record supplies the same word count used by each former read_payload_word call. With that record borrowed and no callbacks during the copy, those repeated membership and bounds checks could not return different results. Alignment, initialized words and storage lifetime have the same owner-side justification as the previous per-word reads. No borrow or raw view escapes this function.",
+  "rejected_startup_experiment": {
+    "scope": "Compared repeated push with a pre-sized destination filled through iter_mut. Both versions send the same sizeWord and atWord: messages and validate bytes in order. Same-process alternating AB/BA, eight samples per provider/length/variant; output checked against the source bytes. GC outside timing.",
+    "reason": "No meaningful improvement for large startup-like byte transfers. Avoid the additional zero-initialization without a demonstrated benefit.",
+    "provider_summaries": {
+      "sequence": {
+        "0": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 28.3604,
+            "candidate": 27.68745
+          },
+          "change_percent": -2.372850876574384
+        },
+        "16": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 433.02295000000004,
+            "candidate": 438.05835
+          },
+          "change_percent": 1.1628482970706289
+        },
+        "1024": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 25047.36328125,
+            "candidate": 24786.62109375
+          },
+          "change_percent": -1.0409965495058238
+        },
+        "65536": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 1585698.0,
+            "candidate": 1592614.5
+          },
+          "change_percent": 0.4361801553637523
+        },
+        "1048576": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 24572609.375,
+            "candidate": 24568307.375
+          },
+          "change_percent": -0.017507298204877397
+        }
+      },
+      "bytes": {
+        "0": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 45.4479,
+            "candidate": 45.84585
+          },
+          "change_percent": 0.8756180153538518
+        },
+        "16": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 795.68335,
+            "candidate": 783.7125
+          },
+          "change_percent": -1.504474110209797
+        },
+        "1024": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 43570.63671875,
+            "candidate": 41839.84375
+          },
+          "change_percent": -3.972383924344114
+        },
+        "65536": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 2723546.875,
+            "candidate": 2706239.5
+          },
+          "change_percent": -0.6354718972846785
+        },
+        "1048576": {
+          "median_cpu_ns_per_transfer": {
+            "baseline": 42301817.625,
+            "candidate": 42412343.625
+          },
+          "change_percent": 0.2612795529965073
+        }
+      }
+    },
+    "evidence": {
+      ".cargo-target/byte-read-fill-20261029/sequence-micro.txt": "765b9a5cffe98e66e3b54ecd55d90177b6a4f7df3a4767b6a832c5fd498dfa60",
+      ".cargo-target/byte-read-fill-20261029/bytes-micro.txt": "3e4c6ee2cb7f82b95627f333852755418892959e5d41ffd73dbccf4cee30798f",
+      ".cargo-target/byte-read-fill-20261029/sequence-bench.rs": "ae711e53815124c070e0fe6f9f460ff640a4c167c8d35330efb8206be324c182",
+      ".cargo-target/byte-read-fill-20261029/byte_read_bench.rs": "7d2b01f5afbd98267ce8c9e155e5f24a983bb75b81fb601d1c6771077d26426e"
+    }
+  },
+  "limits": [
+    "Cloning uses 6-29% less CPU in the tested 0/1/8/64-capture cases. Full-collection differences (-1.02% Integer, +0.53% Range) are small relative to process variation; no general GC or startup speedup is claimed.",
+    "Only libbirnam_execution.dylib differs across 783 prefix files. Controlled substitution, not a freshly installed release. User installation unchanged.",
+    "Automatic GC is disabled only for bounded clone microbenchmark work, with explicit collections between samples. Production GC policy is unchanged."
+  ],
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "fbaece62fa1730c721308c18c9b3ae0f276693f70cf3c0c665affd410c7e1206",
+    "rust/birnam-siphon/tests/capture_access.rs": "010910340e9ee84fe477f6f22b90431be19938f71aa84799f3390a2677814c79"
+  },
+  "evidence": {
+    ".cargo-target/block-fields-20261029/micro.json": "1096fc59bfe3fc9def7bb32368a81ec8360159b224658ef6431f253fc30f3a60",
+    ".cargo-target/block-fields-20261029/micro.py": "bc76d2187470db4e47eb2f0768bad7483fce33d63dff72a25186c5212e1876f4",
+    ".cargo-target/block-fields-20261029/gc-comparison.json": "fdd7022682cace7c2fab74e60af2b1412059e0b78823ca59cf076b807fd1682e",
+    ".cargo-target/block-fields-20261029/gc-comparison.py": "f5332829ce2cd86d356c7b93ca345f97a100b20c80d7303e8c7d665576124c95",
+    ".cargo-target/block-fields-20261029/gc-extend.py": "4379297165b6b52d46af9a00ce89f87d97a900574f34a2a0cbb086e2c9a41eb4",
+    ".cargo-target/block-fields-20261029/contracts.log": "8765b65ddf711c2f6a29d6b6ab6786f01a3bea6a96bb5725b5082595dec80baa",
+    ".cargo-target/block-fields-20261029/baseline-contracts.log": "966745d23d41be10daa89ef6cffe43a9916e5d9eee94043e28aa9623a0caa0be",
+    ".cargo-target/block-fields-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+  }
+}

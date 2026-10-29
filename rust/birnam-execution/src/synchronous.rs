@@ -158,14 +158,12 @@ impl State {
         if bytes < size_of::<Oop>() {
             return Err(invalid());
         }
-        (0..bytes / size_of::<Oop>())
-            .map(|i| {
-                storage
-                    .read_payload_word(block, i)
-                    .map(ptr::with_exposed_provenance_mut)
-                    .ok_or_else(invalid)
-            })
-            .collect()
+        // Execution owns this recorded extent. No callback can retire or
+        // mutate its storage while this snapshot is copied.
+        let words = unsafe {
+            core::slice::from_raw_parts(block.cast::<usize>(), bytes / size_of::<Oop>())
+        };
+        Ok(words.iter().copied().map(ptr::with_exposed_provenance_mut).collect())
     }
     unsafe fn make_block(&self, behavior: Oop, values: &[Oop]) -> Result<Oop, Oop> {
         unsafe {
