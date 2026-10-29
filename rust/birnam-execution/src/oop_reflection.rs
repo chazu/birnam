@@ -337,24 +337,6 @@ unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) ->
         if let Some(v) = captures {
             q.keep(v);
         }
-        let factory = q.keep(s.named(b"CodeObject")?);
-        let count = q.keep(s.send(factory, b"captureCountOf:", &[code])?);
-        let count = resumable::index(s, count)?;
-        if count > 1_048_576 {
-            return Err(invalid());
-        }
-        let admitted = q.keep(s.send(method, b"codeObject", &[])?);
-        if admitted != s.nil {
-            let actual_count = q.keep(s.send(factory, b"captureCountOf:", &[admitted])?);
-            let actual_arity = q.keep(s.send(factory, b"parameterCountOf:", &[admitted])?);
-            let arity = q.keep(s.send(factory, b"parameterCountOf:", &[code])?);
-            if resumable::index(s, actual_count)? != count
-                || resumable::index(s, actual_arity)? != resumable::index(s, arity)?
-            {
-                return Err(invalid());
-            }
-        }
-
         let owned = if let Some(owned) = resumable::with_source(s, method, code, &q)? {
             q.keep(owned)
         } else if let Some(owned) = native_code::with_source(s, method, code, &q)? {
@@ -364,6 +346,12 @@ unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) ->
             // native code with a portable program. Only its code owner can do so.
             return Err(invalid());
         };
+        // The provider validated this program and owns its checked layout.
+        // Re-querying source getters creates a second admission authority.
+        let count = s.admitted.borrow().get(&owned.addr()).ok_or_else(invalid)?.captures;
+        if count > 1_048_576 {
+            return Err(invalid());
+        }
         let mut values = vec![owned];
         if let Some(captures) = captures {
             if abi::as_size(s.send(captures, b"sizeWord", &[])?) != Some(count) {

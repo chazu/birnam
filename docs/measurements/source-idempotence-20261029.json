@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-29",
+  "base_revision": "2bd1522f",
+  "contract": "Reuse provider-checked code shape; exact source association is idempotent; distinct source still requires program equivalence",
+  "new_mechanisms": [],
+  "removed": [
+    "duplicate generic shape admission",
+    "canonical comparison and executable construction for an unchanged source association"
+  ],
+  "regression_before": "fromMethod:codeObject:captures: invokes a forbidden shape getter and fails",
+  "focused_tests": {
+    "production_prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-source-idempotence-u1cut7s8/prefix",
+    "passed": [
+      "closure_admission",
+      "closure_construction",
+      "direct_method_construction",
+      "direct_definition_lifecycle",
+      "materialization_errors",
+      "native_conversion_construction",
+      "portable_code"
+    ],
+    "instrumented_prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-source-idempotence-metrics-87hap22q/prefix",
+    "instrumentation": "TCC resource-metrics",
+    "instrumented_passed": [
+      "materialization"
+    ],
+    "initial_materialization_refusal": "Production TCC has no resource-metrics; rerun in a fresh instrumented prefix",
+    "test_contract_update": "Native Block capture storage does not require portable code metadata; prototype remains without capture storage"
+  },
+  "worker": {
+    "seconds": 26.214923333999998,
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-source-idempotence-u1cut7s8/prefix",
+    "image": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1h6gzw3t/optional.image"
+  },
+  "worker_qualified": false,
+  "worker_deadline_seconds": 15,
+  "qualification": "Incomplete; full native and Host runs still use the earlier cold revision",
+  "samples": [
+    "/tmp/birnam-capture-worker.sample",
+    "/tmp/birnam-worker-bootstrap.sample"
+  ],
+  "logs": [
+    {
+      "path": ".cargo-target/oop-current-qualification/source-idempotence-before.log",
+      "sha256": "7310bd946434e0c0c48c226f9803b7cc996d0007d24a1ec21dabd5ed0ebe4860"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/source-idempotence-after.log",
+      "sha256": "451fba7173de131879e8154ee1a83f298db7935c3c95d4a86137f46f5a6df45e"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/source-idempotence-materialization.log",
+      "sha256": "c561b1fb76cceddc6d7ccb7a2d3f2f9c2794d2db77256b1c0c4e7fc3e62595da"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/image-phase-final.stderr",
+      "sha256": "452031be94d216482ddf4eb757f8b3136fa279b7f92e8efbb686095e1341d658"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/bootstrap-sample-worker.log",
+      "sha256": "e15a8f2c330665e3d3233dcb920d058972c2cdfdaf2a44751586a4023c755aad"
+    }
+  ]
+}

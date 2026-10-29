@@ -20,6 +20,47 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: idempotent source association (2026-10-29)
+
+Reconstruction still violated the documented same-object admission rule:
+`fromMethod:codeObject:captures:` queried the source's shape again even when the
+provider had already admitted that exact CodeObject. Its generic preflight also
+repeated checks before the provider's own program-equivalence check.
+
+```text
+before: source shape queries -> reflected source -> more shape queries
+        -> provider program comparison -> fresh executable -> Block
+now:    provider validates association -> existing checked shape -> Block
+```
+
+For the same CodeObject, each provider reuses its existing checked executable.
+For a different CodeObject, canonical program equality remains required before a
+fresh executable is associated with that source. The provider's existing checked
+layout determines the capture count; this adds no registry, message or allocation
+mechanism. Bare native Methods still cannot be paired with unrelated portable code.
+Construction does not edit bindings, and entered/captured Methods are not rewritten.
+
+The regression forbids shape and canonical-byte queries after admission and then
+constructs additional Blocks with the same source in both execution modes. It
+failed before the fix. Different programs and capture layouts still reject. Eight
+focused targets pass, including materialization identity, code lifetime, image
+shells, capture restoration, native conversion and stackless execution. The
+materialization lifetime test uses a separate prefix with TCC resource metrics;
+production-prefix checks are recorded separately.
+
+An older materialization assertion required `captureCount` to return nil for an
+owned native Block without source. It now checks the capture-access contract above:
+source remains nil, while owned captures have a count and remain readable across GC.
+The Block prototype still has no capture storage.
+
+Worker readiness remains unqualified (26.2 seconds against the retained 15-second
+deadline). Phase probes locate about 6.5 seconds in bootstrap, 7 seconds in image
+inspection, 6.5 seconds in heap reconstruction, and the remaining time in staging,
+binding inspection and publication. These are diagnostic single-run observations.
+Bootstrap sampling also exposes file-sized Sequences of byte Oops during file
+reads, including their collection cost. No phase-probe instrumentation remains in
+production code. [Evidence](../measurements/source-idempotence-20261029.json).
+
 ## Implementation checkpoint: capture access without source metadata (2026-10-29)
 
 A worker failed the unchanged 15-second Ready deadline. A direct channel probe

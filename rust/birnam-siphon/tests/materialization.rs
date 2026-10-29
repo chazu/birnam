@@ -239,7 +239,7 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
     };
     let nil = h.named(b"nil");
     let codegen = h.named(b"Codegen");
-    // Historical PortableCode inspection declines Blocks without canonical code.
+    // Portable source and owned capture storage are independent.
     let plain_method = h.hooks.method(b"fixed", nil);
     let plain_block = h.call(
         h.named(b"Block"),
@@ -248,9 +248,19 @@ fn portable_materialization_preserves_identity_control_and_lifetime() {
     );
     for plain in [h.named(b"Block"), plain_block] {
         assert_eq!(h.call(plain, b"codeObject", &[]), nil);
-        assert_eq!(h.call(plain, b"captureCount", &[]), nil);
         assert_eq!(h.call(plain, b"captureAt:", &[h.int(0)]), nil);
     }
+    assert_eq!(h.call(h.named(b"Block"), b"captureCount", &[]), nil);
+    assert_eq!(h.number(h.call(plain_block, b"captureCount", &[])), 0);
+    let marker = h.call(h.named(b"Object"), b"clone", &[]);
+    let native_captures = h.call(
+        h.named(b"Block"), b"fromMethod:captures:",
+        &[plain_method, h.vector(&[marker])],
+    );
+    h.collect();
+    assert_eq!(h.call(native_captures, b"codeObject", &[]), nil);
+    assert_eq!(h.number(h.call(native_captures, b"captureCount", &[])), 1);
+    assert_eq!(h.call(native_captures, b"captureAt:", &[h.int(0)]), marker);
     let code_factory = h.named(b"CodeObject");
     let fixture = include_bytes!("../../../tests/fixtures/portable-code-v1/program-send.bin");
     let code = h.admit(fixture);

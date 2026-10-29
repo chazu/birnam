@@ -423,6 +423,9 @@ pub(super) unsafe fn with_source(
             return Err(invalid());
         }
         let original = record.code_object.ok_or_else(invalid)?;
+        if original == code {
+            return Ok(Some(record.method));
+        }
         let factory = q.keep(s.named(b"CodeObject")?);
         let before = q.keep(s.send(factory, b"canonicalBytesOf:", &[original])?);
         let after = q.keep(s.send(factory, b"canonicalBytesOf:", &[code])?);

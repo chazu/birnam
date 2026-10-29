@@ -212,6 +212,9 @@ pub(super) unsafe fn with_source(
         if v.environment.is_some() {
             return Err(invalid());
         }
+        if v.code.source == source {
+            return Ok(Some(v.method));
+        }
         let owner = s.named(b"CodeObject")?;
         let original = q.keep(s.send(owner, b"canonicalBytesOf:", &[v.code.source])?);
         let requested = q.keep(s.send(owner, b"canonicalBytesOf:", &[source])?);

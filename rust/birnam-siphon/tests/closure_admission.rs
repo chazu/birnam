@@ -90,7 +90,11 @@ fn closure_admission_preserves_checked_counts_and_code_identity() {
         assert_eq!(call(method, b"codeObject", &[]), source);
         let factory_vt = call(host.id.root, b"behaviorOf:", &[named(b"CodeObject")]);
         let mut saved = Vec::new();
-        for selector in [b"parameterCountOf:".as_slice(), b"captureCountOf:"] {
+        for selector in [
+            b"parameterCountOf:".as_slice(),
+            b"captureCountOf:",
+            b"canonicalBytesOf:",
+        ] {
             let selector = key(selector);
             saved.push((selector, call(factory_vt, b"lookup", &[selector])));
             call(factory_vt, b"addMethod", &[selector, deny]);
@@ -107,6 +111,16 @@ fn closure_admission_preserves_checked_counts_and_code_identity() {
                 size(7).unwrap()
             );
             assert_eq!(call(block, b"codeObject", &[]), source);
+            let paired = call(
+                owner,
+                b"fromMethod:codeObject:captures:",
+                &[method, source, vector(&[nil, size(7).unwrap()])],
+            );
+            assert_eq!(call(paired, b"codeObject", &[]), source);
+            assert_eq!(
+                call(paired, b"captureWordAt:", &[size(1).unwrap()]),
+                size(7).unwrap()
+            );
         }
         for count in [0, 1, 3, 4097] {
             let mut fields = vec![method];
