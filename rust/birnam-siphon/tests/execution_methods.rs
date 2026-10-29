@@ -97,6 +97,16 @@ fn methods_retain_bindings_active_calls_arguments_and_exact_lookup_contexts() {
         monitor,
         gc,
     };
+    {
+        let q = host.scope();
+        let execution = h.named(b"Execution");
+        assert!(h.call(execution, b"retire:", &[]).is_null());
+        let method = q.call(host.id.root, b"bind:to:", &[h.key(b"retire:"), execution]).unwrap();
+        let invalid_context = q.call(method, b"withContext:", &[h.named(b"nil")]).unwrap();
+        let empty = q.call(host.id.root, b"sequence", &[]).unwrap();
+        assert!(host.send(invalid_context, b"invokeOn:arguments:", &[execution, empty]).is_err(),
+                "an empty retirement must still validate the method context");
+    }
     let monitor_vt = h.vt(&h.floor, monitor);
     for n in [
         b"present".as_slice(),

@@ -484,13 +484,18 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
     (|| unsafe {
         let s = state(c)?;
         let values = borrowed_slice(a, n).ok_or_else(invalid)?;
+        if values.is_empty() {
+            return Ok(ptr::null_mut());
+        }
         resumable::retire(s, values)?;
         native_code::retire(s, values);
         let mut storage = s.storage.borrow_mut();
+        let mut admitted = s.admitted.borrow_mut();
+        let mut signatures = s.native_signatures.borrow_mut();
         for &v in values {
             storage.remove(v);
-            s.admitted.borrow_mut().remove(&v.addr());
-            s.native_signatures.borrow_mut().remove(&v.addr());
+            admitted.remove(&v.addr());
+            signatures.remove(&v.addr());
         }
         Ok(ptr::null_mut())
     })()

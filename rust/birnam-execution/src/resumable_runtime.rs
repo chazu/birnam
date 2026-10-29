@@ -2044,30 +2044,30 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
     let Some(o) = s.engine.borrow().objects() else {
         return Ok(());
     };
-    for &value in values {
-        if s.storage.borrow().family_of(value) == Some(o.continuation_vtable)
-            && s.storage.borrow().payload_size(value) == Some(3 * size_of::<Oop>())
-        {
-            unsafe { s.engine.borrow_mut().finalize_detached_continuation(value) }
-        }
-        if s.storage.borrow().family_of(value) == Some(o.machine_vtable)
-            && s.storage.borrow().payload_size(value) == Some(3 * size_of::<Oop>())
-        {
-            unsafe { s.engine.borrow_mut().finalize_detached_machine(value) }
+    {
+        let storage = s.storage.borrow();
+        for &value in values {
+            let family = storage.family_of(value);
+            if family == Some(o.continuation_vtable)
+                && storage.payload_size(value) == Some(3 * size_of::<Oop>())
+            {
+                unsafe { s.engine.borrow_mut().finalize_detached_continuation(value) }
+            }
+            if family == Some(o.machine_vtable)
+                && storage.payload_size(value) == Some(3 * size_of::<Oop>())
+            {
+                unsafe { s.engine.borrow_mut().finalize_detached_machine(value) }
+            }
         }
     }
     let dead: HashSet<_> = values.iter().map(|value| value.addr()).collect();
-    s.resume
-        .borrow_mut()
-        .return_methods
+    let mut runtime = s.resume.borrow_mut();
+    runtime.return_methods
         .retain(|method, context| !dead.contains(method) && !dead.contains(context));
     for value in values {
-        {
-            let mut r = s.resume.borrow_mut();
-            r.runs.remove(&value.addr());
-            r.returns.remove(&value.addr());
-        }
-        let record = s.resume.borrow_mut().records.remove(&value.addr());
+        runtime.runs.remove(&value.addr());
+        runtime.returns.remove(&value.addr());
+        let record = runtime.records.remove(&value.addr());
         if let Some(record) = record {
             // Inline annotations retain the original context. Only that context
             // owns the registration lease, even if aliases retire in this batch.
@@ -2077,10 +2077,7 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
                     .borrow_mut()
                     .retire_owned(record.capability, record.lease),
             )?;
-            s.resume
-                .borrow_mut()
-                .pending
-                .insert(record.descriptor.identity().generation);
+            runtime.pending.insert(record.descriptor.identity().generation);
         }
     }
     Ok(())

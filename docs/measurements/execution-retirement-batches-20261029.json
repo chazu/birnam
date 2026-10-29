@@ -1,0 +1,126 @@
+{
+  "baseline_revision": "1c58cde7",
+  "change": "Borrow Execution retirement tables once per batch and reuse each object-family read; return after call validation for an empty batch.",
+  "contract": {
+    "before": "Repeated private RefCell borrows and object-family reads for each object; table/removal/finalization ordering as defined by Execution.",
+    "after": "The same loops, lookups, removals and fallible operations use batch-scoped private borrows. Family is read once while its owner table is unchanged. An empty batch skips effect-free cleanup.",
+    "new_apis_or_primitives": [],
+    "new_state_or_registries": [],
+    "review": [
+      "Machine and continuation engine finalization and retire_owned make no language calls and do not mutate the Objects table; its borrow spans no callbacks.",
+      "Removed table values have no language-calling destructors. Rust allocation/refcount cleanup stays inside the same owner.",
+      "Per-object finalization/removal order and early error propagation remain unchanged. Owner context and argument-slice validation still precede the empty return.",
+      "All payload interpretation remains with Execution. Id, lookup, scheduler budgets and GC policy are unchanged."
+    ]
+  },
+  "retirement_microbenchmark": {
+    "scope": "Existing Execution retire: on live, retained, zero-payload Id objects not owned by Execution. Measures rejection/cleanup work for unrelated entries, not full GC. Captured Block and unrelated allocation identities verified unchanged.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline",
+      "candidate",
+      "baseline",
+      "baseline",
+      "candidate",
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_variant_per_size": 30,
+    "summary": {
+      "0": {
+        "median_cpu_ns_per_batch": {
+          "baseline": 37.58745,
+          "candidate": 32.2208
+        },
+        "change_percent": -14.277770904916398
+      },
+      "1": {
+        "median_cpu_ns_per_batch": {
+          "baseline": 108.29894999999999,
+          "candidate": 108.048975
+        },
+        "change_percent": -0.23081941237657055
+      },
+      "1024": {
+        "median_cpu_ns_per_batch": {
+          "baseline": 59131.6728515625,
+          "candidate": 55233.2353515625
+        },
+        "change_percent": -6.592807732306505
+      },
+      "65536": {
+        "median_cpu_ns_per_batch": {
+          "baseline": 4536822.9375,
+          "candidate": 4277830.75
+        },
+        "change_percent": -5.7086686226885615
+      }
+    },
+    "library_sha256": {
+      "baseline": "7f2bd99476ed3b2301679e80ea3668a6dbcc07b96239c6114da8ea2cfc33113f",
+      "candidate": "52d935d1996f4bad5f10125a119a23cd23eeabb26437ca613961c5d17902a2b1"
+    },
+    "source": "//! Disposable benchmark of the existing retirement operation on unrelated Oops.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::size;\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let host = oop::bootstrap();\n    let q = host.scope();\n    let source = q.string(b\"[[:captured | [| captured]] value: 41]\").unwrap();\n    let block = q.call(host.named(b\"Codegen\").unwrap(), b\"eval:\", &[source]).unwrap();\n    q.check_result(block).unwrap();\n    let expected = q.call(block, b\"value\", &[]).unwrap();\n    let word = q.call(host.named(b\"Integer\").unwrap(), b\"wordOf:\", &[expected]).unwrap();\n    assert_eq!(q.word_bits(word).unwrap(), 41);\n    let behavior = q.call(host.id.root, b\"objectBehavior\", &[]).unwrap();\n    let allocate = q.keep(host.intern(b\"allocate\").unwrap()).unwrap();\n    let mut objects = Vec::new();\n    for _ in 0..65536 {\n        objects.push(q.keep(unsafe { host.id.send(behavior, allocate, &[size(0).unwrap()]).unwrap() }).unwrap());\n    }\n    q.call(host.named(b\"GC\").unwrap(), b\"collectPrecisely\", &[]).unwrap();\n    let identity = q.call(host.id.root, b\"identityOf:\", &[objects[0]]).unwrap();\n    let receiver = host.named(b\"Execution\").unwrap();\n    let selector = q.keep(host.intern(b\"retire:\").unwrap()).unwrap();\n    for (count, repeats) in [(0, 10000), (1, 20000), (1024, 512), (65536, 8)] {\n        let args = &objects[..count];\n        for _ in 0..3 { assert!(unsafe { host.id.send(receiver, selector, args).unwrap() }.is_null()); }\n        for _ in 0..5 {\n            let start = unsafe { clock_gettime_nsec_np(16) };\n            for _ in 0..repeats {\n                assert!(unsafe { host.id.send(receiver, selector, args).unwrap() }.is_null());\n            }\n            println!(\"{count} {repeats} {}\", unsafe { clock_gettime_nsec_np(16) } - start);\n        }\n        assert_eq!(q.call(block, b\"value\", &[]).unwrap(), expected);\n        assert_eq!(q.call(host.id.root, b\"identityOf:\", &[objects[0]]).unwrap(), identity);\n    }\n}\n"
+  },
+  "full_collection": {
+    "scope": "Full precise collection after 1000 Integer/Range iterations; automatic GC disabled only while producing garbage, same policy in both lanes. Six collection timings per variant, two fresh processes, ABBA. Successful nonempty collections checked.",
+    "summary": {
+      "integer-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 301196104.5,
+          "candidate": 298936958.0
+        },
+        "change_percent": -0.7500583394829397
+      },
+      "range-loop": {
+        "median_collection_cpu_ns": {
+          "baseline": 377913395.5,
+          "candidate": 379426021.0
+        },
+        "change_percent": 0.40025718008718236
+      }
+    },
+    "interpretation": "Changes below 1% in opposite directions do not establish a whole-GC speedup. The demonstrated gain is the retirement subroutine.",
+    "source": "[System preciseGc: true];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System println: \"CASE integer-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System println: \"CASE range-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; let reclaimed := [System gc]; let afterGc := [16 clockNanos];\n [[reclaimed isError] ifTrue: [| [System println: \"GC_BAD\"]]];\n [[reclaimed > 0] ifFalse: [| [System println: \"GC_BAD\"]]];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n"
+  },
+  "validation": [
+    "24 Execution unit tests in the core gate.",
+    "Full Oop core/compiler/GC suite, including negative dispatch/construction and retirement/finalizer failures.",
+    "Method/Machine lifetime, continuation transparency, native incoming calls, closure admission and pending-call recovery.",
+    "Added an empty-retirement check that rejects an invalid Method context.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "The retirement microbenchmark uses retained objects not owned by Execution, reproducing the unrelated-object work without freeing them. It is not a substitute for the full collection and lifetime checks.",
+    "Six fresh processes per microbenchmark variant, five samples per size in each. A first shorter comparison was variable, so alternating repetitions were extended before retention.",
+    "Only the rebuilt Execution library is substituted into the previous prefix; no installed user runtime or generated image is replaced.",
+    "No timing threshold; local CPU measurements are not universal guarantees."
+  ],
+  "source_sha256": {
+    "rust/birnam-execution/src/synchronous.rs": "76f40512ce335c7b3b127ab9f339da170300249e2ec5f67b3cdb65fe46877b5a",
+    "rust/birnam-execution/src/native_code.rs": "5f16c6d3acca85a4f7f2f3ba97426caac8461976d24cb7396097afc9f443c213",
+    "rust/birnam-execution/src/resumable_runtime.rs": "8d9050b026c496faaea8725b063dcb22fbffe5d24441e527d274055360d8e8a2",
+    "rust/birnam-siphon/tests/execution_methods.rs": "13c41a2be1aed6726e0a957f9bfa507308525a3675295243d7efdadfafbf9c1e"
+  },
+  "evidence": {
+    ".cargo-target/execution-retire-20261029/micro.json": "fac3f5b9124b58f41a15dc50e565df5857a8536451e58d72e90531c2eb704d80",
+    ".cargo-target/execution-retire-20261029/micro.py": "e044e81144bddb5d37e6a8e4a2f06c0eca3897f6f49dc1abc4ca7b122fe4daf7",
+    ".cargo-target/execution-retire-20261029/micro-extend.py": "4911ded6be9d1847012aa20366d927401e14b244e4fef3ffcc7d0bd158d1443c",
+    ".cargo-target/execution-retire-20261029/gc-comparison.json": "86b07adda6a1e636d01b058f3825baac92f84a0e6525c47b8871f333008f3e67",
+    ".cargo-target/execution-retire-20261029/gc_compare.py": "2aef380dc1552ae7da1808ffa32f698f86882ff8bd4423abaddf192227c3fc12",
+    ".cargo-target/execution-retire-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/execution-retire-20261029/contracts.log": "0aeddb062932455df0692ff050429fb973bd2210965be703626c8e6c831cb3c2",
+    ".cargo-target/execution-retire-20261029/empty-context.log": "c542fa257795df43a23708e2bc300653cc4801f115f7058d372cd361f58e6dc6",
+    ".cargo-target/execution-retire-20261029/check.log": "3d9adc6529e44e664033e4d3f6c01cf2552ec26a10da254b2de0c8f8a66320d5"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_execution.dylib"
+    ]
+  }
+}

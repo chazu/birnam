@@ -246,8 +246,9 @@ pub(super) fn references(s: &State, object: Oop) -> Option<Vec<Oop>> {
         })
 }
 pub(super) fn retire(s: &State, objects: &[Oop]) {
+    let mut code = s.native_code.borrow_mut();
     for object in objects {
-        s.native_code.borrow_mut().instances.remove(&object.addr());
+        code.instances.remove(&object.addr());
     }
 }
 pub(super) unsafe extern "C" fn field<const WHICH: u8>(
