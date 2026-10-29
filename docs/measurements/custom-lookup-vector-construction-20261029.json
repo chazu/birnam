@@ -1,0 +1,116 @@
+{
+  "baseline_revision": "9339a387",
+  "change": "Construct the complete custom-lookup pending and root snapshots in one collection instead of allocating a prefix/clone and then growing it.",
+  "contract": {
+    "before": "Build [unused marker], append the original call values; later clone those values and append the selected Method for rooting.",
+    "after": "Collect the same marker/value and value/Method sequences directly into their complete owned vectors.",
+    "preserved": [
+      "The exact Oop order, owned argument snapshots and call roots.",
+      "Consumed-continuation checks and removal of references from the consumed context.",
+      "Lookup, captured Method meaning, suspension, native barriers, GC and failure behavior.",
+      "Managed continuation objects, allocations and driver steps."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Repeated existing prepareSend transfers in an independent C continuation. Normal lookup control and custom metacircular forwarding lookup; logical arities 0,1,8,64 plus a loop counter. Each timed sample has four 512-transfer runs; includes initial/final entry overhead. Serial ABBA, seven samples/process, GC outside timing; every argument and result checked.",
+    "processes_per_mode_per_variant": 6,
+    "samples_per_arity_per_variant": 42,
+    "summary": {
+      "normal/0": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 388.906005859375,
+          "candidate": 382.130859375
+        },
+        "change_percent": -1.7421038457361426
+      },
+      "normal/1": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 377.604248046875,
+          "candidate": 379.79150390625
+        },
+        "change_percent": 0.5792455648177652
+      },
+      "normal/8": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 402.404541015625,
+          "candidate": 404.6123046875
+        },
+        "change_percent": 0.5486428324846582
+      },
+      "normal/64": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 849.6806640625,
+          "candidate": 845.468994140625
+        },
+        "change_percent": -0.4956767995329181
+      },
+      "custom/0": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 1349.802734375,
+          "candidate": 1302.836181640625
+        },
+        "change_percent": -3.4795123419365415
+      },
+      "custom/1": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 1363.311767578125,
+          "candidate": 1315.34814453125
+        },
+        "change_percent": -3.5181698117431104
+      },
+      "custom/8": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 1447.733642578125,
+          "candidate": 1397.064208984375
+        },
+        "change_percent": -3.4999140797417616
+      },
+      "custom/64": {
+        "median_cpu_ns_per_transfer": {
+          "baseline": 2396.98291015625,
+          "candidate": 2313.17138671875
+        },
+        "change_percent": -3.4965423859461997
+      }
+    },
+    "library_sha256": {
+      "baseline": "a8ab047d7f62a23132a58f498375a3d03c658dea7994617b58619d72a1d5842d",
+      "candidate": "2c5a5d8eadcd42c7be847bc9d05d0ec9f57dd365f6197a9b22d3401bee372ffc"
+    },
+    "caller_source": "//! Disposable benchmark of existing control sends and metacircular lookup.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nuse birnam_abi::size;\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let fixture = h.load_native(&q, &std::path::PathBuf::from(std::env::args().nth(1).unwrap()), &[]).unwrap();\n    let selector = q.keep(h.intern(b\"probe\").unwrap()).unwrap();\n    let method = q.call(fixture, b\"methodAt:\", &[selector]).unwrap();\n    let receiver = q.call(h.named(b\"Object\").unwrap(), b\"clone\", &[]).unwrap();\n    let vt = q.call(h.id.root, b\"ensurePrivateVtableFor:\", &[receiver]).unwrap();\n    q.call(vt, b\"addMethod\", &[selector, method]).unwrap();\n    if std::env::args().nth(2).as_deref() == Some(\"custom\") {\n        let lookup = q.keep(h.intern(b\"lookup\").unwrap()).unwrap();\n        let meta = q.call(h.id.root, b\"behaviorOf:\", &[vt]).unwrap();\n        let original = q.call(meta, b\"lookup\", &[lookup]).unwrap();\n        let new_meta = q.call(meta, b\"delegated\", &[]).unwrap();\n        let entry = q.call(fixture, b\"methodAt:\", &[q.keep(h.intern(b\"forwardLookup\").unwrap()).unwrap()]).unwrap();\n        let forward = q.call(entry, b\"withContext:\", &[original]).unwrap();\n        q.call(new_meta, b\"addMethod\", &[lookup, forward]).unwrap();\n        q.call(h.id.root, b\"reassociateBehaviorOf:with:\", &[vt, new_meta]).unwrap();\n    }\n    let gc = h.named(b\"GC\").unwrap();\n    q.call(gc, b\"automaticCollection:\", &[size(0).unwrap()]).unwrap();\n    for arity in [0, 1, 8, 64] {\n        let args: Vec<_> = std::iter::once(size(512).unwrap())\n            .chain((1..=arity).map(|i| size(i).unwrap())).collect();\n        let expected = if arity == 0 {receiver} else {size(arity).unwrap()};\n        assert_eq!(unsafe { h.id.send(receiver, selector, &args).unwrap() }, expected);\n        for _ in 0..7 {\n            q.call(gc, b\"collectPrecisely\", &[]).unwrap();\n            let start = unsafe { clock_gettime_nsec_np(16) };\n            for _ in 0..4 { assert_eq!(unsafe { h.id.send(receiver, selector, &args).unwrap() }, expected); }\n            println!(\"{arity} {}\", unsafe { clock_gettime_nsec_np(16) } - start);\n        }\n    }\n}\n",
+    "fixture_source": "#include \"id.h\"\nstatic IdContinuationProtocol api;\nstatic Oop names[5];\nstatic Oop probe(Oop root,Oop context,Oop receiver,const Oop *a,size_t n) {\n (void)root;(void)context;\n if(n<2||n>66)return id_failure(api.common.invalid);\n for(size_t i=2;i<n;i++)if(a[i]!=id_size(i-1))return id_failure(api.common.invalid);\n size_t remaining=id_unbox(a[1]);\n if(!remaining){Oop result[]={a[0],n==2?receiver:a[n-1]};return api.control(api.common.root,names[1],result,2);}\n Oop next[68]={receiver,names[0],a[0],id_size(remaining-1)};\n for(size_t i=2;i<n;i++)next[i+2]=a[i];\n return api.control(api.common.root,names[2],next,n+2);\n}\nstatic Oop lookup(Oop root,Oop context,Oop receiver,const Oop *a,size_t n) {\n (void)root;if(n!=2)return id_failure(api.common.invalid);\n Oop entry[]={context,receiver,a[0],a[1]};return api.control(api.common.root,names[3],entry,4);\n}\nstatic Oop initialize(const IdContinuationProtocol *p,Oop image,const Oop *s,size_t n,const Oop *a,size_t count) {\n (void)a;if(n!=5||count)return id_failure(p->common.invalid);api=*p;for(size_t i=0;i<n;i++)names[i]=s[i];return image;\n}\nstatic const IdLiteral literals[]={LIT(\"probe\"),LIT(\"answerTo:with:\"),LIT(\"prepareSend\"),LIT(\"prepareEntry\"),LIT(\"forwardLookup\")};\nstatic const IdContinuationMethodSpec methods[]={{0,probe,1},{4,lookup,1}};\nconst IdContinuationModule birnam_native_module_v3={3,sizeof(IdContinuationModule),literals,5,methods,2,initialize};\n"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_id.dylib"
+    ]
+  },
+  "validation": [
+    "Independent C continuation suite including custom/metacircular lookup, pause/replacement, entered roots, late replies, GC and allocation accounting.",
+    "Full Oop core/compiler/GC and negative dispatch/construction contracts.",
+    "Workspace all-target all-feature check."
+  ],
+  "rejected_scope": "Pre-sizing ordinary entry vectors showed mixed results, including zero-argument regressions. Those edits were reverted. Only the two always-appending custom-lookup snapshots remain changed.",
+  "limits": [
+    "About 3.5% lower CPU in the custom-lookup transfer benchmark; ordinary-lookup control is effectively unchanged. No general language speedup claimed.",
+    "Initial control timings were noisy, so alternating fresh-process runs were extended before retaining the change.",
+    "Automatic GC disabled only for timed diagnostic work; precise collection occurs between samples. Runtime policy is unchanged.",
+    "No installed user runtime was replaced."
+  ],
+  "source_sha256": {
+    "rust/birnam-id/src/id/continuation.rs": "5b0f37a81e907be58fcd88a020bc890ec5ae56fe162fa77656fdec5fad510dad"
+  },
+  "evidence": {
+    ".cargo-target/continuation-capacity-20261029/lookup-micro.json": "558eb57a389b30fb84a84b2d3f6c21138c1e4a1ad937c711fbb8de9b912a9493",
+    ".cargo-target/continuation-capacity-20261029/lookup_micro.py": "e5bc39b0cfeb89ba17ee182d82eff50fc7cb1f2abf17d6b7cf71b531500e466b",
+    ".cargo-target/continuation-capacity-20261029/lookup-extend.py": "7580da95baab32bf015860eca10b8b345c1a9951fe06205debe3bdfdcc748460",
+    ".cargo-target/continuation-capacity-20261029/lookup-first-comparison.json": "eb6ef8d13e6c90b1fc8561922b0e8c4accca704fddb8751515662c30113a1aec",
+    ".cargo-target/continuation-capacity-20261029/capacity-extend.json": "e2856ff9e330c2a772fe0e20a58fcdc43475fc5ca3e9679282e9f8166b579feb",
+    ".cargo-target/continuation-capacity-20261029/iterator-entry-comparison.json": "d8aab0ee687b00680da34b26fd95f4ca9a5953cf208a8831b5b07e47d85e8f80",
+    ".cargo-target/continuation-capacity-20261029/continuations.log": "592837455fee163e1b942e0f2abdf4822d312e8139d3897afa96d9be9a91a2d6",
+    ".cargo-target/continuation-capacity-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/continuation-capacity-20261029/check.log": "6bcae98bc4e119d3320534f6acb8809360e790ed615a884eb1a57b89d7b18d86"
+  }
+}

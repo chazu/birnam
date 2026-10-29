@@ -272,8 +272,8 @@ unsafe extern "C" fn send_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
             }
             Err(error) => Err(error),
             Ok(Selection::Lookup(behavior)) => {
-                let mut pending = vec![abi::size(0).unwrap()];
-                pending.extend_from_slice(&values);
+                let pending: Vec<_> = std::iter::once(abi::size(0).unwrap())
+                    .chain(values.iter().copied()).collect();
                 let k = s.work(LOOKED_UP, &pending)?;
                 s.prepare_send(&[behavior, s.lookup, k, *selector])
             }
@@ -295,8 +295,8 @@ unsafe extern "C" fn looked_up(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
         if abi::as_size(*used) != Some(0) {
             return Err(s.control_failure(b"continuationConsumed"));
         }
-        let mut roots = values.clone();
-        roots.push(*method);
+        let roots: Vec<_> = values.iter().copied()
+            .chain(std::iter::once(*method)).collect();
         let _scope = s.scope(c, ptr::null_mut(), &roots);
         s.reference_put(c, 0, abi::size(1).unwrap())?;
         // A consumed lookup continuation retains its rejection state, not the
