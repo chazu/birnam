@@ -1,0 +1,528 @@
+{
+  "baseline_revision": "600b085253341fa51943ec3d0d5f32083a15f02f",
+  "qualified_runtime_revision": "56b72fe8b0c8cf316c0d42730bad9a74ceec2fe7",
+  "scope": "Completion audit of the runtime optimization pass: measured simplifications across Id, Execution, collection, ObjectModel, Bytes and String. This is not a claim that all possible performance work is exhausted or that near-native speed has been reached.",
+  "requirements": [
+    {
+      "requirement": "Investigate language-wide runtime costs and implement performance improvements.",
+      "status": "verified",
+      "evidence": "Initial performance-opportunities-20261029 report, sixteen retained optimization commits, per-change measurements, and final baseline/candidate language probes below."
+    },
+    {
+      "requirement": "Add no new APIs or language primitives; simplify existing work.",
+      "status": "verified",
+      "evidence": "Reviewed the entire production diff. No new selectors, native module entries, public ABI fields, dispatch protocol, payload catalog or cross-owner access. Exported symbol sets match for all six changed libraries."
+    },
+    {
+      "requirement": "Preserve the project invariants and existing explicit features.",
+      "status": "verified for the changes in this pass",
+      "evidence": "Separate source review below; core contract tests and targeted integration evidence retained in every optimization record. Final workspace checks passed."
+    },
+    {
+      "requirement": "Microbenchmark and commit each retained improvement.",
+      "status": "verified",
+      "evidence": "All sixteen runtime-changing commits have committed measurement records. All thirty-three recorded source hashes match their respective commit contents."
+    }
+  ],
+  "optimization_commits": [
+    {
+      "commit": "c5b4c3bf9c6bae4a93004cb9a2a8860b0fcaaced",
+      "title": "Skip Execution retirement scans when no check was deferred",
+      "measurement_reports": [
+        "docs/measurements/retirement-scan-20261029.json"
+      ]
+    },
+    {
+      "commit": "1c58cde7d3cb64b6e9796bb6e3235b5bc7dabfe7",
+      "title": "Reuse Execution address indexes for admitted code and native signatures",
+      "measurement_reports": [
+        "docs/measurements/execution-metadata-index-20261029.json"
+      ]
+    },
+    {
+      "commit": "e139e4380bea54b6dc2f58724e9de8f9ddce6c1c",
+      "title": "Reuse private table borrows across Execution retirement batches",
+      "measurement_reports": [
+        "docs/measurements/execution-retirement-batches-20261029.json"
+      ]
+    },
+    {
+      "commit": "3f5239d29bd0cc5bbdba0a7ff84636cc06f9558e",
+      "title": "Use bounded local scratch for numeric Bytes operations",
+      "measurement_reports": [
+        "docs/measurements/bytes-numeric-scratch-20261029.json"
+      ]
+    },
+    {
+      "commit": "85a9aa543b1f8ad1971b0c7f4529ed126bcdedbc",
+      "title": "Avoid whole String copies for indexed reads and slices",
+      "measurement_reports": [
+        "docs/measurements/string-indexed-copy-20261029.json"
+      ]
+    },
+    {
+      "commit": "c5df5fa87bc943df7fd53541c59d37e8ccb7334e",
+      "title": "Compare owned String buffers without temporary copies",
+      "measurement_reports": [
+        "docs/measurements/string-equality-copy-20261029.json"
+      ]
+    },
+    {
+      "commit": "2584883379625bb26d1c3deb03eaf7e1898efbbd",
+      "title": "Avoid String copies in collection key hashing and equality",
+      "measurement_reports": [
+        "docs/measurements/string-collection-keys-20261029.json"
+      ]
+    },
+    {
+      "commit": "9504904690dbbbbd870b0fe2a5c90aa1e55ed8f0",
+      "title": "Scan owned String buffers without temporary input copies",
+      "measurement_reports": [
+        "docs/measurements/string-scan-copy-20261029.json"
+      ]
+    },
+    {
+      "commit": "9339a38785d04a5f060f9dcaf900cb2afc8e726d",
+      "title": "Reuse the rooted argument snapshot when entering continuations",
+      "measurement_reports": [
+        "docs/measurements/continuation-argument-snapshot-20261029.json"
+      ]
+    },
+    {
+      "commit": "18d82fbd29aa7ba7d585e948f7493595dfc7ac82",
+      "title": "Build complete custom lookup snapshots without vector growth",
+      "measurement_reports": [
+        "docs/measurements/custom-lookup-vector-construction-20261029.json"
+      ]
+    },
+    {
+      "commit": "05f9075baf3cfc164760ea194e904045dfb725a2",
+      "title": "Parse owned String bytes without copying the input",
+      "measurement_reports": [
+        "docs/measurements/string-number-parsing-20261029.json"
+      ]
+    },
+    {
+      "commit": "0cc3537ecafa524084166d1f43cce798775acbfb",
+      "title": "Avoid cycle-tracking allocation for directly described object slots",
+      "measurement_reports": [
+        "docs/measurements/layout-walk-allocation-20261029.json"
+      ]
+    },
+    {
+      "commit": "05103e464c8dc379e06a33a8d0287dfbc515dd9a",
+      "title": "Reuse the collector allocation list for ordered sweeping",
+      "measurement_reports": [
+        "docs/measurements/collector-dead-list-20261029.json"
+      ]
+    },
+    {
+      "commit": "97b081d4cd551147589f0e3201a345f85e31c7f5",
+      "title": "Initialize fresh object headers without rereading allocation records",
+      "measurement_reports": [
+        "docs/measurements/allocation-header-20261029.json",
+        "docs/measurements/cumulative-runtime-performance-20261029.json"
+      ]
+    },
+    {
+      "commit": "e05e1885490e3cd1546251c0b81ee2e2104edb66",
+      "title": "Copy owned Block snapshots after a single extent check",
+      "measurement_reports": [
+        "docs/measurements/block-field-snapshot-20261029.json"
+      ]
+    },
+    {
+      "commit": "56b72fe8b0c8cf316c0d42730bad9a74ceec2fe7",
+      "title": "Skip unused reference discovery for native code contexts",
+      "measurement_reports": [
+        "docs/measurements/reference-fallback-20261029.json"
+      ]
+    }
+  ],
+  "contract_review": {
+    "Id": "Only fresh header initialization and continuation argument/snapshot construction changed. Ordinary dispatch still performs current lookup and directly enters the selected Method. No apply protocol, native-value replacement system, Method accessor or payload-type catalog was introduced. Later vtable changes still validate allocation membership.",
+    "Execution": "Existing private address indexes replaced two generic address maps. Repeated borrows, repeated field lookups and unused reference discovery were removed. One private deferred-retirement flag prevents unconditional scans; every transition into retirement and every last-holder release still reaches the existing retirement check. Nested turns and reacquisition remain protected.",
+    "Collection": "The allocated-object list is stably filtered in place only after successful marking and allocation-epoch validation. Address indexes and mark bits survive through finalization. Retirement, detach, live-owner checks, finalizer order and storage release are unchanged.",
+    "ObjectModel": "The current layout is checked before constructing parent-cycle bookkeeping. Parent queries, layout selection and rooting retain their order; cycles terminate before querying a repeated layout.",
+    "Bytes_and_String": "Bounded scratch replaces temporary Vecs for existing fixed arities. Pure reads, comparisons, scanning and parsing borrow owner-held buffers, then release those borrows before live constructors or callbacks. Exact byte semantics, equality policies, query order and error precedence remain covered.",
+    "Liveness_and_policy": "No scheduling, cancellation, deoptimization, compiler-output, image-format, universal mutation-subscription or rollback-contract changes. Production GC budgets and startup deadlines were not altered. Captured code, suspended work and roots use the same lifetime mechanisms."
+  },
+  "final_checks": {
+    "workspace_unit_tests": {
+      "command": "cargo test --workspace --all-features --lib --offline --locked",
+      "suites": 49,
+      "passed": 315,
+      "failed": 0,
+      "ignored": 30,
+      "ignored_scope": "Thirty manual diagnostic or installed-environment tests remain ignored by this command; it is not presented as the complete integration suite."
+    },
+    "workspace_all_targets_all_features_check": "passed",
+    "latest_core_check": {
+      "result": "passed",
+      "log": ".cargo-target/reference-fallback-20261029/core.log",
+      "coverage": "Owner units, compiler/GC smoke, direct-dispatch and construction contracts, export audit, independent C cold caller, cross-thread rejection and finalizer containment."
+    },
+    "targeted_integrations": "Captured inputs, native construction, callbacks, capture aliases, image shells, Machine budgets, suspension, code retirement, text semantics and GC are covered by the per-change records.",
+    "matching_commit_source_hashes": 33,
+    "exported_symbols": {
+      "lib/libbirnam_bytes.dylib": [
+        "_birnam_native_module_v2"
+      ],
+      "lib/libbirnam_collect.dylib": [
+        "_birnam_native_module_v2"
+      ],
+      "lib/libbirnam_execution.dylib": [
+        "_birnam_native_module_v3"
+      ],
+      "lib/libbirnam_id.dylib": [
+        "_birnam_id_bootstrap_v2"
+      ],
+      "lib/libbirnam_object_model.dylib": [
+        "_birnam_native_module_v2"
+      ],
+      "lib/libbirnam_string.dylib": [
+        "_birnam_native_module_v2"
+      ]
+    }
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/prefix",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/reference-fallback-candidate",
+    "baseline_revision": "600b0852",
+    "candidate_revision": "56b72fe8",
+    "files_checked": 783,
+    "differences": [
+      "lib/libbirnam_bytes.dylib",
+      "lib/libbirnam_collect.dylib",
+      "lib/libbirnam_execution.dylib",
+      "lib/libbirnam_id.dylib",
+      "lib/libbirnam_object_model.dylib",
+      "lib/libbirnam_string.dylib"
+    ],
+    "library_sha256": {
+      "lib/libbirnam_bytes.dylib": {
+        "baseline": "2fa0fa14a0b70901f57ca9747e75f2f8d4ff5f9962ed421d0a7ef76f68a814c0",
+        "candidate": "4e04a2796abd63d3485ec9abf5daa74ede5f86ed92a3c1d4fd683d20fd5badd4"
+      },
+      "lib/libbirnam_collect.dylib": {
+        "baseline": "aff34cf5578f941983d2ac3d826fb62fcc8e2759b9eb5bf3f3e8aeb8bfa09a44",
+        "candidate": "da21b1f214ec96c60b912d5769b45309ac5b9ae88127d6b4c78274735a672ec1"
+      },
+      "lib/libbirnam_execution.dylib": {
+        "baseline": "510a61667f771c98ec67f5010d62e0fb8046fedd7fc5952d73ac1a021204e2e3",
+        "candidate": "2599cc91204bbec299eb436c8efa802b065078caf4a7892f3fd26c1786293b5b"
+      },
+      "lib/libbirnam_id.dylib": {
+        "baseline": "504a999b4999e14f9c0c311f1280d2e7a7950a22b3a480b290f0cca7c7a39772",
+        "candidate": "c7f7295b872f88181c236b4705d39a582621765621f2a518e2fc4acd110a7301"
+      },
+      "lib/libbirnam_object_model.dylib": {
+        "baseline": "d38b0666ec644452c897f628b52225d6a22463f8dc435f5539daf9ca9e8badf3",
+        "candidate": "9008bcf4a60df03bf0f61890ab898c18688df7315e475ca450e3f7f009d05b47"
+      },
+      "lib/libbirnam_string.dylib": {
+        "baseline": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "candidate": "dc54ea1bbfc441f926277a7cbb9ce25ebea8cc4d67f41a4dc5993bdb7b606a99"
+      }
+    }
+  },
+  "current_core_build_comparison": {
+    "lib/libbirnam_bytes.dylib": {
+      "candidate_sha256": "4e04a2796abd63d3485ec9abf5daa74ede5f86ed92a3c1d4fd683d20fd5badd4",
+      "current_core_build_sha256": "4e04a2796abd63d3485ec9abf5daa74ede5f86ed92a3c1d4fd683d20fd5badd4",
+      "identical": true
+    },
+    "lib/libbirnam_collect.dylib": {
+      "candidate_sha256": "da21b1f214ec96c60b912d5769b45309ac5b9ae88127d6b4c78274735a672ec1",
+      "current_core_build_sha256": "da21b1f214ec96c60b912d5769b45309ac5b9ae88127d6b4c78274735a672ec1",
+      "identical": true
+    },
+    "lib/libbirnam_execution.dylib": {
+      "candidate_sha256": "2599cc91204bbec299eb436c8efa802b065078caf4a7892f3fd26c1786293b5b",
+      "current_core_build_sha256": "2599cc91204bbec299eb436c8efa802b065078caf4a7892f3fd26c1786293b5b",
+      "identical": true
+    },
+    "lib/libbirnam_id.dylib": {
+      "candidate_sha256": "c7f7295b872f88181c236b4705d39a582621765621f2a518e2fc4acd110a7301",
+      "current_core_build_sha256": "c7f7295b872f88181c236b4705d39a582621765621f2a518e2fc4acd110a7301",
+      "identical": true
+    },
+    "lib/libbirnam_object_model.dylib": {
+      "candidate_sha256": "9008bcf4a60df03bf0f61890ab898c18688df7315e475ca450e3f7f009d05b47",
+      "current_core_build_sha256": "f9b858fba02fd0d840faf2ec35c9843eb7f81c804ed5229133550417b1897da5",
+      "identical": false
+    },
+    "lib/libbirnam_string.dylib": {
+      "candidate_sha256": "dc54ea1bbfc441f926277a7cbb9ce25ebea8cc4d67f41a4dc5993bdb7b606a99",
+      "current_core_build_sha256": "dc54ea1bbfc441f926277a7cbb9ce25ebea8cc4d67f41a4dc5993bdb7b606a99",
+      "identical": true
+    }
+  },
+  "object_model_binary_explanation": "Its complete code/data sections match the current core build. Differences are confined to Mach-O load commands and the code signature: absolute build-output path, UUID and derived signature. Detailed section hashes are recorded in the local evidence.",
+  "aggregate_comparisons": {
+    "500": {
+      "scope": "Serial ABBA fresh-process comparison; six runtime libraries differ; images, compiler output and remaining prefix files are byte-identical. Each process runs three language probes (500 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+      "source": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 500 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 500];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 500 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[Globals at: #LogueBenchConfig put: {#phase -> \"arena\" #seed -> 12345 #width -> 16 #monsters -> 0 #turns -> 16 #batches -> 4 #samples -> 1 #allocation -> false #replace -> false}];\n[System load: \"logue-bench.birnam\"];\n",
+      "phase_summary": {
+        "integer-loop": {
+          "baseline": {
+            "samples": [
+              93345875,
+              94900375,
+              95404000,
+              94009667,
+              95131791,
+              96200959
+            ],
+            "median_cpu_ns": 95016083.0
+          },
+          "candidate": {
+            "samples": [
+              64674500,
+              63312583,
+              63516792,
+              63192084,
+              64874500,
+              63007459
+            ],
+            "median_cpu_ns": 63414687.5
+          },
+          "cpu_change_percent": -33.25899626908425
+        },
+        "range-loop": {
+          "baseline": {
+            "samples": [
+              141821291,
+              142256375,
+              142106458,
+              139626542,
+              150634708,
+              151311125
+            ],
+            "median_cpu_ns": 142181416.5
+          },
+          "candidate": {
+            "samples": [
+              99990125,
+              102070959,
+              107289375,
+              99447666,
+              100206792,
+              103397750
+            ],
+            "median_cpu_ns": 101138875.5
+          },
+          "cpu_change_percent": -28.866318827256865
+        },
+        "method-loop": {
+          "baseline": {
+            "samples": [
+              104940541,
+              104343708,
+              98903708,
+              100787542,
+              100501333,
+              99673833
+            ],
+            "median_cpu_ns": 100644437.5
+          },
+          "candidate": {
+            "samples": [
+              68389625,
+              67030792,
+              66728125,
+              69128792,
+              65731250,
+              65523250
+            ],
+            "median_cpu_ns": 66879458.5
+          },
+          "cpu_change_percent": -33.54877809317579
+        },
+        "logue-quiet-turn": {
+          "baseline": {
+            "samples": [
+              987020.8125,
+              1015112.0,
+              1006724.0,
+              987940.125,
+              1057960.9375,
+              1054028.625,
+              1047822.9375,
+              1021036.5
+            ],
+            "median_cpu_ns": 1018074.25
+          },
+          "candidate": {
+            "samples": [
+              684364.5625,
+              697791.6875,
+              702690.0625,
+              669934.875,
+              686739.5625,
+              700929.6875,
+              710776.0,
+              716117.1875
+            ],
+            "median_cpu_ns": 699360.6875
+          },
+          "cpu_change_percent": -31.305532234019275
+        }
+      },
+      "whole_process": {
+        "baseline": {
+          "process_cpu_seconds": 18.3382985,
+          "wall_seconds": 18.4010921665
+        },
+        "candidate": {
+          "process_cpu_seconds": 17.633889000000003,
+          "wall_seconds": 17.672747542000003
+        },
+        "cpu_change_percent": -3.8411933364482898
+      },
+      "independent_logue_oracle": "passed"
+    },
+    "1000": {
+      "scope": "Serial ABBA fresh-process comparison; six runtime libraries differ; images, compiler output and remaining prefix files are byte-identical. Each process runs three language probes (1000 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+      "source": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 1000 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[Globals at: #LogueBenchConfig put: {#phase -> \"arena\" #seed -> 12345 #width -> 16 #monsters -> 0 #turns -> 16 #batches -> 4 #samples -> 1 #allocation -> false #replace -> false}];\n[System load: \"logue-bench.birnam\"];\n",
+      "phase_summary": {
+        "integer-loop": {
+          "baseline": {
+            "samples": [
+              199110583,
+              192478084,
+              192122833,
+              193192750,
+              193583500,
+              193216000
+            ],
+            "median_cpu_ns": 193204375.0
+          },
+          "candidate": {
+            "samples": [
+              127687958,
+              128495583,
+              127993000,
+              130641667,
+              130865250,
+              130541750
+            ],
+            "median_cpu_ns": 129518666.5
+          },
+          "cpu_change_percent": -32.96287079420432
+        },
+        "range-loop": {
+          "baseline": {
+            "samples": [
+              624538375,
+              628717583,
+              604412792,
+              615107417,
+              608386500,
+              615309417
+            ],
+            "median_cpu_ns": 615208417.0
+          },
+          "candidate": {
+            "samples": [
+              522276292,
+              522805709,
+              518782125,
+              526303041,
+              521604083,
+              524896209
+            ],
+            "median_cpu_ns": 522541000.5
+          },
+          "cpu_change_percent": -15.062767988754612
+        },
+        "method-loop": {
+          "baseline": {
+            "samples": [
+              200512125,
+              199601083,
+              201016583,
+              201799375,
+              199795250,
+              201190917
+            ],
+            "median_cpu_ns": 200764354.0
+          },
+          "candidate": {
+            "samples": [
+              133957542,
+              132569875,
+              132458625,
+              133393209,
+              133817750,
+              142771416
+            ],
+            "median_cpu_ns": 133605479.5
+          },
+          "cpu_change_percent": -33.451592955590115
+        },
+        "logue-quiet-turn": {
+          "baseline": {
+            "samples": [
+              1037987.0,
+              1028671.875,
+              1030968.75,
+              1040281.25,
+              1006815.0625,
+              1014872.375,
+              1014903.6875,
+              1022174.5
+            ],
+            "median_cpu_ns": 1025423.1875
+          },
+          "candidate": {
+            "samples": [
+              691838.5,
+              756054.6875,
+              759348.9375,
+              767533.875,
+              699421.875,
+              718841.125,
+              704658.875,
+              721450.5625
+            ],
+            "median_cpu_ns": 720145.84375
+          },
+          "cpu_change_percent": -29.770864114578053
+        }
+      },
+      "whole_process": {
+        "baseline": {
+          "process_cpu_seconds": 21.521784000000004,
+          "wall_seconds": 21.591604687500002
+        },
+        "candidate": {
+          "process_cpu_seconds": 20.455456499999997,
+          "wall_seconds": 20.535107854
+        },
+        "cpu_change_percent": -4.954642700623735
+      },
+      "independent_logue_oracle": "passed"
+    }
+  },
+  "limits": [
+    "Local serial ABBA comparisons on one host, two fresh processes per variant for each workload size. These establish improvements in the measured cases, not uniform gains for all programs.",
+    "Phase timings exclude startup, source loading, warmup and explicit pre-sample collection. Automatic GC remains enabled within language probes. Whole-process CPU includes setup and is not isolated startup timing.",
+    "Quiet Logue uses the independent state oracle; it is not an interactive rendering or full-game performance qualification.",
+    "All images and generated code are byte-identical across prefixes; only six native libraries differ. This is controlled substitution, not a fresh release installation. The user installation was not changed.",
+    "Startup/source-loading and full collection remain significant costs. Rejected experiments and small mixed results are retained in the individual reports; this pass does not add protocols to chase larger gains."
+  ],
+  "evidence": {
+    ".cargo-target/performance-audit-20261029/workspace-tests.log": "05e113f095eccfb88776c3a1ed65e38f9e577a826d722401a3e5da53120ebc17",
+    ".cargo-target/performance-audit-20261029/workspace-check.log": "4eec2bb3fcd5ef1291d609e78a9ad503fed0c84c6adb5cd575dfb3d658eac562",
+    ".cargo-target/performance-audit-20261029/commit-audit.json": "744d901413dc79050141314762073b0c978d1d208015edbfb81cdff69dcf3cfa",
+    ".cargo-target/performance-audit-20261029/exports.json": "8ec664da7452ed3f71fec8d218beb8757128faa6156f51ad31174f0645d96471",
+    ".cargo-target/performance-audit-20261029/core-build-comparison.json": "15980a8a165deb947356b09b85c3ea869343c962a12f72971156c2991437bc1e",
+    ".cargo-target/performance-audit-20261029/object-model-binary-audit.json": "ead4b871cdcd3907f837fde76c59bc46f760097fac8f1fd1b02e13ee81779391",
+    ".cargo-target/performance-audit-20261029/500/comparison.json": "fe02c799db3f409dd315238ec8c68bb7c5a513cbcf8a502f43e37320534585e2",
+    ".cargo-target/performance-audit-20261029/500/compare.py": "7e215ba5b7047f10ff98572444399b0f1820abc4ea9542d2789e9a40bf86677a",
+    ".cargo-target/performance-audit-20261029/1000/comparison.json": "cc32f6faf0152371300b9bac2f292be9d18ce7b89201d7de459e460e6f51f99e",
+    ".cargo-target/performance-audit-20261029/1000/compare.py": "0022456a074fe1a1ab5e42dad2f196c30ef437105e99e5f516a450a086a9ca3e",
+    ".cargo-target/reference-fallback-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+  }
+}
