@@ -1,0 +1,62 @@
+{
+  "baseline": "7565e480879bd8b868cabbf2d0f91c3c13f70037",
+  "scope": "First Id obsolete-code removal; broader necessity and module audits remain pending",
+  "removed_files": [
+    {
+      "path": "rust/birnam-id/src/owned.rs",
+      "lines": 29
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/storage.rs",
+      "lines": 227
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/objects.rs",
+      "lines": 415
+    },
+    {
+      "path": "rust/birnam-id/src/id/native_id/registries.rs",
+      "lines": 538
+    }
+  ],
+  "removed_mechanisms": [
+    "uncompiled Operand/Outcome owners and Owned registry wrapper",
+    "weak/non-callable dictionary side arrays and retirement scan",
+    "unused constructor that bypassed mutation accounting",
+    "unused nativeBindingQuerySemantics:for: operation",
+    "special-selector digest/position caches and unused symbol byte accounting",
+    "unused private dictionary/storage query helpers"
+  ],
+  "contract": {
+    "before": "Lookup tests a callable flag; GC filters weak entries; only obsolete/test code could create those entries.",
+    "after": "All dictionary entries are Method Oops. Lookup returns the current value; tracing reports every key/value. Existing binding visitor still receives false for its weak flag.",
+    "new_mechanisms": [],
+    "invariants": "Allocation payload opacity, direct selected entry, current lookup, code/context lifetime, continuation/native boundaries and binding mutation accounting retained."
+  },
+  "source_lines": {
+    "before": 4842,
+    "after": 3361
+  },
+  "checks": [
+    {
+      "name": "23 Id unit tests",
+      "sha256": "ea6c57fa3ecc52cabc5cbc80089d149a59d2f3b84a9808ac295f02ca088dd5a2",
+      "exit_code": 0
+    },
+    {
+      "name": "independent C continuation contract",
+      "sha256": "1b7bbfbc46d880370d2a848d8d6399d0737a540b93341a77bac0662698aa74ba",
+      "exit_code": 0
+    },
+    {
+      "name": "no implicit application/selected-Method lookup",
+      "sha256": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+      "exit_code": 0
+    }
+  ],
+  "next": [
+    "Complete Id necessity review",
+    "Audit all module/feature/target inputs and delete disconnected implementation remnants",
+    "Reconcile current documentation and preserve explicitly historical evidence"
+  ]
+}

@@ -151,23 +151,6 @@ impl ObjectMemory {
         true
     }
 
-    pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {
-        self.get(object.addr())?;
-        // SAFETY: exact registry membership proves this non-null address is the
-        // payload start of the live floor allocation owned by this ObjectMemory.
-        let payload =
-            unsafe { NonNull::new_unchecked(crate::abi::heap_pointer(object).cast::<u8>()) };
-        // SAFETY: exact registry membership proves that payload is the start of
-        // the live floor allocation owned by this ObjectMemory.
-        let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(
-            slot.addr(),
-            crate::abi::heap_address(object) - VTABLE_HEADER_SIZE
-        );
-        // SAFETY: slot addresses the initialized header word. alloc_zeroed
-        // makes an unset header null.
-        Some(unsafe { slot.read() })
-    }
 
     pub(crate) unsafe fn vtable_of_valid_object(object: Oop) -> Oop {
         // SAFETY: the caller provides exact live-object provenance.

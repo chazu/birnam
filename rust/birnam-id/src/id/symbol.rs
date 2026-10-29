@@ -1,7 +1,5 @@
 //! Weakly canonicalized Symbol objects and byte-oriented interning.
-#![allow(dead_code)] // R2.3 precedes bootstrap/export wiring.
 
-use core::cell::Cell;
 use core::ffi::c_char;
 use core::mem::offset_of;
 use core::ptr::NonNull;
@@ -36,9 +34,6 @@ impl SymbolRecord {
         &self.nul_terminated_bytes[..self.nul_terminated_bytes.len() - 1]
     }
 
-    fn c_name(&self) -> *const c_char {
-        self.nul_terminated_bytes.as_ptr().cast()
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,22 +53,6 @@ impl Hasher for NameDigestHasher {
 }
 type NameDigestIndex = HashMap<u64, usize, BuildHasherDefault<NameDigestHasher>>;
 
-// Private admission queries repeatedly use these byte names. Digests belong
-// to this Symbols instance's immutable hasher, not to a Symbol's lifetime.
-const QUERY_NAMES: [&[u8]; 11] = [
-    b"tryRepresentationIdentityOf:behavior:bytes:",
-    b"behaviorOf:",
-    b"allocationSizeOf:",
-    b"identityOf:",
-    b"tryRepresentationsOf:behavior:bytes:",
-    b"allocate:bytes:",
-    b"allocationChargeFor:",
-    b"isBehavior:",
-    b"behaviorEpoch",
-    b"bind:to:",
-    b"usesDefaultLookup:",
-];
-
 /// Ordered authority for interned Symbol identities.
 pub(crate) struct Symbols {
     ordered: Vec<SymbolRecord>,
@@ -82,25 +61,16 @@ pub(crate) struct Symbols {
     // hash collisions; ordered remains the enumeration and name authority.
     by_name_hash: NameDigestIndex,
     name_hasher: RandomState,
-    query_digests: [u64; QUERY_NAMES.len()],
-    // Positions only: no Symbol is retained and no absence is memoized. A hit
-    // must match the current ordered record's digest and complete name bytes.
-    query_positions: [Cell<usize>; QUERY_NAMES.len()],
-    owned_name_bytes: usize,
 }
 
 impl Symbols {
     pub(crate) fn new() -> Self {
         let name_hasher = RandomState::new();
-        let query_digests = QUERY_NAMES.map(|name| name_hasher.hash_one(name));
         Self {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
             by_name_hash: NameDigestIndex::default(),
             name_hasher,
-            query_digests,
-            query_positions: std::array::from_fn(|_| Cell::new(usize::MAX)),
-            owned_name_bytes: 0,
         }
     }
 
@@ -120,34 +90,7 @@ impl Symbols {
     /// Non-allocating identity query for a guarded native region. A missing
     /// symbol requires ordinary interning at its baseline observation boundary.
     pub(crate) fn existing(&self, bytes: &[u8]) -> Option<Oop> {
-        let query = match bytes {
-            b"tryRepresentationIdentityOf:behavior:bytes:" => 0,
-            b"behaviorOf:" => 1,
-            b"allocationSizeOf:" => 2,
-            b"identityOf:" => 3,
-            b"tryRepresentationsOf:behavior:bytes:" => 4,
-            b"allocate:bytes:" => 5,
-            b"allocationChargeFor:" => 6,
-            b"isBehavior:" => 7,
-            b"behaviorEpoch" => 8,
-            b"bind:to:" => 9,
-            b"usesDefaultLookup:" => 10,
-            _ => return self.find_hashed(bytes, self.name_hasher.hash_one(bytes)),
-        };
-        let hash = self.query_digests[query];
-        if let Some(record) = self.ordered.get(self.query_positions[query].get()) {
-            if record.name_hash == hash && record.bytes() == bytes {
-                return Some(record.object);
-            }
-        }
-        let index = self.find_hashed_index(bytes, hash);
-        self.query_positions[query].set(index.unwrap_or(usize::MAX));
-        index.map(|index| self.ordered[index].object)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn find_hashed_for_test(&self, bytes: &[u8], hash: u64) -> Option<Oop> {
-        self.find_hashed(bytes, hash)
+        self.find_hashed(bytes, self.name_hasher.hash_one(bytes))
     }
 
     #[cfg(test)]
@@ -212,28 +155,23 @@ impl Symbols {
             name_hash: hash,
             next_same_hash: self.by_name_hash.insert(hash, index),
         });
-        self.owned_name_bytes = self
-            .owned_name_bytes
-            .checked_add(bytes.len().saturating_add(1))
-            .unwrap_or_else(|| boundary::fatal_invariant("Symbol name byte counter overflow"));
         let previous = self.by_address.insert(object.addr(), index);
         boundary::require_invariant(previous.is_none(), "duplicate Symbol object address");
         object
     }
 
+    #[cfg(test)]
     pub(crate) fn count(&self) -> usize {
         self.ordered.len()
     }
 
-    pub(crate) fn owned_name_bytes(&self) -> usize {
-        self.owned_name_bytes
-    }
-
+    #[cfg(test)]
     pub(crate) fn contains_bytes(&self, bytes: &[u8]) -> bool {
         self.find_hashed(bytes, self.name_hasher.hash_one(bytes))
             .is_some()
     }
 
+    #[cfg(test)]
     pub(crate) fn at(&self, index: usize) -> Oop {
         self.ordered
             .get(index)
@@ -244,13 +182,6 @@ impl Symbols {
     pub(crate) fn bytes_of(&self, candidate: Oop) -> Option<&[u8]> {
         let index = *self.by_address.get(&candidate.addr())?;
         Some(self.ordered[index].bytes())
-    }
-
-    pub(crate) fn c_name_of(&self, candidate: Oop) -> *const c_char {
-        let Some(index) = self.by_address.get(&candidate.addr()) else {
-            return core::ptr::null();
-        };
-        self.ordered[*index].c_name()
     }
 
     /// Retire names chosen by the caller before their allocations are released.
@@ -266,11 +197,6 @@ impl Symbols {
             let previous = self.by_address.insert(record.object.addr(), index);
             boundary::require_invariant(previous.is_none(), "duplicate live Symbol address");
         }
-        self.owned_name_bytes = self
-            .ordered
-            .iter()
-            .map(|record| record.nul_terminated_bytes.len())
-            .sum();
         before.saturating_sub(self.ordered.len())
     }
 }
@@ -313,38 +239,27 @@ mod tests {
         assert_ne!(again, objects[17]);
         assert_eq!(symbols.at(live), again);
         assert_eq!(symbols.find_hashed(&names[17], digest(17)), Some(again));
-        assert_eq!(symbols.owned_name_bytes(), names.iter().enumerate()
-            .filter(|(i, _)| !dead.contains_key(&objects[*i].addr()) || *i == 17)
-            .map(|(_, name)| name.len() + 1).sum());
     }
 
     #[test]
-    fn fixed_query_digests_follow_each_inventory_through_retirement_and_reinterning() {
+    fn existing_names_follow_retirement_without_interning_absent_queries() {
+        const NAMES: [&[u8]; 3] = [b"first", b"ordinaryName:", b"anotherName"];
         // Each instance has its own hash seed. Missing queries must neither
         // intern names nor retain objects, including after a formerly live hit.
         for _ in 0..3 {
             let mut heap = ObjectMemory::new();
             let behavior = heap.allocate(0);
             let mut symbols = Symbols::new();
-            for name in QUERY_NAMES { assert_eq!(symbols.existing(name), None); }
+            for name in NAMES { assert_eq!(symbols.existing(name), None); }
             assert_eq!(symbols.count(), 0);
-            assert_eq!(symbols.owned_name_bytes(), 0);
-            for name in QUERY_NAMES {
+            for name in NAMES {
                 let name = name.to_vec();
                 let first = symbols.intern(&mut heap, behavior, &name).unwrap();
                 assert_eq!(symbols.existing(&name), Some(first));
-                // A different name of the same length must use the fallback,
-                // rather than another name's cached digest or Symbol identity.
+                // Equal-length names must retain independent identities.
                 let mut neighbor = name.clone(); neighbor[0] = b'!';
                 let other = symbols.intern(&mut heap, behavior, &neighbor).unwrap();
                 assert_eq!(symbols.existing(&neighbor), Some(other));
-                // Arbitrary stale hints, including a live wrong name and an
-                // out-of-range slot, cannot substitute for current membership.
-                let query = QUERY_NAMES.iter().position(|q| *q == name.as_slice()).unwrap();
-                for hint in [symbols.ordered.len()-1, usize::MAX, 0] {
-                    symbols.query_positions[query].set(hint);
-                    assert_eq!(symbols.existing(&name), Some(first));
-                }
                 assert_eq!(symbols.remove_objects(&[(first.addr(), ())].into_iter().collect()), 1);
                 assert_eq!(symbols.existing(&name), None);
                 assert_eq!(symbols.existing(&neighbor), Some(other));
@@ -353,26 +268,6 @@ mod tests {
                 assert_eq!(symbols.existing(&name), Some(second));
             }
         }
-    }
-
-    #[test]
-    fn query_position_hint_rejects_a_same_digest_wrong_name() {
-        let mut heap = ObjectMemory::new();
-        let behavior = heap.allocate(0);
-        let mut symbols = Symbols::new();
-        let query = 1;
-        let name = QUERY_NAMES[query];
-        let target = symbols.intern(&mut heap, behavior, name).unwrap();
-        let digest = symbols.query_digests[query];
-        symbols.intern_hashed(&mut heap, behavior, b"different-query", digest);
-        symbols.query_positions[query].set(1);
-        assert_eq!(symbols.existing(name), Some(target));
-        symbols.remove_objects(&[(target.addr(), ())].into_iter().collect());
-        symbols.query_positions[query].set(0);
-        assert_eq!(symbols.existing(name), None);
-        let replacement = symbols.intern(&mut heap, behavior, name).unwrap();
-        assert_ne!(replacement, target);
-        assert_eq!(symbols.existing(name), Some(replacement));
     }
 
     #[test]

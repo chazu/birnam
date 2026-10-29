@@ -130,7 +130,6 @@ pub(crate) enum Action {
     NativeBindingsMatch,
     SameNativeMethod,
     NativeMethodIndex,
-    NativeBindingSemantics,
     DefaultAllocation,
     SymbolHash,
     SymbolSize,
@@ -221,7 +220,6 @@ core_primitives![
     (b"nativeBindingsMatch:", NativeBindingsMatch),
     (b"sameNativeMethod:as:", SameNativeMethod),
     (b"nativeMethodIndex", NativeMethodIndex),
-    (b"nativeBindingQuerySemantics:for:", NativeBindingSemantics),
     (b"usesDefaultAllocation", DefaultAllocation),
     (b"nameHash", SymbolHash),
     (b"sizeWord", SymbolSize),
@@ -669,13 +667,6 @@ impl State {
                 }
                 Ok(abi::size(1).unwrap())
             }
-            Action::NativeBindingSemantics => {
-                let (method,selector)=pair()?;
-                let expected=[(b"usesDefaultLookup:".as_slice(),Action::UsesDefaultLookup),
-                    (b"bind:to:",Action::Bind),(b"nativeBindingsMatch:",Action::NativeBindingsMatch)]
-                    .into_iter().find(|(name,_)|self.selector(name)==selector).map(|(_,action)|action);
-                Ok(abi::size(usize::from(expected.is_some_and(|action|self.method_is_builtin(method,action)))).unwrap())
-            }
             Action::DefaultAllocation => {
                 if !a.is_empty() { return Err(invalid); }
                 if !self.uses_default_lookup(self.root)? { return Ok(abi::size(0).unwrap()); }
@@ -819,15 +810,14 @@ impl State {
                         .iter()
                         .copied()
                         .zip(rec.values.iter().copied())
-                        .zip(rec.weak_keys.iter().copied())
                         .collect::<Vec<_>>()
                 };
-                for ((k, v), weak) in rows {
+                for (k, v) in rows {
                     unsafe {
                         self.send(
                             visitor,
                             b"binding:value:weak:",
-                            &[k, v, abi::size(weak as usize).unwrap()],
+                            &[k, v, abi::size(0).unwrap()],
                         )
                     }?;
                 }
@@ -876,7 +866,6 @@ impl State {
             .collect();
         {
             let mut t = self.tables.borrow_mut();
-            t.remove_weak_keys(&dead);
             t.remove_objects(&behaviors);
         }
         self.symbols.borrow_mut().remove_objects(&dead);

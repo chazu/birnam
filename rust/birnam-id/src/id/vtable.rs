@@ -1,5 +1,4 @@
 //! Raw vtable objects, ordered method dictionaries, and exact membership.
-#![allow(dead_code)] // Direct allocation entry is used by the construction cutover.
 
 use core::cell::Cell;
 use core::mem::offset_of;
@@ -37,8 +36,6 @@ pub(crate) struct VtableRecord {
     pub(crate) logical_capacity: usize,
     pub(crate) keys: Vec<Oop>,
     pub(crate) values: Vec<Oop>,
-    pub(crate) weak_keys: Vec<bool>,
-    callable: Vec<bool>,
     // Derived identity lookup only. Ordered vectors retain raw-view and GC
     // authority; these integer addresses never add roots or cache dispatch.
     pub(crate) key_indices: AddressMap<usize>,
@@ -110,10 +107,6 @@ impl VtableRecord {
         };
         self.keys.reserve_exact(next_capacity - self.keys.len());
         self.values.reserve_exact(next_capacity - self.values.len());
-        self.callable
-            .reserve_exact(next_capacity - self.callable.len());
-        self.weak_keys
-            .reserve_exact(next_capacity - self.weak_keys.len());
         self.logical_capacity = next_capacity;
     }
 }
@@ -186,23 +179,6 @@ impl Vtables {
         object
     }
 
-    /// Atomically construct a fresh behavior with its initial method. No caller
-    /// can have observed this allocation yet, so no existing lookup changes.
-    /// Subsequent edits still use add_method and advance both epochs.
-    pub(crate) fn create_with_method(
-        &mut self,
-        memory: &mut ObjectMemory,
-        parent: Oop,
-        meta: Oop,
-        selector: Oop,
-        method: Oop,
-    ) -> Oop {
-        assert!(!method.is_null());
-        let object = self.create(memory, parent, meta);
-        self.insert_method(object, selector, method);
-        object
-    }
-
     /// Register a fresh behavior allocation supplied by the caller.
     /// # Safety
     /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.
@@ -232,8 +208,6 @@ impl Vtables {
                 logical_capacity: 0,
                 keys: Vec::new(),
                 values: Vec::new(),
-                weak_keys: Vec::new(),
-                callable: Vec::new(),
                 key_indices: AddressMap::default(),
                 parent,
             },
@@ -244,27 +218,6 @@ impl Vtables {
     pub(crate) fn is_registered(&self, candidate: Oop) -> bool {
         !candidate.is_null() && self.by_address.contains_key(&candidate.addr())
     }
-    pub(crate) fn is_registered_address(&self, address: usize) -> bool {
-        self.by_address.contains_key(&address)
-    }
-    pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {
-        let Some(record) = self.by_address.get(&vtable.addr()) else {
-            return Vec::new();
-        };
-        let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));
-        if !record.parent.is_null() {
-            edges.push(record.parent);
-        }
-        edges.extend(
-            record
-                .keys
-                .iter()
-                .copied()
-                .zip(record.weak_keys.iter().copied())
-                .filter_map(|(key, weak)| (!weak && !key.is_null()).then_some(key)),
-        );
-        edges
-    }
     pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {
         self.by_address
             .get(&vtable.addr())
@@ -274,18 +227,6 @@ impl Vtables {
         self.by_address
             .get_mut(&vtable.addr())
             .unwrap_or_else(|| boundary::fatal_invariant("vtable is not registered"))
-    }
-    pub(crate) fn count(&self) -> usize {
-        self.ordered.len()
-    }
-    pub(crate) fn view(&self) -> &[Oop] {
-        &self.ordered
-    }
-    pub(crate) fn at(&self, index: usize) -> Oop {
-        self.ordered
-            .get(index)
-            .copied()
-            .unwrap_or(core::ptr::null_mut())
     }
     pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {
         self.by_address
@@ -302,33 +243,6 @@ impl Vtables {
         record.parent = parent;
         record.sync_raw_view();
         self.note_mutation();
-    }
-    pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {
-        self.record(vtable).logical_capacity
-    }
-    pub(crate) fn selector_at(&self, vtable: Oop, index: usize) -> Oop {
-        self.record(vtable)
-            .keys
-            .get(index)
-            .copied()
-            .unwrap_or(core::ptr::null_mut())
-    }
-    pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {
-        &self.record(vtable).keys
-    }
-    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<Oop> {
-        let record = self.record(vtable);
-        record
-            .key_index(selector)
-            // Object-valued internal dictionary entries are not methods.
-            .and_then(|index| record.callable[index].then_some(record.values[index]))
-    }
-    pub(crate) fn lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<Oop>, Oop> {
-        let record = self.record(vtable);
-        if let Some(index) = record.key_index(selector) {
-            return Ok(record.callable[index].then_some(record.values[index]));
-        }
-        Err(record.parent)
     }
     /// Owner-local proof, valid until the next dictionary/graph mutation. The
     /// receiver's current metabehavior is still checked by each dispatch, and
@@ -349,10 +263,6 @@ impl Vtables {
         self.default_lookup.iter().find(|fact| fact.get().is_none())
             .unwrap_or(&self.default_lookup[0]).set(Some((key.0, key.1, key.2, root)));
         Some(root)
-    }
-    #[inline]
-    pub(crate) fn has_default_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
-        self.default_lookup_fact(meta, selector, expected).is_some()
     }
     #[inline]
     pub(crate) fn has_default_root_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
@@ -379,13 +289,13 @@ impl Vtables {
                 && let Some(index) = slot.get()
                 && record.keys.get(index) == Some(&selector)
             {
-                return record.callable[index].then_some(record.values[index]);
+                return Some(record.values[index]);
             }
             if let Some(index) = record.key_index(selector) {
                 if let Some(slot) = hint {
                     slot.set(Some(index));
                 }
-                return record.callable[index].then_some(record.values[index]);
+                return Some(record.values[index]);
             }
             // Never memoize inherited resolution or absence: read this live link.
             vtable = record.parent;
@@ -401,7 +311,6 @@ impl Vtables {
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(selector) {
             let previous = core::mem::replace(&mut record.values[index], method);
-            record.callable[index] = true;
             record.sync_raw_view();
             return AddMethod::Overwrote(previous);
         }
@@ -410,31 +319,9 @@ impl Vtables {
         }
         record.keys.push(selector);
         record.values.push(method);
-        record.callable.push(true);
-        record.weak_keys.push(false);
         record.index_appended_key();
         record.sync_raw_view();
         AddMethod::Added
-    }
-    pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
-        self.note_mutation();
-        let record = self.record_mut(vtable);
-        if let Some(index) = record.key_index(key) {
-            record.values[index] = value;
-            record.callable[index] = false;
-            record.weak_keys[index] = true;
-            record.sync_raw_view();
-            return;
-        }
-        if record.keys.len() == record.logical_capacity {
-            record.grow_dictionary();
-        }
-        record.keys.push(key);
-        record.values.push(value);
-        record.callable.push(false);
-        record.weak_keys.push(true);
-        record.index_appended_key();
-        record.sync_raw_view();
     }
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<Oop> {
         self.note_mutation();
@@ -442,15 +329,9 @@ impl Vtables {
         let index = record.key_index(selector)?;
         record.keys.remove(index);
         let removed = record.values.remove(index);
-        record.weak_keys.remove(index);
-        let callable = record.callable.remove(index);
         record.rebuild_key_indices();
         record.sync_raw_view();
-        callable.then_some(removed)
-    }
-    pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {
-        // SAFETY: forwarded caller precondition.
-        unsafe { ObjectMemory::vtable_of_valid_object(object) }
+        Some(removed)
     }
     /// Retire dictionary records before the caller releases their allocations.
     pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {
@@ -466,42 +347,7 @@ impl Vtables {
             self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         }
     }
-    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = Oop> + '_ {
-        self.record(vtable)
-            .values
-            .iter()
-            .copied()
-            .zip(self.record(vtable).callable.iter())
-            .filter_map(|(v, c)| (*c).then_some(v))
-    }
-    pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {
-        let mut removed = 0usize;
-        for record in self.by_address.values_mut() {
-            let original_length = record.keys.len();
-            let mut index = 0usize;
-            while index < record.keys.len() {
-                let key = record.keys[index];
-                let dead = record.weak_keys[index] && dead.contains_key(&key.addr());
-                if dead {
-                    record.keys.remove(index);
-                    record.values.remove(index);
-                    record.callable.remove(index);
-                    record.weak_keys.remove(index);
-                    removed = removed.saturating_add(1);
-                } else {
-                    index += 1;
-                }
-            }
-            if record.keys.len() != original_length {
-                record.rebuild_key_indices();
-            }
-            record.sync_raw_view();
-        }
-        if removed != 0 {
-            self.note_mutation();
-        }
-        removed
-    }
+
 }
 
 #[cfg(test)]
@@ -521,7 +367,7 @@ mod core_tests {
         assert!(tables.has_default_root_lookup(meta, selector, method));
         memory.set_vtable(meta, parent);
         tables.note_mutation();
-        assert!(tables.has_default_lookup(meta, selector, method));
+        assert!(tables.default_lookup_fact(meta, selector, method).is_some());
         assert!(!tables.has_default_root_lookup(meta, selector, method));
     }
     #[test]
@@ -534,44 +380,42 @@ mod core_tests {
         let key = memory.allocate(0);
         let expected = memory.allocate(0);
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key, expected));
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         // A distinct Method object is not the canonical lookup Method.
         tables.add_method(meta, key, memory.allocate(0));
-        assert!(!tables.has_default_lookup(meta, key, expected));
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key, expected));
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         tables.remove_method(meta, key);
-        assert!(!tables.has_default_lookup(meta, key, expected));
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(parent, key, expected);
         tables.set_parent(meta, parent);
-        assert!(tables.has_default_lookup(meta, key, expected));
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         tables.set_parent(meta, core::ptr::null_mut());
-        assert!(!tables.has_default_lookup(meta, key, expected));
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.set_parent(meta, parent);
-        assert!(tables.has_default_lookup(meta, key, expected));
-        tables.add_weak_opaque_binding(meta, key, parent);
-        assert!(!tables.has_default_lookup(meta, key, expected));
-        let mut dead = AddressMap::default();
-        dead.insert(key.addr(), ());
-        tables.remove_weak_keys(&dead);
-        assert!(tables.has_default_lookup(meta, key, expected));
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
+        tables.add_method(meta, key, parent);
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
+        tables.remove_method(meta, key);
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         // Positive facts must not survive registry retirement/address reuse.
         tables.remove_objects(&[meta]);
         unsafe {
             tables.register(meta, core::ptr::null_mut());
         }
-        assert!(!tables.has_default_lookup(meta, key, expected));
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key, expected));
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         // Invalidation is explicit, not an equality check on a saturated epoch.
         tables.mutation_epoch = u64::MAX;
         tables.binding_epoch = u64::MAX;
         tables.remove_method(meta, key);
-        assert!(!tables.has_default_lookup(meta, key, expected));
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
-        assert!(tables.has_default_lookup(meta, key, expected));
-        tables.add_weak_opaque_binding(meta, key, parent);
-        assert!(!tables.has_default_lookup(meta, key, expected));
+        assert!(tables.default_lookup_fact(meta, key, expected).is_some());
+        tables.add_method(meta, key, parent);
+        assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
     }
 
     #[test]
@@ -579,11 +423,9 @@ mod core_tests {
         fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<Oop> {
             while !at.is_null() {
                 let row = tables.record(at);
-                for ((&candidate, value), weak) in
-                    row.keys.iter().zip(&row.values).zip(&row.callable)
-                {
+                for (&candidate, &value) in row.keys.iter().zip(&row.values) {
                     if candidate == key {
-                        return (*weak).then_some(*value);
+                        return Some(value);
                     }
                 }
                 at = row.parent;
@@ -626,24 +468,17 @@ mod core_tests {
                 }
             }
         }
-        // A populated large-dictionary hint must read a newly opaque value,
-        // rather than returning the native entry that used to occupy the slot.
+        // A populated hint must observe replacement, removal and inheritance.
         assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));
-        tables.add_weak_opaque_binding(other, keys[0], meta);
-        assert_eq!(tables.lookup(other, keys[0]), None);
-        let mut removed_key = AddressMap::default();
-        removed_key.insert(keys[0].addr(), ());
-        tables.remove_weak_keys(&removed_key);
+        tables.add_method(other, keys[0], entry(102));
+        assert_eq!(tables.lookup(other, keys[0]), Some(entry(102)));
+        tables.remove_method(other, keys[0]);
         assert_eq!(tables.lookup(other, keys[0]), None);
         tables.add_method(other, keys[0], entry(101));
-        assert_eq!(tables.lookup(other, keys[0]), Some(entry(101)));
-        // An opaque entry shadows an inherited method just as it did before.
         tables.set_parent(child, other);
-        tables.add_weak_opaque_binding(child, keys[0], meta);
-        assert_eq!(tables.lookup(child, keys[0]), None);
-        let mut dead = AddressMap::default();
-        dead.insert(keys[0].addr(), ());
-        tables.remove_weak_keys(&dead);
+        tables.add_method(child, keys[0], entry(201));
+        assert_eq!(tables.lookup(child, keys[0]), Some(entry(201)));
+        tables.remove_method(child, keys[0]);
         assert_eq!(tables.lookup(child, keys[0]), Some(entry(101)));
         // Re-register the same still-allocated payload after retiring its record.
         // Hints do not keep a record or its previous entries alive.
@@ -699,11 +534,11 @@ mod core_tests {
         let bound = tables.binding_epoch();
         tables.remove_method(live, key);
         tables.add_method(live, key, entry);
-        assert_eq!(tables.direct_lookup(live, key), Some(entry));
+        assert_eq!(tables.lookup(live, key), Some(entry));
         assert_eq!(tables.binding_epoch(), bound + 2);
     }
     #[test]
-    fn initialized_behavior_does_not_change_live_bindings_but_later_edits_do() {
+    fn installing_on_a_fresh_behavior_still_advances_binding_epochs() {
         let mut memory = ObjectMemory::new();
         let mut tables = Vtables::new();
         let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
@@ -711,15 +546,16 @@ mod core_tests {
         let key = memory.allocate(0);
         let entry = memory.allocate(0);
         let before = (tables.binding_epoch(), tables.mutation_epoch());
-        let fresh = tables.create_with_method(&mut memory, meta, meta, key, entry);
-        assert_eq!(tables.direct_lookup(fresh, key), Some(entry));
+        let fresh = tables.create(&mut memory, meta, meta);
+        tables.add_method(fresh, key, entry);
+        assert_eq!(tables.lookup(fresh, key), Some(entry));
         assert_eq!(tables.parent_of(fresh), meta);
-        assert_eq!((tables.binding_epoch(), tables.mutation_epoch()), before);
+        assert_eq!((tables.binding_epoch(), tables.mutation_epoch()), (before.0 + 1, before.1 + 1));
         tables.remove_method(fresh, key);
         tables.add_method(fresh, key, entry);
-        assert_eq!(tables.binding_epoch(), before.0 + 2);
-        assert_eq!(tables.mutation_epoch(), before.1 + 2);
-        assert_eq!(tables.direct_lookup(fresh, key), Some(entry));
+        assert_eq!(tables.binding_epoch(), before.0 + 3);
+        assert_eq!(tables.mutation_epoch(), before.1 + 3);
+        assert_eq!(tables.lookup(fresh, key), Some(entry));
     }
     #[test]
     fn behavior_graph_and_dictionary_need_only_id_allocation() {
@@ -766,6 +602,6 @@ mod core_tests {
         tables.remove_objects(&[child]);
         assert!(!tables.is_registered(child));
         assert!(memory.detach(child.addr()).is_some());
-        assert_eq!(tables.count(), 3);
+        assert_eq!(tables.ordered.len(), 3);
     }
 }

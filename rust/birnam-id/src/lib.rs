@@ -1,4 +1,4 @@
-//! Production Id, undergoing the Oop-only vertical migration on this branch.
+//! Oop-only Id message dispatch, bootstrap objects and continuation transfer.
 #[cfg(not(any(test, panic = "abort")))]
 compile_error!("runnable Id requires panic=abort");
 pub(crate) use birnam_abi as abi;

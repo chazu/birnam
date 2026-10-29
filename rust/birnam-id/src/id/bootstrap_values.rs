@@ -287,10 +287,8 @@ impl State {
                 let tables = self.tables.borrow();
                 let row = tables.record(o);
                 let mut out = vec![row.parent];
-                for ((key, value), weak) in row.keys.iter().zip(&row.values).zip(&row.weak_keys) {
-                    if !weak {
-                        out.extend([*key, *value]);
-                    }
+                for (key, value) in row.keys.iter().zip(&row.values) {
+                    out.extend([*key, *value]);
                 }
                 Ok(out)
             }
@@ -303,6 +301,33 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retired_registry_and_constructor_operations_are_not_installed() {
+        let s = super::super::initial_objects::construct();
+        for name in [
+            b"nativeBindingQuerySemantics:for:".as_slice(),
+            b"addWeakBinding:to:as:",
+            b"restoreBinding:of:in:expected:previous:atEpoch:",
+            b"newBehaviorWithParent:method:as:",
+            b"delegatedWith:as:",
+        ] {
+            let selector = s.seed_symbol(name);
+            for receiver in [s.root, s.meta, s.object] {
+                assert!(s.tables.borrow().lookup(s.behavior(receiver).unwrap(), selector).is_none());
+            }
+        }
+    }
+    #[test]
+    fn dictionary_references_include_every_key_and_value() {
+        let s = super::super::initial_objects::construct();
+        let table = s.tables.borrow_mut().create(&mut s.heap.borrow_mut(), s.object, s.meta);
+        let key = s.seed_symbol(b"ownedBinding");
+        let value = s.allocate(s.object, 0).unwrap();
+        s.tables.borrow_mut().add_method(table, key, value);
+        assert_eq!(s.tables.borrow().lookup(table, key), Some(value));
+        assert_eq!(s.owned_references(Action::TableReferences, table).unwrap(), vec![s.object, key, value]);
+    }
+
     #[test]
     fn object_valued_fact_queries_decline_after_live_replacement() {
         let s = super::super::initial_objects::construct();
