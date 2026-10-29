@@ -20,6 +20,40 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: code-owner admission only (2026-10-28)
+
+`Method admitCodeObject:` and `admitCodeObject:synchronous:` are removed, along
+with their private metadata-vtable construction and getter template. Block
+reconstruction no longer captures an arbitrary Method and attaches a supplied
+CodeObject. It requires the existing synchronous or resumable code owner to
+construct a fresh instance of the same checked portable program.
+
+```text
+before: arbitrary Method + CodeObject -> query shape -> private getters/vtable
+        -> mutate Method behavior -> independently record checked shape
+reconstruction fallback: capture arbitrary Method -> attach supplied source
+
+after:  compiled-code owner validates source/descriptor -> constructs Method
+        -> Block construction reuses its checked capture shape
+reconstruction: same owned program -> fresh source/environment instance
+```
+
+No replacement registry, Id operation or metadata lookup on ordinary sends is
+added. Native Methods remain usable without CodeObjects. A replaced `codeObject`
+getter, or a user-installed selector named `admitCodeObject:`, cannot authorize
+pairing unknown native code with an unrelated portable program. Public reflection
+remains replaceable; it is distinct from the code owner's construction authority.
+
+The negative tests cover these false associations, wrong program bytes, wrong
+capture counts and null captures. Retained checks cover source identity, repeated
+construction without querying checked shapes again, collection during owner
+callbacks, captured aliases, one-time image-shell restoration, nested captures,
+task waits/cancellation and optimizer recovery without effect replay. The retired
+arbitrary-native-source association is no longer treated as a required feature.
+[Core and focused qualification](../measurements/code-owner-admission-oop-20261028.json)
+passes; final cold-release qualification and the older optimizer/publication probe
+audit remain pending.
+
 ## Implementation checkpoint: default direct definitions (2026-10-28)
 
 The default `Reflect methodForArity:implementation:` operation now asks Execution
@@ -67,13 +101,14 @@ constructor reentry. [Qualification evidence](../measurements/default-direct-def
 distinguishes the intermediate core-only prefix from the subsequent optional
 provider checks.
 
-Published startup qualification remains open. Core image generation and startup
-with optional providers absent completed; the development-cache installer is
-still generating the tools image. Fresh-process image saving exceeded the existing
-240-second test deadline; a separate completion check is running without that
-deadline. No performance or final release qualification is claimed. Legacy generic
-admission and older native-ABI probes (`shared_invocation_probe` and
-`publication_result_proposal`) still require audit and migration or retirement.
+The development-cache install completed, including core startup with optional
+providers absent and tools-image generation/startup. Fresh-process image saving exceeded the existing
+240-second test deadline. A separate completion check passed without that deadline:
+saving took 456 seconds, mapped loading 47 seconds, and rebuilding 58 seconds.
+No performance or final cold-release qualification is claimed. The subsequent
+code-owner admission checkpoint removes the generic admission path. Older
+native-ABI probes (`shared_invocation_probe` and `publication_result_proposal`)
+still require audit and migration or retirement.
 
 ## Implementation checkpoint: native conversion ownership (2026-10-28)
 
@@ -765,7 +800,7 @@ This reduces source and build burden; it is not a claim of runtime speedup.
 | --- | --- |
 | Direct dispatch and Method entry | [Id dispatch](../../rust/birnam-id/src/id/id_dispatch.rs), [bootstrap Method owner](../../rust/birnam-id/src/id/bootstrap_values.rs) |
 | Transfer loop, resumable lookup and native barriers | [Id continuations](../../rust/birnam-id/src/id/continuation.rs) |
-| Definition forwarding and per-Method behavior | [Codegen runtime](../../rust/birnam-codegen-runtime/src/lib.rs), [authored MethodInvocation](../../modules/method-invocation.birnam) |
+| Direct definition and binding | [Codegen runtime](../../rust/birnam-codegen-runtime/src/lib.rs), [compiled code owner](../../rust/birnam-execution/src/native_code.rs) |
 | Generated capture access and steps | [synchronous emission](../../rust/birnam-native-backend/src/oop_emission.rs), [resumable emission](../../rust/birnam-native-backend/src/oop_resumable.rs) |
 | Compiled entry/context ownership | [TCC owner](../../rust/birnam-tcc/src/lib.rs) |
 | Pending calls and continuation recognition | [resumable runtime](../../rust/birnam-execution/src/resumable_runtime.rs) |

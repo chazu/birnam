@@ -48,14 +48,7 @@ fn typed_blocks_bind_direct_methods_without_metadata_mutation() {
                     .unwrap(),
                 b"oO"
             );
-            assert_eq!(call(value, b"admitCodeObject:", &[description]), value);
-            assert!(h
-                .send(
-                    value,
-                    b"admitCodeObject:",
-                    &[call(body, b"codeObject", &[])]
-                )
-                .is_err());
+            assert!(call(h.id.root, b"bind:to:", &[key(b"admitCodeObject:"), value]).is_null());
         }
         assert_eq!(
             epoch(),

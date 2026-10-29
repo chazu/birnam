@@ -5,7 +5,7 @@ mod hooks;
 #[path = "support/minimal.rs"]
 #[allow(dead_code)]
 mod minimal;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 use std::path::Path;
 
 #[test]
@@ -72,8 +72,6 @@ fn resumable_code_construction_is_pure_and_owns_its_source_association() {
     assert_eq!(epoch(), before);
     assert_eq!(call(captured, b"codeObject", &[]), source);
     assert_eq!(call(captured, b"isSynchronous", &[]), named(b"false"));
-    let other = compile(b"42");
-    let other_code = call(other, b"codeObject", &[]);
     let failure = hooks.fault(881);
     let denied = hooks.context(&[failure, size(0).unwrap()]);
     let deny = hooks.method(b"deny", denied);
@@ -85,24 +83,14 @@ fn resumable_code_construction_is_pure_and_owns_its_source_association() {
         call(factory_vt, b"addMethod", &[key(name), deny]);
     }
     let before = epoch();
-    assert_eq!(call(method, b"admitCodeObject:", &[source]), method);
-    assert!(h.send(method, b"admitCodeObject:", &[other_code]).is_err());
-    assert_eq!(
-        call(
-            method,
-            b"admitCodeObject:synchronous:",
-            &[source, named(b"false")]
-        ),
-        method
-    );
-    assert!(
-        h.send(
-            method,
-            b"admitCodeObject:synchronous:",
-            &[source, named(b"true")]
-        )
-        .is_err()
-    );
+    assert_eq!(call(method, b"codeObject", &[]), source);
+    assert_eq!(call(captured, b"codeObject", &[]), source);
+    for selector in [
+        b"admitCodeObject:".as_slice(),
+        b"admitCodeObject:synchronous:",
+    ] {
+        assert!(call(h.id.root, b"bind:to:", &[key(selector), method]).is_null());
+    }
     assert_eq!(epoch(), before);
     assert_eq!(
         hooks.count(denied, 1),
@@ -129,24 +117,26 @@ fn resumable_code_construction_is_pure_and_owns_its_source_association() {
     assert_ne!(call(pure, b"codeObject", &[]), named(b"nil"));
     assert_eq!(hooks.count(denied, 1), 0);
     for (name, original) in saved {
-        call(behavior, b"addMethod", &[name, original]);
+        if original.is_null() {
+            call(behavior, b"removeMethod:", &[name]);
+        } else {
+            call(behavior, b"addMethod", &[name, original]);
+        }
     }
 
     // Observe the producer's real descriptor and test rejection before creation.
     let path = std::env::temp_dir().join(format!("birnam-owned-code-{}.dylib", std::process::id()));
-    assert!(
-        std::process::Command::new("clang")
-            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
-            .arg(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tests/fixtures/oop-host/prepared-call.c")
-            )
-            .arg("-o")
-            .arg(&path)
-            .status()
-            .unwrap()
-            .success()
-    );
+    assert!(std::process::Command::new("clang")
+        .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/oop-host/prepared-call.c")
+        )
+        .arg("-o")
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success());
     let fixture = h.load_native(&q, &path, &[]).unwrap();
     std::fs::remove_file(path).unwrap();
     let name = key(b"fromStep:descriptor:selection:owner:callPlans:codeObject:");
@@ -208,14 +198,13 @@ fn resumable_code_construction_is_pure_and_owns_its_source_association() {
     assert_eq!(call(block, b"codeObject", &[]), equal);
     assert_eq!(call(created, b"codeObject", &[]), original_code);
     let different = call(compile(b"99"), b"codeObject", &[]);
-    assert!(
-        h.send(
+    assert!(h
+        .send(
             named(b"Block"),
             b"fromMethod:codeObject:captures:",
             &[created, different, captures]
         )
-        .is_err()
-    );
+        .is_err());
     call(named(b"GC"), b"collectPrecisely", &[]);
     assert_eq!(
         q.word_bits(call(call(block, b"value", &[]), b"word", &[]))

@@ -1,12 +1,5 @@
 //! Portable metadata is ordinary replaceable Method behavior, not an Id tag.
 use super::*;
-pub(super) unsafe extern "C" fn code_value(_: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
-    if n == 0 {
-        c
-    } else {
-        abi::fault_reference(invalid())
-    }
-}
 pub(super) unsafe extern "C" fn code_object(
     _: Oop,
     c: Oop,
@@ -101,50 +94,6 @@ pub(super) unsafe extern "C" fn method_synchronous(
         } else {
             b"true"
         })
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-pub(super) unsafe extern "C" fn admit(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let [code] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let q = s.scope(&[r, *code]);
-        if let Some((original, _)) = owned_source(s, r, &q)? {
-            return if original == *code {
-                Ok(r)
-            } else {
-                Err(invalid())
-            };
-        }
-        let arity = if *code == s.nil {
-            None
-        } else {
-            let factory = q.keep(s.named(b"CodeObject")?);
-            let arity = q.keep(s.send(factory, b"parameterCountOf:", &[*code])?);
-            let captures = q.keep(s.send(factory, b"captureCountOf:", &[*code])?);
-            Some(CodeShape {
-                parameters: resumable::index(s, arity)?,
-                captures: resumable::index(s, captures)?,
-            })
-        };
-        let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
-        let private = q.keep(s.send(behavior, b"delegated", &[])?);
-        let getter = q.keep(s.send(s.code_getter, b"withContext:", &[*code])?);
-        s.send(
-            private,
-            b"addMethod",
-            &[s.names[b"codeObject".as_slice()], getter],
-        )?;
-        s.send(s.id.root, b"reassociateBehaviorOf:with:", &[r, private])?;
-        let mut records = s.admitted.borrow_mut();
-        if let Some(arity) = arity {
-            records.insert(r.addr(), arity);
-        } else {
-            records.remove(&r.addr());
-        }
-        Ok(r)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -276,45 +225,6 @@ pub(super) unsafe extern "C" fn from_method(
     .unwrap_or_else(abi::fault_reference)
 }
 
-pub(super) unsafe extern "C" fn admit_selected(
-    _: Oop,
-    c: Oop,
-    r: Oop,
-    a: *const Oop,
-    n: usize,
-) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let [code, sync] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        if *sync != s.named(b"true")? && *sync != s.named(b"false")? {
-            return Err(invalid());
-        }
-        let q = s.scope(&[r, *code, *sync]);
-        if let Some((original, synchronous)) = owned_source(s, r, &q)? {
-            let expected = s.named(if synchronous { b"true" } else { b"false" })?;
-            return if original == *code && *sync == expected {
-                Ok(r)
-            } else {
-                Err(invalid())
-            };
-        }
-        let result = admit(ptr::null_mut(), c, r, code, 1);
-        if abi::is_fault(result) {
-            return Err(abi::object_reference(result));
-        }
-        let behavior = q.keep(s.send(s.id.root, b"behaviorOf:", &[r])?);
-        let getter = q.keep(s.send(s.code_getter, b"withContext:", &[*sync])?);
-        s.send(
-            behavior,
-            b"addMethod",
-            &[s.names[b"isSynchronous".as_slice()], getter],
-        )?;
-        Ok(r)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
 pub(super) unsafe extern "C" fn block_synchronous(
     _: Oop,
     c: Oop,
@@ -454,8 +364,9 @@ unsafe fn with_code(s: &State, method: Oop, code: Oop, captures: Option<Oop>) ->
         } else if let Some(owned) = native_code::with_source(s, method, code, &q)? {
             q.keep(owned)
         } else {
-            let owned = q.keep(s.send(method, b"captured", &[])?);
-            q.keep(s.send(owned, b"admitCodeObject:", &[code])?)
+            // A reflected source getter is not authority to pair arbitrary
+            // native code with a portable program. Only its code owner can do so.
+            return Err(invalid());
         };
         let mut values = vec![owned];
         if let Some(captures) = captures {

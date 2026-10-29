@@ -38,7 +38,6 @@ struct State {
     native_answer: Oop,
     capture_seed: Oop,
     block_value_seed: Oop,
-    code_getter: Oop,
     binding_visitor_vt: Oop,
     ns: Oop,
     gc: Oop,
@@ -447,7 +446,6 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
             s.native_answer,
             s.capture_seed,
             s.block_value_seed,
-            s.code_getter,
             s.binding_visitor_vt,
         ];
         values.extend_from_slice(&s.scoped.borrow());
@@ -711,8 +709,6 @@ const NAMES: &[&[u8]] = &[
     b"methodBehavior",
     b"invokeOn:",
     b"codeObject",
-    b"admitCodeObject:",
-    b"codeValue",
     b"reassociateBehaviorOf:with:",
     b"binding:value:weak:",
     b"bindingsDo:",
@@ -724,7 +720,6 @@ const NAMES: &[&[u8]] = &[
     b"slotAt:in:",
     b"slotAt:in:put:",
     b"isSynchronous",
-    b"admitCodeObject:synchronous:",
     b"captureAt:",
     b"imageShellFromMethod:codeObject:",
     b"restoreImageCaptures:of:",
@@ -968,8 +963,6 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"methodBehavior"),
     Literal::new(b"invokeOn:"),
     Literal::new(b"codeObject"),
-    Literal::new(b"admitCodeObject:"),
-    Literal::new(b"codeValue"),
     Literal::new(b"reassociateBehaviorOf:with:"),
     Literal::new(b"binding:value:weak:"),
     Literal::new(b"bindingsDo:"),
@@ -981,7 +974,6 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"slotAt:in:"),
     Literal::new(b"slotAt:in:put:"),
     Literal::new(b"isSynchronous"),
-    Literal::new(b"admitCodeObject:synchronous:"),
     Literal::new(b"captureAt:"),
     Literal::new(b"imageShellFromMethod:codeObject:"),
     Literal::new(b"restoreImageCaptures:of:"),
@@ -1040,34 +1032,34 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"bodyOfMethod:"),
 ];
 static METHODS: &[MethodSpec] = &[
-    MethodSpec { name: 254, entry: Some(reflection::method_body), convention: 0 },
+    MethodSpec { name: 251, entry: Some(reflection::method_body), convention: 0 },
     MethodSpec {
-        name: 237,
+        name: 234,
         entry: Some(numeric::evaluate),
         convention: 0,
     },
     MethodSpec {
-        name: 236,
+        name: 233,
         entry: Some(resumable::native_tier::install),
         convention: 0,
     },
     MethodSpec {
-        name: 233,
+        name: 230,
         entry: Some(resumable::from_step_plans),
         convention: 0,
     },
     MethodSpec {
-        name: 234,
+        name: 231,
         entry: Some(resumable::call_preparation::prepared),
         convention: 0,
     },
     MethodSpec {
-        name: 235,
+        name: 232,
         entry: Some(resumable::call_preparation::field),
         convention: 0,
     },
     MethodSpec {
-        name: 232,
+        name: 229,
         entry: Some(reflection::capture_word_of),
         convention: 0,
     },
@@ -1467,170 +1459,155 @@ static METHODS: &[MethodSpec] = &[
         convention: 0,
     },
     MethodSpec {
-        name: 185,
-        entry: Some(reflection::admit),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 186,
-        entry: Some(reflection::code_value),
-        convention: 0,
-    },
-    MethodSpec {
         name: 55,
         entry: Some(reflection::captured),
         convention: 0,
     },
     MethodSpec {
-        name: 188,
+        name: 186,
         entry: Some(reflection::binding),
         convention: 0,
     },
     MethodSpec {
-        name: 190,
+        name: 188,
         entry: Some(reflection::direct_method),
         convention: 0,
     },
     MethodSpec {
-        name: 191,
+        name: 189,
         entry: Some(reflection::binding_matches),
         convention: 0,
     },
     MethodSpec {
-        name: 193,
+        name: 191,
         entry: Some(reflection::from_method),
         convention: 0,
     },
     MethodSpec {
-        name: 197,
+        name: 195,
         entry: Some(reflection::block_synchronous),
         convention: 0,
     },
     MethodSpec {
-        name: 198,
-        entry: Some(reflection::admit_selected),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 199,
+        name: 196,
         entry: Some(reflection::capture_at),
         convention: 0,
     },
     MethodSpec {
-        name: 200,
+        name: 197,
         entry: Some(reflection::shell),
         convention: 0,
     },
     MethodSpec {
-        name: 201,
+        name: 198,
         entry: Some(reflection::restore_captures),
         convention: 0,
     },
     MethodSpec {
-        name: 202,
+        name: 199,
         entry: Some(reflection::from_code),
         convention: 0,
     },
     MethodSpec {
-        name: 208,
+        name: 205,
         entry: Some(reflection::for_dnu),
         convention: 0,
     },
     MethodSpec {
-        name: 209,
+        name: 206,
         entry: Some(resumable::frame_view::current),
         convention: 0,
     },
     MethodSpec {
-        name: 210,
+        name: 207,
         entry: Some(resumable::frame_view::word::<0>),
         convention: 0,
     },
     MethodSpec {
-        name: 211,
+        name: 208,
         entry: Some(resumable::frame_view::word::<1>),
         convention: 0,
     },
     MethodSpec {
-        name: 212,
+        name: 209,
         entry: Some(resumable::frame_view::word::<2>),
         convention: 0,
     },
     MethodSpec {
-        name: 213,
+        name: 210,
         entry: Some(resumable::frame_view::word::<3>),
         convention: 0,
     },
     MethodSpec {
-        name: 214,
+        name: 211,
         entry: Some(resumable::frame_view::word::<4>),
         convention: 0,
     },
     MethodSpec {
-        name: 215,
+        name: 212,
         entry: Some(resumable::frame_view::read::<false>),
         convention: 0,
     },
     MethodSpec {
-        name: 216,
+        name: 213,
         entry: Some(resumable::frame_view::read::<true>),
         convention: 0,
     },
     MethodSpec {
-        name: 217,
+        name: 214,
         entry: Some(invalid_request),
         convention: 0,
     },
     MethodSpec {
-        name: 222,
+        name: 219,
         entry: Some(resumable::recovery::with_inline),
         convention: 0,
     },
     MethodSpec {
-        name: 223,
+        name: 220,
         entry: Some(resumable::recovery::recover::<false>),
         convention: 0,
     },
     MethodSpec {
-        name: 224,
+        name: 221,
         entry: Some(resumable::recovery::recover::<true>),
         convention: 0,
     },
     MethodSpec {
-        name: 230,
+        name: 227,
         entry: Some(native_adapters::native_signature),
         convention: 0,
     },
     MethodSpec {
-        name: 231,
+        name: 228,
         entry: Some(native_adapters::deferred_answer),
         convention: 1,
     },
     MethodSpec {
-        name: 238,
+        name: 235,
         entry: Some(resumable::method_from_block),
         convention: 0,
     },
     MethodSpec {
-        name: 239,
+        name: 236,
         entry: Some(native_adapters::method_with_signature),
         convention: 0,
     },
     MethodSpec {
-        name: 240,
+        name: 237,
         entry: Some(native_adapters::method_value),
         convention: 1,
     },
-    MethodSpec { name: 241, entry: Some(resumable::from_step_code), convention: 0 },
-    MethodSpec { name: 242, entry: Some(reflection::method_code), convention: 0 },
-    MethodSpec { name: 243, entry: Some(reflection::method_synchronous), convention: 0 },
-    MethodSpec { name:245, entry:Some(native_code::from_factory), convention:0 },
-    MethodSpec { name:246, entry:Some(native_code::field::<0>), convention:0 },
-    MethodSpec { name:247, entry:Some(native_code::field::<1>), convention:0 },
-    MethodSpec { name:248, entry:Some(native_code::field::<2>), convention:0 },
-    MethodSpec { name:251, entry:Some(native_code::field::<3>), convention:0 },
-    MethodSpec { name:252, entry:Some(resumable::dnu_entry), convention:1 },
-    MethodSpec { name:253, entry:Some(method_identity), convention:0 },
+    MethodSpec { name: 238, entry: Some(resumable::from_step_code), convention: 0 },
+    MethodSpec { name: 239, entry: Some(reflection::method_code), convention: 0 },
+    MethodSpec { name: 240, entry: Some(reflection::method_synchronous), convention: 0 },
+    MethodSpec { name: 242, entry:Some(native_code::from_factory), convention:0 },
+    MethodSpec { name: 243, entry:Some(native_code::field::<0>), convention:0 },
+    MethodSpec { name: 244, entry:Some(native_code::field::<1>), convention:0 },
+    MethodSpec { name: 245, entry:Some(native_code::field::<2>), convention:0 },
+    MethodSpec { name: 248, entry:Some(native_code::field::<3>), convention:0 },
+    MethodSpec { name: 249, entry:Some(resumable::dnu_entry), convention:1 },
+    MethodSpec { name: 250, entry:Some(method_identity), convention:0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1709,11 +1686,6 @@ unsafe extern "C" fn initialize(
                 b"lookup",
                 &[names[b"captured".as_slice()]],
             )?)?,
-            code_getter: keep(send(
-                image,
-                b"methodAt:",
-                &[names[b"codeValue".as_slice()]],
-            )?)?,
             binding_visitor_vt: keep(send(base, b"delegated", &[])?)?,
             ns: *ns,
             gc: named(b"GC")?,
@@ -1743,7 +1715,6 @@ unsafe extern "C" fn initialize(
                 b"nativeSignatureValue"
                     | b"nativeMethodValue"
                     | b"nativeDeferredAnswer"
-                    | b"codeValue"
                     | b"methodCodeObject"
                     | b"methodSynchronous"
                     | b"nativeCodeEnvironment"
@@ -1775,8 +1746,6 @@ unsafe extern "C" fn initialize(
                 | b"invokeOn:arguments:"
                 | b"captured"
                 | b"forDoesNotUnderstand"
-                | b"admitCodeObject:synchronous:"
-                | b"admitCodeObject:"
                 | b"bindingMatchesIn:as:" => send(id.root, b"methodBehavior", &[])?,
                 n if n.starts_with(b"value") => block_vt,
                 _ if resumable::METHOD_NAMES.contains(&name)

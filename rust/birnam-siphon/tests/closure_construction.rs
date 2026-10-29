@@ -1,10 +1,10 @@
 //! Valid Oop closure construction, capture lifetime, image shells and task captures.
-//! Invalid admission/count cases remain in closure_admission.rs and still fail.
+//! Code-owner rejection and checked-count cases are covered by closure_admission.rs.
 #[path = "support/generation.rs"]
 #[allow(dead_code)]
 mod support;
-use birnam_abi::{Oop, size};
-use birnam_artifact_codec::portable_program::{NodeSpec, ProgramSpec, StatementSpec, encode};
+use birnam_abi::{size, Oop};
+use birnam_artifact_codec::portable_program::{encode, NodeSpec, ProgramSpec, StatementSpec};
 use support::H;
 fn literal() -> Vec<u8> {
     encode(ProgramSpec {
@@ -95,8 +95,6 @@ fn construction_preserves_captures_lifetime_and_pending_image_state() {
                 h.bind(pv, n, h.method(n, nil));
             }
             let present = |identity| h.call(probe, b"present:", &[identity]) == size(1).unwrap();
-            let answer = h.integer(42);
-            let method = h.method(b"constant", answer);
             let (admitted, token, identity) = {
                 let q = host.scope();
                 let bytes = q
@@ -119,21 +117,22 @@ fn construction_preserves_captures_lifetime_and_pending_image_state() {
             h.bind(fv, b"closureOriginalParameterCount:", count);
             let state = h.context(&[gc, host.roots, token, identity, factory, size(0).unwrap()]);
             h.bind(fv, b"parameterCountOf:", h.method(b"parameter", state));
-            let result = raw(method, b"admitCodeObject:", &[admitted]);
+            let direct = materialize(&h, admitted, &[], false);
+            h.q.check_result(direct).unwrap();
+            let method = h.call(direct, b"methodFor:", &[h.key(b"value")]);
             h.bind(fv, b"parameterCountOf:", count);
-            assert_eq!(result.unwrap(), method);
             assert_eq!(h.count(state, 5), 1);
             h.call(gc, b"collectPrecisely", &[]);
             assert!(
                 present(identity),
-                "Method retains code after the caller lease is released during admission"
+                "compiled Method retains source after the caller lease is released during construction"
             );
             let direct = h.call(owner, b"fromMethod:captureOperands:", &[method]);
-            assert_eq!(h.call(direct, b"value", &[]), answer);
+            assert_eq!(h.number(h.call(direct, b"value", &[])), 42);
             assert_eq!(h.call(direct, b"codeObject", &[]), admitted);
             let captured = h.call(direct, b"methodFor:", &[h.key(b"value")]);
             let alias = h.call(owner, b"fromMethod:captureOperands:", &[captured]);
-            assert_eq!(h.call(alias, b"value", &[]), answer);
+            assert_eq!(h.number(h.call(alias, b"value", &[])), 42);
             assert_eq!(h.call(alias, b"codeObject", &[]), admitted);
             for resumable in [false, true] {
                 let original = materialize(&h, code, &[first, second], resumable);
@@ -188,14 +187,12 @@ fn construction_preserves_captures_lifetime_and_pending_image_state() {
                     raw(clone, b"value:", &[first]).is_err(),
                     "cloning cannot make a pending image shell executable"
                 );
-                assert!(
-                    raw(
-                        owner,
-                        b"restoreImageCaptures:of:",
-                        &[h.vector(&[first]), shell]
-                    )
-                    .is_err()
-                );
+                assert!(raw(
+                    owner,
+                    b"restoreImageCaptures:of:",
+                    &[h.vector(&[first]), shell]
+                )
+                .is_err());
                 assert!(raw(shell, b"value:", &[first]).is_err());
                 for block in [shell, clone] {
                     h.call(

@@ -5,7 +5,7 @@ mod hooks;
 #[path = "support/minimal.rs"]
 #[allow(dead_code)]
 mod minimal;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 
 #[test]
 #[ignore = "requires native owners and build-only Lang seed"]
@@ -59,7 +59,11 @@ fn synchronous_code_has_pure_construction_and_direct_receiver_binding() {
     assert_ne!(source, named(b"nil"));
     assert_eq!(hooks.count(denied, 1), 0);
     for (name, m) in saved {
-        call(base, b"addMethod", &[name, m]);
+        if m.is_null() {
+            call(base, b"removeMethod:", &[name]);
+        } else {
+            call(base, b"addMethod", &[name, m]);
+        }
     }
     let before = epoch();
     let captured = call(method, b"captured", &[]);
@@ -74,27 +78,14 @@ fn synchronous_code_has_pure_construction_and_direct_receiver_binding() {
         call(ovt, b"addMethod", &[key(name), deny]);
     }
     let before = epoch();
-    assert_eq!(call(method, b"admitCodeObject:", &[source]), method);
-    assert!(
-        h.send(method, b"admitCodeObject:", &[foreign_source])
-            .is_err()
-    );
-    assert_eq!(
-        call(
-            method,
-            b"admitCodeObject:synchronous:",
-            &[source, named(b"true")]
-        ),
-        method
-    );
-    assert!(
-        h.send(
-            method,
-            b"admitCodeObject:synchronous:",
-            &[source, named(b"false")]
-        )
-        .is_err()
-    );
+    assert_eq!(call(method, b"codeObject", &[]), source);
+    assert_eq!(call(captured, b"codeObject", &[]), source);
+    for selector in [
+        b"admitCodeObject:".as_slice(),
+        b"admitCodeObject:synchronous:",
+    ] {
+        assert!(call(h.id.root, b"bind:to:", &[key(selector), method]).is_null());
+    }
     assert_eq!(epoch(), before);
     assert_eq!(hooks.count(denied, 1), 0);
     for (name, m) in saved {
@@ -105,19 +96,17 @@ fn synchronous_code_has_pure_construction_and_direct_receiver_binding() {
     // when its parameter/capture counts happen to match.
     let path =
         std::env::temp_dir().join(format!("birnam-native-code-{}.dylib", std::process::id()));
-    assert!(
-        std::process::Command::new("clang")
-            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
-            .arg(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tests/fixtures/oop-host/prepared-call.c")
-            )
-            .arg("-o")
-            .arg(&path)
-            .status()
-            .unwrap()
-            .success()
-    );
+    assert!(std::process::Command::new("clang")
+        .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+        .arg(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/oop-host/prepared-call.c")
+        )
+        .arg("-o")
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success());
     let fixture = h.load_native(&q, &path, &[]).unwrap();
     std::fs::remove_file(path).unwrap();
     let ev = call(h.id.root, b"behaviorOf:", &[execution]);
@@ -208,14 +197,13 @@ fn synchronous_code_has_pure_construction_and_direct_receiver_binding() {
     assert_eq!(epoch(), before);
     assert_eq!(call(block, b"codeObject", &[]), equal);
     assert_eq!(call(scalar, b"codeObject", &[]), original);
-    assert!(
-        h.send(
+    assert!(h
+        .send(
             named(b"Block"),
             b"fromMethod:codeObject:captures:",
             &[scalar, foreign_source, empty]
         )
-        .is_err()
-    );
+        .is_err());
     call(gc, b"collectPrecisely", &[]);
     assert_eq!(
         q.word_bits(call(call(block, b"value", &[]), b"word", &[]))

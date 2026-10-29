@@ -110,7 +110,8 @@ purity is not authority to bypass those replacements or undo their effects.
 Related admission facts must have one coherent authority: admitted CodeObject
 identity, checked parameter/capture counts and applicable descriptor agreement.
 This applies when portable code is admitted; native callables need not acquire a
-portable CodeObject.
+portable CodeObject. These checks belong to code constructors; they do not require
+post-construction admission operations on arbitrary Methods.
 Validate before publishing; same-object admission is idempotent without another
 shape query, conflicting rebinding is rejected, and callbacks/reentry must not
 publish inconsistent facts. Metadata representation, tracing and retirement stay

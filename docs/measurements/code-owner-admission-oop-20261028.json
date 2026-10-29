@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "6c34aab4673bb9e4baa365538e0d63034993ddb0",
+  "scope": "Remove post-construction Method admission and arbitrary native/source pairing. Retain source validation, capture-shape and lifetime obligations at compiled-code constructors.",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_reflection.rs": "560e8be281a3b052fdf5c4b0a80d6e9e368560da8e6f580e0448975580fe39d2",
+    "rust/birnam-execution/src/synchronous.rs": "11baabf80ba65fa16e90717d2e5c0b0fd9b48ac0dad5337d75adc7bcccf9d52d",
+    "rust/birnam-siphon/tests/closure_admission.rs": "bf368d9e5c36e541a7124cecfec001d305459453a76b949cafd974ca8c2cef7e",
+    "rust/birnam-siphon/tests/closure_construction.rs": "257cc117683871fbcdedf567c996c6259822348bf2837e3c4ba76b860b577065",
+    "rust/birnam-siphon/tests/native_code_construction.rs": "deadfbd84de31fd6e442e0ae3a94dd68681ad41e0dd1da74caab957c54f8d2b3",
+    "rust/birnam-siphon/tests/native_conversion_construction.rs": "652789b114266af43990fcb6a6d2b29f43006163ee5ce45c13266057ac583cb0",
+    "rust/birnam-siphon/tests/owned_code_construction.rs": "8e4c87dc70f8672a1a2000f2c37a2fa219ad7e6f24545d5b4d200a1d3420617f"
+  },
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/owned-admission-milestone/owned-admission-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "focused": {
+      "path": ".cargo-target/oop-current-qualification/owned-admission-milestone/owned-admission-focused.log",
+      "sha256": "76276fc51a09191407f33cfd05ad549d78221d54368e53f7e638c07940bb1611",
+      "result": "passed"
+    }
+  },
+  "architecture_review": "No generic admission operation or private getter/vtable construction remains in Execution reflection. Unknown code is rejected during source pairing even if its reflection getter or an admission selector is replaced. Existing code owners validate same-program reconstruction; native Methods need no portable source. No Id change or replacement registry.",
+  "verified": [
+    "both compiler modes retain source identity and checked capture shape",
+    "unknown native/source pairing rejected without calling a reinstated admission selector",
+    "wrong program, wrong shape and null capture rejection",
+    "native code remains usable without source metadata",
+    "GC during source/capture construction callbacks",
+    "captured aliases and repeated Block construction use established shape facts",
+    "one-time image-shell completion and nested captures",
+    "task suspension, cancellation and cleanup",
+    "transparent continuations and optimizer recovery without effect replay"
+  ],
+  "limitations": [
+    "Focused tests used a fresh copy of the completed direct-definition development prefix with rebuilt Execution. This is not final cold-release qualification.",
+    "The older native-ABI optimizer/publication probes and optimizer-construction purity audit remain pending."
+  ]
+}

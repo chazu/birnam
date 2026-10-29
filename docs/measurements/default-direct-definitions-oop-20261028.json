@@ -66,6 +66,21 @@
       "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-fresh-image.log",
       "sha256": "25ffb1b1914dc88e42557fff37fc4e298c17703cbae7a3e2855e2921cdc20715",
       "result": "failed: saving exceeded the existing 240-second deadline"
+    },
+    "install": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/install.log",
+      "sha256": "3ed546a3495d5944c91c068fbc873c0a37fdf6a7070cd857126b2bbd37251fad",
+      "result": "passed"
+    },
+    "fresh_process_completion": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/fresh-image-completion.json",
+      "sha256": "4b3d7ceeeb15b599cba2e0b6b729e6a9be871f04f6003cc5a7f0210084c84623",
+      "result": "passed without the deadline; original 240-second performance failure retained",
+      "seconds": {
+        "save": 456.268081416958,
+        "mapped": 46.785179750062525,
+        "rebuilt": 58.346768583054654
+      }
     }
   },
   "architecture_review": "Default definitions bind compiled bodies through Execution, then install the selected Method. Provider-owned bodyOfMethod: uses existing executable records and environments. Image/candidate staging retains arity data rather than forwarding Methods. No Id change, Method payload accessor, added registry or per-instance binding mutation.",
@@ -82,16 +97,15 @@
     "explicit native conversion, failure observation and deferred suspension",
     "candidate activation and value-checked rollback"
   ],
-  "qualification_pending": {
-    "installer": ".cargo-target/oop-current-qualification/direct-definition-install.json",
-    "installer_log": ".cargo-target/oop-current-qualification/direct-definition-install.log",
-    "fresh_process_without_deadline": ".cargo-target/oop-current-qualification/direct-definition-image-completion.py",
-    "fresh_process_result": ".cargo-target/oop-current-qualification/direct-definition-image-completion.json"
-  },
   "limitations": [
-    "Fresh-process saving exceeded 240 seconds; no performance qualification is claimed. Completion is being checked separately without that deadline.",
-    "The development-cache install is still running; core image generation and startup with optional providers absent completed, tools image generation remains active.",
+    "Fresh-process saving exceeded 240 seconds; no performance qualification is claimed. Completion passed separately without that deadline.",
     "The source snapshot used for the rebuilt libraries matches the runtime changes; documentation and migrated tests continued changing on main. This is not final same-revision cold-release qualification.",
     "Legacy generic admission remains to be retired. Old native-ABI tests including shared_invocation_probe and publication_result_proposal still need audit and migration or retirement."
-  ]
+  ],
+  "installation": {
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-direct-definition-fmcaa634/prefix",
+    "build_mode": "development-cache",
+    "verified_files": 807,
+    "result": "passed, including core and tools image generation and startup; development cache, not cold release qualification"
+  }
 }
