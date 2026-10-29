@@ -2,13 +2,6 @@
 use std::ffi::c_int;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EarlyAction {
-    Continue,
-    Help,
-    Version,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandKind {
     Help,
@@ -685,17 +678,6 @@ pub fn classify_command<T: AsRef<std::ffi::OsStr>>(
     }
 }
 
-/// Classify the pure CLI exits that must run before any runtime-resource or
-/// floor access. Remaining arguments stay opaque until the host dispatch slice
-/// ports the project/REPL command grammar.
-pub fn classify_early_args<T: AsRef<std::ffi::OsStr>>(args: &[T]) -> EarlyAction {
-    match args.first().map(AsRef::as_ref).and_then(|arg| arg.to_str()) {
-        Some("--help" | "-h") => EarlyAction::Help,
-        Some("--version" | "-V") => EarlyAction::Version,
-        _ => EarlyAction::Continue,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -723,13 +705,12 @@ mod tests {
 
     #[test]
     fn pure_help_and_version_exits_precede_resource_resolution() {
-        assert_eq!(classify_early_args(&["--help"]), EarlyAction::Help);
-        assert_eq!(classify_early_args(&["-V"]), EarlyAction::Version);
-        assert_eq!(
-            classify_early_args(&["project.birnam"]),
-            EarlyAction::Continue
-        );
-        assert_eq!(classify_early_args::<&str>(&[]), EarlyAction::Continue);
+        for flag in ["--help", "-h"] {
+            assert_eq!(classify_command(&[flag]), Ok(CommandKind::Help));
+        }
+        for flag in ["--version", "-V"] {
+            assert_eq!(classify_command(&[flag]), Ok(CommandKind::Version));
+        }
     }
 
     #[test]

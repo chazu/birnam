@@ -1,7 +1,6 @@
 use birnam_host::{HostRuntime, StartupPolicy, resolve};
 use std::{env, process::ExitCode};
 #[path = "../command.rs"]
-#[allow(dead_code)] // Parsers for subsequent migration slices remain tested.
 mod command;
 use command::{CommandKind, classify_command};
 const VERSION: &str = include_str!("../../../../VERSION");

@@ -283,7 +283,7 @@ impl State {
 }
 // The old native shims cannot execute these message-based object files.
 fn runtime_abi() -> u64 {
-    support::wyhash(support::runtime_abi_hash(), b"Id-oop-image-v4")
+    support::wyhash(support::IMAGE_V8_ABI_SEED, b"Id-oop-image-v4")
 }
 fn composition_identity(decoded: &v8::DecodedImage<'_>, checksum: Option<&[u8; 8]>) -> Vec<u8> {
     use sha2::{Digest, Sha256};
