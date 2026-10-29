@@ -1,0 +1,99 @@
+{
+  "date": "2026-10-29",
+  "runtime_revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+  "status": "partial qualification; not completion",
+  "cold_build": {
+    "source": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-completion-cold-uqqoromz/source",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-completion-cold-uqqoromz/prefix",
+    "revision": "12a2b062b6c3a97ad2324267840834ba7af4c8ed",
+    "status": "finished",
+    "exit_code": 0,
+    "seconds": 1080.249417541
+  },
+  "installed_files_verified": 792,
+  "install_receipt_sha256": "3126c81022832e877621a58d536407dced07c169c146e1fc24145b7fcd1f563b",
+  "passed": [
+    "workspace tests",
+    "core Oop suite and independent C caller",
+    "abstract TLA and Lean checks",
+    "AlienCompiler reference, ABI and real adapter checks",
+    "docgen diagnostic with corrected owners",
+    "clean cold install and exact installed manifest"
+  ],
+  "scope_notes": [
+    "Workspace, core and formal commands ran from main at the runtime revision.",
+    "AlienCompiler and docgen used a copy of the prior cold prefix with current Execution and FileIO owners; matching cold-prefix Host groups are still running.",
+    "Formal models establish abstract contracts and required counterexamples, not an implementation proof."
+  ],
+  "formal_status": "passed abstract checks and required counterexamples; no implementation proof",
+  "lean_theorems": 41,
+  "docgen": {
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-file-bytes-ya_ycpvz/prefix",
+    "html": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-docgen-current-2hiflsuj/reference.html",
+    "seconds": 494.06647212499996,
+    "exit_code": 0,
+    "stdout": "wrote /var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-docgen-current-2hiflsuj/reference.html\n",
+    "stderr": "",
+    "bytes": 543281,
+    "sha256": "e12666c01a698a4fe64ca6cd6505de3783f46d607df1875f61986abf5824b28b",
+    "passed": true
+  },
+  "worker": {
+    "queries": [
+      {
+        "request": 1,
+        "seconds": 0.0006287920000005442,
+        "value": [
+          18
+        ]
+      },
+      {
+        "request": 2,
+        "seconds": 0.0005300409999975386,
+        "value": [
+          18
+        ]
+      }
+    ],
+    "production_handshake_qualified": false,
+    "seconds": 35.105546208,
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-file-bytes-ya_ycpvz/prefix",
+    "image": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1h6gzw3t/optional.image"
+  },
+  "worker_deadline_seconds": 15,
+  "remaining": [
+    "Complete all source-consistent native and Host acceptance",
+    "Resolve worker startup deadline failure; no deadline change authorized yet",
+    "Complete relocated archive checks",
+    "Final requirement-by-requirement audit"
+  ],
+  "logs": [
+    {
+      "path": ".cargo-target/oop-current-qualification/workspace-current.log",
+      "sha256": "c1bdcf4956586813f9d7710c49ffed3c399134f1acb176e723eae3ccce6f432c"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/core-current.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/formal-current.log",
+      "sha256": "ed9cd480398bd0d62f6c73573bf1d183b9cfa1cd28a57270010a53f7cc497ee4"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/alien-compiler-current.log",
+      "sha256": "0b275c09c2b37eb2737da53cbf3e4cc19dfab8e6fbcbbedd3cfb44e8e7975750"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/docgen-current.log",
+      "sha256": "19826ff2202a3c474bcd2c15ac2eb215e960737b309309f72c9323366dc21664"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/completion-cold-install.log",
+      "sha256": "134e6b32ff4844e9fb9c1769ebdbf2322093e7cf8f9e36ce4de80f6373b66c2d"
+    }
+  ]
+}
