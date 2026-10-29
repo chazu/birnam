@@ -1,0 +1,145 @@
+{
+  "baseline_revision": "85a9aa54",
+  "change": "Compare String-owned buffers directly instead of cloning both; return true for an identical receiver/argument only after validating the receiver representation.",
+  "contract": {
+    "before": "Validate and clone the left String, attempt to clone the right String, then compare byte vectors. Invalid receivers fail; non-String arguments answer false.",
+    "after": "Validate the left String in its owner table, handle self-equality, otherwise validate the right table entry and compare the same bytes under one private immutable borrow.",
+    "review": [
+      "No dependency message or callback occurs while the buffer table is borrowed.",
+      "No foreign payload access, normalization change, cached method or new object representation.",
+      "The identity shortcut cannot bypass receiver validation; the captured-method test checks a non-String receiver compared with itself.",
+      "Current Id method lookup still selects the equality implementation; public behavior and result identities are unchanged."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing String equality through Id on 16-byte, 4-KiB and 1-MiB inputs: equal distinct objects, same object, first-byte mismatch and last-byte mismatch. Five samples/process; serial ABBA. Normal GC policy; no managed allocations in the equality body. Every result checked.",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "samples_per_case_per_variant": 10,
+    "summary": {
+      "16/equal": {
+        "median_cpu_ns_per_call": {
+          "baseline": 86.8820825,
+          "candidate": 54.6511475
+        },
+        "change_percent": -37.097332467830746
+      },
+      "16/same": {
+        "median_cpu_ns_per_call": {
+          "baseline": 88.9242725,
+          "candidate": 44.723124999999996
+        },
+        "change_percent": -49.70650448672493
+      },
+      "16/first": {
+        "median_cpu_ns_per_call": {
+          "baseline": 85.38052,
+          "candidate": 60.873644999999996
+        },
+        "change_percent": -28.703122211014886
+      },
+      "16/last": {
+        "median_cpu_ns_per_call": {
+          "baseline": 85.6977075,
+          "candidate": 60.777395
+        },
+        "change_percent": -29.079322221075753
+      },
+      "4096/equal": {
+        "median_cpu_ns_per_call": {
+          "baseline": 293.292395,
+          "candidate": 156.3412475
+        },
+        "change_percent": -46.694407981495736
+      },
+      "4096/same": {
+        "median_cpu_ns_per_call": {
+          "baseline": 293.44698000000005,
+          "candidate": 44.741457499999996
+        },
+        "change_percent": -84.75313751738048
+      },
+      "4096/first": {
+        "median_cpu_ns_per_call": {
+          "baseline": 209.2589575,
+          "candidate": 56.957915
+        },
+        "change_percent": -72.78113411226374
+      },
+      "4096/last": {
+        "median_cpu_ns_per_call": {
+          "baseline": 295.49927,
+          "candidate": 156.2098975
+        },
+        "change_percent": -47.136959932252964
+      },
+      "1048576/equal": {
+        "median_cpu_ns_per_call": {
+          "baseline": 71672.031,
+          "candidate": 20172.1665
+        },
+        "change_percent": -71.85489762387228
+      },
+      "1048576/same": {
+        "median_cpu_ns_per_call": {
+          "baseline": 65074.6875,
+          "candidate": 45.29175
+        },
+        "change_percent": -99.93040035728178
+      },
+      "1048576/first": {
+        "median_cpu_ns_per_call": {
+          "baseline": 48312.65625,
+          "candidate": 58.729
+        },
+        "change_percent": -99.87843972044075
+      },
+      "1048576/last": {
+        "median_cpu_ns_per_call": {
+          "baseline": 76281.427,
+          "candidate": 20190.48925
+        },
+        "change_percent": -73.53157899104326
+      }
+    },
+    "library_sha256": {
+      "baseline": "602929477a1221aa257801c19b0156af3b782cfb2449e0537d9001b3d6f52fda",
+      "candidate": "854da6a14dffc1d3bc32aabacd4a1b6e84087317232ce6a614105b9732ad4047"
+    },
+    "source": "//! Disposable microbenchmark of the existing String equality operation.\n#[path = \"../tests/support/oop.rs\"]\nmod oop;\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock: u32) -> u64; }\nfn main() {\n    let h = oop::bootstrap();\n    let q = h.scope();\n    let yes = h.named(b\"true\").unwrap();\n    let no = h.named(b\"false\").unwrap();\n    let selector = q.keep(h.intern(b\"=\").unwrap()).unwrap();\n    for length in [16, 4096, 1048576] {\n        let bytes = vec![b'x'; length];\n        let left = q.string(&bytes).unwrap();\n        let equal = q.string(&bytes).unwrap();\n        let mut first = bytes.clone(); first[0] = b'y';\n        let mut last = bytes; last[length - 1] = b'y';\n        let first = q.string(&first).unwrap();\n        let last = q.string(&last).unwrap();\n        let calls = if length == 1048576 { 2000 } else { 200000 };\n        for (name, right, expected) in [(\"equal\", equal, yes), (\"same\", left, yes), (\"first\", first, no), (\"last\", last, no)] {\n            let args = [right];\n            for _ in 0..100 { assert_eq!(unsafe { h.id.send(left, selector, &args).unwrap() }, expected); }\n            for _ in 0..5 {\n                let start = unsafe { clock_gettime_nsec_np(16) };\n                for _ in 0..calls { assert_eq!(unsafe { h.id.send(left, selector, &args).unwrap() }, expected); }\n                println!(\"{length} {name} {calls} {}\", unsafe { clock_gettime_nsec_np(16) } - start);\n            }\n        }\n    }\n}\n"
+  },
+  "prefix_verification": {
+    "files_checked": 783,
+    "changed": [
+      "lib/libbirnam_string.dylib"
+    ]
+  },
+  "validation": [
+    "Expanded String/Error test checks equal distinct binary Strings, self-equality, unequal contents, non-String arguments, and invalid self-receiver rejection.",
+    "Existing String ownership/replacement/collection checks.",
+    "Full Oop core/compiler/GC and negative dispatch/construction contracts.",
+    "Workspace all-target all-feature check."
+  ],
+  "limits": [
+    "Local CPU microbenchmarks, not whole-application speedups.",
+    "Normal GC policy; equality itself creates no managed objects. Removed copies were native temporary allocations.",
+    "Only String differs in the comparison prefixes. The installed user runtime was not replaced."
+  ],
+  "source_sha256": {
+    "rust/birnam-string/src/native.rs": "f9b84eb317280850680b5ad179abfe8917e578e6aef50386e9f47c3fbd9835e9",
+    "rust/birnam-siphon/tests/text_error.rs": "15aba167b59e0b05a2d8b8702b6fe644bab26475b66aba4c8a5991a7df8f7ec4"
+  },
+  "evidence": {
+    ".cargo-target/string-equality-20261029/micro.json": "63e7e9ad2ff82318875f92fff8f3c3cd777427370546058ac968e37b0f5b0296",
+    ".cargo-target/string-equality-20261029/micro.py": "5c7bac81531bf28abea320b070faef8b372f6c7f8341737fbf5e8d826bb87862",
+    ".cargo-target/string-equality-20261029/contracts.log": "9f7c4334f08440fd5edf71beb4cb29fb659ee07e0fbc34e81dc1774d647f2d08",
+    ".cargo-target/string-equality-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/string-equality-20261029/check.log": "e88a8305d802d0a6c834b9ada251dc50db77837b8b50b4d392cd6b9c163c3e88",
+    ".cargo-target/string-equality-20261029/borrowed-compare-only.json": "5868e183015295bc0272e57e68696679a0e5a59c7f5dfee47dc91c71c930ffcd"
+  }
+}

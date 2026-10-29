@@ -329,9 +329,13 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 t.string(&bytes)
             }
             6 => {
-                let left = t.copy(r, Kind::String)?;
+                let buffers = t.buffers.borrow();
+                let left = buffers.get(&r.addr())
+                    .filter(|b| b.kind == Kind::String)
+                    .ok_or_else(invalid)?;
                 Ok(
-                    if t.copy(a[0], Kind::String).is_ok_and(|right| left == right) {
+                    if r == a[0] || buffers.get(&a[0].addr())
+                        .is_some_and(|right| right.kind == Kind::String && left.bytes == right.bytes) {
                         t.truth
                     } else {
                         t.falsity

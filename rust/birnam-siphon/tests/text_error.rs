@@ -80,6 +80,8 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
     assert_eq!(q.read_bytes(b).unwrap(), raw);
     assert_eq!(text(value), raw);
     assert_eq!(call(value, b"=", &[clone]), truth);
+    assert_eq!(call(value, b"=", &[value]), truth);
+    assert_eq!(call(value, b"=", &[q.string(b"different").unwrap()]), falsity);
     assert_eq!(call(string, b"=", &[nil]), falsity);
     // String owns native bytes behind a zero-payload handle. No foreign payload writes.
     assert_eq!(
@@ -125,6 +127,11 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         );
     }
     let builder = call(sb, b"new", &[]);
+    assert_eq!(call(value, b"=", &[builder]), falsity);
+    let equality = call(svt, b"lookup", &[key(b"=")]);
+    let self_argument = call(h.id.root, b"sequence", &[builder]);
+    assert!(h.send(equality, b"invokeOn:arguments:", &[builder, self_argument]).is_err(),
+            "identity alone cannot bypass String's receiver representation check");
     let byte_reader = call(svt, b"lookup", &[key(b"byteAt:")]);
     let args = call(h.id.root, b"sequence", &[negative]);
     assert!(h.send(byte_reader, b"invokeOn:arguments:", &[builder, args]).is_err(),
