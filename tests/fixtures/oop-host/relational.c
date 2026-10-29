@@ -20,11 +20,18 @@ static Oop emit(Oop root,Oop c,Oop r,const Oop*a,size_t n){
  Oop bits=id_size(13),value=send(integer,FROM,&bits,1);CHECK(value);Oop args[]={entity,attr,value};Oop result=send(a[0],VALUE,args,3);
  Oop released=send(roots,RELEASE,&pin,1);CHECK(released);CHECK(result);CHECK(send(gc,COLLECT,0,0));Oop still=send(id.root,IDENTITY,&entity,1);CHECK(still);if(still!=identity)return id.invalid;return get(c,7);
 }
+/* Extended emit context: [the eight emit fields, mode, failure]. */
+static Oop emit_failure(Oop root,Oop c,Oop r,const Oop*a,size_t n){
+ Oop result=emit(root,c,r,a,n);CHECK(result);
+ if(get(c,8)==id_size(1))return id_failure(get(c,9));
+ Oop wrong=get(c,7);(void)send(get(c,5),VALUE,&wrong,1);
+ return get(c,7); /* Deliberately ignore the callback failure; collector must latch it. */
+}
 /* [GC,original Vector factory,calls]. */
 static Oop factory(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)r;(void)a;if(n)return id.invalid;CHECK(increment(c,2));CHECK(send(get(c,0),COLLECT,0,0));return send(get(c,1),NEW,0,0);}
 static Oop allocation(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(void)r;if(n!=3)return id.invalid;if(id_unbox(a[2])==wanted)alive++;return 0;}
 static Oop present(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)r;if(n!=1)return id.invalid;wanted=id_unbox(a[0]);alive=0;CHECK(send(id.root,ALLOCATIONS,&c,1));return id_size(alive);}
-static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t count,const Oop*a,size_t n){(void)a;if(n||count!=19)return p->invalid;id=*p;for(size_t i=0;i<14;i++)names[i]=s[i];return image;}
-static const IdLiteral literals[]={LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("findAll:where:"),LIT("size"),LIT("wordOf:"),LIT("allocate"),LIT("retain:"),LIT("release:"),LIT("fromWord:"),LIT("value:value:value:"),LIT("identityOf:"),LIT("allocationsDo:"),LIT("new"),LIT("forward"),LIT("emit"),LIT("factory"),LIT("allocation:bytes:identity:"),LIT("present")};
-static const IdMethodSpec methods[]={{14,forward},{15,emit},{16,factory},{17,allocation},{18,present}};
-const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,19,methods,5,initialize};
+static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t count,const Oop*a,size_t n){(void)a;if(n||count!=20)return p->invalid;id=*p;for(size_t i=0;i<14;i++)names[i]=s[i];return image;}
+static const IdLiteral literals[]={LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("findAll:where:"),LIT("size"),LIT("wordOf:"),LIT("allocate"),LIT("retain:"),LIT("release:"),LIT("fromWord:"),LIT("value:value:value:"),LIT("identityOf:"),LIT("allocationsDo:"),LIT("new"),LIT("forward"),LIT("emit"),LIT("factory"),LIT("allocation:bytes:identity:"),LIT("present"),LIT("emitFailure")};
+static const IdMethodSpec methods[]={{14,forward},{15,emit},{16,factory},{17,allocation},{18,present},{19,emit_failure}};
+const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,20,methods,6,initialize};

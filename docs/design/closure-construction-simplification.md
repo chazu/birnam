@@ -1,5 +1,11 @@
 # Closure construction simplification
 
+Measurement-tool note (2026-10-28): the Operand/Outcome profiling runner and its
+disconnected dispatch counters are retired. Commands below using that runner are
+historical; use each report's measured revision to reproduce its results. Current
+Oop checks include `scripts/oop-id-slice-bench.py` and the
+`integer_performance` test. This note does not change the reported measurements.
+
 Follow-up: [capture access simplification](capture-access-simplification.md)
 reduces addition further to 1,367.375 sends. The measurements below describe the
 preceding construction slice.

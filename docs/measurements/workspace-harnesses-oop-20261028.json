@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "95e0965dd9c73aa748c4a069245f7bdffb651485",
+  "scope": "Restore workspace compilation, port supported index/query/arithmetic harnesses to Oops, and retire disconnected profiling experiments. No production runtime implementation changes.",
+  "source_sha256": {
+    "rust/birnam-id/Cargo.toml": "162a667531595991f61164236c0d972cf7808b178f6e9a3fba73cd999bc62b6e",
+    "rust/birnam-siphon/tests/integer_index_guard.rs": "4ea0890eceae8b112090b4f646635f8bde69c945f7de38555d38910d2700eee7",
+    "rust/birnam-siphon/tests/integer_performance.rs": "ec4331d7f9e7b731fdcf8f0f70b8cb4f937c0a581cfc4ab4432fe39f5148c32d",
+    "rust/birnam-siphon/tests/relational_authored.rs": "6c33fed39e1d92aa55fe4ff5fc836ac669d5a923ee2bc24b10597c1bb9ef74d1",
+    "scripts/native-message-test.sh": "30e10c2b18572495cf81c1fe5a5010f7ab2787187720f301fac00756215caa8b",
+    "tests/fixtures/oop-host/relational.c": "e50ad9c47c49453501bb0284445f0b943ebd29e072440d405e36ad9424ce39f7"
+  },
+  "removed_files": [
+    "rust/birnam-id/src/id/native_id/metrics.rs",
+    "rust/birnam-siphon/examples/binding_workload.rs",
+    "rust/birnam-siphon/examples/gc_microbench.rs",
+    "rust/birnam-siphon/examples/gc_workload.rs",
+    "rust/birnam-siphon/examples/invocation_workload.rs",
+    "rust/birnam-siphon/examples/micro_support/clock.rs",
+    "rust/birnam-siphon/examples/micro_support/control.rs",
+    "rust/birnam-siphon/examples/microbench.rs",
+    "rust/birnam-siphon/examples/numeric_workload.rs",
+    "rust/birnam-siphon/examples/slot_cost.rs",
+    "rust/birnam-siphon/examples/socket_owner_profile.rs",
+    "rust/birnam-siphon/examples/task_field_profile.rs",
+    "rust/birnam-siphon/tests/dispatch_metrics.rs",
+    "rust/birnam-siphon/tests/support/mod.rs",
+    "scripts/microbench.py",
+    "scripts/microbench_report.py",
+    "scripts/tests/test_microbench_report.py"
+  ],
+  "evidence": {
+    "before": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/workspace-compile.log",
+      "sha256": "b7247c978fc66bce755c4275394f68895fa9f03d50764d7a124cd21d5071666d",
+      "result": "failed on retired native ABI imports"
+    },
+    "compile": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/workspace-compile-after.log",
+      "sha256": "0a887709b96059ca833ce4b4913a6196bc188bfac54b35f69d3827e55894dfbe",
+      "result": "passed"
+    },
+    "workspace": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/workspace-tests.log",
+      "sha256": "b4b04aec5215acfbb67728d33dfb03bdcdff95b3fc7a9029ef14ebef68b58ba7",
+      "result": "passed"
+    },
+    "index": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/workspace-ports-focused.log",
+      "sha256": "47cd7527f146a819515356c0e83bbb41d8a2953811906f9f6481a4b365fbe33b",
+      "result": "integer index guard passed; authored query pointer-identity assertion was corrected to its original value contract"
+    },
+    "authored_query": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/authored-query-port.log",
+      "sha256": "f24207472d4902f06022903ec393a1db00b6cf9a416fe26ea25430799c2dc56a",
+      "result": "passed"
+    },
+    "native_benchmark": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/integer-bench-native-port.log",
+      "sha256": "68f4c58244ec38e073280b65032f5e5478c1434f541fe816aba13fe15b44476f",
+      "result": "runner smoke passed; not a performance qualification"
+    },
+    "authored_benchmark": {
+      "path": ".cargo-target/oop-current-qualification/workspace-harness-milestone/integer-bench-authored-port.log",
+      "sha256": "a505fdd68f9a868304e9e529e9938d8c53f2bcd8cd1e18a30dc575f0391225f9",
+      "result": "runner smoke passed; not a performance qualification"
+    }
+  },
+  "retirement_audit": {
+    "dispatch_metrics": "No mod/include or compiled Id implementation. Cargo feature was empty. Restoring the retired metric selectors is not part of the corrected minimal Id contract.",
+    "profiling_examples": "Operand/Outcome, NativeEntry, removed binding templates, compiler masks and dispatch census consumers. No production module or native gate imports them.",
+    "microbenchmark_driver": "Only runner for the retired examples; its report helper/tests are removed with it. Historical measurements are unchanged and annotated.",
+    "old_test_support": "No remaining importer after supported test ports and profiling retirement."
+  },
+  "retained": [
+    "independent Oop Id benchmark",
+    "installed workload benchmarks",
+    "native/authored Oop arithmetic runner",
+    "integer conversion/permission mutation guard coverage",
+    "authored positive query graph equivalence, current equality, reentry, ordered deduplication, errors and native failure details",
+    "snapshot rooting, first callback failure and collector expiry"
+  ],
+  "qualification_pending": [
+    "The existing 100-target native batch remains active; the two newly ported functional targets now make the gate 102 targets.",
+    "The earlier cold build was deliberately cancelled because these source corrections were required. Final cold and installed qualification will use a new clean revision."
+  ]
+}

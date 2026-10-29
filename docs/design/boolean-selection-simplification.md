@@ -1,5 +1,11 @@
 # Boolean selection without comparison boxes
 
+Measurement-tool note (2026-10-28): the Operand/Outcome profiling runner and its
+disconnected dispatch counters are retired. Commands below using that runner are
+historical; use each report's measured revision to reproduce its results. Current
+Oop checks include `scripts/oop-id-slice-bench.py` and the
+`integer_performance` test. This note does not change the reported measurements.
+
 Follow-up: [fixed ABI call simplification](fixed-abi-simplification.md) reduces
 addition further to 829.375 sends. The measurements below describe the preceding
 Boolean slice.

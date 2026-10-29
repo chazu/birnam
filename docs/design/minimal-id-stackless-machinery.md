@@ -20,6 +20,36 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: workspace harnesses (2026-10-28)
+
+The full workspace compile exposed old Operand/Outcome test and profiling callers
+that the selected native gate did not compile. Supported checks are ported through
+public Oop messages:
+
+- Integer index omission checks current conversion Methods, current allocation
+  permission, its errors, and mutation during permission evaluation.
+- The optional authored positive-query module is compiled and loaded. Tests cover
+  all two-node graphs, ordered joins, live/reentrant equality and deduplication,
+  ordinary Error results, native callback failures, ignored callback failures,
+  snapshot roots and expired collectors. The authored module is unchanged.
+- The arithmetic benchmark uses current native and authored Oop owners. Startup
+  and selector interning are untimed; the measured loop includes result rooting
+  and value reads. Its tiny smoke runs qualify the runner, not language speed.
+
+The old `dispatch-metrics` Cargo flag had no compiled implementation. Its orphan
+source, old ABI harness, and profiling examples are removed rather than restoring
+an extra Id protocol. The retired microbenchmark driver/report helper depended on
+those old examples, compiler masks and counters. Their historical measurements
+remain available in Git and in the reports, now marked accordingly. Independent
+Oop Id benchmarks, current workload benchmarks and the ported arithmetic runner
+remain. No production runtime or language facility is removed by this cleanup.
+
+[Workspace and ported-test evidence](../measurements/workspace-harnesses-oop-20261028.json)
+passes. Integer-index and authored-query
+acceptance are added to the native gate. The earlier clean cold-build attempt was
+cancelled deliberately because it preceded these required source fixes; a new
+clean revision will be used for final qualification.
+
 ## Implementation checkpoint: optimizer construction and retired probes (2026-10-28)
 
 The inline-candidate constructor previously allocated a Method and reassociated

@@ -1,5 +1,11 @@
 # Ordinary-slot and String ordering costs
 
+Measurement-tool note (2026-10-28): the Operand/Outcome profiling runner and its
+disconnected dispatch counters are retired. Commands below using that runner are
+historical; use each report's measured revision to reproduce its results. Current
+Oop checks include `scripts/oop-id-slice-bench.py` and the
+`integer_performance` test. This note does not change the reported measurements.
+
 2026-10-14. Follow-up to [standalone Cells](standalone-cells.md).
 
 The standalone-Cell step exposed two different costs: String ordering used two
