@@ -113,11 +113,7 @@ impl Symbols {
             return existing;
         }
 
-        let object = heap.allocate(0);
-        boundary::require_invariant(
-            heap.set_vtable(object, symbol_vtable),
-            "new Symbol block was not registered",
-        );
+        let object = heap.allocate(0, symbol_vtable);
         let index = self.ordered.len();
         self.ordered.push(SymbolRecord {
             object,
@@ -178,7 +174,7 @@ mod tests {
     #[test]
     fn digest_collisions_and_retirement_preserve_canonical_names_and_order() {
         let mut heap = ObjectMemory::new();
-        let behavior = heap.allocate(0);
+        let behavior = heap.allocate(0, core::ptr::null_mut());
         let mut symbols = Symbols::new();
         // Equal digests exercise byte comparison, even with head/middle/tail
         // removal. Distinct digests sharing bucket bits exercise index equality.
@@ -218,7 +214,7 @@ mod tests {
         // intern names nor retain objects, including after a formerly live hit.
         for _ in 0..3 {
             let mut heap = ObjectMemory::new();
-            let behavior = heap.allocate(0);
+            let behavior = heap.allocate(0, core::ptr::null_mut());
             let mut symbols = Symbols::new();
             for name in NAMES { assert_eq!(symbols.existing(name), None); }
             assert_eq!(symbols.count(), 0);
@@ -243,7 +239,7 @@ mod tests {
     #[test]
     fn randomized_names_still_use_full_bytes_and_reject_embedded_nul() {
         let mut heap = ObjectMemory::new();
-        let behavior = heap.allocate(0);
+        let behavior = heap.allocate(0, core::ptr::null_mut());
         let mut symbols = Symbols::new();
         for name in [b"".as_slice(), b"a", b"aa", b"at:", b"at:put:", "λ".as_bytes()] {
             let object = symbols.intern(&mut heap, behavior, name).unwrap();

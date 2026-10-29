@@ -1,0 +1,209 @@
+{
+  "baseline_revision": "05103e46",
+  "change": "Initialize fresh allocation headers directly instead of looking up the newly inserted allocation to set its vtable.",
+  "contract": {
+    "before": "The existing caller validates the requested vtable and size, allocates zeroed storage and records it, then calls the checked vtable setter, which reads the allocation record again.",
+    "after": "The same caller validates the same inputs, then passes the vtable Oop into the existing private allocator, which writes the header of the storage it owns and records the allocation.",
+    "preserved": [
+      "No change to Id messages, selectors, public ABI, object header geometry, payload extent or payload opacity.",
+      "Requested sizes, allocation accounting, identity generation, address uniqueness checks and zeroed payload bytes are unchanged.",
+      "Later vtable changes still use the checked setter. Detached/unregistered objects are rejected by that path.",
+      "Bootstrap self-metavtable construction retains its later self-link assignment. Dictionary mutations, live lookup and Method construction policy are unchanged."
+    ],
+    "new_apis_primitives_registries": []
+  },
+  "microbenchmark": {
+    "scope": "Existing raw allocate:bytes: through Id, using the Name vtable and zeroed byte payloads. 32768 allocations/sample, seven samples/process, serial ABBA then BAAB. Header, extent and strictly increasing identities checked for every result; invalid vtable rejected. GC and checks outside timers. No changes to automatic-GC policy, but this explicit raw operation does not charge or trigger managed allocation policy.",
+    "summary": {
+      "0": {
+        "median_cpu_ns_per_call": {
+          "baseline": 51.06353759765625,
+          "candidate": 48.184722900390625
+        },
+        "change_percent": -5.637711041386528
+      },
+      "24": {
+        "median_cpu_ns_per_call": {
+          "baseline": 49.67243957519531,
+          "candidate": 47.60107421875
+        },
+        "change_percent": -4.170049577109314
+      },
+      "256": {
+        "median_cpu_ns_per_call": {
+          "baseline": 77.56550598144531,
+          "candidate": 75.36505126953125
+        },
+        "change_percent": -2.8368985466818764
+      }
+    },
+    "library_sha256": {
+      "baseline": "2c5a5d8eadcd42c7be847bc9d05d0ec9f57dd365f6197a9b22d3401bee372ffc",
+      "candidate": "c7f7295b872f88181c236b4705d39a582621765621f2a518e2fc4acd110a7301"
+    },
+    "source": "//! Disposable benchmark of the existing raw Id allocation operation.\n#[path = \"../tests/support/oop.rs\"] mod oop;\nuse birnam_abi::{Oop,size,as_size};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock:u32)->u64; }\nfn main(){\n let h=oop::bootstrap();let q=h.scope();let gc=h.named(b\"GC\").unwrap();\n // Name's existing no-reference owner permits zeroed raw bytes of any extent.\n let behavior=q.call(h.id.root,b\"nameBehavior\",&[]).unwrap();\n let key=|n:&[u8]|q.keep(h.intern(n).unwrap()).unwrap();\n let allocate=key(b\"allocate:bytes:\");let extent=key(b\"allocationSizeOf:\");let vtable=key(b\"behaviorOf:\");let identity=key(b\"identityOf:\");\n assert!(unsafe{h.id.send(h.id.root,allocate,&[std::ptr::null_mut(),size(0).unwrap()])}.is_err());\n for bytes in [0,24,256] {\n  let args=[behavior,size(bytes).unwrap()];let count=32768;\n  for sample in 0..7 {\n   q.call(gc,b\"collectPrecisely\",&[]).unwrap();\n   let mut values:Vec<Oop>=Vec::with_capacity(count);\n   let start=unsafe{clock_gettime_nsec_np(16)};\n   for _ in 0..count { values.push(unsafe{h.id.send(h.id.root,allocate,&args).unwrap()}); }\n   let elapsed=unsafe{clock_gettime_nsec_np(16)}-start;\n   let mut previous=0;\n   for value in values {\n    assert_eq!(unsafe{h.id.send(h.id.root,vtable,&[value]).unwrap()},behavior);\n    assert_eq!(as_size(unsafe{h.id.send(h.id.root,extent,&[value]).unwrap()}),Some(bytes));\n    let id=as_size(unsafe{h.id.send(h.id.root,identity,&[value]).unwrap()}).unwrap();assert!(id>previous);previous=id;\n   }\n   println!(\"{bytes} {sample} {count} {elapsed}\");\n  }\n }\n}\n",
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline",
+      "candidate",
+      "baseline",
+      "baseline",
+      "candidate"
+    ],
+    "samples_per_payload_size_per_variant": 28
+  },
+  "broader_probes": {
+    "scope": "Serial ABBA fresh-process comparison; only Id dylib differs. Each process runs three language probes (500 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+    "source": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 500 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 500];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 500 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[Globals at: #LogueBenchConfig put: {#phase -> \"arena\" #seed -> 12345 #width -> 16 #monsters -> 0 #turns -> 16 #batches -> 4 #samples -> 1 #allocation -> false #replace -> false}];\n[System load: \"logue-bench.birnam\"];\n",
+    "summary": {
+      "integer-loop": {
+        "baseline": {
+          "samples": [
+            65235250,
+            66955959,
+            67336875,
+            66961583,
+            67475292,
+            67282542
+          ],
+          "median_cpu_ns": 67122062.5
+        },
+        "candidate": {
+          "samples": [
+            67290542,
+            66615916,
+            66654667,
+            65846708,
+            65400417,
+            65921833
+          ],
+          "median_cpu_ns": 66268874.5
+        },
+        "cpu_change_percent": -1.2710992008030164
+      },
+      "range-loop": {
+        "baseline": {
+          "samples": [
+            102904709,
+            103723209,
+            105959500,
+            105045875,
+            110794458,
+            112060042
+          ],
+          "median_cpu_ns": 105502687.5
+        },
+        "candidate": {
+          "samples": [
+            102947625,
+            102826917,
+            102788458,
+            103866042,
+            101966917,
+            103545125
+          ],
+          "median_cpu_ns": 102887271.0
+        },
+        "cpu_change_percent": -2.4790046225125817
+      },
+      "method-loop": {
+        "baseline": {
+          "samples": [
+            69842417,
+            69395916,
+            68196042,
+            70582833,
+            71389875,
+            68573666
+          ],
+          "median_cpu_ns": 69619166.5
+        },
+        "candidate": {
+          "samples": [
+            67818167,
+            73558292,
+            74000125,
+            73163166,
+            69292459,
+            68118584
+          ],
+          "median_cpu_ns": 71227812.5
+        },
+        "cpu_change_percent": 2.3106366836494585
+      },
+      "logue-quiet-turn": {
+        "baseline": {
+          "samples": [
+            746536.4375,
+            722317.6875,
+            741447.875,
+            738375.0,
+            746044.3125,
+            743156.25,
+            738690.0625,
+            755536.4375
+          ],
+          "median_cpu_ns": 742302.0625
+        },
+        "candidate": {
+          "samples": [
+            727929.6875,
+            743869.8125,
+            731846.3125,
+            734375.0,
+            724638.0,
+            741270.8125,
+            728182.3125,
+            735963.5625
+          ],
+          "median_cpu_ns": 733110.65625
+        },
+        "cpu_change_percent": -1.238229922067613
+      }
+    },
+    "logue_oracle_passed": true
+  },
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/collector-dead-list-candidate",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/allocation-header-candidate",
+    "files_checked": 783,
+    "differences": [
+      "lib/libbirnam_id.dylib"
+    ],
+    "id_sha256": {
+      "baseline": "2c5a5d8eadcd42c7be847bc9d05d0ec9f57dd365f6197a9b22d3401bee372ffc",
+      "candidate": "c7f7295b872f88181c236b4705d39a582621765621f2a518e2fc4acd110a7301"
+    }
+  },
+  "validation": [
+    "Full Oop core checks passed, including owner unit tests, construction and direct-dispatch contracts, compiler/GC smoke, independent native caller, cross-thread rejection and finalizer containment.",
+    "Allocation geometry test now checks initial vtable, zeroed payload bytes across extents 0..127, and rejection of later vtable changes after detachment.",
+    "Raw allocation benchmark rejects an invalid vtable and checks the vtable, exact extent and increasing identity of every result.",
+    "Independent C Id continuation suite passed: metacircular/custom lookup, interleaved work and GC, native boundaries, transfer accounting, captured lifetimes and tail calls."
+  ],
+  "contract_review": "All production ObjectMemory allocation callers already chose the vtable before allocating. Those callers now pass that same Oop to the private allocator. The allocator still interprets only header/allocation facts. Header initialization precedes publication to the private address map and no language callback occurs between allocation and return. Existing behavior-replacement validation is unchanged.",
+  "limits": [
+    "Raw allocation CPU decreased by 2.8-5.6% in the expanded local test. This bypasses managed allocation accounting by explicitly invoking the already-existing raw operation; it is not a measurement of all construction costs.",
+    "Broader probe changes are small and mixed (-1.3% Integer, -2.5% Range, +2.3% method loop, -1.2% quiet Logue), so no additional application-wide speedup is claimed for this change.",
+    "Controlled substitution of only libbirnam_id.dylib across 783 files, not a fresh installed release. The user installation is unchanged.",
+    "The separate cumulative report compares 600b0852 to 05103e46 and excludes this allocation-header experiment."
+  ],
+  "source_sha256": {
+    "rust/birnam-id/src/id/object_memory.rs": "c50262ea32c6e96c7aafa09688ca5082e6f047ce9b5a78b519ac91b16ccb29ae",
+    "rust/birnam-id/src/id/native_id.rs": "33b1a3d8dd89e3df6e7c01b85a3d3c5094c5fd9c40d00947317c299a1d556352",
+    "rust/birnam-id/src/id/initial_objects.rs": "9560a9ed4992369c5c8afdce49f0420b8877f3c8365000bc3233d2d3fcd161e4",
+    "rust/birnam-id/src/id/symbol.rs": "c57d34671b35c22dbef85d6af3a5ddb695fa055edb07dc57eb0913f918ad4775",
+    "rust/birnam-id/src/id/vtable.rs": "558fd59a66b50959dcf4c77e8ac3bde155e14d7914b127889549c337df7c9404"
+  },
+  "evidence": {
+    ".cargo-target/allocation-header-20261029/micro.json": "38bf9de6aa85052eae7238054cca51df73f292fcda434fe7f0a1da05d0cf9381",
+    ".cargo-target/allocation-header-20261029/micro.py": "8d989284448a61d015b2c0f61b6b45dc749100cb51a801401385f7031b49a978",
+    ".cargo-target/allocation-header-20261029/micro-extend.py": "27231bea5555b9c26acacff91905a652e86f66bfa727c8a85b0911f756dbdd91",
+    ".cargo-target/allocation-header-20261029/comparison.json": "ec15f67cfb93af362594eaf592a1b5d4744b07d4818dfee17cd2dd0adb2049ad",
+    ".cargo-target/allocation-header-20261029/compare.py": "a8625d114ea9e7835905666b41f0b3fdb9b80244fb94cb37a27d0ea146499d38",
+    ".cargo-target/allocation-header-20261029/core.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    ".cargo-target/allocation-header-20261029/continuations.log": "592837455fee163e1b942e0f2abdf4822d312e8139d3897afa96d9be9a91a2d6"
+  }
+}

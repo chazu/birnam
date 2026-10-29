@@ -1,0 +1,304 @@
+{
+  "baseline_revision": "600b0852",
+  "candidate_revision": "05103e46",
+  "scope": "Accumulated runtime-only performance changes, before the separate allocation-header experiment. Controlled replacement of six libraries; all other prefix files, including images and generated code, are byte-identical. Serial ABBA per workload size.",
+  "prefix_verification": {
+    "baseline": "/tmp/birnam-perf-20261029.WOMt1t/prefix",
+    "candidate": "/tmp/birnam-perf-20261029.WOMt1t/collector-dead-list-candidate",
+    "baseline_revision": "600b0852",
+    "candidate_revision": "05103e46",
+    "files_checked": 783,
+    "differences": [
+      "lib/libbirnam_bytes.dylib",
+      "lib/libbirnam_collect.dylib",
+      "lib/libbirnam_execution.dylib",
+      "lib/libbirnam_id.dylib",
+      "lib/libbirnam_object_model.dylib",
+      "lib/libbirnam_string.dylib"
+    ],
+    "library_sha256": {
+      "lib/libbirnam_bytes.dylib": {
+        "baseline": "2fa0fa14a0b70901f57ca9747e75f2f8d4ff5f9962ed421d0a7ef76f68a814c0",
+        "candidate": "4e04a2796abd63d3485ec9abf5daa74ede5f86ed92a3c1d4fd683d20fd5badd4"
+      },
+      "lib/libbirnam_collect.dylib": {
+        "baseline": "aff34cf5578f941983d2ac3d826fb62fcc8e2759b9eb5bf3f3e8aeb8bfa09a44",
+        "candidate": "da21b1f214ec96c60b912d5769b45309ac5b9ae88127d6b4c78274735a672ec1"
+      },
+      "lib/libbirnam_execution.dylib": {
+        "baseline": "510a61667f771c98ec67f5010d62e0fb8046fedd7fc5952d73ac1a021204e2e3",
+        "candidate": "52d935d1996f4bad5f10125a119a23cd23eeabb26437ca613961c5d17902a2b1"
+      },
+      "lib/libbirnam_id.dylib": {
+        "baseline": "504a999b4999e14f9c0c311f1280d2e7a7950a22b3a480b290f0cca7c7a39772",
+        "candidate": "2c5a5d8eadcd42c7be847bc9d05d0ec9f57dd365f6197a9b22d3401bee372ffc"
+      },
+      "lib/libbirnam_object_model.dylib": {
+        "baseline": "d38b0666ec644452c897f628b52225d6a22463f8dc435f5539daf9ca9e8badf3",
+        "candidate": "9008bcf4a60df03bf0f61890ab898c18688df7315e475ca450e3f7f009d05b47"
+      },
+      "lib/libbirnam_string.dylib": {
+        "baseline": "4b7b9a5efdb4378319e6943f91e94506f5ded3863c242c83dcadb2228f0a2b63",
+        "candidate": "dc54ea1bbfc441f926277a7cbb9ce25ebea8cc4d67f41a4dc5993bdb7b606a99"
+      }
+    }
+  },
+  "comparisons": {
+    "500": {
+      "scope": "Serial ABBA fresh-process comparison; six runtime libraries differ; images, compiler output and remaining prefix files are byte-identical. Each process runs three language probes (500 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+      "source": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 500 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 500];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 500 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[Globals at: #LogueBenchConfig put: {#phase -> \"arena\" #seed -> 12345 #width -> 16 #monsters -> 0 #turns -> 16 #batches -> 4 #samples -> 1 #allocation -> false #replace -> false}];\n[System load: \"logue-bench.birnam\"];\n",
+      "summary": {
+        "integer-loop": {
+          "baseline": {
+            "samples": [
+              97362292,
+              97210666,
+              97160375,
+              96318666,
+              97398833,
+              97918625
+            ],
+            "median_cpu_ns": 97286479.0
+          },
+          "candidate": {
+            "samples": [
+              66340416,
+              67363458,
+              67072083,
+              67836875,
+              67369417,
+              68228416
+            ],
+            "median_cpu_ns": 67366437.5
+          },
+          "cpu_change_percent": -30.754573305094123
+        },
+        "range-loop": {
+          "baseline": {
+            "samples": [
+              150012166,
+              146743875,
+              143534375,
+              145836208,
+              144549125,
+              142697917
+            ],
+            "median_cpu_ns": 145192666.5
+          },
+          "candidate": {
+            "samples": [
+              103325291,
+              102914208,
+              103123625,
+              104746417,
+              105177917,
+              107026500
+            ],
+            "median_cpu_ns": 104035854.0
+          },
+          "cpu_change_percent": -28.34634385614786
+        },
+        "method-loop": {
+          "baseline": {
+            "samples": [
+              102010666,
+              102314084,
+              102581042,
+              102751666,
+              101411958,
+              102441750
+            ],
+            "median_cpu_ns": 102377917.0
+          },
+          "candidate": {
+            "samples": [
+              69036792,
+              69141375,
+              68921500,
+              69269584,
+              68992500,
+              69337958
+            ],
+            "median_cpu_ns": 69089083.5
+          },
+          "cpu_change_percent": -32.51563860202391
+        },
+        "logue-quiet-turn": {
+          "baseline": {
+            "samples": [
+              1060028.625,
+              1058661.4375,
+              1043960.9375,
+              1077854.125,
+              1022533.8125,
+              1144968.75,
+              1119429.6875,
+              1125557.25
+            ],
+            "median_cpu_ns": 1068941.375
+          },
+          "candidate": {
+            "samples": [
+              748057.3125,
+              759088.5,
+              738213.5625,
+              715302.125,
+              748635.4375,
+              739236.9375,
+              712046.875,
+              758169.25
+            ],
+            "median_cpu_ns": 743647.125
+          },
+          "cpu_change_percent": -30.431439703603946
+        }
+      },
+      "whole_process_including_startup_and_source_loading": {
+        "baseline": {
+          "process_cpu_seconds": 19.007718500000003,
+          "wall_seconds": 19.046163979
+        },
+        "candidate": {
+          "process_cpu_seconds": 18.1829445,
+          "wall_seconds": 18.2173660415
+        },
+        "cpu_change_percent": -4.339153065634893
+      },
+      "logue_oracle_passed": true
+    },
+    "1000": {
+      "scope": "Serial ABBA fresh-process comparison; six runtime libraries differ; images, compiler output and remaining prefix files are byte-identical. Each process runs three language probes (1000 iterations, three timed samples, normal automatic GC), then the quiet Logue case (four batches of 16 turns) with independent state oracle. Source loading, warmup, explicit pre-sample GC and printing excluded from phase timers. Phase times are CPU and elapsed time; whole-process times include startup. Other host work may contend. No threshold.",
+      "source": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 1000 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[Globals at: #LogueBenchConfig put: {#phase -> \"arena\" #seed -> 12345 #width -> 16 #monsters -> 0 #turns -> 16 #batches -> 4 #samples -> 1 #allocation -> false #replace -> false}];\n[System load: \"logue-bench.birnam\"];\n",
+      "summary": {
+        "integer-loop": {
+          "baseline": {
+            "samples": [
+              197678667,
+              196665000,
+              211193541,
+              192892333,
+              197669375,
+              197182375
+            ],
+            "median_cpu_ns": 197425875.0
+          },
+          "candidate": {
+            "samples": [
+              139376417,
+              149219791,
+              140069333,
+              133278000,
+              134116125,
+              135269750
+            ],
+            "median_cpu_ns": 137323083.5
+          },
+          "cpu_change_percent": -30.443219005614132
+        },
+        "range-loop": {
+          "baseline": {
+            "samples": [
+              635346750,
+              639067333,
+              633307708,
+              676161666,
+              631242292,
+              641500875
+            ],
+            "median_cpu_ns": 637207041.5
+          },
+          "candidate": {
+            "samples": [
+              538902750,
+              543474458,
+              543144292,
+              547514084,
+              549050417,
+              548558875
+            ],
+            "median_cpu_ns": 545494271.0
+          },
+          "cpu_change_percent": -14.392931108247964
+        },
+        "method-loop": {
+          "baseline": {
+            "samples": [
+              218934875,
+              200792250,
+              202210292,
+              203426416,
+              201106208,
+              200766250
+            ],
+            "median_cpu_ns": 201658250.0
+          },
+          "candidate": {
+            "samples": [
+              139518292,
+              139647625,
+              141506291,
+              137278875,
+              139372958,
+              138978125
+            ],
+            "median_cpu_ns": 139445625.0
+          },
+          "cpu_change_percent": -30.850523100344272
+        },
+        "logue-quiet-turn": {
+          "baseline": {
+            "samples": [
+              1071807.25,
+              1029747.375,
+              1054848.9375,
+              1058182.3125,
+              1044815.125,
+              1043755.1875,
+              1047286.4375,
+              1045429.6875
+            ],
+            "median_cpu_ns": 1046358.0625
+          },
+          "candidate": {
+            "samples": [
+              739812.5,
+              745736.9375,
+              748380.25,
+              751822.875,
+              746216.125,
+              729729.125,
+              747330.75,
+              756416.625
+            ],
+            "median_cpu_ns": 746773.4375
+          },
+          "cpu_change_percent": -28.63117662458877
+        }
+      },
+      "whole_process_including_startup_and_source_loading": {
+        "baseline": {
+          "process_cpu_seconds": 22.359872999999997,
+          "wall_seconds": 22.4675428335
+        },
+        "candidate": {
+          "process_cpu_seconds": 20.870717499999998,
+          "wall_seconds": 20.9603595205
+        },
+        "cpu_change_percent": -6.659946145490181
+      },
+      "logue_oracle_passed": true
+    }
+  },
+  "limits": [
+    "The 500-iteration probes used 28-33% less CPU; at 1000 iterations Integer/method loops used about 30% less, Range about 14% less. Quiet Logue turns improved 29-30%. These do not imply every program is faster by the same amount.",
+    "Phase timers exclude startup, source loading, warmup and explicit pre-sample collection. Automatic GC remains enabled within measured work. Whole-process results include setup and must not be presented as isolated startup timings.",
+    "Four fresh processes per workload size, two per variant. CPU and elapsed timing are recorded; this is local evidence on one host, not a release qualification.",
+    "The baseline is the beginning of this optimization pass after the refactor, not the pre-refactor language. User installation unchanged."
+  ],
+  "evidence": {
+    ".cargo-target/cumulative-performance-20261029/comparison.json": "ce8bc9d62711b819684ae6b0fbbaff27df62ab921a4ea29c3cabcbc99f361965",
+    ".cargo-target/cumulative-performance-20261029/compare.py": "65b9f8a8811e299c1067e395c07846b4f5ffe7e9ea687f40d061118f0c978502",
+    ".cargo-target/cumulative-1000-20261029/comparison.json": "e6d3fd3fbfa8e4112ec50397f240b9f7082666fed714b3354446070e9d0d9050",
+    ".cargo-target/cumulative-1000-20261029/compare.py": "2cafde72c1424812ebb8694334d67b7fef7ac0fc1414467e6eba65389c64640d"
+  }
+}

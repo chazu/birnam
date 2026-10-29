@@ -288,10 +288,7 @@ impl State {
         {
             return Err(self.invalid());
         }
-        let mut h = self.heap.borrow_mut();
-        let o = h.allocate(size);
-        assert!(h.set_vtable(o, behavior));
-        Ok(o)
+        Ok(self.heap.borrow_mut().allocate(size, behavior))
     }
     // Allocation facts only. Payload interpretation belongs to the selected
     // owner implementation, never to the allocator or generic dispatcher.

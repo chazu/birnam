@@ -109,8 +109,7 @@ impl Vtables {
         parent: Oop,
         metavtable: Oop,
     ) -> Oop {
-        let object = memory.allocate(0);
-        assert!(memory.set_vtable(object, metavtable));
+        let object = memory.allocate(0, metavtable);
         self.register(object, parent);
         object
     }
@@ -268,8 +267,8 @@ mod core_tests {
         let nil = core::ptr::null_mut();
         let meta = tables.create(&mut memory, nil, nil);
         let parent = tables.create(&mut memory, nil, nil);
-        let selector = memory.allocate(0);
-        let method = memory.allocate(0);
+        let selector = memory.allocate(0, core::ptr::null_mut());
+        let method = memory.allocate(0, core::ptr::null_mut());
         memory.set_vtable(meta, meta);
         tables.add_method(meta, selector, method);
         assert!(tables.has_default_root_lookup(meta, selector, method));
@@ -285,12 +284,12 @@ mod core_tests {
         let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
         memory.set_vtable(meta, meta);
         let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
-        let key = memory.allocate(0);
-        let expected = memory.allocate(0);
+        let key = memory.allocate(0, core::ptr::null_mut());
+        let expected = memory.allocate(0, core::ptr::null_mut());
         tables.add_method(meta, key, expected);
         assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         // A distinct Method object is not the canonical lookup Method.
-        tables.add_method(meta, key, memory.allocate(0));
+        tables.add_method(meta, key, memory.allocate(0, core::ptr::null_mut()));
         assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
         assert!(tables.default_lookup_fact(meta, key, expected).is_some());
@@ -345,7 +344,7 @@ mod core_tests {
         let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let other = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let child = tables.create(&mut memory, parent, meta);
-        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0)).collect();
+        let keys: Vec<_> = (0..40).map(|_| memory.allocate(0, core::ptr::null_mut())).collect();
         let entry = |value: usize| core::ptr::without_provenance_mut(value << 3);
         for (i, &key) in keys.iter().enumerate() {
             tables.add_method(parent, key, entry(i + 1));
@@ -432,8 +431,8 @@ mod core_tests {
             before + 2,
             "ABA must invalidate snapshots"
         );
-        let key = memory.allocate(0);
-        let entry = memory.allocate(0);
+        let key = memory.allocate(0, core::ptr::null_mut());
+        let entry = memory.allocate(0, core::ptr::null_mut());
         tables.add_method(live, key, entry);
         let bound = tables.binding_epoch();
         tables.remove_method(live, key);
@@ -447,8 +446,8 @@ mod core_tests {
         let mut tables = Vtables::new();
         let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
         memory.set_vtable(meta, meta);
-        let key = memory.allocate(0);
-        let entry = memory.allocate(0);
+        let key = memory.allocate(0, core::ptr::null_mut());
+        let entry = memory.allocate(0, core::ptr::null_mut());
         let before = (tables.binding_epoch(), tables.mutation_epoch());
         let fresh = tables.create(&mut memory, meta, meta);
         tables.add_method(fresh, key, entry);
@@ -475,7 +474,7 @@ mod core_tests {
                 .map(|allocation| allocation.requested_size()),
             Some(0)
         );
-        let identity = memory.allocate(0);
+        let identity = memory.allocate(0, core::ptr::null_mut());
         let mut symbols = crate::id::symbol::Symbols::new();
         let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let keys: Vec<_> = (0..24)

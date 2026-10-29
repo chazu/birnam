@@ -22,12 +22,9 @@ pub(crate) fn construct() -> Box<State> {
     let module = family();
     let root_behavior = family();
     let registry_behavior = family();
-    let registry = heap.allocate(0);
-    assert!(heap.set_vtable(registry, registry_behavior));
-    let root = heap.allocate(size_of::<usize>());
-    assert!(heap.set_vtable(root, root_behavior));
-    let prototype = heap.allocate(0);
-    assert!(heap.set_vtable(prototype, object));
+    let registry = heap.allocate(0, registry_behavior);
+    let root = heap.allocate(size_of::<usize>(), root_behavior);
+    let prototype = heap.allocate(0, object);
     let lookup = symbols.intern(&mut heap, symbol, b"lookup").unwrap();
     let dnu = symbols
         .intern(&mut heap, symbol, b"doesNotUnderstand:")

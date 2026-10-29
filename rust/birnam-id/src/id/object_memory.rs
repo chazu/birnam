@@ -73,7 +73,7 @@ impl ObjectMemory {
             .is_some_and(|total| Layout::from_size_align(total, BLOCK_ALIGNMENT).is_ok())
     }
 
-    pub(crate) fn allocate(&mut self, payload_size: usize) -> Oop {
+    pub(crate) fn allocate(&mut self, payload_size: usize, vtable: Oop) -> Oop {
         let total_size = Self::allocation_total_size(payload_size)
             .unwrap_or_else(|| boundary::fatal_invariant("object allocation size overflow"));
         self.allocated_bytes = self.allocated_bytes.checked_add(total_size)
@@ -94,6 +94,8 @@ impl ObjectMemory {
             geometry: (self.next_identity << 5)
                 | (((total_size - VTABLE_HEADER_SIZE - payload_size) as u64) << 2),
         };
+        // This fresh allocation owns the aligned header; no registry lookup is needed.
+        unsafe { vtable_slot_from_payload(allocation.payload()).write(vtable) };
         let object: Oop = allocation.payload().as_ptr().cast();
         let previous = self.allocations.insert(object.addr(), allocation);
         boundary::require_invariant(
@@ -169,25 +171,31 @@ mod tests {
     #[test]
     fn cumulative_bytes_include_headers_and_do_not_decrease_on_release() {
         let mut memory=ObjectMemory::new();
-        let first=memory.allocate(3);let second=memory.allocate(24);
+        let first=memory.allocate(3, core::ptr::null_mut());let second=memory.allocate(24, core::ptr::null_mut());
         let expected=ObjectMemory::allocation_total_size(3).unwrap()+ObjectMemory::allocation_total_size(24).unwrap();
         assert_eq!(memory.allocated_bytes(),expected);
         drop(memory.detach(first.addr()).unwrap());drop(memory.detach(second.addr()).unwrap());
         assert_eq!(memory.len(),0);assert_eq!(memory.allocated_bytes(),expected);
-        memory.allocate(0);assert_eq!(memory.allocated_bytes(),expected+ObjectMemory::allocation_total_size(0).unwrap());
+        memory.allocate(0, core::ptr::null_mut());assert_eq!(memory.allocated_bytes(),expected+ObjectMemory::allocation_total_size(0).unwrap());
     }
 
     #[test]
     fn allocation_geometry_preserves_extent_identity_and_record_size() {
         assert_eq!(size_of::<Allocation>(), 24);
         let mut h = ObjectMemory::new();
+        let behavior = h.allocate(0, core::ptr::null_mut());
         for n in 0..128 {
-            let o = h.allocate(n);
+            let o = h.allocate(n, behavior);
             let id = h.get(o.addr()).unwrap().identity();
             let a = h.get(o.addr()).unwrap();
             assert_eq!(a.requested_size(), n);
             assert_eq!(a.identity(), id);
             assert_eq!(a.object(), o);
+            assert_eq!(unsafe { ObjectMemory::vtable_of_valid_object(o) }, behavior);
+            assert!(unsafe { core::slice::from_raw_parts(o.cast::<u8>(), n) }.iter().all(|&b| b == 0));
+            let detached = h.detach(o.addr()).unwrap();
+            assert!(!h.set_vtable(o, behavior), "later header changes still require registry membership");
+            drop(detached);
         }
     }
 }
