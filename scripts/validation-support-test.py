@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+import signal
 from validation_support import ROOT, PlanRunner, command, save_json, audit_steps, audit_plan
 
 
@@ -38,6 +40,28 @@ class ValidationTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     runner.run('failure', [sys.executable, '-c', 'raise SystemExit(7)'], inputs=(str(source),))
                 self.assertEqual(runner.rows['failure']['status'], 'failed')
+
+    def test_dead_group_signal_race_preserves_timeout(self):
+        actual_signal = os.killpg
+        actual_ps = subprocess.check_output
+        for still_live in [False, True]:
+            with self.subTest(still_live=still_live):
+                group = []; observations = []
+                def send(pgid, sig):
+                    group[:] = [pgid]
+                    if sig == signal.SIGKILL:
+                        raise PermissionError('simulated Darwin group race')
+                    return actual_signal(pgid, sig)
+                def snapshot(argv, **kwargs):
+                    if argv != ['ps', '-axo', 'pgid=,stat=']:
+                        return actual_ps(argv, **kwargs)
+                    observations.append(True)
+                    return f'{group[0]} R\n' if len(observations) == 1 or still_live else ''
+                with patch('validation_support.os.killpg', side_effect=send), patch('validation_support.subprocess.check_output', side_effect=snapshot):
+                    with self.assertRaises(PermissionError if still_live else subprocess.TimeoutExpired):
+                        command([sys.executable, '-c', 'import time; time.sleep(20)'],
+                                timeout=.15, env={'PATH': os.environ['PATH']})
+                self.assertEqual(len(observations), 2)
 
     def test_timeout_stops_descendants(self):
         with tempfile.TemporaryDirectory() as directory:

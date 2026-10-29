@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-28",
+  "scope": "Cold build, immutable package and validation-harness checkpoint; full integration acceptance remains open.",
+  "cold_install": {
+    "source": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-simplified-id-final-1m2e9svx/source",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-simplified-id-final-1m2e9svx/prefix",
+    "revision": "659d0b5c4cea142028432e545d9ac2aad10ddfe2",
+    "status": "passed",
+    "verified_files": 791,
+    "source_manifest_sha256": "6b9585a110121e1c76f59d720ba37e5b56f5e089f3de4a8a7aa253b0d364863a",
+    "receipt_sha256": "ce41d7df4c22e572c970de1cb53632693c702917e5ab74ed5387ab1f416f369c"
+  },
+  "archive": {
+    "path": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-simplified-id-final-1m2e9svx/candidate.tar.gz",
+    "bytes": 77490644,
+    "sha256": "9639dcdb7a866ccf17df4a9e5e6357aef388270017a972a9517fa3c326d4f9bf"
+  },
+  "evidence": {
+    "cold_install": {
+      "path": ".cargo-target/oop-current-qualification/cold-qualification-checkpoint/simplified-id-final-cold-install.log",
+      "sha256": "48c620f5424b32e56562c5f2f79131fdec11fa423966f58a8bc29d923a201672",
+      "status": "passed"
+    },
+    "package": {
+      "path": ".cargo-target/oop-current-qualification/cold-qualification-checkpoint/simplified-id-package.log",
+      "sha256": "9ee3a2f126a9b7643be65421049e6bc9be85518ea19fa7bb5de2fb4ff5b73dd0",
+      "status": "passed"
+    },
+    "cleanup_tests": {
+      "path": ".cargo-target/oop-current-qualification/cold-qualification-checkpoint/validation-stop-race.log",
+      "sha256": "9040778ec471ffd74cc04fd00c6547755f40752f6bc97c8e36d324911c9577e8",
+      "status": "13 tests passed"
+    },
+    "tooling": {
+      "path": ".cargo-target/oop-current-qualification/cold-qualification-checkpoint/qualification-tool-tests.log",
+      "sha256": "154e1b2b0e000c91c22ce49baa560be59f1c01b45df9d9e12396c132eb8e8fa8",
+      "status": "passed"
+    }
+  },
+  "harness_repair": "Darwin can report EPERM after the last process-group member dies between census and signal. Recheck membership before ignoring that error; retain the error when a live member remains. Tests cover both outcomes and descendant termination.",
+  "image_floor_deadline": {
+    "before_seconds": 300,
+    "after_seconds": 900,
+    "scope": "correctness allowance only; original timeout remains a failure; retry is running"
+  },
+  "pending": [
+    "main native batch",
+    "Store-independent image retry and remaining post-native checks",
+    "five installed Host groups",
+    "archive smoke/relocation acceptance",
+    "final completion audit"
+  ]
+}

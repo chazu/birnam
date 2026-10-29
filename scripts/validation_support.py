@@ -75,25 +75,31 @@ def command(argv, *, cwd=ROOT, env=None, timeout=300, log=None, cancel_event=Non
                                stdout=stream or subprocess.PIPE,
                                stderr=stream or subprocess.PIPE, text=True,
                                start_new_session=isolated)
+    def group_is_live():
+        groups = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True)
+        return any(parts[0] == str(process.pid) and not parts[1].startswith('Z')
+                   for line in groups.splitlines() if len(parts := line.split()) == 2)
+    def signal_group(sig):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            # Darwin may report EPERM after the last member dies between the
+            # census and signal. Ignore it only after confirming no live member.
+            if group_is_live():
+                raise
     def stop():
         if isolated:
-            try: os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError: pass
+            signal_group(signal.SIGTERM)
         elif process.poll() is None:
             process.terminate()
         try:
             process.wait(timeout=3)
         except subprocess.TimeoutExpired:
             process.kill()
-        if isolated:
-            # Darwin can return EPERM for a group containing only reaped/dead
-            # children. Escalate only while a live member is still observable.
-            groups = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True)
-            live = any(parts[0] == str(process.pid) and not parts[1].startswith('Z')
-                       for line in groups.splitlines() if len(parts := line.split()) == 2)
-            if live:
-                try: os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError: pass
+        if isolated and group_is_live():
+            signal_group(signal.SIGKILL)
         process.wait()
     try:
         if cancel_event is None:
