@@ -20,6 +20,20 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Qualification correction: Word helper contract (2026-10-29)
+
+The broad native run completed with one failing target, `word_helper`. Its test
+still sent the retired `implementation` message and expected a constructed Method
+to forward through its source Block's `value:...` binding. The direct-definition
+contract deliberately removed that dependency. The test now obtains the body via
+Execution's existing `bodyOfMethod:` operation and asserts that replacing Block
+`value:...` does not redirect the Method. It retains live capture-reader and Word
+primitive replacement checks. A collecting capture reader replaces the actual
+`compute:with:` binding; the entered computation finishes and the next send enters
+the replacement. The corrected test passes against the cold-built Oop owners.
+No production runtime change was needed for this failure. Full qualification is
+still incomplete, including the worker's unchanged 15-second Ready deadline.
+
 ## Implementation checkpoint: binary image composition (2026-10-29)
 
 Qualification exposed repeated image-save timeouts. A native sample and phase
