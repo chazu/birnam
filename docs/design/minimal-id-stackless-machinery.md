@@ -20,6 +20,38 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: bounded file-byte construction (2026-10-29)
+
+Bootstrap sampling found file reads constructing a managed Sequence with one Oop
+per byte, then tracing that Sequence during collection. File I/O now builds a
+Bytes buffer using the existing `fromByteValues` and `appendByteValues` operations
+in packets of at most 8192 Oops. It then sends the same current `fromBytes:` message
+to the requested String or Bytes constructor. That final replaceable constructor
+is retained, including its results, native failures and late Error publication.
+
+```text
+before: native bytes -> file-sized Vec<Oop> -> managed Sequence -> fromBytes:
+now:    native bytes -> bounded packets -> owned Bytes buffer -> fromBytes:
+```
+
+No Id or public owner API is added. File I/O reads no foreign payload. Its temporary
+root scope retains the factory and current buffer; a replacement append may collect
+or return a different buffer. The scope updates the current buffer reference and
+releases it on every return path. Native file limits and path/content snapshot
+ordering remain unchanged.
+
+The regression rejects managed Sequences over 8192 elements and reads files at
+0, 8192, 8193 and 65537 bytes through `readFile:`, `readFileSnapshot:` and `embedFile:`.
+It forces collection and a fresh buffer on every append, checks binary contents,
+and verifies native failure propagation. The old reader failed this test.
+System services, embedding, artifact loading and artifact activation pass.
+
+A single matched 8 MiB file-read probe, including process startup, changed maximum
+resident memory from 519.4 MiB to 134.0 MiB and elapsed time from 8.45 to 7.56 seconds.
+Other qualification processes were active; these scoped measurements do not prove
+a general speed target. The worker probe remains about 25.7 seconds, still beyond
+the unchanged 15-second Ready deadline. [Evidence](../measurements/bounded-file-bytes-20261029.json).
+
 ## Implementation checkpoint: idempotent source association (2026-10-29)
 
 Reconstruction still violated the documented same-object admission rule:

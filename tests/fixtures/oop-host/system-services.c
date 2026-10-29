@@ -1,8 +1,8 @@
 /* Collecting service dependencies and mutable byte views through owner messages. */
 #include "../oop-id-v2/id.h"
 static IdProtocol id;
-static Oop names[8];
-enum {AT,PUT,COLLECT,ERROR,SIZE,INDEX,FORWARD,CHANGING};
+static Oop names[11];
+enum {AT,PUT,COLLECT,ERROR,SIZE,INDEX,FORWARD,CHANGING,BOUNDED,CLONE,FRESH_APPEND};
 #define CHECK(v) do { Oop checked=(v);if(id_fault(checked))return checked; }while(0)
 static Oop send(Oop r,size_t s,const Oop*a,size_t n){return id.message(id.root,r,names[s],a,n);}
 static Oop get(Oop c,size_t i){Oop k=id_size(i);return send(c,AT,&k,1);}
@@ -37,10 +37,23 @@ static Oop changing(Oop root,Oop c,Oop r,const Oop*a,size_t n){
     }
     return id.message(id.root,r,get(c,1),a,n);
 }
+static Oop fresh_append(Oop root,Oop c,Oop r,const Oop*a,size_t n){
+    (void)root;
+    CHECK(send(get(c,0),COLLECT,0,0));
+    CHECK(put(c,2,id_size(id_unbox(get(c,2))+1)));
+    Oop failure=get(c,3);if(failure)return id_failure(failure);
+    Oop alias=get(c,1),copy=send(r,CLONE,0,0);CHECK(copy);
+    return id.message(id.root,copy,alias,a,n);
+}
+static Oop bounded(Oop root,Oop c,Oop r,const Oop*a,size_t n){
+    (void)root;
+    if(n>8192)return id.invalid;
+    return id.message(id.root,r,get(c,1),a,n);
+}
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*symbols,size_t n,const Oop*a,size_t count){
-    (void)a;if(count||n!=8)return p->invalid;id=*p;for(size_t i=0;i<n;i++)names[i]=symbols[i];return image;
+    (void)a;if(count||n!=11)return p->invalid;id=*p;for(size_t i=0;i<n;i++)names[i]=symbols[i];return image;
 }
 static const IdLiteral literals[]={LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("Error"),
-    LIT("sizeWord"),LIT("atWord:"),LIT("forward"),LIT("changing")};
-static const IdMethodSpec methods[]={{FORWARD,forward},{CHANGING,changing}};
-const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,8,methods,2,initialize};
+    LIT("sizeWord"),LIT("atWord:"),LIT("forward"),LIT("changing"),LIT("bounded"),LIT("clone"),LIT("freshAppend")};
+static const IdMethodSpec methods[]={{FORWARD,forward},{CHANGING,changing},{BOUNDED,bounded},{FRESH_APPEND,fresh_append}};
+const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,11,methods,4,initialize};

@@ -94,14 +94,7 @@ impl State {
         }
     }
     unsafe fn make_string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
-        unsafe {
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let source = self.send(self.id.root, b"sequence", &values)?;
-            self.send(self.string, b"fromBytes:", &[source])
-        }
+        unsafe { self.from_bytes(self.string, bytes) }
     }
     unsafe fn error(&self, message: &[u8]) -> Result<Oop, Oop> {
         unsafe {
@@ -119,14 +112,27 @@ impl State {
             })
         }
     }
-    unsafe fn make_bytes(&self, factory: Oop, bytes: &[u8]) -> Result<Oop, Oop> {
+    unsafe fn from_bytes(&self, factory: Oop, bytes: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            self.rooted(&[factory], || {
-                let values: Vec<_> = bytes
-                    .iter()
-                    .map(|&b| abi::size(b as usize).unwrap())
-                    .collect();
-                let source = self.send(self.id.root, b"sequence", &values)?;
+            let buffers = object(self.send(
+                self.ns, b"at:", &[self.names[b"Bytes".as_slice()]],
+            )?)?;
+            self.rooted(&[factory, buffers], || {
+                // A file-sized Sequence makes GC trace one reference per byte.
+                // Keep byte storage with Bytes and retain the current constructor.
+                let mut chunks = bytes.chunks(8192);
+                let packet = |chunk: &[u8]| {
+                    chunk.iter().map(|&b| abi::size(b as usize).unwrap()).collect::<Vec<_>>()
+                };
+                let mut source = object(self.send(
+                    buffers, b"fromByteValues", &packet(chunks.next().unwrap_or(&[])),
+                )?)?;
+                let source_root = self.scoped.borrow().len();
+                self.scoped.borrow_mut().push(source);
+                for chunk in chunks {
+                    source = object(self.send(source, b"appendByteValues", &packet(chunk))?)?;
+                    self.scoped.borrow_mut()[source_root] = source;
+                }
                 self.send(factory, b"fromBytes:", &[source])
             })
         }
@@ -205,9 +211,9 @@ unsafe extern "C" fn read_snapshot(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: 
             };
             let factory = named(b"Bytes")?;
             s.rooted(&[factory], || {
-                let name = object(s.make_bytes(factory, &path_bytes)?)?;
+                let name = object(s.from_bytes(factory, &path_bytes)?)?;
                 s.rooted(&[name], || {
-                    let contents = object(s.make_bytes(factory, &bytes)?)?;
+                    let contents = object(s.from_bytes(factory, &bytes)?)?;
                     s.rooted(&[contents], || {
                         let vector = named(b"Vector")?;
                         s.rooted(&[vector], || {
@@ -247,7 +253,7 @@ unsafe extern "C" fn embed_file(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usi
                 return s.error(b"embedFile: could not read the file within the 16 MiB limit");
             };
             let factory = object(s.send(s.ns, b"at:", &[s.names[b"Bytes".as_slice()]])?)?;
-            s.rooted(&[factory], || s.make_bytes(factory, &bytes))
+            s.rooted(&[factory], || s.from_bytes(factory, &bytes))
         })()
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -351,11 +357,13 @@ literals![
     b"at:",
     b"at:put:",
     b"atWord:",
+    b"appendByteValues",
     b"behaviorOf:",
     b"bytes",
     b"delegated",
     b"embedFile:",
     b"fromBytes:",
+    b"fromByteValues",
     b"ioError",
     b"kind:message:",
     b"methodAt:",

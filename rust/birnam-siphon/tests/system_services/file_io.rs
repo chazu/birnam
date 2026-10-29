@@ -158,6 +158,31 @@ pub(super) fn check(h: &H<'_>) {
         assert_eq!(h.system(selector, &args), contents);
         h.restore(vt, selector, alias, original);
     }
+    // Large native files use bounded byte packets, not a managed reference for
+    // every byte. Both construction and each append remain replaceable and rooted.
+    let id_vt = h.call(h.host.id.root, b"objectBehavior", &[]);
+    let sequence = h.save(id_vt, b"sequence", b"fileSequence");
+    let bounded = h.forward(b"fileSequence");
+    let bytes_vt = h.named(b"BytesVt");
+    let append = h.save(bytes_vt, b"appendByteValues", b"fileAppendBytes");
+    let appending = h.forward(b"fileAppendBytes");
+    h.install(id_vt, b"sequence", h.method(b"bounded", bounded));
+    h.install(bytes_vt, b"appendByteValues", h.method(b"freshAppend", appending));
+    for length in [0, 8192, 8193, 65537] {
+        let payload = (0..length).map(|i| (i % 256) as u8).collect::<Vec<_>>();
+        fs::write(&file, &payload).unwrap();
+        assert_eq!(h.text(h.system(b"readFile:", &[path])), payload);
+        let snapshot = h.system(b"readFileSnapshot:", &[path]);
+        assert_eq!(h.text(h.q.vector_at(snapshot, 0).unwrap()), file.as_os_str().as_bytes());
+        assert_eq!(h.text(h.q.vector_at(snapshot, 1).unwrap()), payload);
+        assert_eq!(h.text(h.system(b"embedFile:", &[path])), payload);
+    }
+    assert!(h.hooks.count(appending, 2) > 0);
+    let failure = h.hooks.fault(969);
+    h.hooks.put(appending, 3, failure);
+    assert_eq!(h.fail(system, b"readFile:", &[path]), failure);
+    h.restore(bytes_vt, b"appendByteValues", b"fileAppendBytes", append);
+    h.restore(id_vt, b"sequence", b"fileSequence", sequence);
     h.bind(b"ServiceFilePath", ptr::null_mut());
     h.bind(b"ServiceFileContents", ptr::null_mut());
 }

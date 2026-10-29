@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-29",
+  "base_revision": "b2c7cc0a",
+  "contract": {
+    "before": "File-sized Oop vector and managed Sequence passed to current fromBytes:",
+    "after": "Bounded Oop packets build a Bytes buffer passed to the same current fromBytes:",
+    "new_public_operations": [],
+    "payload_owner": "Bytes and String; FileIO uses Id messages only",
+    "lifetime": "Existing FileIO temporary scope retains factories and current buffer across collecting or replacing appends"
+  },
+  "regression_before": "readFile: fails when file-sized Sequence creation is forbidden",
+  "tests": {
+    "exit_code": 0,
+    "targets": [
+      "system_services",
+      "embedding",
+      "artifact",
+      "artifact_activation"
+    ],
+    "file_lengths": [
+      0,
+      8192,
+      8193,
+      65537
+    ],
+    "checks": [
+      "binary data",
+      "current fromBytes: constructor",
+      "fresh collecting append",
+      "native failures",
+      "path snapshot ordering",
+      "late Error publication"
+    ]
+  },
+  "runtime": {
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-file-bytes-ya_ycpvz/prefix",
+    "execution": "source-idempotence milestone",
+    "file_io_sha256": "fc78780b7867b2209f1f84820b172c5ad0c862c6b2219837fc16a849817f7510"
+  },
+  "memory_probe": {
+    "input_bytes": 8388608,
+    "includes_process_startup": true,
+    "runs": [
+      {
+        "name": "before",
+        "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-source-idempotence-u1cut7s8/prefix",
+        "seconds": 8.445659084,
+        "exit_code": 0,
+        "stdout": "8388608\n",
+        "stderr": "        8.43 real         7.64 user         0.22 sys\n           544636928  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               33720  page reclaims\n                 568  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  45  voluntary context switches\n               15623  involuntary context switches\n         89734221014  instructions retired\n         21976476986  cycles elapsed\n           283674944  peak memory footprint\n"
+      },
+      {
+        "name": "after",
+        "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-file-bytes-ya_ycpvz/prefix",
+        "seconds": 7.556374000000002,
+        "exit_code": 0,
+        "stdout": "8388608\n",
+        "stderr": "        7.55 real         6.85 user         0.11 sys\n           140541952  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8541  page reclaims\n                 568  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  42  voluntary context switches\n                8489  involuntary context switches\n         76937122437  instructions retired\n         19570965476  cycles elapsed\n            61212288  peak memory footprint\n"
+      }
+    ],
+    "limitation": "Single matched trial per version while other qualification jobs ran"
+  },
+  "worker": {
+    "seconds": 25.674967499999998,
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "",
+    "prefix": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-file-bytes-ya_ycpvz/prefix",
+    "image": "/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-optional-image-1h6gzw3t/optional.image"
+  },
+  "worker_qualified": false,
+  "required_ready_seconds": 15,
+  "logs": [
+    {
+      "path": ".cargo-target/oop-current-qualification/file-bytes-before.log",
+      "sha256": "2f532cc6743bc43f0a140606fcd256be3ed2ca3e7b2a5ecae5d7c6d1fe44d187"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/file-bytes-after.log",
+      "sha256": "69b93b3107c16f13f470e4a62b12440f29c61042f499df09258ed91fe7f4f9fe"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/file-bytes-regression.log",
+      "sha256": "2d6d52f82162f5f8e13115f345909917c9b2dff92985d3951e80387c68782636"
+    },
+    {
+      "path": ".cargo-target/oop-current-qualification/file-memory-probe.log",
+      "sha256": "075f91be7eafbd317a32924a1cbd670346ab9f077e11a2cc613dec8090eba028"
+    }
+  ]
+}
