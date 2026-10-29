@@ -1,0 +1,293 @@
+{
+  "date": "2026-10-29",
+  "revision": "600b085253341fa51943ec3d0d5f32083a15f02f",
+  "scope": "Initial performance investigation after the Id cleanup; no runtime optimization implemented or speedup claimed.",
+  "runtime": {
+    "prefix": "/tmp/birnam-perf-20261029.WOMt1t/prefix",
+    "profile": "release",
+    "build_mode": "development-cache",
+    "source_identity": {
+      "git_clean": true,
+      "git_commit": "600b085253341fa51943ec3d0d5f32083a15f02f"
+    },
+    "source_manifest_sha256": "e2baaa2afa2a300973b2cd340f526e69eafca3af958cebffc00d13aeaa429ab3",
+    "startup_policy_changed": false
+  },
+  "measurement_limits": [
+    "Concurrent unrelated LLVM and Go builds plus another active application were observed; CPU and elapsed times are recorded separately. These are diagnostic observations, not an uncontended release benchmark or before/after speed comparison.",
+    "Language phase samples are six observations across two fresh processes, with normal automatic GC. Timers exclude startup, source loading, warmup, explicit pre-sample collection and printing.",
+    "Allocation measurements disable automatic collection for one bounded operation and include a small amount of observation overhead. No-auto-GC timings are diagnostic and are not candidate performance claims.",
+    "Native samples cover three-second windows. Sample percentages are not guaranteed optimization speedups. The startup sample was taken during installer startup verification; the loop sample followed its readiness marker while the installer was still preparing its tools image.",
+    "The Logue quiet case checks four state checkpoints against the independent oracle. The full Logue regression and other benchmark cases were not run."
+  ],
+  "startup": {
+    "runs": [
+      {
+        "wall_seconds": 49.648277875,
+        "cpu_seconds": 25.605942000000002
+      },
+      {
+        "wall_seconds": 42.068352584,
+        "cpu_seconds": 25.389692000000004
+      },
+      {
+        "wall_seconds": 40.097816416000015,
+        "cpu_seconds": 25.806263999999995
+      }
+    ],
+    "median_wall_seconds": 42.068352584,
+    "median_cpu_seconds": 25.605942000000002
+  },
+  "language_probes": [
+    {
+      "name": "integer-loop",
+      "iterations": 1000,
+      "cpu_ns": [
+        450440875,
+        447316917,
+        470831000,
+        435381000,
+        450623541,
+        456364083
+      ],
+      "median_cpu_ns": 450532208.0,
+      "median_wall_ns": 786777500.0
+    },
+    {
+      "name": "range-loop",
+      "iterations": 1000,
+      "cpu_ns": [
+        1404000041,
+        1337922458,
+        1397634375,
+        1361957375,
+        1361499709,
+        1375588292
+      ],
+      "median_cpu_ns": 1368772833.5,
+      "median_wall_ns": 2388885000.0
+    },
+    {
+      "name": "method-loop",
+      "iterations": 1000,
+      "cpu_ns": [
+        491531042,
+        452799458,
+        473021584,
+        489448917,
+        434753625,
+        464392792
+      ],
+      "median_cpu_ns": 468707188.0,
+      "median_wall_ns": 824932500.0
+    },
+    {
+      "name": "cell-loop",
+      "iterations": 1000,
+      "cpu_ns": [
+        495331916,
+        500922750,
+        492613708,
+        467222042,
+        467384542,
+        454721166
+      ],
+      "median_cpu_ns": 479999125.0,
+      "median_wall_ns": 877526500.0
+    },
+    {
+      "name": "print-loop",
+      "iterations": 1000,
+      "cpu_ns": [
+        480178417,
+        419501083,
+        449297125,
+        444403625,
+        454107416,
+        500023666
+      ],
+      "median_cpu_ns": 451702270.5,
+      "median_wall_ns": 745608000.0
+    }
+  ],
+  "allocation_counts_per_1000_iterations": {
+    "integer-loop": {
+      "objects": 357113,
+      "charged_bytes": 13623760
+    },
+    "range-loop": {
+      "objects": 466549,
+      "charged_bytes": 17944640
+    },
+    "method-loop": {
+      "objects": 372113,
+      "charged_bytes": 14167768
+    }
+  },
+  "gc_diagnostic": {
+    "integer-loop": {
+      "execution_cpu_ns_auto_gc_disabled": [
+        463157959,
+        450897625,
+        474126500
+      ],
+      "explicit_collection_cpu_ns": [
+        592806792,
+        567876709,
+        564941542
+      ]
+    },
+    "range-loop": {
+      "execution_cpu_ns_auto_gc_disabled": [
+        771542000,
+        636108041,
+        665151292
+      ],
+      "explicit_collection_cpu_ns": [
+        750799625,
+        742023000,
+        757029542
+      ]
+    }
+  },
+  "images": {
+    "birnam-tools.image": {
+      "bytes": 227207907,
+      "record_payload_bytes": {
+        "5": 64,
+        "7": 6731879,
+        "8": 72852,
+        "9": 307672,
+        "12": 29,
+        "10": 5,
+        "11": 1257,
+        "3": 5471035,
+        "2": 39326,
+        "4": 214583640
+      }
+    },
+    "birnam-bootstrap.image": {
+      "bytes": 166272657,
+      "record_payload_bytes": {
+        "5": 64,
+        "7": 4924686,
+        "8": 51786,
+        "9": 219349,
+        "12": 4,
+        "10": 5,
+        "11": 934,
+        "3": 4334029,
+        "4": 156741664
+      }
+    }
+  },
+  "native_objects": {
+    "birnam-tools.image": {
+      "object_count": 6012,
+      "program_count": 3006,
+      "object_bytes": 214535428,
+      "resumable_object_bytes": 105740938,
+      "synchronous_object_bytes": 108794490,
+      "median_object_bytes": 20859.0,
+      "max_object_bytes": 538251,
+      "identical_object_duplicate_bytes": 0
+    },
+    "birnam-bootstrap.image": {
+      "object_count": 4308,
+      "program_count": 2154,
+      "object_bytes": 156707084,
+      "resumable_object_bytes": 77283278,
+      "synchronous_object_bytes": 79423806,
+      "median_object_bytes": 20219.0,
+      "max_object_bytes": 538251,
+      "identical_object_duplicate_bytes": 0
+    }
+  },
+  "native_send": {
+    "description": "One million current Id sends to the bootstrap yourself implementation, no language frame/loop and no GC; five repetitions after warmup. It is not equivalent work to a language method invocation.",
+    "iterations_per_sample": 1000000,
+    "thread_cpu_ns": [
+      33812250,
+      33604792,
+      35308416,
+      30308375,
+      35288500
+    ]
+  },
+  "logue_quiet": {
+    "checkpoints": 4,
+    "correctness_passed": true,
+    "median_cpu_ns_per_turn": 2271985.6875,
+    "regression_requested": false
+  },
+  "prioritized_opportunities": [
+    {
+      "priority": 1,
+      "candidate": "Avoid unconditional full registration scans when no retirement is pending.",
+      "evidence": "Invocation::drop has 156 of 1591 leaf samples (9.8%) in the loop profile. end_managed_turn scans every registration whenever depth returns to zero, irrespective of whether anything is retiring.",
+      "location": "rust/birnam-execution/src/execution.rs:3184",
+      "direction": "First investigate using existing Execution pending-retirement bookkeeping to skip empty work. Preserve retirement ordering, acquired entries, frame/continuation pins, explicit leases and nested managed turns. No Id change is needed.",
+      "status": "Source-confirmed unnecessary scan; candidate speedup not measured."
+    },
+    {
+      "priority": 2,
+      "candidate": "Reduce allocation and copying in execution/control transfers.",
+      "evidence": "The empty Integer loop creates about 357 objects per iteration; Range creates about 467. Range crosses the unchanged 16 MiB GC budget. Its median CPU falls from 1369 ms with normal GC to 665 ms with automatic GC disabled; explicit collection afterward costs 751 ms.",
+      "direction": "Trace which temporary objects and argument copies are avoidable. Preserve escaped continuation identity, late-reply rejection, scheduling boundaries and call roots; do not pool visible continuation objects or fuse observable control steps without proving the contract.",
+      "status": "Allocation/GC cost measured; individual allocation sites not yet counted."
+    },
+    {
+      "priority": 3,
+      "candidate": "Reduce byte-at-a-time transfer work during image restoration.",
+      "evidence": "One TCC read_bytes subtree accounts for 693 of 2286 startup-window samples (30.3%). The helper sends sizeWord then atWord: once per byte.",
+      "location": "rust/birnam-abi/src/id_protocol.rs:46",
+      "direction": "Investigate redundant transfers and representation-owner data operations above Id. Preserve replaceable byte operations; raw foreign payload access or a renamed application/forwarding protocol is not an acceptable shortcut.",
+      "status": "Concrete hot path; bulk-operation semantics need review before implementation."
+    },
+    {
+      "priority": 4,
+      "candidate": "Reduce eagerly emitted native object code in images.",
+      "evidence": "Bootstrap stores 4308 objects for 2154 programs; tools stores 6012 for 3006. Both synchronous and resumable versions are emitted for every program. The code record is about 94% of each image. No byte-identical object duplicates were found.",
+      "location": "rust/birnam-codegen/src/image.rs:86",
+      "direction": "Determine which representations must be prepared and how much repeated scaffolding can be removed while retaining source-free execution, image portability and optimizer/deoptimization support. Do not assume one execution convention can simply be deleted.",
+      "status": "Storage composition measured; requires broader design review than the first candidate."
+    }
+  ],
+  "source_sha256": {
+    "rust/birnam-execution/src/execution.rs": "4bd7c00feaa1b5ff9d6417eea0448e938a4fc8acb260ad12359551ddfc985536",
+    "rust/birnam-execution/src/synchronous.rs": "11baabf80ba65fa16e90717d2e5c0b0fd9b48ac0dad5337d75adc7bcccf9d52d",
+    "rust/birnam-id/src/id/continuation.rs": "351d4b769a28e7f3153cd78e943effbea814a061deca3e08c784e1f296accce4",
+    "rust/birnam-abi/src/id_protocol.rs": "7d0d1b95d2dbf82e36ccb37784bcbe941c573be525a04b409206d5882f6e28cc",
+    "rust/birnam-codegen/src/image.rs": "3ad5af1025e5fe5d835fa0e9f63c313dfee340d077313412eb17cf3598413c4b",
+    "rust/birnam-codegen-runtime/src/image.rs": "2649566089e403ee055a9ae8899b24f1dcc57ee94742d471a902bf368577d1f7",
+    "rust/birnam-collect/src/lib.rs": "377b429beacb27430a4bef79c182d500bf3abc97a551a9678d9c1c12e669e828",
+    "rust/birnam-collect/src/collection.rs": "2f32e7c0009d6a7398b017df6be8b00d6c52bc0cac9f5e01fe168d1cc5a2eed8",
+    "modules/range.birnam": "8e1e88b9a4064fec47c89c97fb07135777023f34dac90d20aefac7906d12bea7"
+  },
+  "raw_evidence": {
+    ".cargo-target/performance-20261029/baseline.json": "4c7f7760c3d153caeaba0411ca53f25e2f6b0da10df16f6fa8b573e76a54c234",
+    ".cargo-target/performance-20261029/image-sizes.json": "ba7d0568bf293094e512b168708eca065e0ed328e34d1c63fc632970d7702cdb",
+    ".cargo-target/performance-20261029/native-object-sizes.json": "5ffc819171cbcba2a43521ac1623ab31f1c06ea4422976cd5d061f6848ee740e",
+    ".cargo-target/performance-20261029/startup.sample.txt": "a14348aa7fde66ada8ae7b6541a012da307fae5ce07f139708b4daaa61fbda21",
+    ".cargo-target/performance-20261029/integer-loop.sample.txt": "bd7047b9487b52c6f03a722d2b1cc23a99fd9583cb63ca78b3d41518612cd881",
+    ".cargo-target/performance-20261029/image-build.sample.txt": "20782e8cd4a04a13ea86443034e31216c8ba3ceee89824852c6775fe3c5e1898",
+    ".cargo-target/performance-20261029/gc-comparison.log": "9b8df21628c47e03d25b0f843cf1a00b22e1ce9f3714aeb70f7636e8ce378fe8",
+    ".cargo-target/performance-20261029/native-send-ns.txt": "ec85a8fc7d741a900f1fe5703244de0f6936b9b6c03db6a7a150aae5bd02b9ca",
+    ".cargo-target/performance-20261029/logue/results.json": "06c3089b72680ad460665dd4aca8c9449d41483d4062f9a8914ca648f3e7c64d",
+    ".cargo-target/performance-20261029/host-load.txt": "3be60112d6189dc3e023f5a826543c0df3d7447c37ebfa98e90230d0152c070e",
+    ".cargo-target/performance-20261029/probes.birnam": "f85c3b4a5f32074f34084ea29ba8c97704be1e878387556cfb45ffe9008b3fa9",
+    ".cargo-target/performance-20261029/allocations.birnam": "774e268f4b336f5501bbd61d0e4da6be7544b9d9cc51f42b62b4dd8e296c883c",
+    ".cargo-target/performance-20261029/gc-comparison.birnam": "155f9295a7570105be5c0a40b4e2b5cd38dc42d052643dc33c70b60f7005ad51",
+    ".cargo-target/performance-20261029/integer-loop-profile.birnam": "3f7e4176b1e1c35992d8efeeec9265a9dc9c769a05c187c1f2f40bf721ea1c47",
+    ".cargo-target/performance-20261029/run_baseline.py": "8a46e68d787c49ef85ff7c11e668df65a72e543eaa4fc784135a73e4fd35d933",
+    ".cargo-target/performance-20261029/run_profile.py": "5ad882f8518e32bd106aa05e84df44c05852e17263f7637b0614be6c11809b89",
+    ".cargo-target/performance-20261029/native-send.c": "0d2d22362b2d76b2f8ada3b6932754a225506b3995eff7d5c9e446e4683bf8f2"
+  },
+  "probe_sources": {
+    "probes.birnam": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]];\nlet result := [operation value];\n[[result == range] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 1000 do: [:i | [target perfEcho: i]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE cell-loop\"];\n[Module load: #time];\n[[|\nlet cell := [Cell with: 41];\nlet operation := [| [1 to: 1000 do: [:i | [cell value]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n\n[System println: \"CASE print-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | [i printString]]]];\nlet result := [operation value];\n[[result = 1] ifFalse: [| [System println: \"PERF_BAD\"]]];\n[1 to: 3 do: [:sample |\n  [System gc];\n  let startedCpu := [16 clockNanos]; let startedWall := [6 clockNanos];\n  [operation value];\n  let endedWall := [6 clockNanos]; let endedCpu := [16 clockNanos];\n  [System println: [endedCpu - startedCpu]];\n  [System println: [endedWall - startedWall]]\n]];\n[System println: \"PERF_OK\"]\n] value]\n",
+    "allocations.birnam": "[System println: \"CASE integer-loop\"];\n[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System gc]; [System autoGc: false];\nlet beforeObjects := [System liveObjects];\nlet beforeBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];\n[operation value];\nlet afterBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];\nlet afterObjects := [System liveObjects];\n[System autoGc: true];\n[System println: [afterObjects - beforeObjects]];\n[System println: [afterBytes - beforeBytes]];\n[System println: \"ALLOCATION_OK\"]\n] value]\n\n[System println: \"CASE range-loop\"];\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System gc]; [System autoGc: false];\nlet beforeObjects := [System liveObjects];\nlet beforeBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];\n[operation value];\nlet afterBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];\nlet afterObjects := [System liveObjects];\n[System autoGc: true];\n[System println: [afterObjects - beforeObjects]];\n[System println: [afterBytes - beforeBytes]];\n[System println: \"ALLOCATION_OK\"]\n] value]\n\n[System println: \"CASE method-loop\"];\n[Module load: #time];\n[[|\nlet target := [Object clone]; [Reflect defineMethod: #perfEcho: on: target as: [:self :argument | argument]];\nlet operation := [| [1 to: 1000 do: [:i | [target perfEcho: i]]]]; [operation value];\n[System gc]; [System autoGc: false];\nlet beforeObjects := [System liveObjects];\nlet beforeBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];\n[operation value];\nlet afterBytes := [[Execution wordResultOf: GC selector: #allocationBytes] asInteger];\nlet afterObjects := [System liveObjects];\n[System autoGc: true];\n[System println: [afterObjects - beforeObjects]];\n[System println: [afterBytes - beforeBytes]];\n[System println: \"ALLOCATION_OK\"]\n] value]\n",
+    "gc-comparison.birnam": "[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value];\n[System println: \"CASE integer-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; [System gc]; let afterGc := [16 clockNanos];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n\n[Module load: #time];\n[[|\nlet range := [1 to: 1000];\nlet operation := [| [range do: [:i | nil]]]; [operation value];\n[System println: \"CASE range-loop\"];\n[1 to: 3 do: [:sample |\n [System gc]; [System autoGc: false];\n let begin := [16 clockNanos]; [operation value]; let end := [16 clockNanos];\n let beforeGc := [16 clockNanos]; [System gc]; let afterGc := [16 clockNanos];\n [System autoGc: true];\n [System println: [end - begin]]; [System println: [afterGc - beforeGc]]\n]];\n[System println: \"GC_PROBE_OK\"]\n] value]\n",
+    "integer-loop-profile.birnam": "[Module load: #time];\n[[|\n\nlet operation := [| [1 to: 1000 do: [:i | nil]]]; [operation value]; [System gc];\n[System println: \"PROFILE_READY\"];\n[1 to: 100 do: [:sample | [operation value]]];\n[System println: \"PROFILE_OK\"]\n] value]\n",
+    "native-send.c": "#include \"id.h\"\n#include <assert.h>\n#include <dlfcn.h>\n#include <stdio.h>\n#include <time.h>\nint main(int argc,char **argv) {\n assert(argc==2);\n void *library=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(library);\n const IdProtocol *(*boot)(const IdSeed *,size_t)=dlsym(library,\"birnam_id_bootstrap_v2\");assert(boot);\n IdSeed seeds[]={LIT(\"objectPrototype\"),LIT(\"yourself\")};\n const IdProtocol *id=boot(seeds,2);assert(id);\n Oop selectors[2];\n for(size_t i=0;i<2;i++) {Oop index=id_size(i);Oop name=id->message(id->root,id->seeds,id->at,&index,1);selectors[i]=id->message(id->root,name,id->intern,0,0);assert(!id_fault(selectors[i]));}\n Oop receiver=id->message(id->root,id->root,selectors[0],0,0);assert(!id_fault(receiver));\n for(size_t i=0;i<10000;i++)assert(id->message(id->root,receiver,selectors[1],0,0)==receiver);\n for(size_t sample=0;sample<5;sample++) {\n  uint64_t start=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID);\n  for(size_t i=0;i<1000000;i++)assert(id->message(id->root,receiver,selectors[1],0,0)==receiver);\n  uint64_t elapsed=clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)-start;\n  printf(\"%llu\\n\",(unsigned long long)elapsed);\n }\n}\n"
+  }
+}
