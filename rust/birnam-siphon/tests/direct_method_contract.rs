@@ -2,7 +2,7 @@
 #[path = "support/minimal.rs"]
 #[allow(dead_code)]
 mod minimal;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 #[test]
 #[ignore = "requires native owners and build-only Lang seed"]
 fn direct_methods_preserve_arity_and_dnu_without_definition_forwarders() {
@@ -32,14 +32,43 @@ fn direct_methods_preserve_arity_and_dnu_without_definition_forwarders() {
             call(root, b"value", &[])
         };
         let body = evaluate(b"[:self :argument | 42]");
-        let method = call(execution, b"methodFromBlock:", &[body]);
+        let arity = call(named(b"Integer"), b"fromWord:", &[size(1).unwrap()]);
+        let before = epoch();
+        let method = call(
+            named(b"Reflect"),
+            b"methodForArity:implementation:",
+            &[arity, body],
+        );
+        assert_eq!(epoch(), before);
+        for (owner, selector) in [(named(b"Codegen"), b"methodTemplateForArity:".as_slice()), (method, b"withImplementation:")] {
+            assert!(call(h.id.root, b"bind:to:", &[key(selector), owner]).is_null());
+        }
+        assert_eq!(call(execution, b"bodyOfMethod:", &[method]), body);
+        assert_eq!(
+            call(
+                named(b"Codegen"),
+                b"implementationOf:",
+                &[call(method, b"captured", &[])]
+            ),
+            body
+        );
         let target = call(named(b"Object"), b"clone", &[]);
         let vt = call(h.id.root, b"ensurePrivateVtableFor:", &[target]);
+        let before = epoch();
         call(
             named(b"Reflect"),
             b"defineMethod:on:as:",
-            &[key(b"answer:"), target, method],
+            &[key(b"answer:"), target, body],
         );
+        assert_eq!(
+            epoch(),
+            before + 1,
+            "definition changes only the requested binding"
+        );
+        let replacement = evaluate(b"[:block :receiver :argument | 99]");
+        let replacement = call(execution, b"methodFromBlock:", &[replacement]);
+        let body_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[body]);
+        call(body_vt, b"addMethod", &[key(b"value:value:"), replacement]);
         assert_eq!(
             q.word_bits(call(call(target, b"answer:", &[nil]), b"word", &[]))
                 .unwrap(),

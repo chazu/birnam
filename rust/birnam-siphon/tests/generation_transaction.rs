@@ -265,18 +265,16 @@ fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
         assert_eq!(h.call(globals, b"at:", &[h.key(b"txHelper")]), helper);
         assert_eq!(h.call(unit, b"discard", &[]), unit);
         assert_eq!(h.call(generation, b"candidatePolicyCellFor:", &[unit]), nil);
-        // The current template constructor is withImplementation:. Its failure must
+        // The current Reflect constructor is live. Its failure must
         // not replay the initializer on a second activation attempt.
         let second = h.record(b"CompiledUnit");
         h.call(generation, b"inspectCandidate:into:", &[path, second]);
         h.call(generation, b"mapCandidate:", &[second]);
-        let info = h.call(generation, b"candidateDataFor:", &[second]);
-        let adapter = h.at(h.at(info, 7), 0);
-        let avt = h.vt(adapter);
+        let avt = h.vt(h.named(b"Reflect"));
         let (init, state) = fault(
             &h,
             avt,
-            b"withImplementation:",
+            b"methodForArity:implementation:",
             b"txOriginalImplementation:",
             std::ptr::null_mut(),
             error,
@@ -292,7 +290,7 @@ fn candidate_partial_edits_and_explicit_undo_preserve_current_owners() {
         restore(
             &h,
             avt,
-            b"withImplementation:",
+            b"methodForArity:implementation:",
             b"txOriginalImplementation:",
             init,
         );

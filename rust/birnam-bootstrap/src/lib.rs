@@ -545,7 +545,6 @@ unsafe extern "C" fn initialize(
                 "imageFormat",
                 "trace",
                 "globals",
-                "methodInvocation",
             ] {
                 s.artifact(name, None)?;
             }

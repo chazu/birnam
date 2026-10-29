@@ -1,7 +1,7 @@
 //! Explicit native conversion constructs a Method without a definition forwarder.
 #[path = "support/oop.rs"]
 mod oop;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 
 #[test]
 #[ignore = "requires production Oop Execution"]
@@ -38,6 +38,22 @@ fn direct_native_methods_preserve_conversion_failure_and_deferred_control() {
         assert_eq!(
             call(h.id.root, b"behaviorOf:", &[method]),
             call(h.id.root, b"methodBehavior", &[])
+        );
+        let reflected = call(execution, b"bodyOfMethod:", &[method]);
+        assert_ne!(reflected, named(b"nil"));
+        assert_eq!(
+            call(reflected, b"codeObject", &[]),
+            call(method, b"codeObject", &[])
+        );
+        assert_eq!(
+            q.read_bytes(call(execution, b"nativeSignatureOf:", &[reflected]))
+                .unwrap(),
+            q.read_bytes(signature).unwrap()
+        );
+        assert_eq!(
+            epoch(),
+            before,
+            "provider reflection must not edit bindings"
         );
         method
     };

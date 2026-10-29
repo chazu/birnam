@@ -2,11 +2,12 @@
 //! Explicit source compilation and reflected Methods reuse the retained lowering.
 //! Source records and artifact publication use those same owner messages.
 use birnam_abi::{
-    self as abi, Oop, borrowed_slice,
+    self as abi, borrowed_slice,
     id_protocol::{
         ContinuationMethodSpec as MethodSpec, ContinuationModule as Module, ContinuationProtocol,
         Control, Literal, Protocol,
     },
+    Oop,
 };
 mod artifact;
 mod candidate_inventory;
@@ -33,11 +34,6 @@ struct State {
     id: Protocol,
     control: Control,
     reflect: Oop,
-    implementation_entry: Oop,
-    synchronous_implementation_entry: Oop,
-    binding_entry: Oop,
-    implementation_getter: Oop,
-    dnu_adapter: Oop,
     ns: Oop,
     receiver: Oop,
     names: HashMap<&'static [u8], Oop>,
@@ -118,7 +114,11 @@ impl State {
     unsafe fn named(&self, n: &[u8]) -> Result<Oop, Oop> {
         unsafe {
             let v = self.send(self.ns, b"at:", &[self.names[n]])?;
-            if v.is_null() { Err(invalid()) } else { Ok(v) }
+            if v.is_null() {
+                Err(invalid())
+            } else {
+                Ok(v)
+            }
         }
     }
     unsafe fn bytes(&self, v: Oop) -> Result<Vec<u8>, Oop> {
@@ -162,16 +162,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
         let [v] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let mut values = vec![
-            s.ns,
-            s.receiver,
-            s.reflect,
-            s.implementation_entry,
-            s.synchronous_implementation_entry,
-            s.binding_entry,
-            s.implementation_getter,
-            s.dnu_adapter,
-        ];
+        let mut values = vec![s.ns, s.receiver, s.reflect];
         values.extend_from_slice(&s.scoped.borrow());
         values.extend(
             s.image_stage
@@ -377,233 +368,42 @@ unsafe extern "C" fn compile(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) ->
 unsafe extern "C" fn compile_resumable(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     unsafe { compile_source(c, a, n, true) }
 }
-// A reflected Method explicitly sends its implementation Block the receiver
-// followed by the message arguments, preserving the original answer destination.
-unsafe extern "C" fn enter_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let p = INSTANCE.load(Ordering::Acquire);
-        if p.is_null() {
-            return Err(invalid());
-        }
-        let s = state((*p).ns)?;
-        let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let q = s.scope(&[c, r, *k]);
-        let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
-        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
-        let arity = s.send(c, b"at:", &[abi::size(2).unwrap()])?;
-        let policy = abi::as_size(arity).ok_or_else(invalid)?;
-        let arity = policy & 0xff;
-        if policy & 0x200 == 0
-            && (args.len() < arity || (policy & 0x100 == 0 && arity != args.len()))
-        {
-            return s.transfer(b"answerTo:with:", &[*k, s.named(b"nil")?]);
-        }
-        let mut values = vec![implementation, selector, *k, r];
-        values.extend_from_slice(if policy & 0x100 != 0 {
-            &args[..args.len().min(arity)]
-        } else {
-            args
-        });
-        s.transfer(b"prepareSend", &values)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-impl State {
-    unsafe fn value_selector(&self, q: &Scope<'_>, arity: usize) -> Result<Oop, Oop> {
-        unsafe {
-            if arity > 16 {
-                return Err(invalid());
-            }
-            let words: Vec<_> = b"value:"
-                .repeat(arity + 1)
-                .iter()
-                .map(|b| abi::size(*b as usize).unwrap())
-                .collect();
-            let name = q.keep(self.send(self.id.root, b"nameWithBytes", &words)?);
-            Ok(q.keep(self.id.send(name, self.id.intern, &[])?))
-        }
-    }
-    unsafe fn implementation(
-        &self,
-        q: &Scope<'_>,
-        template: Oop,
-        implementation: Oop,
-        selector: Oop,
-        arity: Oop,
-    ) -> Result<Oop, Oop> {
-        unsafe {
-            // Execution owns Block storage and explicit incoming adapters.
-            // Query that owner at construction; never inspect a foreign payload
-            // or probe an arbitrary implementation's optional methods.
-            let signature = q.keep(self.send(
-                self.named(b"Execution")?,
-                b"nativeSignatureOf:",
-                &[implementation],
-            )?);
-            let native = signature != self.named(b"nil")?;
-            let policy = abi::as_size(arity).ok_or_else(invalid)? & !0x200;
-            let arity = abi::size(policy | if native { 0x200 } else { 0 }).ok_or_else(invalid)?;
-            let template = if native {
-                self.implementation_entry
-            } else {
-                template
-            };
-            let context = q.keep(self.send(
-                self.id.root,
-                b"sequence",
-                &[implementation, selector, arity],
-            )?);
-            let method = q.keep(self.send(template, b"withContext:", &[context])?);
-            let base = q.keep(self.send(self.id.root, b"methodBehavior", &[])?);
-            let behavior = q.keep(self.send(base, b"delegated", &[])?);
-            let getter = q.keep(self.send(
-                self.implementation_getter,
-                b"withContext:",
-                &[implementation],
-            )?);
-            self.send(
-                behavior,
-                b"addMethod",
-                &[self.names[b"implementation".as_slice()], getter],
-            )?;
-            let sync = q.keep(self.send(template, b"isSynchronous", &[])?);
-            let getter = q.keep(self.send(self.implementation_getter, b"withContext:", &[sync])?);
-            self.send(
-                behavior,
-                b"addMethod",
-                &[self.names[b"isSynchronous".as_slice()], getter],
-            )?;
-            let binding = context;
-            let binder = q.keep(self.send(self.binding_entry, b"withContext:", &[binding])?);
-            self.send(
-                behavior,
-                b"addMethod",
-                &[self.names[b"withImplementation:".as_slice()], binder],
-            )?;
-            let dnu = q.keep(self.send(self.dnu_adapter, b"withContext:", &[context])?);
-            self.send(
-                behavior,
-                b"addMethod",
-                &[self.names[b"forDoesNotUnderstand".as_slice()], dnu],
-            )?;
-            self.send(
-                self.id.root,
-                b"reassociateBehaviorOf:with:",
-                &[method, behavior],
-            )?;
-            Ok(method)
-        }
-    }
-}
+// Definition binds a checked compiled body directly. The selector's arity is
+// validated here; ordinary sends need no construction or reflection operation.
 unsafe extern "C" fn construct_method(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
-        let [arity, implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+        let [arity, body] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let q = s.scope(&[*arity, *implementation]);
+        let q = s.scope(&[*arity, *body]);
         let arity = s.index(*arity)?;
-        let selector = s.value_selector(&q, arity)?;
-        s.implementation(
-            &q,
-            s.implementation_entry,
-            *implementation,
-            selector,
-            abi::size(arity).unwrap(),
-        )
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-// Neutral templates share the declared entry. The construction context contains
-// only selector and arity; it never retains the first bound implementation.
-unsafe fn template(c: Oop, a: *const Oop, n: usize, selected: bool) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        if args.len() != if selected { 2 } else { 1 } {
+        if arity > 16 {
             return Err(invalid());
         }
-        let arity = &args[0];
-        let synchronous = if selected {
-            if args[1] == s.named(b"true")? {
-                true
-            } else if args[1] == s.named(b"false")? {
-                false
-            } else {
-                return Err(invalid());
-            }
+        let execution = s.named(b"Execution")?;
+        let method = q.keep(s.send(execution, b"methodFromBlock:", &[*body])?);
+        let signature = q.keep(s.send(execution, b"nativeSignatureOf:", &[method])?);
+        let parameters = if signature != s.named(b"nil")? {
+            let bytes = s.bytes(signature)?;
+            abi::native_signature::Signature::parse(&bytes)
+                .ok_or_else(invalid)?
+                .arguments()
+                .len()
+                + 1
         } else {
-            false
+            let code = q.keep(s.send(method, b"codeObject", &[])?);
+            let count = q.keep(s.send(s.named(b"CodeObject")?, b"parameterCountOf:", &[code])?);
+            s.index(count)?
         };
-        let q = s.scope(&[*arity]);
-        let arity = s.index(*arity)?;
-        let selector = s.value_selector(&q, arity)?;
-        let arity = abi::size(arity).unwrap();
-        let nil = q.keep(s.named(b"nil")?);
-        let template = q.keep(s.implementation(
-            &q,
-            if synchronous {
-                s.synchronous_implementation_entry
-            } else {
-                s.implementation_entry
-            },
-            nil,
-            selector,
-            arity,
-        )?);
-        Ok(template)
+        if parameters != arity + 1 {
+            return s.error(b"method body parameter count does not match selector");
+        }
+        Ok(method)
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn method_template(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    unsafe { template(c, a, n, false) }
-}
-unsafe extern "C" fn method_template_selected(
-    _: Oop,
-    c: Oop,
-    _: Oop,
-    a: *const Oop,
-    n: usize,
-) -> Oop {
-    unsafe { template(c, a, n, true) }
-}
-unsafe extern "C" fn enter_implementation_sync(
-    _: Oop,
-    c: Oop,
-    r: Oop,
-    a: *const Oop,
-    n: usize,
-) -> Oop {
-    (|| unsafe {
-        let p = INSTANCE.load(Ordering::Acquire);
-        if p.is_null() {
-            return Err(invalid());
-        }
-        let s = state((*p).ns)?;
-        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let q = s.scope(&[c, r]);
-        let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
-        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
-        let arity =
-            abi::as_size(s.send(c, b"at:", &[abi::size(2).unwrap()])?).ok_or_else(invalid)?;
-        let policy = arity;
-        let arity = policy & 0xff;
-        if policy & 0x200 == 0 && (n < arity || (policy & 0x100 == 0 && n != arity)) {
-            return s.named(b"nil");
-        }
-        let mut values = vec![r];
-        values.extend_from_slice(if policy & 0x100 != 0 {
-            &args[..args.len().min(arity)]
-        } else {
-            args
-        });
-        s.id.send(implementation, selector, &values)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-// This describes the owner's shared continuing entry, not a Machine frame.
+// This describes the selector arity used by generation bookkeeping.
 unsafe extern "C" fn method_descriptor(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
@@ -628,78 +428,13 @@ unsafe extern "C" fn method_descriptor(_: Oop, c: Oop, _: Oop, a: *const Oop, n:
     })()
     .unwrap_or_else(abi::fault_reference)
 }
-unsafe extern "C" fn bind_implementation(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let p = INSTANCE.load(Ordering::Acquire);
-        if p.is_null() {
-            return Err(invalid());
-        }
-        let s = state((*p).ns)?;
-        let [implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        let q = s.scope(&[c, r, *implementation]);
-        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
-        let arity = q.keep(s.send(c, b"at:", &[abi::size(2).unwrap()])?);
-        let method = q.keep(s.implementation(&q, r, *implementation, selector, arity)?);
-        Ok(method)
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-// Id's DNU packet contains the selector followed by original arguments. Source
-// Methods consume their declared prefix; native Methods retain their own ABI.
-unsafe extern "C" fn dnu_adapter(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let p = INSTANCE.load(Ordering::Acquire);
-        if p.is_null() {
-            return Err(invalid());
-        }
-        let s = state((*p).ns)?;
-        if n != 0 {
-            return Err(invalid());
-        }
-        let q = s.scope(&[c, r]);
-        let policy =
-            abi::as_size(s.send(c, b"at:", &[abi::size(2).unwrap()])?).ok_or_else(invalid)?;
-        if policy & 0x100 != 0 {
-            return Ok(r);
-        }
-        let implementation = q.keep(s.send(c, b"at:", &[abi::size(0).unwrap()])?);
-        let selector = q.keep(s.send(c, b"at:", &[abi::size(1).unwrap()])?);
-        s.implementation(
-            &q,
-            r,
-            implementation,
-            selector,
-            abi::size(policy | 0x100).ok_or_else(invalid)?,
-        )
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn implementation_value(_: Oop, c: Oop, _: Oop, _: *const Oop, n: usize) -> Oop {
-    if n == 0 {
-        c
-    } else {
-        abi::fault_reference(invalid())
-    }
-}
 unsafe extern "C" fn implementation_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;
         let [method] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        s.send(*method, b"implementation", &[])
-    })()
-    .unwrap_or_else(abi::fault_reference)
-}
-unsafe extern "C" fn method_from_template(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
-    (|| unsafe {
-        let s = state(c)?;
-        let [template, implementation] = borrowed_slice(a, n).ok_or_else(invalid)? else {
-            return Err(invalid());
-        };
-        s.send(*template, b"withImplementation:", &[*implementation])
+        s.send(s.named(b"Execution")?, b"bodyOfMethod:", &[*method])
     })()
     .unwrap_or_else(abi::fault_reference)
 }
@@ -729,7 +464,8 @@ unsafe extern "C" fn define_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usi
             s.id.root,
             b"sameNativeMethod:as:",
             &[*implementation, *implementation],
-        )? == abi::size(1).unwrap() {
+        )? == abi::size(1).unwrap()
+        {
             // An executable supplied by its owner is already a Method. Installing
             // it must not turn it into a body-object forwarding definition.
             *implementation
@@ -824,7 +560,7 @@ const NAMES: &[&[u8]] = &[
     b"ReflectVt",
     b"defineMethod:on:as:",
     b"methodForArity:implementation:",
-    b"enterImplementation",
+    b"methodFromBlock:",
     b"prepareSend",
     b"nameWithBytes",
     b"ensurePrivateVtableFor:",
@@ -899,22 +635,15 @@ const NAMES: &[&[u8]] = &[
     b"Alien",
     b"provideLibraryPath:named:",
     b"provideLibrary:named:",
-    b"methodTemplateForArity:",
-    b"bindImplementation",
-    b"withImplementation:",
-    b"methodForTemplate:implementation:",
+    b"parameterCountOf:",
     b"reassociateBehaviorOf:with:",
-    b"implementationValue",
-    b"implementation",
     b"implementationOf:",
     b"parentOf:",
-    b"enterImplementationSync",
-    b"methodTemplateForArity:synchronous:",
+    b"bodyOfMethod:",
     b"methodDescriptorFor:",
     b"initialGenerationProjection",
     b"candidateInventory:selection:",
     b"isSynchronous",
-    b"admitCodeObject:synchronous:",
     b"portableImageBindings",
     b"compilePortableImageCode:bindings:selection:",
     b"beginPortableImageRebuild:bindings:selection:",
@@ -955,7 +684,6 @@ const NAMES: &[&[u8]] = &[
     b"Execution",
     b"Map",
     b"kind:",
-    b"forDoesNotUnderstand",
     b"clone",
     b"sliceFromWord:toWord:",
     b"fromByteValues",
@@ -966,6 +694,7 @@ const NAMES: &[&[u8]] = &[
     b"nameAt:",
     b"nativeSignatureOf:",
     b"sameNativeMethod:as:",
+    b"codeObject",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1024,7 +753,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"ReflectVt"),
     Literal::new(b"defineMethod:on:as:"),
     Literal::new(b"methodForArity:implementation:"),
-    Literal::new(b"enterImplementation"),
+    Literal::new(b"methodFromBlock:"),
     Literal::new(b"prepareSend"),
     Literal::new(b"nameWithBytes"),
     Literal::new(b"ensurePrivateVtableFor:"),
@@ -1099,22 +828,15 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"Alien"),
     Literal::new(b"provideLibraryPath:named:"),
     Literal::new(b"provideLibrary:named:"),
-    Literal::new(b"methodTemplateForArity:"),
-    Literal::new(b"bindImplementation"),
-    Literal::new(b"withImplementation:"),
-    Literal::new(b"methodForTemplate:implementation:"),
+    Literal::new(b"parameterCountOf:"),
     Literal::new(b"reassociateBehaviorOf:with:"),
-    Literal::new(b"implementationValue"),
-    Literal::new(b"implementation"),
     Literal::new(b"implementationOf:"),
     Literal::new(b"parentOf:"),
-    Literal::new(b"enterImplementationSync"),
-    Literal::new(b"methodTemplateForArity:synchronous:"),
+    Literal::new(b"bodyOfMethod:"),
     Literal::new(b"methodDescriptorFor:"),
     Literal::new(b"initialGenerationProjection"),
     Literal::new(b"candidateInventory:selection:"),
     Literal::new(b"isSynchronous"),
-    Literal::new(b"admitCodeObject:synchronous:"),
     Literal::new(b"portableImageBindings"),
     Literal::new(b"compilePortableImageCode:bindings:selection:"),
     Literal::new(b"beginPortableImageRebuild:bindings:selection:"),
@@ -1155,7 +877,6 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"Execution"),
     Literal::new(b"Map"),
     Literal::new(b"kind:"),
-    Literal::new(b"forDoesNotUnderstand"),
     Literal::new(b"clone"),
     Literal::new(b"sliceFromWord:toWord:"),
     Literal::new(b"fromByteValues"),
@@ -1166,6 +887,7 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"nameAt:"),
     Literal::new(b"nativeSignatureOf:"),
     Literal::new(b"sameNativeMethod:as:"),
+    Literal::new(b"codeObject"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1192,11 +914,6 @@ static METHODS: &[MethodSpec] = &[
         name: 55,
         entry: Some(construct_method),
         convention: 0,
-    },
-    MethodSpec {
-        name: 56,
-        entry: Some(enter_implementation),
-        convention: 1,
     },
     MethodSpec {
         name: 61,
@@ -1344,192 +1061,157 @@ static METHODS: &[MethodSpec] = &[
         convention: 0,
     },
     MethodSpec {
-        name: 131,
-        entry: Some(method_template),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 132,
-        entry: Some(bind_implementation),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 134,
-        entry: Some(method_from_template),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 136,
-        entry: Some(implementation_value),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 138,
+        name: 133,
         entry: Some(implementation_of),
         convention: 0,
     },
     MethodSpec {
-        name: 140,
-        entry: Some(enter_implementation_sync),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 141,
-        entry: Some(method_template_selected),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 142,
+        name: 136,
         entry: Some(method_descriptor),
         convention: 0,
     },
     MethodSpec {
-        name: 143,
+        name: 137,
         entry: Some(generation_projection::initial),
         convention: 0,
     },
     MethodSpec {
-        name: 144,
+        name: 138,
         entry: Some(candidate_inventory::inventory),
         convention: 0,
     },
     MethodSpec {
-        name: 147,
+        name: 140,
         entry: Some(image::bindings_entry),
         convention: 0,
     },
     MethodSpec {
-        name: 148,
+        name: 141,
         entry: Some(image::compile),
         convention: 0,
     },
     MethodSpec {
-        name: 149,
+        name: 142,
         entry: Some(image::rebuild),
         convention: 0,
     },
     MethodSpec {
-        name: 150,
+        name: 143,
         entry: Some(image::mapped),
         convention: 0,
     },
     MethodSpec {
-        name: 151,
+        name: 144,
         entry: Some(image::method),
         convention: 0,
     },
     MethodSpec {
-        name: 152,
+        name: 145,
         entry: Some(image::prepare),
         convention: 0,
     },
     MethodSpec {
-        name: 153,
+        name: 146,
         entry: Some(image::install),
         convention: 0,
     },
     MethodSpec {
-        name: 154,
+        name: 147,
         entry: Some(image::finish),
         convention: 0,
     },
     MethodSpec {
-        name: 155,
+        name: 148,
         entry: Some(image::cancel),
         convention: 0,
     },
     MethodSpec {
-        name: 156,
+        name: 149,
         entry: Some(image::sources),
         convention: 0,
     },
     MethodSpec {
-        name: 157,
+        name: 150,
         entry: Some(image::prepare_sources),
         convention: 0,
     },
     MethodSpec {
-        name: 158,
+        name: 151,
         entry: Some(image::finish_sources),
         convention: 0,
     },
     MethodSpec {
-        name: 159,
+        name: 152,
         entry: Some(image::prepared),
         convention: 0,
     },
     MethodSpec {
-        name: 160,
+        name: 153,
         entry: Some(image::begin_application),
         convention: 0,
     },
     MethodSpec {
-        name: 161,
+        name: 154,
         entry: Some(image::allocation),
         convention: 0,
     },
     MethodSpec {
-        name: 162,
+        name: 155,
         entry: Some(image::binding),
         convention: 0,
     },
     MethodSpec {
-        name: 172,
+        name: 165,
         entry: Some(materialization::synchronous),
         convention: 0,
     },
     MethodSpec {
-        name: 173,
+        name: 166,
         entry: Some(materialization::resumable),
         convention: 0,
     },
     MethodSpec {
-        name: 174,
+        name: 167,
         entry: Some(materialization::count),
         convention: 0,
     },
     MethodSpec {
-        name: 175,
+        name: 168,
         entry: Some(materialization::evict),
         convention: 0,
     },
     MethodSpec {
-        name: 179,
+        name: 172,
         entry: Some(reflection::all_methods),
         convention: 0,
     },
     MethodSpec {
-        name: 180,
+        name: 173,
         entry: Some(reflection::direct_methods),
         convention: 0,
     },
     MethodSpec {
-        name: 181,
+        name: 174,
         entry: Some(reflection::remove),
         convention: 0,
     },
     MethodSpec {
-        name: 187,
-        entry: Some(dnu_adapter),
-        convention: 0,
-    },
-    MethodSpec {
-        name: 171,
+        name: 164,
         entry: Some(reflection::name_of),
         convention: 0,
     },
     MethodSpec {
-        name: 192,
+        name: 184,
         entry: Some(reflection::global_named),
         convention: 0,
     },
     MethodSpec {
-        name: 193,
+        name: 185,
         entry: Some(reflection::global_names),
         convention: 0,
     },
     MethodSpec {
-        name: 139,
+        name: 134,
         entry: Some(reflection::parent),
         convention: 0,
     },
@@ -1583,36 +1265,10 @@ unsafe extern "C" fn initialize(
         let reflect_vt_token = send(roots, b"retain:", &[reflect_vt])?;
         let reflect = send(reflect_vt, b"allocate", &[abi::size(0).unwrap()])?;
         let reflect_token = send(roots, b"retain:", &[reflect])?;
-        let implementation_entry = send(
-            image,
-            b"methodAt:",
-            &[names[b"enterImplementation".as_slice()]],
-        )?;
         let s = Box::leak(Box::new(State {
             id,
             control,
             reflect,
-            implementation_entry,
-            synchronous_implementation_entry: send(
-                image,
-                b"methodAt:",
-                &[names[b"enterImplementationSync".as_slice()]],
-            )?,
-            binding_entry: send(
-                image,
-                b"methodAt:",
-                &[names[b"bindImplementation".as_slice()]],
-            )?,
-            implementation_getter: send(
-                image,
-                b"methodAt:",
-                &[names[b"implementationValue".as_slice()]],
-            )?,
-            dnu_adapter: send(
-                image,
-                b"methodAt:",
-                &[names[b"forDoesNotUnderstand".as_slice()]],
-            )?,
             ns: *ns,
             receiver,
             names: names.clone(),
@@ -1625,31 +1281,8 @@ unsafe extern "C" fn initialize(
             thread: std::thread::current().id(),
         }));
         INSTANCE.store(s, Ordering::Release);
-        for (entry, synchronous) in [
-            (s.implementation_entry, false),
-            (s.synchronous_implementation_entry, true),
-        ] {
-            send(
-                entry,
-                b"admitCodeObject:synchronous:",
-                &[
-                    named(b"nil")?,
-                    named(if synchronous { b"true" } else { b"false" })?,
-                ],
-            )?;
-        }
         for spec in METHODS {
             let name = NAMES[spec.name];
-            if matches!(
-                name,
-                b"enterImplementation"
-                    | b"enterImplementationSync"
-                    | b"bindImplementation"
-                    | b"implementationValue"
-                    | b"forDoesNotUnderstand"
-            ) {
-                continue;
-            }
             let target = if matches!(
                 name,
                 b"defineMethod:on:as:"
@@ -1657,7 +1290,6 @@ unsafe extern "C" fn initialize(
                     | b"directMethodsOf:"
                     | b"removeMethod:on:"
                     | b"methodForArity:implementation:"
-                    | b"methodForTemplate:implementation:"
                     | b"vtableOf:"
                     | b"nameOf:"
                     | b"globalNamed:"
@@ -1672,12 +1304,6 @@ unsafe extern "C" fn initialize(
             let method = send(method, b"withContext:", &[*ns])?;
             send(target, b"addMethod", &[symbols[spec.name], method])?;
         }
-        let nil_getter = send(s.implementation_getter, b"withContext:", &[named(b"nil")?])?;
-        send(
-            send(id.root, b"methodBehavior", &[])?,
-            b"addMethod",
-            &[names[b"implementation".as_slice()], nil_getter],
-        )?;
         send(roots, b"register:", &[receiver])?;
         send(*ns, b"at:put:", &[names[OWNER_NAME], receiver])?;
         send(*ns, b"at:put:", &[names[b"Reflect".as_slice()], reflect])?;

@@ -311,13 +311,7 @@ fn authored_cells_mutate_and_collect_without_store() {
             b"materializeResumable:captures:",
             &[code, captures],
         );
-        let template = h.call(
-            h.resolved(b"Codegen"),
-            b"methodTemplateForArity:synchronous:",
-            &[h.integer(arity), h.resolved(b"true")],
-        );
-        q.check_result(template).unwrap();
-        let method = h.call(template, b"withImplementation:", &[block]);
+        let method = h.call(h.resolved(b"Reflect"), b"methodForArity:implementation:", &[h.integer(arity), block]);
         // The existing Method and dictionary protocols support this bootstrap path. No Store
         // MOP, global facts, source parser or source-metadata registry is loaded.
         let selector = h.keep(h.key(selector));

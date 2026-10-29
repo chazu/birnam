@@ -199,22 +199,22 @@ let one := [Execution wordResultOf: 1 selector: #word];
       let factory := [Block fromMethod: [info at: 6] captures: #[]];
       let values := [[Machine new] runBlock: factory];
       [[values isError] ifTrue: [| values] ifFalse: [|
-        let outputs := [info at: 5]; let adapters := [info at: 7];
+        let outputs := [info at: 5]; let arities := [info at: 7];
         [[[values size] = [outputs size]] ifTrue: [|
-          let methods := [Cell with: [Map new]]; let globals := [Cell with: #[]]; let nextAdapter := [Cell with: 0];
+          let methods := [Cell with: [Map new]]; let globals := [Cell with: #[]]; let nextArity := [Cell with: 0];
           let built := [0 to: [[outputs size] - 1] do: [:i |
             let output := [outputs at: i]; let value := [values at: i];
             [[[output at: 0] == #global] ifTrue: [|
               [globals set: [[[globals value] reject: [:row | [[row at: 0] == [output at: 1]]]] add: #[[output at: 1] #[value]]]]
             ] ifFalse: [|
-              let method := [[adapters at: [nextAdapter value]] withImplementation: value];
+              let method := [Reflect methodForArity: [arities at: [nextArity value]] implementation: value];
               [[method isError] ifTrue: [| method] ifFalse: [|
-                [methods set: [[methods value] at: [output at: 1] put: method]]; [nextAdapter inc]
+                [methods set: [[methods value] at: [output at: 1] put: method]]; [nextArity inc]
               ]]
             ]]
           ]];
           [[built isError] ifTrue: [| built] ifFalse: [|
-            [[[nextAdapter value] = [adapters size]] ifTrue: [|
+            [[[nextArity value] = [arities size]] ifTrue: [|
               let result := #[[methods value] [globals value]]; [self put: #constructed in: cell value: result]; result
             ] ifFalse: [| [Error kind: #invalidCandidate]]]
           ]]

@@ -1,13 +1,10 @@
 [[|
-// Bind ordinary generated forwarding code through object messages. These are
+// Bind ordinary compiled code through object messages. These are
 // source-backed bodies, but retained Method objects themselves stay process-local.
-let seed := [Object clone];
-[Reflect defineMethod: #answer: on: seed as: [:self :argument | argument]];
-let template := [seed methodFor: #answer:];
 let first := [Object clone];
 let second := [Object clone];
-let a := [template withImplementation: [:self :argument | #[self argument #first]]];
-let b := [template withImplementation: [:self :argument | #[self argument #second]]];
+let a := [Reflect methodForArity: 1 implementation: [:self :argument | #[self argument #first]]];
+let b := [Reflect methodForArity: 1 implementation: [:self :argument | #[self argument #second]]];
 [Reflect defineMethod: #answer: on: first as: [:self :argument | argument]];
 [[Reflect vtableOf: first] addMethod: a as: #answer:];
 [Reflect defineMethod: #answer: on: second as: [:self :argument | argument]];

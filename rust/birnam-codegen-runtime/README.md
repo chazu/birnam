@@ -26,20 +26,20 @@ from the image's existing `newMethodAt:` and sends `retain:` to the supplied own
 That owner must keep the Methods alive for as long as the generated code can use
 them. No additional operation is installed on Id or its native image objects.
 
-Ordinary source Reflect construction now sends the receiving facade
-`methodForArity:implementation:`. The native implementation is a cold construction
-seed; host bootstrap replaces it with the authored MethodInvocation policy after
-control installation. That owner shares neutral forwarding templates and creates
-fresh bindings through `withImplementation:`. Supplied resumable artifact templates
-and identical image adapter payloads now bind through the current
-`methodForTemplate:implementation:` hook. Synchronous artifacts retain their
-separate Unit initialization. See [the source owner report](../../docs/design/method-invocation-owner.md)
-and [supplied template integration](../../docs/design/supplied-method-templates.md).
+Ordinary source Reflect construction sends the receiving facade
+`methodForArity:implementation:`. Its default implementation asks Execution to bind
+an owned compiled Block as a Method and checks the selector's arity. The Method
+enters that code directly with its receiver and lexical environment. Replacing the
+Block's `value:` method does not change the installed Method. Future sends still
+observe replacement of the actual dictionary binding.
 
-The construction seed compiles the retained named-adapter algorithm. Its
-Method keeps both the code Unit and the implementation object. Calls perform fresh
-`value:` lookup on that implementation; replacement does not rewrite a captured
-Method or a suspended frame. No generated Runtime service catalog is imported.
+Construction shares existing code, makes no binding edits and uses no forwarding
+template or cache. Explicit native conversion stays with Execution. Arbitrary
+callable objects are not method bodies. Image and candidate binding preparation
+use the same current Reflect constructor. `implementationOf:` asks Execution's
+public `bodyOfMethod:` operation for its retained body; neither Codegen nor Id
+interprets Execution's representation. See the
+[necessity audit](../../docs/design/minimal-id-stackless-machinery.md).
 
 Ordinary Reflect installation sends the current vtable `addMethod:as:` with the
 owned Method and selector. Removal checks direct presence and uses that vtable's
@@ -78,9 +78,8 @@ callee body through the existing inline-call path.
 
 Generated module initialization constructs one registered Method per implementation
 using canonical descriptor and selection Bytes. Blocks copy captures through
-`Block fromMethod:captures:` and Vector messages. Named adapters additionally use
-`Method fromStep:descriptor:selection:owner:implementation:` so their implementation
-Block and code Unit have distinct, explicit ownership. Top-level bindings publish
+`Block fromMethod:captures:` and Vector messages. Method construction binds those bodies through Execution, which retains their
+lexical environments and code owners. Top-level bindings publish
 through `Globals at:put:`; nested bindings remain lexical. Generated
 source reads send `Globals at:` first, then use Namespace only when the answer is
 nil, preserving the prior source lookup rule (including a bound nil). Missing
@@ -315,7 +314,7 @@ successful Method. Repeat requests return that Method; the other disposition
 remains independently available. No stage borrow crosses a callback. The existing
 image-operation reentry boundary still applies.
 
-Stage creation validates inventory/bundle framing and prepares named adapters;
+Stage creation validates inventory/bundle framing and retains binding arities;
 it does not initialize every body. Unrequested native payloads are not relocated
 or checked for linker errors. Required body failures occur during heap restoration,
 before normal image application begins. A failed individual request remains

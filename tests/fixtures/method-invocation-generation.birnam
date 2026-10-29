@@ -1,4 +1,4 @@
-// Constructor cache work must leave a prepared publication and its certificate usable.
+// Method construction must leave a prepared publication and its certificate usable.
 [[|
 let checks := [Cell with: #[]];
 let check := [:answer | [checks set: [[checks value] add: answer]]];
@@ -11,12 +11,10 @@ let replacement := [original replace: "| 10" with: "| 20"];
 [check value: [[CompiledUnit compile: replacement named: #methodInvocationGeneration output: MethodInvocationGenerationPath] = MethodInvocationGenerationPath]];
 let unit := [CompiledUnit open: MethodInvocationGenerationPath];
 [check value: [[unit map] == unit]];
-[MethodInvocation clearTemplates];
 let token := [Generation prepareActivation: unit plan: [unit publicationPlan: #activate]];
 [check value: [[token isError] not]];
 let basis := [Globals bindingBasis];
 let method := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
-[MethodInvocation clearTemplates];
 [GC collectPrecisely];
 [check value: [[method invokeOn: Integer arguments: #[42]] = 42]];
 [check value: [[Globals bindingBasis] = basis]];

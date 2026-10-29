@@ -39,6 +39,17 @@ unsafe fn owned_source(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<(
         native_adapters::source(s, method, q)
     }
 }
+// Persistence asks the code owner for its retained body; Method payloads stay opaque.
+pub(super) unsafe extern "C" fn method_body(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [method] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let q = s.scope(&[*method]);
+        if let Some(body) = native_code::body(s, *method, &q)? { return Ok(body); }
+        if let Some(body) = resumable::body(s, *method, &q)? { return Ok(body); }
+        Ok(native_adapters::body(s, *method, &q)?.unwrap_or(s.nil))
+    })().unwrap_or_else(abi::fault_reference)
+}
 pub(super) unsafe extern "C" fn for_dnu(_: Oop, c: Oop, r: Oop, _: *const Oop, n: usize) -> Oop {
     (|| unsafe {
         let s = state(c)?;

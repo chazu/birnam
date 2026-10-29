@@ -42,7 +42,6 @@ fn tasks_work_without_store_or_relational() {
         "imageFormat",
         "trace",
         "globals",
-        "methodInvocation",
         "stdlib",
     ] {
         h.artifact(name);

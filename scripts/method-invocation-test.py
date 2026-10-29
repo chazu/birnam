@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Default method construction and process-local templates across fresh image processes."""
+"""Direct method construction and live policy across fresh image processes."""
 import argparse
 import json
 from pathlib import Path
@@ -15,40 +15,35 @@ image = work / 'factory.image'
 source = work / 'writer.birnam'
 source.write_text('''
 [[|
-[MethodInvocation clearTemplates];
 let target := [Object clone];
 [Reflect defineMethod: #answer: on: target as: [:self :argument | argument]];
 [Globals at: #FactoryImageTarget put: target];
 let error := [Error kind: #imageFactoryRejected];
-let alternate := [Object clone];
-[Reflect defineMethod: #methodForArity:implementation: on: alternate as: [:self :arity :implementation | error]];
 [Globals at: #main put: [|
-  [System println: [[[MethodInvocation templates] size] = 0]];
+  [System println: [[Namespace includesKey: #MethodInvocation] not]];
   let target := FactoryImageTarget;
   let old := [target methodFor: #answer:];
   let basis := [Globals bindingBasis];
   let bound := [Reflect methodForArity: 1 implementation: [:self :argument | [argument + 1]]];
   [System println: [bound invokeOn: target arguments: #[41]]];
   [System println: [old invokeOn: target arguments: #[41]]];
-  [System println: [[MethodInvocation templates] size]];
   [System println: [[Globals bindingBasis] = basis]];
   // Ordinary edits remain available in running main; construction stays live.
-  [Globals at: #MethodInvocation put: alternate];
+  let constructor := [Reflect methodFor: #methodForArity:implementation:];
+  [Reflect defineMethod: #methodForArity:implementation: on: Reflect as: [:self :arity :implementation | error]];
   let result := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
   [System println: [result == error]];
-  [Globals remove: #MethodInvocation];
+  [[Vtable behaviorOf: Reflect] addMethod: constructor as: #methodForArity:implementation:];
   [System println: [[Reflect defineMethod: #runningEdit on: target as: [:self | nil]] == target]]
 ]];
-let cache := [MethodInvocation templates];
 [System saveImage: IMAGE];
 [System println: [[System imageSaveReport] status]];
-[System println: [[MethodInvocation templates] == cache]];
-[System println: [cache size]]
+[System println: [[Namespace includesKey: #MethodInvocation] not]]
 ] value]
 '''.replace('IMAGE', json.dumps(str(image))))
 receipt = {'passed': False, 'prefix': str(prefix), 'source': source.read_text(), 'runs': [],
            'source_sha256': {str(f.relative_to(ROOT)): sha(f) for f in [
-               Path(__file__).resolve(), ROOT/'modules/method-invocation.birnam',
+               Path(__file__).resolve(),
                ROOT/'rust/birnam-host-entry/src/startup.rs', ROOT/'rust/birnam-codegen-runtime/src/lib.rs']}}
 
 def run(name, argv, expected, env):
@@ -58,10 +53,10 @@ def run(name, argv, expected, env):
     assert result['exit_code'] == 0 and not result['stderr'] and result['stdout'] == expected, (name, work, result)
 
 env = clean_environment()
-run('save', [prefix/'bin/birnam', source], '#saved\ntrue\n2\n', env)
+run('save', [prefix/'bin/birnam', source], '#saved\ntrue\n', env)
 source.unlink()
 for name, flags in [('mapped', []), ('rebuilt', ['--rebuild'])]:
-    run(name, [prefix/'bin/birnam', *flags, image], 'true\n42\n41\n1\ntrue\ntrue\ntrue\n', env)
+    run(name, [prefix/'bin/birnam', *flags, image], 'true\n42\n41\ntrue\ntrue\ntrue\n', env)
 receipt['image_sha256'] = sha(image)
 receipt['passed'] = True
 save_json(work/'results.json', receipt)

@@ -1,7 +1,7 @@
 //! Artifact bodies, independent bindings, image staging and live owner policy through Oops.
 #[path = "support/oop.rs"]
 mod oop;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 use birnam_host_support::Context;
 use std::{cell::RefCell, os::unix::ffi::OsStrExt, path::Path, ptr};
 struct H<'a> {
@@ -117,19 +117,17 @@ fn supplied_artifact_templates_share_code_without_sharing_binding_state() {
         "birnam-artifact-templates-{}.dylib",
         std::process::id()
     ));
-    assert!(
-        std::process::Command::new("clang")
-            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
-            .arg(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tests/fixtures/oop-host/artifact-templates.c")
-            )
-            .arg("-o")
-            .arg(&path)
-            .status()
-            .unwrap()
-            .success()
-    );
+    assert!(std::process::Command::new("clang")
+        .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/oop-host/artifact-templates.c")
+        )
+        .arg("-o")
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success());
     let fixture = host.load_native(&scope, &path, &[]).unwrap();
     std::fs::remove_file(path).unwrap();
     let h = H {
@@ -142,7 +140,6 @@ fn supplied_artifact_templates_share_code_without_sharing_binding_state() {
         fixture,
     };
     h.call(h.named(b"GC"), b"precisePayloads:", &[size(1).unwrap()]);
-    h.call(h.named(b"MethodInvocation"), b"install", &[]);
     let mut source = "[[| let target := [Object clone];\n".to_string();
     for i in 0..16 {
         source.push_str(&format!("[Reflect defineMethod: #answer{i}: on: target as: [:self :argument | #[self argument {i}]]];\n"));
@@ -294,8 +291,10 @@ fn image_selection(h: &H<'_>) {
     let inputs = [h.bytes(&programs), h.bytes(&bindings), h.bytes(&selection)];
     let cg = h.named(b"Codegen");
     let yes = h.named(b"true");
-    let selector = b"methodTemplateForArity:synchronous:";
-    let original = h.lookup(cg, selector);
+    let reflect = h.named(b"Reflect");
+    let selector = b"methodForArity:implementation:";
+    let alias = b"fixtureConstruction:implementation:";
+    let original = h.alias(reflect, selector, alias);
     let bodies = [
         h.eval(b"[:self :argument | #[self argument #first]]"),
         h.eval(b"[:self :argument | #[self argument #second]]"),
@@ -315,43 +314,18 @@ fn image_selection(h: &H<'_>) {
     for distinct in [false, true] {
         for mapped in [false, true] {
             let mark = h.mark();
-            let first = h.call(cg, selector, &[h.integer(1), h.named(b"false")]);
-            let second = h.call(cg, selector, &[h.integer(1), h.named(b"false")]);
-            assert_ne!(first, second);
-            let mut counters = vec![];
-            for template in [first, second] {
-                h.alias(template, b"withImplementation:", b"fixtureImplementation:");
-                let state = h.hooks.context(&[
-                    h.key(b"fixtureImplementation:"),
-                    h.named(b"GC"),
-                    size(0).unwrap(),
-                ]);
-                h.replace(
-                    template,
-                    b"withImplementation:",
-                    h.method(b"constructor", state),
-                );
-                counters.push(state);
-            }
-            h.host.send(monitor, b"watch", &[first, second]).unwrap();
-            let state = h.hooks.context(&[
-                h.named(b"GC"),
-                first,
-                second,
-                size(distinct as usize).unwrap(),
-                size(0).unwrap(),
-            ]);
-            h.replace(cg, selector, h.method(b"selectTemplate", state));
+            let counters = [
+                h.hooks
+                    .context(&[h.key(alias), h.named(b"GC"), size(0).unwrap()]),
+                h.hooks
+                    .context(&[h.key(alias), h.named(b"GC"), size(0).unwrap()]),
+            ];
+            h.replace(reflect, selector, h.method(b"constructor", counters[0]));
             let bundle = if mapped {
                 Some(h.call(cg, b"compilePortableImageCode:bindings:selection:", &inputs))
             } else {
                 None
             };
-            assert_eq!(
-                h.hooks.count(state, 4),
-                0,
-                "saving body code does not construct named bindings"
-            );
             h.collect();
             let before = h.units();
             assert_eq!(
@@ -370,21 +344,16 @@ fn image_selection(h: &H<'_>) {
                 },
                 yes
             );
-            assert_eq!(h.hooks.count(state, 4), 2);
-            h.replace(cg, selector, original);
-            h.hooks.put(state, 1, ptr::null_mut());
-            h.hooks.put(state, 2, ptr::null_mut());
-            h.clear(mark);
-            h.collect();
             assert_eq!(
-                as_size(h.call(monitor, b"remaining", &[])),
-                Some(if distinct { 2 } else { 1 }),
-                "only selected templates remain rooted by the stage"
+                h.hooks.count(counters[0], 2),
+                0,
+                "staging must not construct a forwarding template"
             );
-            for &counter in &counters {
-                h.hooks.put(counter, 2, size(0).unwrap());
-            }
+            let mut methods = Vec::new();
             for (i, body) in bodies.into_iter().enumerate() {
+                if i == 1 && distinct {
+                    h.replace(reflect, selector, h.method(b"constructor", counters[1]));
+                }
                 assert_eq!(
                     h.call(
                         cg,
@@ -394,6 +363,7 @@ fn image_selection(h: &H<'_>) {
                     yes
                 );
                 let method = h.call(cg, b"preparedPortableImageBinding:", &[h.integer(i)]);
+                methods.push(method);
                 let value = h.call(method, b"invokeOn:arguments:", &[target, args]);
                 assert_eq!(h.call(value, b"at:", &[h.integer(0)]), target);
                 assert_eq!(h.call(value, b"at:", &[h.integer(1)]), argument);
@@ -404,19 +374,27 @@ fn image_selection(h: &H<'_>) {
             }
             assert_eq!(h.hooks.count(counters[0], 2), if distinct { 1 } else { 2 });
             assert_eq!(h.hooks.count(counters[1], 2), usize::from(distinct));
+            h.replace(reflect, selector, original);
+            h.host.send(monitor, b"watch", &methods).unwrap();
+            h.clear(mark);
             h.collect();
+            assert_eq!(
+                as_size(h.call(monitor, b"remaining", &[])),
+                Some(2),
+                "stage retains prepared Methods"
+            );
             assert_eq!(h.units(), before);
             assert_eq!(h.call(cg, b"cancelPortableImageUnit", &[]), yes);
             h.clear(mark);
             h.collect();
             assert_eq!(as_size(h.call(monitor, b"remaining", &[])), Some(0));
             assert_eq!(h.units(), before);
-            eprintln!(
-                "image templates mapped={mapped} distinct={distinct}: current constructors preserved with no native adapter unit"
-            );
+            eprintln!("image bindings mapped={mapped} distinct={distinct}: live construction with no forwarding template");
         }
     }
+    h.restore(reflect, selector, alias, original);
 }
+
 fn image_body_demand(h: &H<'_>) {
     use birnam_artifact_codec::{
         code_binding_inventory as b, materialization_selection as m, portable_inventory as p,
@@ -559,15 +537,14 @@ fn image_body_demand(h: &H<'_>) {
                 h.hooks.count(loaded, 4) + 1
             }
         );
-        assert!(
-            h.host
-                .send(
-                    cg,
-                    b"portableImageBlockMethod:synchronous:",
-                    &[h.integer(1), h.named(b"false")]
-                )
-                .is_err()
-        );
+        assert!(h
+            .host
+            .send(
+                cg,
+                b"portableImageBlockMethod:synchronous:",
+                &[h.integer(1), h.named(b"false")]
+            )
+            .is_err());
         assert_eq!(h.call(cg, b"cancelPortableImageUnit", &[]), yes);
         h.collect();
         assert_eq!(h.units(), before + 2);

@@ -67,11 +67,11 @@ fn incoming_adapters_preserve_failures_without_holding_a_native_branch_boundary(
         b"addMethod",
         &[value_selector, hooks.method(b"fixedCount", intercepted)],
     );
-    assert_eq!(call(target, b"echo:", &[yes]), named(b"false"));
+    assert_eq!(call(target, b"echo:", &[yes]), yes);
     assert_eq!(
         hooks.count(intercepted, 1),
-        1,
-        "explicit adapters still use the Block's current value method"
+        0,
+        "installed Methods enter their code without sending the body Block value:"
     );
     call(block_vt, b"addMethod", &[value_selector, original_value]);
     let cloned = call(adapted, b"clone", &[]);
@@ -82,7 +82,7 @@ fn incoming_adapters_preserve_failures_without_holding_a_native_branch_boundary(
     );
     let entered = call(h.id.root, b"bind:to:", &[key(b"echo:"), target]);
     let captured = call(entered, b"captured", &[]);
-    let ordinary = call(entered, b"withImplementation:", &[body]);
+    let ordinary = call(execution, b"methodFromBlock:", &[body]);
     let target_vt = call(h.id.root, b"behaviorOf:", &[target]);
     call(target_vt, b"addMethod", &[key(b"echo:"), ordinary]);
     assert_eq!(
@@ -110,16 +110,9 @@ fn incoming_adapters_preserve_failures_without_holding_a_native_branch_boundary(
         b"addMethod",
         &[key(b"value:"), hooks.method(b"fixedCount", fixed)],
     );
-    call(
-        named(b"Reflect"),
-        b"defineMethod:on:as:",
-        &[key(b"foreign"), target, foreign],
-    );
+    assert!(h.send(named(b"Reflect"), b"defineMethod:on:as:", &[key(b"foreign"), target, foreign]).is_err());
     assert_eq!(hooks.count(poison, 1), 0);
     assert_eq!(hooks.count(fixed, 1), 0);
-    assert_eq!(call(target, b"foreign", &[]), yes);
-    assert_eq!(hooks.count(fixed, 1), 1);
-    assert_eq!(hooks.count(poison, 1), 0);
 
     let failure = hooks.fault(719);
     let callback = call(named(b"Object"), b"clone", &[]);

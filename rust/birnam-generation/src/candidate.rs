@@ -39,7 +39,7 @@ pub(super) struct Candidate {
 }
 pub(super) struct Mapped {
     pub factory: Oop,
-    pub adapters: Vec<Oop>,
+    pub arities: Vec<Oop>,
     factory_unit: Oop,
 }
 impl Candidate {
@@ -53,7 +53,7 @@ impl Candidate {
         ];
         if let Some(m) = &self.mapped {
             values.extend([m.factory, m.factory_unit]);
-            values.extend(&m.adapters);
+            values.extend(&m.arities);
         }
         values
     }
@@ -513,7 +513,7 @@ pub(super) unsafe fn operation(
                             c.expected,
                             c.plan.metadata.operations.clone(),
                             c.plan.outputs.clone(),
-                            c.mapped.as_ref().map(|m| (m.factory, m.adapters.clone())),
+                            c.mapped.as_ref().map(|m| (m.factory, m.arities.clone())),
                         )
                     });
                 let Some((name, source, expected, operations, outputs, mapped)) = snapshot else {
@@ -546,12 +546,12 @@ pub(super) unsafe fn operation(
                     rows.push(s.vector(q, &[symbol(s, q, tag)?, value])?);
                 }
                 let outputs = s.vector(q, &rows)?;
-                let (factory, adapters) = if let Some((factory, adapters)) = mapped {
+                let (factory, arities) = if let Some((factory, arities)) = mapped {
                     q.keep(factory)?;
-                    for &adapter in &adapters {
-                        q.keep(adapter)?;
+                    for &arity in &arities {
+                        q.keep(arity)?;
                     }
-                    (factory, s.vector(q, &adapters)?)
+                    (factory, s.vector(q, &arities)?)
                 } else {
                     (nil, s.vector(q, &[])?)
                 };
@@ -565,7 +565,7 @@ pub(super) unsafe fn operation(
                         operations,
                         outputs,
                         factory,
-                        adapters,
+                        arities,
                     ],
                 )
             }
@@ -764,9 +764,9 @@ pub(super) unsafe fn operation(
                     return Ok(factory);
                 }
                 // Publish ownership only after every relocation and registration succeeds.
-                let mut adapters = Vec::new();
+                let mut arities = Vec::new();
                 for request in &requests[1..] {
-                    let birnam_codegen::backend_request::Request::Named { arity, synchronous } =
+                    let birnam_codegen::backend_request::Request::Named { arity, .. } =
                         request
                     else {
                         return Err(invalid());
@@ -778,18 +778,7 @@ pub(super) unsafe fn operation(
                         b"fromWord:",
                         &[word(*arity as usize)?],
                     )?;
-                    let style = s.named(if *synchronous { b"true" } else { b"false" })?;
-                    let template = call(
-                        s,
-                        q,
-                        s.named(b"Codegen")?,
-                        b"methodTemplateForArity:synchronous:",
-                        &[arity, style],
-                    )?;
-                    if s.is_error(template)? {
-                        return Ok(template);
-                    }
-                    adapters.push(template);
+                    arities.push(arity);
                 }
                 s.candidates
                     .entries
@@ -799,7 +788,7 @@ pub(super) unsafe fn operation(
                     .ok_or_else(invalid)?
                     .mapped = Some(Mapped {
                     factory,
-                    adapters,
+                    arities,
                     factory_unit,
                 });
                 Ok(unit)

@@ -397,6 +397,9 @@ unsafe fn owned_record(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<R
         Ok(None)
     }
 }
+pub(super) unsafe fn body(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Oop>, Oop> {
+    unsafe { Ok(owned_record(s, method, q)?.and_then(|r| r.environment)) }
+}
 pub(super) unsafe fn source_code(
     s: &State,
     method: Oop,

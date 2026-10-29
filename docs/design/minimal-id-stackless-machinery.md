@@ -20,6 +20,61 @@ implementation is still subject to simplification. Optimized-code metadata belon
 to the optimized code/version that needs it; it is not a reason for every Method
 to acquire a general metadata record or for Id to learn optimization policy.
 
+## Implementation checkpoint: default direct definitions (2026-10-28)
+
+The default `Reflect methodForArity:implementation:` operation now asks Execution
+to bind the compiled body and checks that its parameter count agrees with the
+selector. `Reflect defineMethod:on:as:` still accepts an executable Method directly
+and preserves its identity. Existing `[:self :argument | ...]` definition syntax
+is unchanged. Arbitrary objects that merely implement `value:` are no longer
+accepted as method bodies; mismatched body/selector arity is rejected during
+construction. Explicit native signatures retain their own conversion contract.
+
+```text
+before: select/cache forwarding template -> bind implementation Block
+        -> install private metadata behavior -> install forwarding Method
+call:   lookup -> forwarder -> Block value: lookup -> body
+
+after:  select compiled body -> bind its environment -> validate arity -> install
+call:   current method lookup -> enter selected body with receiver and environment
+```
+
+Codegen's continuing/synchronous forwarders, template constructors, per-instance
+metadata getters/binders and DNU wrapper are removed. The authored MethodInvocation
+module and cache are removed from bootstrap and Host startup. DNU conversion uses
+the body's existing provider entry. Image staging and candidate mapping retain
+plain arity data instead of constructing/retaining forwarding templates. They
+send the current Reflect constructor when preparing a binding.
+
+Execution exposes `bodyOfMethod:` for explicit reflection/persistence. Its compiled
+code owners already retain environments and find them through their existing
+executable identities. Codegen's `implementationOf:` asks that owner rather than
+querying a private getter on the Method. No bootstrap Method accessor, additional
+registry or cross-owner payload read is introduced. For explicit native Methods
+constructed from an untyped Block, reflection constructs a typed Block using the
+existing conversion context data; it does not attach behavior to the Method.
+
+The constructor and installation remain separate replaceable operations. Binding
+shares executable code, makes no dictionary edits and introduces no compilation
+unit. The actual installation changes the requested binding. Compiler descriptions,
+optimizer guards/recovery data, stackless frames and concurrency remain owned by
+their existing implementations.
+
+The core suite, direct arity/DNU contract and isolated construction/mutation tests
+pass. Rebuilt-library checks pass for source/artifact definitions, image staging,
+mapped/rebuilt images, native boundaries, candidate activation, rollback and live
+constructor reentry. [Qualification evidence](../measurements/default-direct-definitions-oop-20261028.json)
+distinguishes the intermediate core-only prefix from the subsequent optional
+provider checks.
+
+Published startup qualification remains open. Core image generation and startup
+with optional providers absent completed; the development-cache installer is
+still generating the tools image. Fresh-process image saving exceeded the existing
+240-second test deadline; a separate completion check is running without that
+deadline. No performance or final release qualification is claimed. Legacy generic
+admission and older native-ABI probes (`shared_invocation_probe` and
+`publication_result_proposal`) still require audit and migration or retirement.
+
 ## Implementation checkpoint: native conversion ownership (2026-10-28)
 
 Typed native Blocks now retain their source description and compilation mode in

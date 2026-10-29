@@ -1,12 +1,12 @@
-//! Authored method-construction policy, live overrides, reentry and template lifetime.
+//! Direct method construction, live overrides, reentry and code lifetime.
 #[path = "support/oop.rs"]
 mod oop;
-use birnam_abi::{Oop, as_size, size};
+use birnam_abi::{as_size, size, Oop};
 use std::{os::unix::ffi::OsStrExt, path::Path, ptr};
 
 #[test]
 #[ignore = "requires production Oop modules"]
-fn default_construction_shares_templates_and_observes_current_policy() {
+fn default_construction_shares_code_and_observes_current_policy() {
     let h = oop::bootstrap();
     let q = h.scope();
     let hooks = oop::hooks::Hooks::new(&h);
@@ -44,11 +44,7 @@ fn default_construction_shares_templates_and_observes_current_policy() {
     q.check_result(call(named(b"Codegen"), b"load:", &[store_path]))
         .unwrap();
     call(module, b"markLoaded:", &[key(b"store")]);
-    let baseline = std::env::var_os("BIRNAM_METHOD_INVOCATION_BASELINE").is_some();
-    let factory = named(b"MethodInvocation");
-    if !baseline {
-        call(factory, b"install", &[]);
-    }
+    let baseline = false;
     let target = call(named(b"Object"), b"clone", &[]);
     let body = eval(b"[:self :argument | argument]");
     let selector = key(b"sharedProbe:");
@@ -56,19 +52,17 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         "birnam-method-invocation-{}.dylib",
         std::process::id()
     ));
-    assert!(
-        std::process::Command::new("clang")
-            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
-            .arg(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tests/fixtures/oop-host/method-invocation.c")
-            )
-            .arg("-o")
-            .arg(&path)
-            .status()
-            .unwrap()
-            .success()
-    );
+    assert!(std::process::Command::new("clang")
+        .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/oop-host/method-invocation.c")
+        )
+        .arg("-o")
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success());
     let fixture = h.load_native(&q, &path, &[]).unwrap();
     std::fs::remove_file(path).unwrap();
     let method = |n: &[u8], c| {
@@ -96,9 +90,6 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         call(gc, b"collectPrecisely", &[]);
         call(tcc, b"checkpoint", &[]);
     };
-    if !baseline {
-        call(factory, b"clearTemplates", &[]);
-    }
     collect();
     let binding_basis = number(call(named(b"Globals"), b"bindingBasis", &[]));
     let before = units();
@@ -135,12 +126,6 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         // Both constructors share declared code now; neither emits another TCC unit.
         assert_eq!(units(), before);
         assert_eq!(resident_bytes(), before_bytes);
-        if !baseline {
-            assert_eq!(
-                number(call(call(factory, b"templates", &[]), b"size", &[])),
-                1
-            );
-        }
         let argument = named(b"true");
         assert_eq!(call(target, b"sharedProbe:", &[argument]), argument);
         for _ in 0..100 {
@@ -161,9 +146,6 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         );
         call(reflect, b"removeMethod:on:", &[selector, target]);
     }
-    if !baseline {
-        call(factory, b"clearTemplates", &[]);
-    }
     collect();
     assert_eq!(units(), before);
     assert_eq!(as_size(call(monitor, b"remaining", &[])), Some(0));
@@ -171,9 +153,6 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         number(call(named(b"Globals"), b"bindingBasis", &[])),
         binding_basis
     );
-    if baseline {
-        return;
-    }
     let lookup = |r, n: &[u8]| call(h.id.root, b"bind:to:", &[key(n), r]);
     let replace = |r, n: &[u8], m| {
         let vt = call(h.id.root, b"ensurePrivateVtableFor:", &[r]);
@@ -182,64 +161,36 @@ fn default_construction_shares_templates_and_observes_current_policy() {
     let error = call(named(b"Error"), b"kind:", &[key(b"templateRejected")]);
     let state = hooks.context(&[gc, error, size(0).unwrap(), ptr::null_mut()]);
     let probe = method(b"probe", state);
-    let codegen = named(b"Codegen");
-    let original = lookup(codegen, b"methodTemplateForArity:");
-    replace(codegen, b"methodTemplateForArity:", probe);
+    let original = lookup(reflect, b"methodForArity:implementation:");
+    replace(reflect, b"methodForArity:implementation:", probe);
     assert_eq!(
         call(reflect, b"defineMethod:on:as:", &[selector, target, body]),
         error
     );
     assert_eq!(hooks.count(state, 2), 1);
     assert_eq!(call(target, b"methodFor:", &[selector]), nil);
-    assert_eq!(
-        number(call(call(factory, b"templates", &[]), b"size", &[])),
-        0
-    );
     hooks.put(state, 3, hooks.fault(17));
-    let failed = call(reflect, b"defineMethod:on:as:", &[selector, target, body]);
-    assert_eq!(call(failed, b"kind", &[]), key(b"nativeFailure"));
+    assert!(h
+        .send(reflect, b"defineMethod:on:as:", &[selector, target, body])
+        .is_err());
     assert_eq!(hooks.count(state, 2), 2);
-    replace(codegen, b"methodTemplateForArity:", original);
+    replace(reflect, b"methodForArity:implementation:", original);
     hooks.put(state, 3, ptr::null_mut());
-    // No vestigial TCC compilation boundary should be introduced for templates.
     let compile = lookup(tcc, b"compile:");
     replace(tcc, b"compile:", probe);
     assert_eq!(
         call(reflect, b"defineMethod:on:as:", &[selector, target, body]),
         target
     );
-    assert_eq!(
-        hooks.count(state, 2),
-        2,
-        "declared template construction must not call TCC"
-    );
+    assert_eq!(hooks.count(state, 2), 2, "binding must share existing code");
     replace(tcc, b"compile:", compile);
     call(reflect, b"removeMethod:on:", &[selector, target]);
-    call(factory, b"clearTemplates", &[]);
-    let original_factory = lookup(factory, b"methodForArity:implementation:");
-    replace(factory, b"methodForArity:implementation:", probe);
-    assert_eq!(
-        call(reflect, b"defineMethod:on:as:", &[selector, target, body]),
-        error
-    );
-    assert_eq!(hooks.count(state, 2), 3);
-    replace(factory, b"methodForArity:implementation:", original_factory);
-    let template = call(factory, b"templateForArity:", &[int(1)]);
-    let constructor = lookup(template, b"withImplementation:");
-    replace(template, b"withImplementation:", probe);
-    assert_eq!(
-        call(reflect, b"defineMethod:on:as:", &[selector, target, body]),
-        error
-    );
-    assert_eq!(hooks.count(state, 2), 4);
-    replace(template, b"withImplementation:", constructor);
-    call(factory, b"clearTemplates", &[]);
     let nested_target = call(named(b"Object"), b"clone", &[]);
     let nested_selector = key(b"nestedProbe");
     let nested_body = eval(b"[:self | self]");
-    let codegen_vt = call(h.id.root, b"behaviorOf:", &[codegen]);
-    let alias = key(b"fixtureTemplate:");
-    call(codegen_vt, b"addMethod", &[alias, original]);
+    let reflect_vt = call(h.id.root, b"behaviorOf:", &[reflect]);
+    let alias = key(b"fixtureConstruction:implementation:");
+    call(reflect_vt, b"addMethod", &[alias, original]);
     let nested = hooks.context(&[
         alias,
         reflect,
@@ -250,8 +201,8 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         size(0).unwrap(),
     ]);
     replace(
-        codegen,
-        b"methodTemplateForArity:",
+        reflect,
+        b"methodForArity:implementation:",
         method(b"reenter", nested),
     );
     assert_eq!(
@@ -263,61 +214,20 @@ fn default_construction_shares_templates_and_observes_current_policy() {
         2,
         "constructor callback must not replay"
     );
-    assert_eq!(
-        number(call(call(factory, b"templates", &[]), b"size", &[])),
-        2
-    );
     assert_eq!(call(nested_target, b"nestedProbe", &[]), nested_target);
-    replace(codegen, b"methodTemplateForArity:", original);
-    call(codegen_vt, b"removeMethod:", &[alias]);
-    call(factory, b"clearTemplates", &[]);
+    replace(reflect, b"methodForArity:implementation:", original);
+    call(reflect_vt, b"removeMethod:", &[alias]);
     assert_eq!(
         call(target, b"sharedProbe:", &[named(b"true")]),
         named(b"true")
     );
     assert_eq!(call(nested_target, b"nestedProbe", &[]), nested_target);
-    let model = named(b"ObjectModel");
-    let compare = lookup(model, b"replaceSlot:in:expected:with:");
-    let model_vt = call(h.id.root, b"ensurePrivateVtableFor:", &[model]);
-    let alias = key(b"fixtureReplaceSlot:in:expected:with:");
-    call(model_vt, b"addMethod", &[alias, compare]);
-    let late = hooks.context(&[
-        alias,
-        reflect,
-        nested_target,
-        nested_selector,
-        nested_body,
-        gc,
-        size(0).unwrap(),
-    ]);
-    replace(
-        model,
-        b"replaceSlot:in:expected:with:",
-        method(b"reenter", late),
-    );
-    assert_eq!(
-        call(reflect, b"defineMethod:on:as:", &[selector, target, body]),
-        target
-    );
-    replace(model, b"replaceSlot:in:expected:with:", compare);
-    call(model_vt, b"removeMethod:", &[alias]);
-    assert_eq!(hooks.count(late, 6), 2, "cache publication must not retry");
-    let cache = call(factory, b"templates", &[]);
-    assert_eq!(number(call(cache, b"size", &[])), 1);
-    assert_eq!(call(cache, b"at:", &[int(1)]), nil);
-    assert_ne!(call(cache, b"at:", &[int(0)]), nil);
-    assert_eq!(
-        call(target, b"sharedProbe:", &[named(b"true")]),
-        named(b"true")
-    );
-    call(factory, b"clearTemplates", &[]);
-    // Deriving a method and clearing its cache must not revise published bindings.
+    // Construction does not revise Globals, Store or installed bindings.
     let globals = number(call(named(b"Globals"), b"bindingBasis", &[]));
     let facts = number(call(named(b"db"), b"basis", &[]));
     let installed = lookup(target, b"sharedProbe:");
     let m = call(reflect, b"methodForArity:implementation:", &[int(1), body]);
     q.check_result(m).unwrap();
-    call(factory, b"clearTemplates", &[]);
     assert_eq!(
         number(call(named(b"Globals"), b"bindingBasis", &[])),
         globals
@@ -392,7 +302,5 @@ fn prepared_generation(prefix: &Path) {
     );
     assert!(!artifact.exists() && !dir.join("candidate.o.candidate").exists());
     std::fs::remove_dir_all(dir).unwrap();
-    eprintln!(
-        "prepared generation survives Method construction and cache clearing: 14 checks passed"
-    );
+    eprintln!("prepared generation survives pure Method construction: 14 checks passed");
 }

@@ -35,7 +35,6 @@ fn alien_wraps_without_store_or_relational() {
         "imageFormat",
         "trace",
         "globals",
-        "methodInvocation",
         "stdlib",
     ] {
         h.artifact(name);

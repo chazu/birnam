@@ -226,6 +226,49 @@ pub(super) unsafe fn source(
     }
 }
 
+pub(super) unsafe fn body(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Oop>, Oop> {
+    unsafe {
+        let Some((context, signature)) = signature_for_method(s, method, q)? else {
+            return Ok(None);
+        };
+        let environment = q.keep(context_value(s, context, 1)?);
+        if environment == s.nil {
+            return Ok(None);
+        }
+        let mut fields = s.fields(environment)?;
+        for &value in &fields {
+            q.keep(value);
+        }
+        let executable = q.keep(context_value(s, context, 0)?);
+        // Binding an existing typed Block unwraps exactly its conversion entry.
+        // Explicit conversion of an already typed body may instead be nested.
+        if let Some((inner, inner_signature)) = signature_for_method(s, fields[0], q)? {
+            let inner_executable = q.keep(context_value(s, inner, 0)?);
+            if inner_signature.bytes() == signature.bytes()
+                && s.send(
+                    s.id.root,
+                    b"sameNativeMethod:as:",
+                    &[inner_executable, executable],
+                )? == abi::size(1).unwrap()
+            {
+                return Ok(Some(environment));
+            }
+        }
+        let source = q.keep(context_value(s, context, 3)?);
+        let synchronous = q.keep(context_value(s, context, 4)?);
+        fields[0] = q.keep(conversion(
+            s,
+            q,
+            executable,
+            s.nil,
+            signature,
+            source,
+            synchronous,
+        )?);
+        Ok(Some(s.make_block(s.block_vt, &fields)?))
+    }
+}
+
 pub(super) unsafe fn method_from_block(
     s: &State,
     body: Oop,

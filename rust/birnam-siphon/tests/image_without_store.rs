@@ -39,7 +39,6 @@ fn image_roundtrips_without_store_or_relational() {
         "imageFormat",
         "trace",
         "globals",
-        "methodInvocation",
         "stdlib",
         "cli",
     ] {

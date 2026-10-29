@@ -780,6 +780,7 @@ const NAMES: &[&[u8]] = &[
     b"nativeCodeSource",
     b"resumableDnuEntry",
     b"methodClone",
+    b"bodyOfMethod:",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1036,8 +1037,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"nativeCodeSource"),
     Literal::new(b"resumableDnuEntry"),
     Literal::new(b"methodClone"),
+    Literal::new(b"bodyOfMethod:"),
 ];
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name: 254, entry: Some(reflection::method_body), convention: 0 },
     MethodSpec {
         name: 237,
         entry: Some(numeric::evaluate),

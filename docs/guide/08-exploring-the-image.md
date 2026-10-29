@@ -109,39 +109,30 @@ Use `[method invokeOn: receiver]` for a method with no arguments. An argument
 sequence supplies `size` and zero-based `at:`; a Vector is the usual choice.
 `[method clone]` answers the same Method.
 
-An owned resumable forwarding Method also accepts
-`[template withImplementation: implementation]`. This creates a distinct Method
-using the template's admitted forwarding code and the new implementation. The
-new binding has its own registration and lifetime; it does not inherit the
-previous implementation's optimization. Its forwarding send still uses the
-implementation's current `value:`-family lookup. The selected code owner stays
-alive while any binding uses it; it does not accumulate the new bindings.
+Construct a Method from a compiled body without installing it:
 
-This constructor currently requires a registered forwarding template with an
-implementation slot. Native-only Methods and Block-body Methods are not such
-templates and answer a native invalid-request failure. It does not turn a
-synchronous native wrapper into a resumable program.
+```birnam
+let method := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
+[method invokeOn: Integer arguments: #[42]] // => 42
+```
 
-After normal host bootstrap, ordinary source `Reflect` definitions share a neutral
-template per arity through the Birnam `MethodInvocation` owner. Each binding remains
-a distinct Method. `[Reflect methodForArity: 1 implementation: block]` constructs
-without publishing a dictionary entry; the receiving Reflect facade's constructor
-is replaceable, including on a delegated facade.
+The body declares the receiver first, followed by the selector's arguments.
+Construction checks this count and retains the body's lexical captures. Each
+constructed Method shares the compiled code and enters it directly. Changing the
+original Block's `value:` behavior does not alter the Method. Constructing it makes
+no dictionary edit and needs no template cache. The receiving Reflect facade's
+constructor remains replaceable, including on a delegated facade.
 
-`[MethodInvocation templates]` exposes the owner's selected-code Map, and
-`[MethodInvocation clearTemplates]` releases those cached choices without changing
-existing bindings. The cache is an ordinary private slot on a process-local named
-owner; it creates no Globals binding or Store fact. Fresh processes start with an
-empty cache. Existing selected code stays owned until cleared, while implementation
-sends remain live. Precompiled artifact activation and image code reconstruction
-still use their supplied adapters. See the
-[construction report](../design/method-invocation-owner.md) for scope and costs.
+`Reflect defineMethod:on:as:` accepts such a Method directly or constructs one
+from a compiled Block. An arbitrary object that merely answers `value:` is not a
+method body. Use an explicit send in a compiled body when you want delegation to
+another object's current behavior.
 
 On a vtable, `methodFor:` searches that vtable's method dictionary and its
 parents. `[vtable addMethod: method as: selector]` installs the retained entry;
-it preserves the implementation and native context. This is a low-level live
-edit, without a source-backed image recovery recipe. Use `Reflect defineMethod:`
-for authored definitions that must survive saving and rebuilding an image.
+it preserves the implementation and native context. Source-backed compiled bodies
+provide image recovery data through their code owner. Raw native Methods need not
+have portable source and do not automatically acquire an image recovery recipe.
 
 Methods are process-local values. An image cannot persist a retained Method;
 perform `methodFor:` again after boot. See [image saving](04-images.md#saving).

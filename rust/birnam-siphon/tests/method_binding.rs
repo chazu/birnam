@@ -1,4 +1,4 @@
-//! Object-level Method construction from current templates, source and artifacts.
+//! Object-level Method construction from compiled bodies, source and artifacts.
 #[path = "support/oop.rs"]
 mod oop;
 use birnam_abi::Oop;
@@ -36,7 +36,7 @@ impl H<'_> {
 }
 #[test]
 #[ignore = "requires production Oop modules"]
-fn generated_templates_bind_through_source_and_artifact_messages() {
+fn compiled_bodies_bind_through_source_and_artifact_messages() {
     let host = oop::bootstrap();
     let h = H {
         host: &host,
@@ -76,7 +76,7 @@ fn generated_templates_bind_through_source_and_artifact_messages() {
                 h.host.intern(tag).unwrap()
             );
         }
-        eprintln!("Method withImplementation: generated template from {mode}: passed");
+        eprintln!("Direct Method construction from {mode}: passed");
     }
     // Installed source-backed implementations survive both restore paths.
     // The image reconstructs logical bindings; it need not preserve process
@@ -114,21 +114,20 @@ fn generated_templates_bind_through_source_and_artifact_messages() {
                 h.host.intern(tag).unwrap()
             );
         }
-        // A restored Method must also provide a usable owned code template.
+        // Ordinary construction remains available after image restoration.
         let value = h.eval(
             br#"
               let target := [MethodBindingTargets at: 0];
-              let template := [target methodFor: #answer:];
-              let bound := [template withImplementation: [:self :argument | argument]];
+              let bound := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
               [System gc];
               [bound invokeOn: target arguments: #[#restoredBinding]]
             "#,
         );
         assert_eq!(value, h.host.intern(b"restoredBinding").unwrap());
-        eprintln!("Method withImplementation: source-free image rebuild={rebuild}: passed");
+        eprintln!("Direct Method source-free image rebuild={rebuild}: passed");
     }
     // Neither a raw native declaration nor an ordinary compiled root is a
-    // named-method template. They must not manufacture a stale implementation.
+    // body binder. The removed forwarding operation must remain unavailable.
     let native = h.call(
         host.id.root,
         b"bind:to:",
@@ -147,31 +146,19 @@ fn generated_templates_bind_through_source_and_artifact_messages() {
             host.intern(b"doesNotUnderstand").unwrap()
         );
     }
-    let template = h.eval(b"[[MethodBindingTargets at: 0] methodFor: #answer:]");
-    assert!(host.send(template, b"withImplementation:", &[]).is_err());
-    assert!(
-        host.send(
-            template,
-            b"withImplementation:",
-            &[h.named(b"nil"), h.named(b"nil")]
-        )
-        .is_err()
-    );
-    // Construction policy is an ordinary replaceable send. Replacing it on
-    // this template affects the next binding, with no guard or code cache.
+    // The public constructor remains replaceable through ordinary lookup.
     let result = h.eval(
         br#"
-          let target := [MethodBindingTargets at: 0];
-          let template := [target methodFor: #answer:];
-          let constructor := [template methodFor: #withImplementation:];
-          let calls := [Cell with: 0];
-          [Reflect defineMethod: #withImplementation: on: template as: [:self :body |
-            [calls inc]; [System gc];
-            [constructor invokeOn: self arguments: #[body]]
-          ]];
-          let bound := [template withImplementation: [:self :argument | argument]];
-          #[[bound invokeOn: target arguments: #[#currentConstructor]] [calls value]]
-        "#,
+      let target := [MethodBindingTargets at: 0];
+      let constructor := [Reflect methodFor: #methodForArity:implementation:];
+      let calls := [Cell with: 0];
+      [Reflect defineMethod: #methodForArity:implementation: on: Reflect as: [:self :arity :body |
+        [calls inc]; [System gc]; [constructor invokeOn: self arguments: #[arity body]]
+      ]];
+      let bound := [Reflect methodForArity: 1 implementation: [:self :argument | argument]];
+      [[Vtable behaviorOf: Reflect] addMethod: constructor as: #methodForArity:implementation:];
+      #[[bound invokeOn: target arguments: #[#currentConstructor]] [calls value]]
+    "#,
     );
     assert_eq!(
         h.call(result, b"at:", &[h.integer(0)]),

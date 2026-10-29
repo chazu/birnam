@@ -18,7 +18,6 @@ source = work/'bench.birnam'
 source.write_text('''
 [Module load: #time];
 [[|
-[[Namespace includesKey: #MethodInvocation] ifTrue: [| [MethodInvocation clearTemplates]]];
 let target := [Object clone];
 let body := [:self :argument | argument];
 [System gc]; [System autoGc: false];

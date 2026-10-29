@@ -30,6 +30,7 @@ fn typed_blocks_bind_direct_methods_without_metadata_mutation() {
         let typed = call(execution, b"block:withNativeSignature:", &[body, signature]);
         let method = call(execution, b"methodFromBlock:", &[typed]);
         let captured = call(method, b"captured", &[]);
+        assert_eq!(call(execution, b"bodyOfMethod:", &[method]), typed);
         let description = call(typed, b"codeObject", &[]);
         assert_ne!(description, named(b"nil"));
         for value in [method, captured] {

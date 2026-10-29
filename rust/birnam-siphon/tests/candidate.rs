@@ -207,7 +207,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
         // No initializer writes a dispatch or Globals binding until activation.
         let info = h.call(g, b"candidateDataFor:", &[unit]);
         let factory = h.at(info, 6);
-        let adapters = h.at(info, 7);
+        let arities = h.at(info, 7);
         let block = h.call(
             h.named(b"Block"),
             b"fromMethod:captures:",
@@ -222,7 +222,7 @@ fn candidate_objects_are_inert_snapshot_bound_and_preserve_factory_captures_and_
             h.call(implementation, b"captureAt:", &[h.integer(0)]),
             helper
         );
-        let method = h.call(h.at(adapters, 0), b"withImplementation:", &[implementation]);
+        let method = h.call(h.named(b"Reflect"), b"methodForArity:implementation:", &[h.at(arities, 0), implementation]);
         assert_eq!(h.number(h.call(method, b"invokeOn:", &[h.integer(1)])), 22);
         assert_eq!(h.call(globals, b"at:", &[h.key(b"candidateHelper")]), nil);
         assert_eq!(

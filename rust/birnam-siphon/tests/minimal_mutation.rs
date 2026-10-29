@@ -57,14 +57,13 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
         }
     };
     absent();
-    assert!(
-        h.call(
+    assert!(h
+        .call(
             host.id.root,
             b"bind:to:",
             &[h.key(b"methodChangesTo:"), host.id.root]
         )
-        .is_null()
-    );
+        .is_null());
     let prototype = h.named(b"Object");
     let gc = h.named(b"GC");
     let nil = h.named(b"nil");
@@ -72,19 +71,17 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
         "birnam-minimal-mutation-{}.dylib",
         std::process::id()
     ));
-    assert!(
-        std::process::Command::new("clang")
-            .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
-            .arg(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tests/fixtures/oop-host/minimal-mutation.c")
-            )
-            .arg("-o")
-            .arg(&path)
-            .status()
-            .unwrap()
-            .success()
-    );
+    assert!(std::process::Command::new("clang")
+        .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
+        .arg(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/oop-host/minimal-mutation.c")
+        )
+        .arg("-o")
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success());
     let fixture = host.load_native(&q, &path, &[]).unwrap();
     std::fs::remove_file(path).unwrap();
     let method = |n: &[u8], context| {
@@ -124,11 +121,11 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
             &[code, captures],
         )
     };
-    let template = |arity| {
+    let bind = |arity, body| {
         h.call(
-            h.named(b"Codegen"),
-            b"methodTemplateForArity:synchronous:",
-            &[h.integer(arity), h.named(b"false")],
+            h.named(b"Reflect"),
+            b"methodForArity:implementation:",
+            &[h.integer(arity), body],
         )
     };
     let epoch = || as_size(h.call(host.id.root, b"bindingEpoch", &[])).unwrap();
@@ -140,12 +137,11 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
         )
     };
     let selector = h.key(b"answer");
-    let zero = template(0);
     let one = program(0);
     let two = program(1);
     let before = epoch();
-    let first = h.call(zero, b"withImplementation:", &[one]);
-    let second = h.call(zero, b"withImplementation:", &[two]);
+    let first = bind(0, one);
+    let second = bind(0, two);
     assert_ne!(first, second);
     if case == "construction" {
         assert_eq!(
@@ -201,7 +197,7 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
     );
     assert_eq!(
         h.number(h.call(first, b"invokeOn:arguments:", &[child, args])),
-        33
+        11
     );
     h.call(iv, b"removeMethod:", &[h.key(b"value:")]);
     assert_eq!(
@@ -210,7 +206,7 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
     );
     let mark = h.mark();
     let body = program(2);
-    let entered = h.call(zero, b"withImplementation:", &[body]);
+    let entered = bind(0, body);
     let entered_id = identity(entered);
     let body_id = identity(body);
     h.call(child_vt, b"addMethod:as:", &[entered, selector]);
@@ -247,9 +243,8 @@ fn direct_mutation_needs_no_store_generation_or_publication_owner() {
         !present(entered_id) && !present(body_id),
         "replaced Method and body must collect after the entered call ends"
     );
-    let unary = template(1);
     let body = program(3);
-    let implementation = h.call(unary, b"withImplementation:", &[body]);
+    let implementation = bind(1, body);
     let argument = h.call(prototype, b"clone", &[]);
     let echo = h.key(b"echo:");
     h.call(child_vt, b"addMethod:as:", &[implementation, echo]);

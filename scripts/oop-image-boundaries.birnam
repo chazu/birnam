@@ -14,12 +14,12 @@ let installed := [target methodFor: #doesNotUnderstand:];
 // Installing a handler must not relax the submitted Method's ordinary arity.
 [check value: [[handler invokeOn: target arguments: #[#missing: 1]] isNil]];
 [check value: [[handler invokeOn: target arguments: #[#missing:]] == #missing:]];
-let rebound := [installed withImplementation: [:self :selector | 42]];
+let rebound := [Reflect methodForArity: 1 implementation: [:self :selector | 42]];
 [behavior addMethod: rebound as: #doesNotUnderstand:];
 [GC collectPrecisely];
 [check value: [[target missing: 1] = 42]];
 [check value: [[installed invokeOn: target arguments: #[#missing: 1]] == #missing:]];
-let synchronous := [[Codegen methodTemplateForArity: 1 synchronous: true] withImplementation: [:self :selector | selector]];
+let synchronous := [Reflect methodForArity: 1 implementation: [[Block fromMethod: [Codegen compileSynchronous: "[:self :selector | selector]"] captures: #[]] value]];
 [behavior addMethod: synchronous as: #doesNotUnderstand:];
 [check value: [[target missing: 1] == #missing:]];
 [check value: [[synchronous invokeOn: target arguments: #[#missing: 1]] isNil]];

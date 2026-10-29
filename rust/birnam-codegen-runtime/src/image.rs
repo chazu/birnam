@@ -13,7 +13,7 @@ enum Body {
 }
 pub(super) struct Stage {
     bodies: Vec<Body>,
-    templates: Vec<Oop>,
+    arities: Vec<usize>,
     prepared: Vec<Option<Oop>>,
     finished: bool,
     source_owner: Option<Oop>,
@@ -27,7 +27,6 @@ impl Stage {
                 Body::Object { bytes, .. } => Some(*bytes),
                 _ => None,
             })
-            .chain(self.templates.iter().copied())
             .chain(self.prepared.iter().flatten().copied())
             .chain(self.source_owner)
             .collect()
@@ -351,29 +350,16 @@ unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oo
                 };
                 let mut stage = Stage {
                     bodies,
-                    templates: Vec::new(),
+                    arities: Vec::new(),
                     prepared: vec![None; plan.bindings],
                     finished: false,
                     source_owner: None,
                 };
-                // These are ordinary current Codegen constructors, with no redundant C units.
                 for request in &plan.requests[2 * plan.programs..] {
-                    let Request::Named { arity, synchronous } = request else {
+                    let Request::Named { arity, .. } = request else {
                         return Err(invalid());
                     };
-                    let arity = number(s, q, *arity as usize)?;
-                    let sync = s.named(if *synchronous { b"true" } else { b"false" })?;
-                    let template = call(
-                        s,
-                        q,
-                        s.receiver,
-                        b"methodTemplateForArity:synchronous:",
-                        &[arity, sync],
-                    )?;
-                    if template == nil || s.is_error(template)? {
-                        return Ok(template);
-                    }
-                    stage.templates.push(template);
+                    stage.arities.push(*arity as usize);
                 }
                 *s.image_stage.borrow_mut() = Some(stage);
                 Ok(yes)
@@ -436,21 +422,21 @@ unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oo
             }
             Op::Prepare => {
                 let i = s.index(args[0])?;
-                let template = {
+                let arity = {
                     let stage = s.image_stage.borrow();
                     let stage = stage.as_ref().ok_or_else(invalid)?;
                     if stage.finished {
                         return Err(invalid());
                     }
-                    *stage.templates.get(i).ok_or_else(invalid)?
+                    *stage.arities.get(i).ok_or_else(invalid)?
                 };
-                q.keep(template);
+                let arity = number(s, q, arity)?;
                 let method = call(
                     s,
                     q,
                     s.reflect,
-                    b"methodForTemplate:implementation:",
-                    &[template, args[1]],
+                    b"methodForArity:implementation:",
+                    &[arity, args[1]],
                 )?;
                 if method == nil || s.is_error(method)? {
                     return Ok(method);

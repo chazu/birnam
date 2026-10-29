@@ -11,7 +11,7 @@ work = Path(tempfile.mkdtemp(prefix='birnam-alien-floor-'))
 floor = work / 'floor'
 floor.mkdir()
 native = 'id root_registry namespace boolean nil collect object_model word bytes execution portable_code string integer float prelude system_output system_input environment file_io storage vector map artifact peg tcc native_backend codegen_runtime generation alien'.split()
-authored = 'error globalsOwner sourceRegistry cell modules lang nativeValues booleanValues integerValues blockLoopControl blockLoop range systemGc printing sourceLoader nativeLoader alienCompiler alienRecipes imageFormat trace globals methodInvocation stdlib'.split()
+authored = 'error globalsOwner sourceRegistry cell modules lang nativeValues booleanValues integerValues blockLoopControl blockLoop range systemGc printing sourceLoader nativeLoader alienCompiler alienRecipes imageFormat trace globals stdlib'.split()
 for name in native + authored:
     shutil.copy2(prefix / 'lib' / f'libbirnam_{name}.dylib', floor)
 env = clean_environment()

@@ -273,7 +273,7 @@ fn main() {
                 );
             }
             assert_eq!(
-                eval("[[Codegen methodTemplateForArity: 17] isError]"),
+                eval("[[Reflect methodForArity: 17 implementation: [:self | nil]] isError]"),
                 named(b"true")
             );
             println!("OOP_METHOD_INVOCATION_OK checks={count} arities=0..16");
@@ -468,7 +468,6 @@ fn main() {
             ("alienRecipes", "alien-recipes"),
             ("imageFormat", "image-format"),
             ("globals", "globals"),
-            ("methodInvocation", "method-invocation"),
         ] {
             let source_path = root.join(format!("modules/{file}.birnam"));
             let source = std::fs::read(&source_path).unwrap();

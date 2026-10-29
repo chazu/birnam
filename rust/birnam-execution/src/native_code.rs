@@ -156,6 +156,9 @@ unsafe fn instance(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Insta
         Ok(None)
     }
 }
+pub(super) unsafe fn body(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Oop>, Oop> {
+    unsafe { Ok(instance(s, method, q)?.and_then(|v| v.environment)) }
+}
 pub(super) unsafe fn source(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Oop>, Oop> {
     unsafe { Ok(instance(s, method, q)?.map(|v| v.code.source)) }
 }

@@ -13,10 +13,10 @@ let method := [Reflect methodForArity: 1 implementation: implementation];
 [GC collectPrecisely];
 [check value: #canonicalCode value: [[[CodeObject canonicalBytesOf: [implementation codeObject]] size] > 0]];
 
-let synchronous := [[Codegen methodTemplateForArity: 1 synchronous: true] withImplementation: [:self :task | [task wait]]];
+let synchronous := [Reflect methodForArity: 1 implementation: [[Block fromMethod: [Codegen compileSynchronous: "[:self :task | [task wait]]"] captures: #[]] value]];
 let refused := [TaskControl start: [:task | [synchronous invokeOn: Integer arguments: #[task]]]];
 [check value: #nativeBoundary value: [[[[refused pollOutcome] at: 1] kind] == #taskContextRequired]];
-let continuing := [[Codegen methodTemplateForArity: 1 synchronous: false] withImplementation: [:self :task | [task wait]; 42]];
+let continuing := [Reflect methodForArity: 1 implementation: [:self :task | [task wait]; 42]];
 let waiting := [TaskControl start: [:task | [continuing invokeOn: Integer arguments: #[task]]]];
 [check value: #continuingWait value: [[waiting pollOutcome] isNil]];
 [GC collectPrecisely];

@@ -59,9 +59,6 @@ impl HostRuntime<'_> {
             Path::new("<isolate>"),
             Some(b"isolate"),
         )?;
-        // Construction policy may use the live control protocol only after its
-        // initial Boolean/Block installation is complete. No dependency is frozen.
-        scope.evaluate(b"[MethodInvocation install]", Path::new("<host>"), None)?;
         let globals = host.named(b"Globals")?;
         let name = host.intern(b"Module")
             .map_err(|e| native_error("intern Module", e))?;

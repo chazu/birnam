@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-28",
+  "base_revision": "6aafb221f4dcf0ab9487a770c67ae20cda3fc437",
+  "scope": "Remove default definition forwarding, private Method metadata behavior and MethodInvocation caching; migrate image and candidate construction to direct binding.",
+  "source_sha256": {
+    "modules/candidate-policy.birnam": "6bc6e9862704a293461b2ff69d1ea894ee55b1235dc8dbb8e70bda775128c3d4",
+    "rust/birnam-bootstrap/src/lib.rs": "fc44cff3755274abef99211595b6e6addc04fcae42082be1731cd06c7afaaeca",
+    "rust/birnam-build/src/main.rs": "37524af70cf8ab1e0229f9ac9c3a29c3e22bdd6815e963a7046c1fa36327b118",
+    "rust/birnam-codegen-runtime/README.md": "b275f9dab24cb9bfb3c4ed0956b1bb1b6a293ecb850504da7fd207277d948869",
+    "rust/birnam-codegen-runtime/src/image.rs": "2649566089e403ee055a9ae8899b24f1dcc57ee94742d471a902bf368577d1f7",
+    "rust/birnam-codegen-runtime/src/lib.rs": "a7eac82856c4a67e34992ad348b2cfe88e20966284f962c225fc204e05a0fc71",
+    "rust/birnam-execution/src/native_code.rs": "5600e369aeb994cc88997d5ecd23ddcd6e92d4bd0314e1ce479f83cdbe249265",
+    "rust/birnam-execution/src/oop_native.rs": "e842aab04716bdf378f92e15ded11efc66a687e74f3b0adfce823d3c7cc64dd0",
+    "rust/birnam-execution/src/oop_reflection.rs": "8c4161d7c0e5f8eb3ae112ee811dc043b7bcf31e93ea89c49aede17b50fa8849",
+    "rust/birnam-execution/src/resumable_runtime.rs": "45f0003b72622c8c5ebbe6ebf9a9b43af1930898ea7383310cd6863f74c096af",
+    "rust/birnam-execution/src/synchronous.rs": "632a8cfab116c0120d34e846f337787500289d1a913d40eff32fe1a2ebf43b10",
+    "rust/birnam-generation/src/candidate.rs": "a81159de4dc4cac662ac3184bf51a9962bba32e78ac4c3a22f5a9f8433fb3d07",
+    "rust/birnam-host-entry/src/startup.rs": "ca4cc7c3573e5f3c3995895551e015306cfe101d2733e079c0cf15c663169138",
+    "rust/birnam-siphon/examples/oop_bootstrap.rs": "1179ecd0184109013e2cc71800e6f8497413ffbf7dbeb6697d3bbcb8f459194b",
+    "rust/birnam-siphon/tests/alien_without_store.rs": "556295cb0183c1c307c5bb1433ddca22d838d589ce8c10febbd4f279eee3a6d0",
+    "rust/birnam-siphon/tests/artifact_templates.rs": "248443fc37392724b0e4ab052e26bdc6131e61092911f237b05a41111dceaeaf",
+    "rust/birnam-siphon/tests/candidate.rs": "e632460b6cab3ffad98f196251d43002b7a0ac21c39b780a6b7e92b071d3619e",
+    "rust/birnam-siphon/tests/cell_without_store.rs": "c80250b435d64ee3f07c6105e490a0029d88277927dc10894f7e1e0d658596ca",
+    "rust/birnam-siphon/tests/direct_method_contract.rs": "2f36642566a1806a68c92bbe844bea7601a03ea8cc2ef84c0ccdb3f6d8bd8492",
+    "rust/birnam-siphon/tests/direct_native_method.rs": "a7bb8efedf01ef91bfc5fe119e40f9f7c7b1d32165473901339f737937b1410b",
+    "rust/birnam-siphon/tests/generation_transaction.rs": "79cd8cf36103b0e3a8b48b3973376da17765c3a42e17447ecabbba880c322a03",
+    "rust/birnam-siphon/tests/image_without_store.rs": "7125bd06a653dc6f5c62c3031d8bd2df22119b65dc6a2682350efb9df51312e6",
+    "rust/birnam-siphon/tests/method_binding.rs": "21176c7b35979d1a063f3e56acfcb9eda7085cf47f52fb1fbeb54c342d3b8038",
+    "rust/birnam-siphon/tests/method_invocation.rs": "680bee6e42c200a7d02a7eed64df085a447de313e48142994bc71ed0ca0176c8",
+    "rust/birnam-siphon/tests/minimal_mutation.rs": "d3f1bc72ce261129dca5edf4e0e868175a4c88b32d7025e688c9c0c07d835021",
+    "rust/birnam-siphon/tests/native_boundaries.rs": "370dee0c1c541e8f5a2d8772225e12693cfd7a0e8f0cd2cf16eea7b2a9adfb69",
+    "rust/birnam-siphon/tests/native_conversion_construction.rs": "e2641f8d6c52de441c7ff01f404c617161f7cf4d51f949ec1275c18267100b74",
+    "rust/birnam-siphon/tests/publication_result_proposal.rs": "81b344a024a1148d69186ee21808a65cebc889654b207bca9b63c4821d62cbf1",
+    "rust/birnam-siphon/tests/task_without_store.rs": "07db65e1ff17bf041458bda426af4226db6287f52c2670dc710511f50d2244ee"
+  },
+  "removed_files": [
+    "modules/method-invocation.birnam"
+  ],
+  "evidence": {
+    "core": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-core.log",
+      "sha256": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+      "result": "passed"
+    },
+    "contract": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-contract.log",
+      "sha256": "70887756a742d5a22ea15e64e9432ddb6193eab6ba6b53a68076433d1ad18d8a",
+      "result": "passed"
+    },
+    "isolated_mutation": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-mutation.log",
+      "sha256": "11acd08ad2d16f75a7d17547c5d690b1d1815f2412121d2f3d803fc586fd25ae",
+      "result": "passed for construction and mutation"
+    },
+    "rebuilt_core": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-built-focused.log",
+      "sha256": "9e900b1b88d1e65c51199ba5c8bc13961ec27ef763b615bb7b1186a68e0948f3",
+      "result": "8 targets passed; 3 stopped because the intermediate core prefix deliberately lacked Store"
+    },
+    "optional_providers": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-tools-focused.log",
+      "sha256": "af9fa8b19f1a4df7bfd706d4a87fb1d6c306b87d45db2fa27868e942018d8031",
+      "result": "the 3 targets that required Store all passed"
+    },
+    "fresh_process_deadline": {
+      "path": ".cargo-target/oop-current-qualification/direct-definition-milestone/direct-definition-fresh-image.log",
+      "sha256": "25ffb1b1914dc88e42557fff37fc4e298c17703cbae7a3e2855e2921cdc20715",
+      "result": "failed: saving exceeded the existing 240-second deadline"
+    }
+  },
+  "architecture_review": "Default definitions bind compiled bodies through Execution, then install the selected Method. Provider-owned bodyOfMethod: uses existing executable records and environments. Image/candidate staging retains arity data rather than forwarding Methods. No Id change, Method payload accessor, added registry or per-instance binding mutation.",
+  "retained_checks": [
+    "ordinary syntax and exact arity",
+    "DNU prefix semantics in both compiler modes",
+    "direct entry despite replaced Block value behavior",
+    "construction purity on the minimal floor",
+    "captured Method and code/capture lifetime",
+    "live constructor replacement and reentry without replay",
+    "artifact initialization without new native compilation units",
+    "image stage roots, cancellation, retry and live binding construction",
+    "mapped and rebuilt image restoration",
+    "explicit native conversion, failure observation and deferred suspension",
+    "candidate activation and value-checked rollback"
+  ],
+  "qualification_pending": {
+    "installer": ".cargo-target/oop-current-qualification/direct-definition-install.json",
+    "installer_log": ".cargo-target/oop-current-qualification/direct-definition-install.log",
+    "fresh_process_without_deadline": ".cargo-target/oop-current-qualification/direct-definition-image-completion.py",
+    "fresh_process_result": ".cargo-target/oop-current-qualification/direct-definition-image-completion.json"
+  },
+  "limitations": [
+    "Fresh-process saving exceeded 240 seconds; no performance qualification is claimed. Completion is being checked separately without that deadline.",
+    "The development-cache install is still running; core image generation and startup with optional providers absent completed, tools image generation remains active.",
+    "The source snapshot used for the rebuilt libraries matches the runtime changes; documentation and migrated tests continued changing on main. This is not final same-revision cold-release qualification.",
+    "Legacy generic admission remains to be retired. Old native-ABI tests including shared_invocation_probe and publication_result_proposal still need audit and migration or retirement."
+  ]
+}

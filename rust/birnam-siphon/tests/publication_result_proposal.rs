@@ -132,7 +132,6 @@ fn ordinary_results_keep_failure_visible_and_description_optional() {
             roots,
             tokens: RefCell::new(vec![]),
         };
-        h.call(h.named(b"MethodInvocation"), b"install", &[]);
         h.eval(include_bytes!(
             "../../../tests/fixtures/publication-result-proposal.birnam"
         ));
