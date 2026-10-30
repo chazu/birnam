@@ -613,6 +613,21 @@ let reflectNameCollector := [ObjectModel newSlots: #[#[] nil] parent: ObjectVt];
    [[self indexOf: sub] notNil]] doc:
    "True iff `sub` occurs in the receiver (empty `sub` is everywhere; a non-String answers false)."];
 
+// Common scan for JSON/TOML bodies known to contain backslashes. The caller
+// supplies the current format-specific conversion, invoked only for escapes.
+[Reflect defineMethod: #decodeBackslashes:length: on: String as: [:self :decode :n |
+  let out := [StringBuilder new];
+  let wasEsc := [false asCell];
+  [[0 to: [n - 1]] do: [:i |
+    [[wasEsc value]
+      ifTrue: [| [wasEsc set: false]]
+      ifFalse: [|
+        let ch := [self at: i];
+        [[ch = "\\"]
+          ifTrue: [| [out add: [decode value: [self at: [i + 1]]]]; [wasEsc set: true]]
+          ifFalse: [| [out add: ch]]]]]]];
+  [out asString]]];
+
 // Lexicographic byte order. Stop iteration when the first unequal byte
 // decides the result; no later byte reads are needed.
 [Reflect defineMethod: #< on: String as: [:self :other |

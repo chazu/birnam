@@ -9,13 +9,16 @@ fn main(){
  h.owner_call(&q,b"HostEntry",b"bootstrap:tools:",&[h.named(b"false").unwrap(),h.named(b"false").unwrap()]).unwrap();
  let mode=std::env::args().nth(1).unwrap_or_else(||"json".into());
  if mode=="json"{
-  q.evaluate(include_bytes!("../../../modules/json.birnam"),Path::new("<json-benchmark>"),None).unwrap();
+  if let Some(path)=std::env::var_os("BIRNAM_JSON_PRELUDE") { q.evaluate(&std::fs::read(path).unwrap(),Path::new("<json-prelude>"),None).unwrap(); }
+  let source=std::env::var_os("BIRNAM_JSON_SOURCE").map(|path|std::fs::read(path).unwrap()).unwrap_or_else(||include_bytes!("../../../modules/json.birnam").to_vec());
+  q.evaluate(&source,Path::new("<json-benchmark>"),None).unwrap();
+  let dense=std::env::args().any(|v|v=="--dense");
   let decode=h.intern(b"jsonUnescape").unwrap();let gc=h.named(b"GC").unwrap();
   for n in [128usize,1024,4096]{
-   let text=format!("{}\\n","a".repeat(n));let input=q.string(text.as_bytes()).unwrap();
+   let text=if dense { "\\n".repeat(n) } else { format!("{}\\n","a".repeat(n)) };let expected=if dense { "\n".repeat(n) } else { format!("{}\n","a".repeat(n)) };let input=q.string(text.as_bytes()).unwrap();
    for sample in 0..5{
     q.call(gc,b"collectPrecisely",&[]).unwrap();let start=Instant::now();let out=unsafe{h.id.send(input,decode,&[])}.unwrap();let elapsed=start.elapsed().as_nanos();
-    assert_eq!(q.read_bytes(out).unwrap(),format!("{}\n","a".repeat(n)).as_bytes());
+    assert_eq!(q.read_bytes(out).unwrap(),expected.as_bytes());
     println!("{{\"operation\":\"json_unescape\",\"n\":{n},\"sample\":{sample},\"ns\":{elapsed}}}");
    }
   }

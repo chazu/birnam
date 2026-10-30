@@ -1,0 +1,208 @@
+{
+  "scope": "Five samples of JSON bodies made entirely of backslash-n pairs, on the same installed round3 runtime. Before/after definitions reloaded; input setup and explicit pre-sample GC excluded; returned bytes checked. Plain-string path unchanged.",
+  "baseline": "02b08ab6",
+  "summary": [
+    {
+      "escapes": 128,
+      "before_ns": 77845542,
+      "after_ns": 80504667,
+      "slowdown_percent": 3.4158988834582127
+    },
+    {
+      "escapes": 1024,
+      "before_ns": 1582361292,
+      "after_ns": 1637972708,
+      "slowdown_percent": 3.5144575566374403
+    },
+    {
+      "escapes": 4096,
+      "before_ns": 7218358250,
+      "after_ns": 7319352709,
+      "slowdown_percent": 1.3991333694195696
+    }
+  ],
+  "before": [
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 0,
+      "ns": 76562334
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 1,
+      "ns": 75964708
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 2,
+      "ns": 77845542
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 3,
+      "ns": 81292625
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 4,
+      "ns": 82215500
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 0,
+      "ns": 1579535667
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 1,
+      "ns": 1581904875
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 2,
+      "ns": 1582361292
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 3,
+      "ns": 1599070792
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 4,
+      "ns": 1653223334
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 0,
+      "ns": 7130941834
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 1,
+      "ns": 7232313041
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 2,
+      "ns": 7205159750
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 3,
+      "ns": 7218358250
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 4,
+      "ns": 7238100500
+    }
+  ],
+  "after": [
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 0,
+      "ns": 79562709
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 1,
+      "ns": 80511334
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 2,
+      "ns": 80504667
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 3,
+      "ns": 80026084
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 4,
+      "ns": 83734375
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 0,
+      "ns": 1637972708
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 1,
+      "ns": 1629599125
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 2,
+      "ns": 1631466875
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 3,
+      "ns": 1642571792
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 4,
+      "ns": 1682128709
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 0,
+      "ns": 7243939875
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 1,
+      "ns": 7325971084
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 2,
+      "ns": 7355624000
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 3,
+      "ns": 7246748166
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 4,
+      "ns": 7319352709
+    }
+  ]
+}

@@ -174,3 +174,15 @@ let s := [TestSuite named: "JSON" module: #json];
   [Reflect defineMethod: #includesSubstring: on: long as: [:self :needle | [needle = "e"]]];
   [t expect: [node jsonNumber: "7"] equals: "long float" describes: "current classifier and float conversion"]
 ]]
+
+[s test: "shared scanning preserves separate format conversions" do: [:t |
+  [System load: "modules/toml.birnam"];
+  let input := "\\x"; let ch := "x";
+  [Reflect defineMethod: #at: on: input as: [:self :i | [[i = 0] ifTrue: [| "\\"] ifFalse: [| ch]]]];
+  [Reflect defineMethod: #jsonEscChar on: ch as: [:self | "json"]];
+  [Reflect defineMethod: #tomlEscChar on: ch as: [:self | "toml"]];
+  [t expect: [input jsonUnescape] equals: "json" describes: "JSON conversion remains live"];
+  [t expect: [input tomlUnescape] equals: "toml" describes: "TOML conversion remains independent"];
+  [Reflect defineMethod: #tomlEscChar on: ch as: [:self | [System gc]; "changed"]];
+  [t expect: [input tomlUnescape] equals: "changed" describes: "callback collection and replacement"]
+]];
