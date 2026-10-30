@@ -49,8 +49,6 @@ pub(super) fn check(h: &H<'_>) {
             (machine, b"prepareCall:selector:".as_slice()),
             (machine, b"oopAt:"),
             (machine, b"oopAt:put:"),
-            (machine, b"callSite:"),
-            (machine, b"tailCallSite:"),
             (h.host.namespace, b"at:"),
             (gc, b"prepareAllocation"),
         ] {

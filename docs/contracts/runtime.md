@@ -59,6 +59,13 @@ unoptimized run. Explicit collection and actual resource cleanup still occur.
 Unknown or replaced constructors and finalizers may have observable effects;
 optimizations must account for them or use ordinary execution.
 
+Default `Machine prepareCall:selector:` performs a complete frame transfer.
+Its internal slot copies and action construction do not send `oopAt:`,
+`oopAt:put:`, `callSite:` or `tailCallSite:`. Replacing the preparation operation
+still changes compiled calls. Explicit slot and action messages remain replaceable
+when sent, including from an authored preparation implementation. Ordered copies,
+argument identity, inspection and scheduling behavior are preserved.
+
 Continuation values can be returned and stored as data. Suspension and answer
 delivery use explicit control operations. Repeated or invalid use of a consumed
 continuation must not replay completed work. See the

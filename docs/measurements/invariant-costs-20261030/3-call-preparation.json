@@ -1,0 +1,219 @@
+{
+  "baseline": "0f33ef89a8a1ab88dfe7d9795c8de466fb063936",
+  "benchmark": "rust/birnam-siphon/examples/invariant_costs.rs calls",
+  "scope": "Release native composition. Compile a Block with 10/100 ordinary Integer word sends, run 100 times per sample. Includes Machine driving and result check; excludes compilation and explicit collection. Seven samples, median.",
+  "summary": [
+    {
+      "sends": 10,
+      "before_ns": 49540.42,
+      "after_ns": 45025.83,
+      "speedup": 1.1002666691541276
+    },
+    {
+      "sends": 100,
+      "before_ns": 411986.67,
+      "after_ns": 361583.75,
+      "speedup": 1.1393948704829793
+    }
+  ],
+  "before": [
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 52526.25
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 49625.41
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 49510.83
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 49475.83
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 49457.91
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 49540.42
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 49953.75
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 435164.58
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 398907.08
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 411986.67
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 419522.92
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 410390.83
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 406115.84
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 440242.5
+    }
+  ],
+  "after": [
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 48204.17
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 44792.08
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 45025.83
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 45262.09
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 45024.17
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 44940.84
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 10,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 45262.5
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 389975.42
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 357618.33
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 361330
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 369668.75
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 360620.83
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 361583.75
+    },
+    {
+      "operation": "compiled_calls",
+      "sends": 100,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 362760.84
+    }
+  ]
+}

@@ -68,5 +68,30 @@ fn main() {
                 }
             }
         }
+    } else if mode == "calls" {
+        for name in ["peg", "lang_seed"] {
+            h.load_native(&q, &h.resources.lib_dir.join(format!("libbirnam_{name}.dylib")), &[h.namespace]).unwrap();
+        }
+        let value = h.intern(b"value").unwrap();
+        let word = h.intern(b"word").unwrap();
+        for sends in [10usize, 100] {
+            let mut source = String::from("[| let x0 := 1; ");
+            for i in 1..=sends { source.push_str(&format!("let x{i} := [x0 word]; ")); }
+            source.push_str("x0]");
+            let method = q.call(h.named(b"Codegen").unwrap(), b"compileResumable:", &[q.string(source.as_bytes()).unwrap()]).unwrap();
+            let wrapper = q.call(h.named(b"Block").unwrap(), b"fromMethod:captureOperands:", &[method]).unwrap();
+            let block = q.call(wrapper, b"value", &[]).unwrap();
+            for sample in 0..7 {
+                q.call(gc, b"collectPrecisely", &[]).unwrap();
+                let calls = 100;
+                let start = Instant::now();
+                for _ in 0..calls {
+                    let result = unsafe { h.id.send(block, value, &[]) }.unwrap_or_else(|e| { let kind = q.call(e, b"faultKind", &[]).ok(); panic!("run error {e:p} kind {:?}", kind.map(|v| q.read_bytes(v))); });
+                    assert_eq!(as_size(unsafe { h.id.send(result, word, &[]) }.unwrap()), Some(1));
+                }
+                let ns = start.elapsed().as_nanos() as f64 / calls as f64;
+                println!("{{\"operation\":\"compiled_calls\",\"sends\":{sends},\"sample\":{sample},\"calls\":{calls},\"ns_per_call\":{ns}}}");
+            }
+        }
     } else { panic!("unknown benchmark {mode}"); }
 }

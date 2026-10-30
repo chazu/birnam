@@ -16,7 +16,6 @@ pub(in crate::synchronous) unsafe extern "C" fn prepared(
         if selector.is_null() {
             return Err(invalid());
         }
-        let q = s.scope(&[machine, *selector]);
         let cap = cap(s, machine)?;
         let (descriptor, call) = {
             let e = s.engine.borrow();
@@ -31,39 +30,26 @@ pub(in crate::synchronous) unsafe extern "C" fn prepared(
             (descriptor, call)
         };
         let plan = &descriptor.call_plans[site];
-        let copy = |source: usize, destination: usize| -> Result<(), Oop> {
-            let source = abi::size(source).ok_or_else(invalid)?;
-            let destination = abi::size(destination).ok_or_else(invalid)?;
-            let value = q.keep(s.send(machine, b"oopAt:", &[source])?);
-            s.send(machine, b"oopAt:put:", &[destination, value])?;
+        // This operation owns the complete transfer. Explicit slot messages remain
+        // replaceable, but are not callbacks inside default call preparation.
+        // All source and destination slots were checked when the plan was created.
+        // No send or collection occurs while the frame is being changed.
+        let mut engine = s.engine.borrow_mut();
+        let mut copy = |source: usize, destination: usize| -> Result<(), Oop> {
+            let value = checked(engine.read_current_oop(OWNER, cap, source))?;
+            checked(engine.write_current_oop(OWNER, cap, destination, value))?;
             Ok(())
         };
-        // Keep the established current frame operations visible. No engine borrow
-        // spans these sends, including collecting or authored replacements.
         for transfer in &plan.copies {
             copy(transfer.source, transfer.destination)?;
         }
         copy(plan.sources[0], call.receiver_slot)?;
-        s.send(
-            machine,
-            b"oopAt:put:",
-            &[
-                abi::size(call.selector_slot).ok_or_else(invalid)?,
-                *selector,
-            ],
-        )?;
         for (i, source) in plan.sources[1..].iter().enumerate() {
             copy(*source, call.argument_start + i)?;
         }
-        s.send(
-            machine,
-            if call.kind == CallSiteKind::TailCall {
-                b"tailCallSite:"
-            } else {
-                b"callSite:"
-            },
-            &[abi::size(site).ok_or_else(invalid)?],
-        )
+        checked(engine.write_current_oop(OWNER, cap, call.selector_slot, *selector))?;
+        checked(engine.publish_call_site(&mut s.storage.borrow_mut(), OWNER, cap, site, call.kind))
+
     })()
     .unwrap_or_else(abi::fault_reference)
 }
