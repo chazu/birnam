@@ -1,0 +1,211 @@
+{
+  "baseline": "a6a3c37a028abbfa994fc30efa96b9f99bd12c76",
+  "scope": "round2_language json on the same compiled edcd71a1 installation for both modes. Source decoder loaded from each benchmark executable. Five samples; one escaped String decode each; setup/loading/explicit GC and byte verification excluded. Builder removes quadratic copies and per-character state Vectors; current character and escape-decoder sends remain.",
+  "summary": [
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "before_ns": 36720583,
+      "after_ns": 30916209,
+      "speedup": 1.1877453344942777
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "before_ns": 585429250,
+      "after_ns": 558090542,
+      "speedup": 1.0489861517846686
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "before_ns": 3336013583,
+      "after_ns": 2592746750,
+      "speedup": 1.2866715898882142
+    }
+  ],
+  "before": [
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 0,
+      "ns": 36707417
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 1,
+      "ns": 36486959
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 2,
+      "ns": 36778292
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 3,
+      "ns": 36720583
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 4,
+      "ns": 37588667
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 0,
+      "ns": 581735042
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 1,
+      "ns": 586862791
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 2,
+      "ns": 598382917
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 3,
+      "ns": 583443042
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 4,
+      "ns": 585429250
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 0,
+      "ns": 3354108959
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 1,
+      "ns": 3305876541
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 2,
+      "ns": 3336013583
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 3,
+      "ns": 3307324709
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 4,
+      "ns": 3337105333
+    }
+  ],
+  "after": [
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 0,
+      "ns": 31833917
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 1,
+      "ns": 31226208
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 2,
+      "ns": 30916209
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 3,
+      "ns": 30687708
+    },
+    {
+      "operation": "json_unescape",
+      "n": 128,
+      "sample": 4,
+      "ns": 30731583
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 0,
+      "ns": 558090542
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 1,
+      "ns": 554222292
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 2,
+      "ns": 557605583
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 3,
+      "ns": 562886542
+    },
+    {
+      "operation": "json_unescape",
+      "n": 1024,
+      "sample": 4,
+      "ns": 588004667
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 0,
+      "ns": 2592746750
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 1,
+      "ns": 2591556750
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 2,
+      "ns": 2593936584
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 3,
+      "ns": 2631014042
+    },
+    {
+      "operation": "json_unescape",
+      "n": 4096,
+      "sample": 4,
+      "ns": 2582594250
+    }
+  ]
+}

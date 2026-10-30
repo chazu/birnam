@@ -108,16 +108,17 @@
     ifTrue: [| self]
     ifFalse: [| [[self includesSubstring: "\\"]
       ifTrue: [|
-        let step := [:st :i |
-          let out := [st at: 0];
-          let wasEsc := [st at: 1];
-          let ch := [self at: i];
-          [[wasEsc = 1]
-            ifTrue: [| #[ out 0 ]]
-            ifFalse: [| [[ch = "\\"]
-              ifTrue: [| #[ [out , [[self at: [i + 1]] jsonEscChar]] 1 ]]
-              ifFalse: [| #[ [out , ch] 0 ]]]]]];
-        [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]
+        let out := [StringBuilder new];
+        let wasEsc := [false asCell];
+        [[0 to: [n - 1]] do: [:i |
+          [[wasEsc value]
+            ifTrue: [| [wasEsc set: false]]
+            ifFalse: [|
+              let ch := [self at: i];
+              [[ch = "\\"]
+                ifTrue: [| [out add: [[self at: [i + 1]] jsonEscChar]]; [wasEsc set: true]]
+                ifFalse: [| [out add: ch]]]]]]];
+        [out asString]]
       ifFalse: [| [self copyFrom: 0 to: n]]]]]
 ] doc:
   "Processes backslash escapes in a JSON string body; scans and copies bodies without escapes."];
