@@ -1,0 +1,431 @@
+{
+  "baseline": "60915e26fda6338f117bda5bf9cffe893ceb57f7",
+  "benchmark": "rust/birnam-siphon/examples/invariant_costs.rs text",
+  "scope": "Release native composition. All-space input; trim to empty or replace four large substrings. Elapsed nanoseconds including output size check; setup and explicit GC excluded. Seven samples, median.",
+  "summary": [
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "before_ns": 2290.205,
+      "after_ns": 2106.875,
+      "speedup": 1.0870151290418273
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "before_ns": 37409.73333333333,
+      "after_ns": 22048.6,
+      "speedup": 1.6966942723498695
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "before_ns": 7675.21,
+      "after_ns": 7665,
+      "speedup": 1.0013320287018916
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "before_ns": 808308.3333333334,
+      "after_ns": 787277.7666666667,
+      "speedup": 1.0267130199239718
+    }
+  ],
+  "before": [
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 7770.835
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 2400.625
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 7579.79
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 2180.835
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 7761.875
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 2282.29
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 7675.21
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 2290.205
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 7615
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 2343.54
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 7669.585
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 2340.835
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 7747.08
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 2289.585
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 30,
+      "ns_per_call": 803248.6
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 30,
+      "ns_per_call": 37534.73333333333
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 30,
+      "ns_per_call": 808308.3333333334
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 30,
+      "ns_per_call": 37600
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 30,
+      "ns_per_call": 801312.5
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 30,
+      "ns_per_call": 37258.333333333336
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 30,
+      "ns_per_call": 809893.0666666667
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 30,
+      "ns_per_call": 37173.6
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 30,
+      "ns_per_call": 800583.3333333334
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 30,
+      "ns_per_call": 37409.73333333333
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 30,
+      "ns_per_call": 818356.9333333333
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 30,
+      "ns_per_call": 37702.8
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 30,
+      "ns_per_call": 810287.5
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 30,
+      "ns_per_call": 37152.8
+    }
+  ],
+  "after": [
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 7353.54
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 2140.21
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 7580.21
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 2099.375
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 7665
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 2094.585
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 7694.17
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 2106.875
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 7593.75
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 2101.46
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 7785.835
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 2107.5
+    },
+    {
+      "operation": "trim",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 7788.75
+    },
+    {
+      "operation": "replace",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 2130.625
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 30,
+      "ns_per_call": 789029.1666666666
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 30,
+      "ns_per_call": 21977.766666666666
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 30,
+      "ns_per_call": 787277.7666666667
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 30,
+      "ns_per_call": 22945.833333333332
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 30,
+      "ns_per_call": 786815.3
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 30,
+      "ns_per_call": 22870.833333333332
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 30,
+      "ns_per_call": 787087.5
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 30,
+      "ns_per_call": 21909.733333333334
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 30,
+      "ns_per_call": 788493.0333333333
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 30,
+      "ns_per_call": 22048.6
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 30,
+      "ns_per_call": 786380.5666666667
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 30,
+      "ns_per_call": 21966.666666666668
+    },
+    {
+      "operation": "trim",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 30,
+      "ns_per_call": 787370.8333333334
+    },
+    {
+      "operation": "replace",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 30,
+      "ns_per_call": 22901.4
+    }
+  ]
+}

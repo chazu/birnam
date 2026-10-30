@@ -174,11 +174,11 @@ impl Text {
             Ok(r)
         }
     }
-    unsafe fn string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
+    unsafe fn string(&self, bytes: Vec<u8>) -> Result<Oop, Oop> {
         unsafe {
             // The replaceable constructor receives an ordinary byte provider.
             // Keep its data packed instead of constructing one Oop per byte.
-            let source = self.make(bytes.to_vec(), Kind::String)?;
+            let source = self.make(bytes, Kind::String)?;
             self.send(self.prototype, b"fromBytes:", &[source])
         }
     }
@@ -320,7 +320,7 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
             5 => {
                 let mut bytes = t.copy(r, Kind::String)?;
                 bytes.extend_from_slice(&t.printable(a[0])?);
-                t.string(&bytes)
+                t.string(bytes)
             }
             6 => {
                 let buffers = t.buffers.borrow();
@@ -336,15 +336,29 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                     },
                 )
             }
-            7 => t.string(crate::text::trimmed_bytes(&t.copy(r, Kind::String)?)),
-            8 => {
-                let bytes = t.copy(r, Kind::String)?;
-                let (Ok(needle), Ok(replacement)) =
-                    (t.copy(a[0], Kind::String), t.copy(a[1], Kind::String))
-                else {
-                    return Ok(t.nil);
+            7 => {
+                let result = {
+                    let buffers = t.buffers.borrow();
+                    let bytes = &buffers.get(&r.addr())
+                        .filter(|b| b.kind == Kind::String).ok_or_else(invalid)?.bytes;
+                    crate::text::trimmed_bytes(bytes).to_vec()
                 };
-                t.string(&crate::text::replace(&bytes, &needle, &replacement))
+                t.string(result)
+            }
+            8 => {
+                let result = {
+                    let buffers = t.buffers.borrow();
+                    let bytes = &buffers.get(&r.addr())
+                        .filter(|b| b.kind == Kind::String).ok_or_else(invalid)?.bytes;
+                    let Some(needle) = buffers.get(&a[0].addr()).filter(|b| b.kind == Kind::String) else {
+                        return Ok(t.nil);
+                    };
+                    let Some(replacement) = buffers.get(&a[1].addr()).filter(|b| b.kind == Kind::String) else {
+                        return Ok(t.nil);
+                    };
+                    crate::text::replace(bytes, &needle.bytes, &replacement.bytes)
+                };
+                t.string(result)
             }
             9 => {
                 let bytes = t.copy(r, Kind::String)?;
@@ -364,7 +378,7 @@ unsafe fn run(t: &Text, r: Oop, a: &[Oop], op: usize) -> Result<Oop, Oop> {
                 let bytes = t.printable(a[0])?;
                 t.append(r, &bytes)
             }
-            12 => t.string(&t.copy(r, Kind::Builder)?),
+            12 => t.string(t.copy(r, Kind::Builder)?),
             13 => {
                 let index = abi::as_size(a[0]).ok_or_else(invalid)?;
                 let buffers = t.buffers.borrow();

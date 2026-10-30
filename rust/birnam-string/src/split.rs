@@ -31,7 +31,7 @@ pub(super) unsafe extern "C" fn split(_: Oop, c: Oop, r: Oop, a: *const Oop, cou
                 let part = &bytes[from..end.unwrap_or(bytes.len())];
                 // Keep only the current persistent result across construction of a segment.
                 result = object(t.rooted(&[result], || {
-                    let part = object(t.string(part)?)?;
+                    let part = object(t.string(part.to_vec())?)?;
                     t.send(result, b"add:", &[part])
                 })?)?;
                 let Some(end) = end else { break };

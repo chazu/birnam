@@ -33,6 +33,20 @@ fn packed_strings_preserve_constructors_binary_data_and_gc() {
     assert_eq!(hooks.count(state, 2), 10, "each explicit construction remains replaceable");
     q.call(vt, b"addMethod", &[from, original]).unwrap();
 
+    let source = q.string(b" \t aa\0aa \r\n").unwrap();
+    let needle = q.string(b"aa").unwrap();
+    let replacement = q.string(b"\xff").unwrap();
+    let empty = q.string(b"").unwrap();
+    q.call(vt, b"addMethod", &[from, hooks.method(b"collectEvery", state)]).unwrap();
+    let trimmed = q.call(source, b"trimmed", &[]).unwrap();
+    assert_eq!(q.read_bytes(trimmed).unwrap(), b"aa\0aa");
+    let replaced = q.call(trimmed, b"replace:with:", &[needle, replacement]).unwrap();
+    assert_eq!(q.read_bytes(replaced).unwrap(), b"\xff\0\xff");
+    let unchanged = q.call(source, b"replace:with:", &[empty, replacement]).unwrap();
+    assert_eq!(q.read_bytes(unchanged).unwrap(), b" \t aa\0aa \r\n");
+    assert_eq!(q.read_bytes(source).unwrap(), b" \t aa\0aa \r\n");
+    q.call(vt, b"addMethod", &[from, original]).unwrap();
+
     // Internal result construction must not allocate an Oop-per-byte Sequence.
     let input = q.string(b" binary\0\xff ").unwrap();
     let root_vt = q.call(h.id.root, b"behaviorOf:", &[h.id.root]).unwrap();

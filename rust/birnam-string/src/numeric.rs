@@ -69,7 +69,7 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                         bytes[index as usize]
                     };
                     if op == 1 {
-                        t.string(&[byte])
+                        t.string(vec![byte])
                     } else {
                         n.integer(i64::from(byte))
                     }
@@ -86,7 +86,7 @@ unsafe fn run(n: &Numeric<'_>, r: Oop, args: &[Oop], op: usize) -> Result<Oop, O
                         }
                         bytes[from as usize..to as usize].to_vec()
                     };
-                    t.string(&bytes)
+                    t.string(bytes)
                 }
                 4 => {
                     let index = {

@@ -42,5 +42,31 @@ fn main() {
             }
             assert_eq!(q.read_bytes(unsafe { h.id.send(b, as_string, &[]) }.unwrap()).unwrap(), bytes);
         }
+    } else if mode == "text" {
+        let trim = h.intern(b"trimmed").unwrap();
+        let replace = h.intern(b"replace:with:").unwrap();
+        let replacement = q.string(b"x").unwrap();
+        for n in [8192usize, 1 << 20] {
+            let input = q.string(&vec![b' '; n]).unwrap();
+            let needle = q.string(&vec![b' '; n / 4]).unwrap();
+            for sample in 0..7 {
+                for operation in ["trim", "replace"] {
+                    q.call(gc, b"collectPrecisely", &[]).unwrap();
+                    let calls = if n == 8192 { 200 } else { 30 };
+                    let start = Instant::now();
+                    for _ in 0..calls {
+                        let result = unsafe { if operation == "trim" {
+                            h.id.send(input, trim, &[])
+                        } else {
+                            h.id.send(input, replace, &[needle, replacement])
+                        }}.unwrap();
+                        assert_eq!(as_size(unsafe { h.id.send(result, size, &[]) }.unwrap()), Some(if operation == "trim" { 0 } else { 4 }));
+                        black_box(result);
+                    }
+                    let ns = start.elapsed().as_nanos() as f64 / calls as f64;
+                    println!("{{\"operation\":\"{operation}\",\"bytes\":{n},\"sample\":{sample},\"calls\":{calls},\"ns_per_call\":{ns}}}");
+                }
+            }
+        }
     } else { panic!("unknown benchmark {mode}"); }
 }
