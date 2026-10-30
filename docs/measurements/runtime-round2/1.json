@@ -1,0 +1,278 @@
+{
+  "baseline": "edcd71a1092b2629ffe351fb75dfb619b2de8e3e",
+  "scope": "Release round2_costs example: portable node access over an already validated program, and separately full validation. Five samples, five iterations each; median elapsed nanoseconds. No runtime/bootstrap included. Offsets add retained storage and validation cost; canonical bytes unchanged.",
+  "summary": [
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "before_ns": 213941,
+      "after_ns": 3083,
+      "speedup": 69.39377229970808
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "before_ns": 21046516,
+      "after_ns": 30766,
+      "speedup": 684.0835987778717
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "before_ns": 9500,
+      "after_ns": 10933,
+      "speedup": 0.8689289307600842
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "before_ns": 94316,
+      "after_ns": 109091,
+      "speedup": 0.8645626128644893
+    }
+  ],
+  "before": [
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 0,
+      "ns": 214450
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 0,
+      "ns": 9775
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 1,
+      "ns": 213883
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 1,
+      "ns": 9491
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 2,
+      "ns": 213941
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 2,
+      "ns": 9500
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 3,
+      "ns": 213650
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 3,
+      "ns": 9400
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 4,
+      "ns": 215575
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 4,
+      "ns": 9508
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 0,
+      "ns": 21189483
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 0,
+      "ns": 93516
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 1,
+      "ns": 20951775
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 1,
+      "ns": 94316
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 2,
+      "ns": 21056800
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 2,
+      "ns": 103908
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 3,
+      "ns": 20990758
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 3,
+      "ns": 96950
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 4,
+      "ns": 21046516
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 4,
+      "ns": 93000
+    }
+  ],
+  "after": [
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 0,
+      "ns": 3083
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 0,
+      "ns": 12691
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 1,
+      "ns": 3158
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 1,
+      "ns": 10883
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 2,
+      "ns": 3108
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 2,
+      "ns": 10933
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 3,
+      "ns": 3058
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 3,
+      "ns": 10933
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 1000,
+      "sample": 4,
+      "ns": 3083
+    },
+    {
+      "operation": "portable_validate",
+      "n": 1000,
+      "sample": 4,
+      "ns": 11175
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 0,
+      "ns": 30891
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 0,
+      "ns": 108825
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 1,
+      "ns": 30766
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 1,
+      "ns": 107575
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 2,
+      "ns": 30641
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 2,
+      "ns": 109091
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 3,
+      "ns": 36750
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 3,
+      "ns": 117525
+    },
+    {
+      "operation": "portable_lookup",
+      "n": 10000,
+      "sample": 4,
+      "ns": 30650
+    },
+    {
+      "operation": "portable_validate",
+      "n": 10000,
+      "sample": 4,
+      "ns": 109300
+    }
+  ]
+}

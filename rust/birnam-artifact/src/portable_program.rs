@@ -122,7 +122,7 @@ pub struct Statement {
     pub binding_index: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program<'a> {
     pub parameter_count: u32,
     pub capture_count: u32,
@@ -135,6 +135,14 @@ pub struct Program<'a> {
     nodes: &'a [u8],
     operands: &'a [u8],
     bytes: &'a [u8],
+    offsets: std::sync::Arc<Offsets>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Offsets {
+    names: Vec<usize>,
+    data: Vec<usize>,
+    operands: Vec<usize>,
 }
 
 /// Immutable canonical bytes with their already-validated root section layout.
@@ -153,6 +161,7 @@ pub struct ValidatedProgram {
 struct ProgramLayout {
     counts: [u32; 6],
     sections: [core::ops::Range<usize>; 5],
+    offsets: std::sync::Arc<Offsets>,
 }
 
 impl ProgramLayout {
@@ -179,7 +188,7 @@ impl ProgramLayout {
             let start = section.as_ptr().addr() - bytes.as_ptr().addr();
             start..start + section.len()
         });
-        Ok(Self { counts, sections })
+        Ok(Self { counts, sections, offsets: program.offsets })
     }
 }
 
@@ -212,6 +221,7 @@ impl ValidatedProgram {
             nodes: &self.bytes[self.layout.sections[2].clone()],
             operands: &self.bytes[self.layout.sections[3].clone()],
             bytes: &self.bytes[self.layout.sections[4].clone()],
+            offsets: self.layout.offsets.clone(),
         }
     }
 }
@@ -279,18 +289,9 @@ impl<'a> Program<'a> {
         if index >= self.binding_count as usize {
             return None;
         }
-        let mut start = 0usize;
-        for current in 0..=index {
-            let base = current.checked_mul(24)?;
-            let length = read_u32(self.bindings, base.checked_add(8)?)? as usize;
-            let end = start.checked_add(length)?;
-            let name = self.bytes.get(start..end)?;
-            if current == index {
-                return Some(name);
-            }
-            start = end;
-        }
-        None
+        let start = *self.offsets.names.get(index)?;
+        let length = read_u32(self.bindings, index.checked_mul(24)?.checked_add(8)?)? as usize;
+        self.bytes.get(start..start.checked_add(length)?)
     }
 
     pub fn node(&self, index: usize) -> Option<Node<'a>> {
@@ -298,13 +299,7 @@ impl<'a> Program<'a> {
             return None;
         }
         let base = index.checked_mul(40)?;
-        let mut data_start = self.binding_names_len()?;
-        for current in 0..index {
-            data_start = data_start
-                .checked_add(
-                    read_u32(self.nodes, current.checked_mul(40)?.checked_add(12)?)? as usize,
-                )?;
-        }
+        let data_start = *self.offsets.data.get(index)?;
         let data_end =
             data_start.checked_add(read_u32(self.nodes, base.checked_add(12)?)? as usize)?;
         Some(Node {
@@ -321,13 +316,7 @@ impl<'a> Program<'a> {
         if node_index >= self.node_count as usize {
             return None;
         }
-        let mut operand_start = 0usize;
-        for current in 0..node_index {
-            operand_start = operand_start
-                .checked_add(
-                    read_u32(self.nodes, current.checked_mul(40)?.checked_add(8)?)? as usize,
-                )?;
-        }
+        let operand_start = *self.offsets.operands.get(node_index)?;
         let base = node_index.checked_mul(40)?;
         let count = read_u32(self.nodes, base.checked_add(8)?)? as usize;
         if operand_index >= count {
@@ -339,16 +328,7 @@ impl<'a> Program<'a> {
         )
     }
 
-    fn binding_names_len(&self) -> Option<usize> {
-        let mut total = 0usize;
-        for index in 0..self.binding_count as usize {
-            total = total
-                .checked_add(
-                    read_u32(self.bindings, index.checked_mul(24)?.checked_add(8)?)? as usize,
-                )?;
-        }
-        Some(total)
-    }
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -902,6 +882,7 @@ fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
         .get(sections[5].0..sections[5].1)
         .ok_or(Error::Format)?;
     let mut names_cursor = 0usize;
+    let mut name_starts = Vec::with_capacity(binding_count as usize);
     let parameter_capture_count = parameter_count
         .checked_add(capture_count)
         .ok_or(Error::Format)?;
@@ -923,6 +904,7 @@ fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
         };
         let defining_statement = read_u32(bindings, base + 12).ok_or(Error::Format)?;
         let name_length = read_u32(bindings, base + 8).ok_or(Error::Format)? as usize;
+        name_starts.push(names_cursor);
         let name_end = names_cursor.checked_add(name_length).ok_or(Error::Format)?;
         let name = names.get(names_cursor..name_end).ok_or(Error::Format)?;
         if read_u32(bindings, base) != Some(expected_kind)
@@ -979,6 +961,7 @@ fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
         .get(sections[4].0..sections[4].1)
         .ok_or(Error::Format)?;
     let mut operand_starts = Vec::with_capacity(node_count as usize);
+    let mut data_starts = Vec::with_capacity(node_count as usize);
     let mut nested_programs = Vec::new();
     let mut operand_cursor = 0usize;
     let mut data_cursor = names_cursor;
@@ -994,6 +977,7 @@ fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
             return Err(Error::Format);
         }
         operand_starts.push(operand_cursor);
+        data_starts.push(data_cursor);
         let operand_end = operand_cursor
             .checked_add(node_operand_count)
             .ok_or(Error::Format)?;
@@ -1115,6 +1099,7 @@ fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
             nodes,
             operands,
             bytes: names,
+            offsets: std::sync::Arc::new(Offsets { names: name_starts, data: data_starts, operands: operand_starts }),
         },
         nested_programs,
     ))

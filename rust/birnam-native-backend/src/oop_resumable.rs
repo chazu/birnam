@@ -4,7 +4,6 @@ use birnam_artifact::stackless_selection::{
     self as selection, Disposition, ImplementationKind, RootKind, SelectionSpec,
 };
 use birnam_codegen::{resumable as ir, resumable_descriptor};
-use sha2::{Digest, Sha256};
 impl Emitter {
     pub(super) fn resumable_function(
         &mut self,
@@ -22,7 +21,7 @@ impl Emitter {
         self.functions.push(String::new());
         self.programs.push(bytes.to_vec());
         self.descriptors.push(None);
-        let revision = Sha256::digest(source).into();
+        let revision = self.source_revision;
         let path = [index as u32];
         let authority = SelectionSpec {
             source_revision: revision,

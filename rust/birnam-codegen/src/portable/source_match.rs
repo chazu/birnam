@@ -49,9 +49,9 @@ fn compare(source: &[u8], actual: &[u8]) -> Option<bool> {
                         return Some(false);
                     }
                     pending.push(Work::Node(
-                        s,
+                        s.clone(),
                         ss.root_node as usize,
-                        a,
+                        a.clone(),
                         aa.root_node as usize,
                     ));
                 }
@@ -106,9 +106,9 @@ fn compare(source: &[u8], actual: &[u8]) -> Option<bool> {
                     }
                     for i in 0..sn.operand_count as usize {
                         pending.push(Work::Node(
-                            s,
+                            s.clone(),
                             s.node_operand(si, i)? as usize,
-                            a,
+                            a.clone(),
                             a.node_operand(ai, i)? as usize,
                         ));
                     }

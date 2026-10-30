@@ -12,6 +12,7 @@ pub enum Error {
     InvalidName,
 }
 struct Emitter {
+    source_revision: [u8; 32],
     names: Vec<Vec<u8>>,
     functions: Vec<String>,
     programs: Vec<Vec<u8>>,
@@ -234,6 +235,7 @@ fn compile_mode(
     dispositions: Option<Vec<bool>>,
 ) -> Result<Vec<u8>, Error> {
     let mut e = Emitter {
+        source_revision: Sha256::digest(source).into(),
         names: Vec::new(),
         functions: Vec::new(),
         programs: Vec::new(),
