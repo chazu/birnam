@@ -18,7 +18,7 @@
 >
 > Builds on [40 — The Image](40-the-image.md),
 > [44 — Toward Self-Hosting](44-toward-self-hosting.md), and
-> [47 — CompiledUnit Lifecycle](../../design/47-compiled-unit-lifecycle.md). The existing
+> [47 — CompiledUnit Lifecycle](../2026-10-runtime-refactors/47-compiled-unit-lifecycle.md). The existing
 > `modules/socket.birnam` already separates raw socket operations from its blocking
 > accept loop and exposes the beginning of a nonblocking path.
 

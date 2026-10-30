@@ -1,13 +1,9 @@
 # Native backend
 
-Current Oop migration checkpoint: synchronous and resumable source paths are
-connected through explicit `Codegen compileSynchronous:` / `compileResumable:`.
-The resumable path uses the retained Machine engine with `runBlock:budget:`,
-`continueWithBudget:` and `executionState`. See the
-[resumable milestone](../../docs/design/oop-resumable-milestone.md) for acceptance.
-Suspension/control/recovery, default compiler and full-runtime integration remain
-pending. Historical feature descriptions below are preservation requirements,
-not claims that every feature is available. No v1 compatibility path is built.
+NativeBackend emits code for the integrated Oop-only compiler and Execution
+runtime. See the [architecture](../../ARCHITECTURE.md) and
+[runtime reference](../../docs/contracts/runtime.md). Older milestone reports
+record the checks performed at their revisions, not current unfinished work.
 
 `libbirnam_native_backend.dylib` initializes with one completed Namespace Object,
 returns NativeBackend and publishes NativeBackend/NativeBackendVt. Reinitializing
@@ -43,7 +39,7 @@ Current Oop resumable emission sends one ordinary `prepareCall:selector:` operat
 with admitted call plans. Plans are regenerated from portable IR and admitted
 atomically by Execution when constructing the Method. Execution preserves current
 frame reads/writes and call-site publication; an entered failure is not replayed.
-The historical option controls below remain pending Oop migration (prepared calls
+The historical option controls below describe earlier experiments (prepared calls
 used bit 128 and the default mask was 253).
 
 Legacy resumable call-window optimization uses explicit option bit 32;
@@ -82,5 +78,5 @@ Hashing, spelling comparisons, canonical Symbol ownership and current Id dispatc
 retain their existing contracts. Rooting failures clear the unpublished cache
 entry. No method entry, lookup verdict or factory result is cached. Internal
 interning frequency is not preserved, as documented in
-[fixed names](../../docs/design/fixed-names-and-local-protection.md). Capacity
+[fixed names](../../docs/archive/2026-10-runtime-refactors/fixed-names-and-local-protection.md). Capacity
 selection introduces no runtime resizing, new native service or GC-budget change.

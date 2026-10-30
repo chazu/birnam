@@ -1,15 +1,15 @@
 # 74T — Numeric, loop, aggregate and closure optimization
 
 > **Allocation policy superseded (2026-09-24):**
-> [Design 90](../../design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> [Design 90](../2026-10-runtime-refactors/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
 > retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
 > prepaid deferred identities. Preserve language effects, observable identity,
 > recovery and actual resource lifetimes. Older algorithms, receipts and commands
 > below record history; they do not require restoring that machinery. See the
-> [Self implementation review](../../design/90-self-optimization-review.md).
+> [Self implementation review](../2026-10-runtime-refactors/90-self-optimization-review.md).
 
 Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
-Current validation commands: [validation guide](../../validation.md). Dated
+Current validation commands: [validation guide](../2026-10-runtime-refactors/validation-history.md). Dated
 experiment and queue status below is retained as historical evidence.
 
 Status: all four consumer implementations are integrated; bounded qualification

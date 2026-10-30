@@ -1,11 +1,10 @@
 # TCC owns compiled Units
 
-Oop migration in progress. See the [integration contract](../../docs/design/oop-compiler-execution-integration.md).
-
-TCC now accepts object-valued source/bytes and returns Unit, Bytes or ordinary
-compileError objects. It reads byte providers through `bytes`, `sizeWord` and
-`atWord:`; no foreign payload or borrowed native span crosses the message boundary.
-Compilation and relocation remain private libtcc operations.
+TCC accepts source/byte objects and returns Unit, Bytes or ordinary compileError
+objects. Byte data is transferred through [bulk messages](../../docs/contracts/bytes.md).
+Compilation and relocation are private libtcc operations. Mapping executable code,
+creating Methods and installing them are distinct actions; see the
+[runtime reference](../../docs/contracts/runtime.md#methods-and-definitions).
 
 Compiled code exports the v2 immutable Module descriptor. Unit `initialize` and
 `initializeWith:` validate it before entry, construct its literal Symbols and
@@ -19,8 +18,8 @@ repeated-initialization checks and checkpoint operations remain. Scoped referenc
 replace per-temporary Roots tokens. Unit and generated entry context registries
 are weak. GC removes their records and detaches mappings; actual unmapping waits
 for Execution's checkpoint/retirementReady handshake and no active TCC entry.
-The integration fixture substitutes only that handshake until real Execution is
-migrated; it must not be reported as complete execution or suspension coverage.
+Full integration checks exercise that handshake with Execution; isolated fixtures
+alone do not establish execution or suspension coverage.
 
 The notes below describe retained private compiler/mapping mechanisms. References
 to the old v1 message ABI are superseded by the contract above.

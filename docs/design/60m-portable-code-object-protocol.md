@@ -1,8 +1,13 @@
 # 60M — Portable Code Object Protocol
 
+> Scope: versioned format/protocol reference. Historical migration stages and
+> native implementation arrangements are not additional language requirements.
+> Follow [INVARIANTS.md](../../INVARIANTS.md) for architecture; retain the
+> specified bytes when reading or writing the documented format.
+
 > **Status:** Accepted 2026-08-25 after adversarial review and discussion.
 > This record sharpens the ordinary-object surface accepted in
-> [60K — Reified Portable CodeObjects](60k-portable-codeobjects.md) against the
+> [60K — Reified Portable CodeObjects](../archive/2026-10-runtime-refactors/60k-portable-codeobjects.md) against the
 > physical program model frozen by
 > [60L — PortableProgram v1 and Image-v7 Byte Grammar](60l-portable-program-and-image-v7-byte-grammar.md).
 > Acceptance authorizes K1 implementation. The accompanying

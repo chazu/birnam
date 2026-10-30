@@ -1,5 +1,10 @@
 # 60O — Image-v8 Identity Preservation
 
+> Scope: versioned format/protocol reference. Historical migration stages and
+> native implementation arrangements are not additional language requirements.
+> Follow [INVARIANTS.md](../../INVARIANTS.md) for architecture; retain the
+> specified bytes when reading or writing the documented format.
+
 > **Status:** Accepted and implemented 2026-08-27, including the full `Word` /
 > `ForeignAddress` semantic split below.
 >

@@ -92,8 +92,8 @@ reflection/meta mirror. Digla must use `Reflect` for effective methods and
 the Store for facts; it must not infer the live protocol from a possibly absent
 or historical `[vtable selector method]` mirror fact.
 
-This preserves the current authority contract in [45 — Compiled Units](../../design/45-compiled-units.md)
-and [42 — Object Canonical](../../design/42-object-canonical-relational-derived.md).
+This preserves the current authority contract in [45 — Compiled Units](../2026-10-runtime-refactors/45-compiled-units.md)
+and [42 — Object Canonical](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md).
 
 ### 3.3 Results contain values, never runtime capabilities
 

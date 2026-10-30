@@ -57,14 +57,14 @@ is separate conditional cleanup while a handle is open. Optional
 retained-count/bytes queries. Unwatched discards add no diagnostic history and
 mapping does not depend on diagnostic callbacks. Detailed contracts/evidence:
 
-- [module-scoped candidates](../../docs/design/module-scoped-candidates.md)
-- [observational certification](../../docs/design/opt-in-generation-baselines.md)
-- [image adoption](../../docs/design/explicit-image-adoption.md)
-- [compilation record ownership](../../docs/design/retained-compilation-records.md)
+- [module-scoped candidates](../../docs/archive/2026-10-runtime-refactors/module-scoped-candidates.md)
+- [observational certification](../../docs/archive/2026-10-runtime-refactors/opt-in-generation-baselines.md)
+- [image adoption](../../docs/archive/2026-10-runtime-refactors/explicit-image-adoption.md)
+- [compilation record ownership](../../docs/archive/2026-10-runtime-refactors/retained-compilation-records.md)
 
-See [ordinary activation](../../docs/design/ordinary-candidate-activation.md).
+See [ordinary activation](../../docs/archive/2026-10-runtime-refactors/ordinary-candidate-activation.md).
 
-See [logical discard](../../docs/design/logical-candidate-discard.md).
+See [logical discard](../../docs/archive/2026-10-runtime-refactors/logical-candidate-discard.md).
 
 ## Image application
 

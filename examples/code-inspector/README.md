@@ -38,4 +38,4 @@ versus value equality and repeated inspection. Both are included in
 Store still owns Globals storage and participates in method publication in this
 first slice. The application establishes the replacement inspection interface;
 it does not demonstrate a Store-free core yet. See
-[the design and implementation record](../../docs/design/reflect-without-store.md).
+[the design and implementation record](../../docs/archive/2026-10-runtime-refactors/reflect-without-store.md).

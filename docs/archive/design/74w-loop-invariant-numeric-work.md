@@ -1,6 +1,6 @@
 # 74W — Reuse invariant arithmetic across actual tail-loop iterations
 
-> Historical implementation and evidence. The [Design 90 reassessment](../../design/90-numeric-chain-review.md)
+> Historical implementation and evidence. The [Design 90 reassessment](../2026-10-runtime-refactors/90-numeric-chain-review.md)
 > supersedes its restoration requirements: tail-loop stamps are optional policy,
 > allocation-history equivalence is retired, and loop caching remains deferred.
 

@@ -53,7 +53,7 @@ native Word bits. Setters accept canonical Booleans and return their actual Syst
 receiver, including aliases. Reload preserves replacement methods and settings.
 
 These helpers are now authored in `native-values.birnam` over Execution's
-[explicit ABI boundary](native-value-foundation.md).
+[explicit ABI boundary](../archive/2026-10-runtime-refactors/native-value-foundation.md).
 Integer's `fromWordResultOf:selector:` sends a zero-argument query through Id and
 boxes its Word result through current `fromWord:`. Boolean's
 `sendWordOf:to:selector:` converts a canonical Boolean to Word 1/0 and sends the
@@ -80,7 +80,7 @@ allocation checkpoint.
 A fresh installer run generates and qualifies both startup images with no removed
 native crates. A separate source-free saved-image check restores Range aliases,
 clones and both i64 endpoints and invokes the authored System GC controls. See
-the [roadmap checkpoint](native-module-decomposition-roadmap.md#small-rewrite-checkpoint-blockloop-range-and-systemgc-2026-10-04).
+the [roadmap checkpoint](../archive/2026-10-runtime-refactors/native-module-decomposition-roadmap.md#small-rewrite-checkpoint-blockloop-range-and-systemgc-2026-10-04).
 
 ## Native Loader
 

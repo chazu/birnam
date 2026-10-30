@@ -122,7 +122,7 @@ at return or failure. Provider enumeration snapshots the inventory before
 visitor sends. Fresh values remain protected; no public Root tokens are needed
 for this private inventory. Inputs still borrow the caller's Id lifetime.
 Current allocator/getter/factory messages and shape checks remain live. See
-[implementation and validation](../../docs/design/helper-lifetime-and-boxing.md).
+[implementation and validation](../../docs/archive/2026-10-runtime-refactors/helper-lifetime-and-boxing.md).
 
 ## Atomic representation facts
 
@@ -130,4 +130,4 @@ The owner uses Id `tryRepresentationIdentityOf:behavior:bytes:` for exact behavi
 extent and nonzero allocation identity. Canonical admission is callback-free and
 consumed immediately. Unit/UNBOUND uses the original ordered getter sequence;
 other failures propagate. Metadata/query/lookup replacement declines admission.
-See [the contract and evidence](../../docs/design/representation-validation-and-lifetime.md).
+See [the contract and evidence](../../docs/archive/2026-10-runtime-refactors/representation-validation-and-lifetime.md).

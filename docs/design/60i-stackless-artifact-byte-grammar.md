@@ -1,12 +1,17 @@
 # 60I — Stackless Artifact Byte Grammar
 
+> Scope: versioned format/protocol reference. Historical migration stages and
+> native implementation arrangements are not additional language requirements.
+> Follow [INVARIANTS.md](../../INVARIANTS.md) for architecture; retain the
+> specified bytes when reading or writing the documented format.
+
 > **Status:** S2 physical-format design accepted and pre-implementation gate
 > closed 2026-08-22.
 > The semantic contents, identity layering, rooting, selection composition,
 > manifest-index resolution, image-recovery behavior, and no-IdApi-growth
 > boundary are accepted by
-> [60E](60e-resumable-registration-and-entry.md) and
-> [60F](60f-resumable-compiler-lowering.md). This record is the sole authority
+> [60E](../archive/2026-10-runtime-refactors/60e-resumable-registration-and-entry.md) and
+> [60F](../archive/2026-10-runtime-refactors/60f-resumable-compiler-lowering.md). This record is the sole authority
 > for their exact durable byte grammars and process-local registration-envelope
 > ABI. The accepted cross-format constraints, exact records, schema sections,
 > native ABI, image records, golden bytes, malformed matrix, independent
@@ -44,9 +49,9 @@ The surrounding records retain separate authority:
 |---|---|
 | [40](../archive/design/40-the-image.md) | General image ownership, persistence, mapping, and recovery policy. |
 | [49](../archive/design/49-live-module-evolution.md) | SourceRevision and logical DispatchGeneration identity and publication. |
-| [60B](60b-stackless-machine-and-frames.md) | Frame semantics, root safety, slot interpretation, and physical-code pins. |
-| [60E](60e-resumable-registration-and-entry.md) | Entry recognition, registration lifetime, implementation anchors, binding ownership, and recovery ordering. |
-| [60F](60f-resumable-compiler-lowering.md) | Eligibility, lowering, liveness, coloring, semantic descriptor contents, selection materialization, and cross-format agreement. |
+| [60B](../archive/2026-10-runtime-refactors/60b-stackless-machine-and-frames.md) | Frame semantics, root safety, slot interpretation, and physical-code pins. |
+| [60E](../archive/2026-10-runtime-refactors/60e-resumable-registration-and-entry.md) | Entry recognition, registration lifetime, implementation anchors, binding ownership, and recovery ordering. |
+| [60F](../archive/2026-10-runtime-refactors/60f-resumable-compiler-lowering.md) | Eligibility, lowering, liveness, coloring, semantic descriptor contents, selection materialization, and cross-format agreement. |
 | **60I** | Exact bytes, exact native envelope layout, structural validation, format limits, and conformance fixtures. |
 
 If 60I and another record appear to disagree about bytes, 60I governs the

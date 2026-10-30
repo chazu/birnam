@@ -64,5 +64,5 @@ The nested `profile` project separates parsing, PEG matching, tree lowering,
 string decoding, validation and rendering. Timing runs retain normal GC;
 separate allocation runs disable automatic GC for one pass. These phases are
 independent workloads, not additive slices. See the
-[CPU investigation](../../docs/design/application-cpu-profile.md) for findings
+[CPU investigation](../../docs/archive/2026-10-runtime-refactors/application-cpu-profile.md) for findings
 and sampling limitations.

@@ -1,5 +1,10 @@
 # 60L — PortableProgram v1 and Image-v7 Byte Grammar
 
+> Scope: versioned format/protocol reference. Historical migration stages and
+> native implementation arrangements are not additional language requirements.
+> Follow [INVARIANTS.md](../../INVARIANTS.md) for architecture; retain the
+> specified bytes when reading or writing the documented format.
+
 > **Status:** Accepted and physically frozen 2026-08-25. K0 is complete; K1-K5
 > runtime adoption completed 2026-08-26, and K6 compatibility and bounded-
 > churn acceptance completed 2026-08-27.
@@ -25,7 +30,7 @@
 > closes K0. Mapped and forced-rebuild execution remain K5 gates under §11's
 > frozen boot-admission contract.
 > This record is the K0 physical-format gate required by
-> [60K — Reified Portable CodeObjects](60k-portable-codeobjects.md). It freezes
+> [60K — Reified Portable CodeObjects](../archive/2026-10-runtime-refactors/60k-portable-codeobjects.md). It freezes
 > no Runtime implementation. It is the sole
 > authority for the exact PortableProgram v1, portable-program inventory,
 > CodeBinding inventory, materialization selection, and image-v7 bytes. The

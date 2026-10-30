@@ -25,4 +25,4 @@ rename the stage into place with restoration on failure. Build reuse compares
 exact source, revision, provenance, tool/target/profile and artifact checksums.
 Explicit fetch retains pinned clean-checkout validation and stage publication.
 
-See the [decomposition roadmap](../../docs/design/native-module-decomposition-roadmap.md).
+See the [historical extraction report](../../docs/archive/2026-10-runtime-refactors/native-module-decomposition-roadmap.md).

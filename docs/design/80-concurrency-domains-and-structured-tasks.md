@@ -108,8 +108,8 @@ without expanding this work into policy certification or compatibility policing.
   process-isolate contract and earlier reactor exploration. Its pre-stackless
   implementation constraints are historical. This proposal does not revive the
   withdrawn worker-replacement or rollout policy.
-- [60A](60a-stackless-execution-semantics.md) and
-  [60D](60d-stackless-concurrency-fit.md) supply owner-affine Machines, rooted
+- [60A](../archive/2026-10-runtime-refactors/60a-stackless-execution-semantics.md) and
+  [60D](../archive/2026-10-runtime-refactors/60d-stackless-concurrency-fit.md) supply owner-affine Machines, rooted
   resumable Frames, native barriers, and candidate scheduling boundaries.
 - [74](../archive/design/74-malleable-multicore-execution-and-optimization.md) compares parallel
   owners, shared mutable execution, and transactional sessions. This document
@@ -696,7 +696,7 @@ not retaining an unsafe native activation.
 
 The long-term target is Birnam code over execution/platform primitives, not the
 elimination of platform dependencies or the independent source bootstrap. The
-[Machine object boundary](60b-stackless-machine-and-frames.md) permits primitive
+[Machine object boundary](../archive/2026-10-runtime-refactors/60b-stackless-machine-and-frames.md) permits primitive
 implementations to move from Rust to Birnam without changing their object
 interfaces. Such migrations must preserve the
 [independent bootstrap](../archive/design/44-toward-self-hosting.md) and existing execution contracts.

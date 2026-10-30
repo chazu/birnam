@@ -25,4 +25,4 @@ revocation guard or project-to-interaction startup detour remains.
 [ProjectBuild](../birnam-project-build/README.md) owns check/build/fetch/install and
 published execution. Shared local [value helpers](../birnam-project-support/README.md)
 contain no native owner state. See the
-[roadmap](../../docs/design/native-module-decomposition-roadmap.md).
+[historical extraction report](../../docs/archive/2026-10-runtime-refactors/native-module-decomposition-roadmap.md).

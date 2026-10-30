@@ -274,8 +274,8 @@ the second invocation reuses an earlier positive grant. The factory result and
 Id result handoff remain ABI premises; actual query failures/type fallback are
 covered by native integration tests rather than encoded as a full dispatch model.
 The runtime correspondence and limits are recorded in
-[the capture-access result](../../docs/design/capture-access-simplification.md) and
-[the receiver-query slice](../../docs/design/capture-receiver-query.md).
+[the capture-access result](../../docs/archive/2026-10-runtime-refactors/capture-access-simplification.md) and
+[the receiver-query slice](../../docs/archive/2026-10-runtime-refactors/capture-receiver-query.md).
 These are abstract models, not a proof of native providers or the emitted ABI.
 
 ## Bulk capture handoff
@@ -289,7 +289,7 @@ premature owner release. The Lean mutation dropping the bulk-provider check must
 fail kernel checking. This models a serialized borrowing contract; it does not
 verify native byte encoding, C `memcpy`, arbitrary provider promises or concurrent
 mutation. Actual encoding, immediate copying and fallback failures are checked by
-native integration tests. See [the contract](../../docs/design/bulk-capture-handoff.md).
+native integration tests. See [the contract](../../docs/archive/2026-10-runtime-refactors/bulk-capture-handoff.md).
 
 ## Fixed names and protection within a call
 
@@ -354,7 +354,7 @@ serialized calls remain implementation premises, not proofs of arbitrary native
 providers or concurrency. Owner/registry callback histories and multiplicity are
 outside this private-lifetime equivalence; authored Root operations are unchanged.
 The direct-return model does not verify the unchanged nonempty cleanup fallback.
-See [the implementation](../../docs/design/helper-lifetime-and-boxing.md).
+See [the implementation](../../docs/archive/2026-10-runtime-refactors/helper-lifetime-and-boxing.md).
 
 ## Atomic representation checks and borrowed native inputs
 
@@ -374,7 +374,7 @@ invocation/input and root-free handoff lemmas apply to Map inputs, Symbol hashin
 fixed reflection/permission queries and generated named-method adapters.
 These are conditional abstract rules; native provider promises, byte reads and
 runtime correspondence are implementation obligations. See
-[the implementation](../../docs/design/representation-validation-and-lifetime.md).
+[the implementation](../../docs/archive/2026-10-runtime-refactors/representation-validation-and-lifetime.md).
 
 ## Operation selection and global resolution
 
@@ -384,7 +384,7 @@ and getter order. `GlobalResolution.tla` checks saved nil/Globals references whi
 callbacks rebind both exports. Required failures omit either root, compare against
 a newly rebound nil, end protection early or reorder getters. Existing invocation
 and branch proofs remain in use; public retained calls still dispatch through Id.
-See [the slice and remaining candidates](../../docs/design/operation-dispatch-and-global-resolution.md).
+See [the slice and remaining candidates](../../docs/archive/2026-10-runtime-refactors/operation-dispatch-and-global-resolution.md).
 
 ## Private helper emission
 

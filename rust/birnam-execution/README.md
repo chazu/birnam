@@ -5,22 +5,19 @@ optimizer/deoptimization state. All communication with other owners uses Id
 messages with Oop receivers, selectors, arguments and results. Id does not inspect
 Execution payloads or decide how a Machine is scheduled.
 
-The [current invariants](../../docs/misc/DESIGN.md#current-invariants) and
-[necessary-machinery design](../../docs/design/minimal-id-stackless-machinery.md)
-are authoritative. The latter records the completed migration and distinguishes
-current contracts from historical experiments. Older versions of this README
-describe retired non-Oop carriers and binding-based lifetimes; they remain in Git
-history, not as supported interfaces.
+The [invariants](../../INVARIANTS.md) define the requirements. The
+[current runtime reference](../../docs/contracts/runtime.md) describes Methods,
+execution and optimization. Earlier migration designs are historical evidence.
 
-## Ownership and entry
+## Methods and entry
 
 Ordinary sends perform current method lookup and enter the selected Method
 without another message on that Method. Explicit captured-Method invocation
 remains available. Bootstrap owns the native Method representation; Execution
 uses its declared entries and opaque contexts through the public message API.
 
-Default construction admits code, parameter/capture counts and descriptor
-agreement before publication. It does not install bindings, manufacture private
+Creating a Method checks its code, parameter/capture counts and descriptor
+agreement before returning the Method. It does not install bindings, manufacture private
 metadata vtables or advance binding epochs. Native and resumable code providers
 own their reflection and persistence data. There is no universal Method-metadata
 database or bootstrap Method context accessor.

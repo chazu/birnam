@@ -1,21 +1,10 @@
 # 81 — Toward a Birnam implementation
 
-> **Status:** Long-term roadmap. The preparatory Rust extraction phase through
-> 81CA is closed as of 2026-09-20; 81CB is deferred. See the
-> [current status and stopping point](../archive/design/81-production-extraction-status.md).
-> The Birnam runtime/compiler replacement and platform-only Siphon are still
-> future work. The proposals below do not authorize another automatic sequence
-> of per-field extractions.
-> [Design 82](../archive/design/82-minimal-production-id.md) now specifies the production correction:
-> make Id independent of the extracted services before starting another Birnam
-> replacement. It records the failed approach and the required acceptance tests.
->
-> [81A](../archive/design/81a-current-bootstrap-and-runtime-layers.md) records current construction;
-> [81C](../archive/design/81c-thin-id-runtime-layers.md) describes the target runtime layers.
-> Related contracts: [44](../archive/design/44-toward-self-hosting.md),
-> [60B](60b-stackless-machine-and-frames.md),
-> [80](80-concurrency-domains-and-structured-tasks.md), and
-> [79C](../archive/design/79c-materialization-ownership.md).
+> **Scope:** Long-term roadmap, not an implementation queue. The current
+> [invariants](../../INVARIANTS.md) and [architecture](../../ARCHITECTURE.md)
+> supersede the older extraction sequences. The Birnam runtime/compiler
+> replacement remains future work; archived preparatory stages do not require
+> another sequence of per-field services or private runtime APIs.
 
 ## 1. Objective
 

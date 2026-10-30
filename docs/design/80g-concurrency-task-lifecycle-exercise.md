@@ -189,8 +189,8 @@ delimited transfer through a valid Call edge.
   presumed ABI/image change hidden inside a scheduler refactor.
 
 These obligations follow the existing execution contracts in
-[60A](60a-stackless-execution-semantics.md) and
-[60B](60b-stackless-machine-and-frames.md). New cancellation cleanup requires its
+[60A](../archive/2026-10-runtime-refactors/60a-stackless-execution-semantics.md) and
+[60B](../archive/2026-10-runtime-refactors/60b-stackless-machine-and-frames.md). New cancellation cleanup requires its
 own control design; current Machine failure/Abort is not evidence it exists.
 
 ## 5. What this exercise leaves to settle

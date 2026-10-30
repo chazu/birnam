@@ -1,6 +1,6 @@
 # Design 90 — Optimizer reassessment
 
-2026-09-24. Applies the revised [language-behavior contract](../../design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+2026-09-24. Applies the revised [language-behavior contract](../2026-10-runtime-refactors/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
 to the next batch. Existing code is evidence to inspect, not a list of mechanisms
 to restore. This review changes production construction and removes an unused API;
 it does not port the retained allocation-elision implementations.
@@ -117,7 +117,7 @@ The other decisions in this reassessment remain in force.
 
 ## Numeric chains and loops reviewed (2026-09-24)
 
-The [numeric-chain audit](../../design/90-numeric-chain-review.md) retains checked arithmetic
+The [numeric-chain audit](../2026-10-runtime-refactors/90-numeric-chain-review.md) retains checked arithmetic
 and dataflow, rejects restoration of the legacy boxed fused driver and prediction
 registry as prerequisites, and defers cross-iteration result caching. Consecutive
 tail-loop stamps are optimizer policy, not language semantics; their unused

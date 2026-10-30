@@ -23,4 +23,4 @@ populations and bookkeeping. Do not attribute their whole difference to carriers
 
 Run `bash scripts/oop-id-slice-test.sh` from this worktree. Run
 `python3 scripts/oop-id-slice-bench.py` only after building both benchmark callers.
-See the [qualification report](../../../docs/design/oop-only-id-slice-20261023.md).
+See the [qualification report](../../../docs/archive/2026-10-runtime-refactors/oop-only-id-slice-20261023.md).

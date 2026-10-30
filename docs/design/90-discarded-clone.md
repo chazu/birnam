@@ -2,7 +2,7 @@
 
 Implemented 2026-09-24, following the
 [optimizer reassessment](../archive/design/90-optimizer-reassessment.md) and the
-[Self-derived contract](90-self-optimization-review.md). This is one narrow
+[Self-derived contract](../archive/2026-10-runtime-refactors/90-self-optimization-review.md). This is one narrow
 allocation-saving producer and consumer, not completion of batch 2.
 
 ## Exact case

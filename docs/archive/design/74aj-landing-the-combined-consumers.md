@@ -1,7 +1,7 @@
 # 74AJ — Land the implemented four-family consumers
 
 Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
-Current validation commands: [validation guide](../../validation.md). Dated
+Current validation commands: [validation guide](../2026-10-runtime-refactors/validation-history.md). Dated
 experiment and queue status below is retained as historical evidence.
 
 Status: accepted for integration, 2026-09-14. All 24 landing steps passed.

@@ -1,9 +1,9 @@
 # Native boundary and format evidence
 
-[Design 90](../../docs/design/90-functional-modules.md) is the current
-refactoring design: opaque objects and Id messages are the common module boundary.
-`birnam-abi` contains only that protocol, borrowed-buffer helpers and the
-stateless OS loader used by Siphon and Id.
+The [invariants](../../INVARIANTS.md) define the message-passing requirements.
+`birnam-abi` supplies the native calling convention, byte-transfer helpers and
+the stateless OS loader used by Siphon and Id. These implementation helpers do
+not introduce borrowing or ownership rules into Birnam.
 
 The old module tables, twenty IdApi schema manifests, their C headers and the
 central production-construction catalog are deleted. Do not restore their

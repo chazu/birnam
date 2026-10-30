@@ -53,7 +53,7 @@ result object. Requests, sessions, graph indexes, validation, traversal and repo
 Birnam-owned ordinary objects; Execution contains no graph or Trace state.
 
 The source inventory and migration priorities before this port are preserved in
-[the Rust bootstrap audit](../design/rust-bootstrap-migration-audit.md).
+[the Rust bootstrap audit](../archive/2026-10-runtime-refactors/rust-bootstrap-migration-audit.md).
 
 ## Acceptance
 

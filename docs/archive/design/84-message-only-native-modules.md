@@ -1,6 +1,6 @@
 # 84 — Delete the parallel native object system
 
-> **Continuation:** [Design 90](../../design/90-functional-modules.md) now governs functional
+> **Continuation:** [Design 90](../2026-10-runtime-refactors/90-functional-modules.md) now governs functional
 > ownership and the organization of the remaining work. The prohibition on
 > parallel native APIs and the preserved semantic obligations below still apply;
 > this document retains the deletion and migration history.

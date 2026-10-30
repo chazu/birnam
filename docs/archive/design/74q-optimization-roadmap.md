@@ -1,15 +1,15 @@
 # 74Q — Optimization roadmap with malleability and recovery
 
 > **Allocation policy superseded (2026-09-24):**
-> [Design 90](../../design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> [Design 90](../2026-10-runtime-refactors/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
 > retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
 > prepaid deferred identities. Preserve language effects, observable identity,
 > recovery and actual resource lifetimes. Older algorithms, receipts and commands
 > below record history; they do not require restoring that machinery. See the
-> [Self implementation review](../../design/90-self-optimization-review.md).
+> [Self implementation review](../2026-10-runtime-refactors/90-self-optimization-review.md).
 
 Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
-Current validation commands: [validation guide](../../validation.md). Dated
+Current validation commands: [validation guide](../2026-10-runtime-refactors/validation-history.md). Dated
 experiment status below is historical.
 
 Status: proposed roadmap, 2026-09-12. Documentation only; this document does not
@@ -295,7 +295,7 @@ There is no numerical whole-program speed target implied by this roadmap.
 
 ## Starting point and evidence
 
-- [60P](../../design/60p-v2-control-completion.md) completes V2 suspension/capture/restore and
+- [60P](../2026-10-runtime-refactors/60p-v2-control-completion.md) completes V2 suspension/capture/restore and
   removes Frame layout V1.
 - [74K](74k-runtime-owned-native-tier.md),
   [74L](74l-guarded-default-lookup.md) and

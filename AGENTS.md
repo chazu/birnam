@@ -1,32 +1,33 @@
 # Project guidance
 
-Consult [glossary.md](glossary.md) before choosing terminology in explanations,
-documentation, code comments, reviews, or commit messages. Use its preferred terms
-and avoid the jargon listed there. In particular, distinguish vtable lookup from
-method lookup, and describe the actual work being done. Preserve exact identifiers
-and historical measurement keys when necessary, while explaining their meaning.
+Read [INVARIANTS.md](INVARIANTS.md) before architectural work and consult
+[glossary.md](glossary.md) for terminology. [ARCHITECTURE.md](ARCHITECTURE.md)
+maps the current implementation; [docs/README.md](docs/README.md) distinguishes
+current references, proposals and history.
 
-Read [Current Invariants](docs/misc/DESIGN.md#current-invariants) before changing
-runtime architecture. Malleability is primary, and object payloads are opaque to
-minimal Id. Do not introduce or rename a fixed payload-type catalog in allocation,
-dispatch, or GC. Record how representation-specific work stays with its owner.
+Birnam objects interact through messages. Native implementation helpers are
+ordinary algorithm code, not permission to bypass another object's behavior or
+introduce a private object system. Do not import Rust ownership, borrowing or
+borrow checking into the language. Keep objects and code valid through GC,
+callbacks and suspended execution as an implementation responsibility.
 
-Before changing a core runtime path, apply the architectural-change rules in
-[Current Invariants](docs/misc/DESIGN.md#current-invariants): state the contract,
-show the before/after operation sequence, and identify new required mechanisms.
-Preserve all invariants together. Oop representation and payload opacity are not
-permission to add an application protocol. `apply` and its forwarding helpers are
-not part of Id; do not introduce them or a renamed equivalent.
+Keep Id minimal and its payloads opaque. Whole buffers are whole values, not a
+reason for one send per byte. Do not add an implicit application protocol after
+ordinary method lookup. Do not infer new services, registries, wrappers or data
+copies from crate boundaries or old implementations.
 
-Treat user decisions and the authoritative invariants as the design authority.
-An implementation report, existing code, a passing test suite, or an earlier
-agent's interpretation is not authorization to change them. If the implementation
-needs a new contract, stop the affected work and surface that specific conflict;
-do not infer approval from a general instruction to continue.
+For a core change, state the required behavior, show the before/after operation
+sequence, and justify each added mechanism and relevant cost. Prefer the direct
+implementation. Test behavior and prohibited alternatives; review architectural
+compliance separately from whether tests pass. Tests of incidental internal
+steps do not become language requirements by existing.
 
-For a core-path change, add or retain behavioral tests for forbidden alternatives
-as well as expected results. Review the code against the contract separately from
-reviewing whether its tests pass. An open invariant violation blocks further
-migration that depends on that mechanism. Documentation of the violation and a
-failing contract test may be committed; they must not be reported as a repaired or
-qualified runtime.
+Explicit user decisions and the invariants govern the design. Archived documents,
+migration logs and measurement receipts are evidence about their recorded scope,
+not current requirements or work queues. Do not restore retired machinery from
+them or promote a successful workaround into an invariant.
+
+Proceed with routine implementation choices within the agreed behavior. If a
+real language requirement must change, surface that specific conflict before
+building dependent work. Do not invent a conflict from an implementation
+preference, or hide a violation by weakening its tests or changing its wording.

@@ -17,7 +17,7 @@
 > [65 — Self-Describing Project Publications](65-self-describing-project-publications.md).
 
 Builds on [43 — Modules and the Self-Hosted Layer](../archive/design/43-modules-and-config.md),
-[45 — Compiled Units Are Primary](45-compiled-units.md), and [50 — Five-Phase
+[45 — Compiled Units Are Primary](../archive/2026-10-runtime-refactors/45-compiled-units.md), and [50 — Five-Phase
 Implementation Plan](50-five-phase-live-modules-and-isolates-implementation-plan.md).
 
 ## 1. The question

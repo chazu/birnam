@@ -9,8 +9,8 @@ It is an active pre-alpha system. The architecture and its bootstrap are the
 product; compatibility and language surface can and will still change.
 
 **Current development status:** the production runtime, installed CLI and tools
-use Id messages between functional owners, following
-[Design 90](docs/design/90-functional-modules.md). Source compilation, project
+use Id messages between objects. The [invariants](INVARIANTS.md) define the design
+requirements; the [architecture](ARCHITECTURE.md) maps the current implementation. Source compilation, project
 commands, images, REPLs, LSP, process workers and generation activation/rollback
 are integrated. The native execution model supports resumable Methods, Blocks,
 Machines and continuations.
@@ -758,79 +758,15 @@ runtime guarantees. Release-specific acceptance records remain in
 
 ## Architecture
 
-[Design 90](docs/design/90-functional-modules.md) defines functional ownership,
-minimal dependencies and Id messages between native modules. The
-[native module decomposition roadmap](docs/design/native-module-decomposition-roadmap.md)
-tracks the next extractions and Birnam replacements, starting with the source
-compiler and native backend.
+Birnam objects communicate through Id messages. Id remains small and does not
+interpret other objects' payloads. Object and method implementations provide
+storage, execution, compilation, collection and optional relational facilities.
+Native algorithm helpers are implementation code, not another object interface.
 
-Host starts the runtime by asking Siphon to load Id, then sends Id a request to
-load Bootstrap:
-
-```text
-CLI / Host
-  -> Siphon -> Id message protocol
-  -> Id loads Bootstrap -> native owners and Namespace
-  -> compiled bootstrap image: Module manager, stdlib, lifecycle policy and tools
-  -> source, artifact, project or image entry
-```
-
-Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
-loading. [Bootstrap](rust/birnam-bootstrap/src/lib.rs) owns the native load order;
-Siphon and the shared ABI contain no catalog of upper modules. Bootstrap retains
-initializer arguments and results through
-[Roots](rust/birnam-root-registry/README.md), and Namespace publishes completed
-objects. Modules loaded by Bootstrap return an opaque Object or Unit; consumers
-use their messages without decoding another owner's payload.
-
-[GC](rust/birnam-collect/README.md) owns tracing and reclamation;
-[ObjectModel](rust/birnam-object-model/README.md) owns ordinary slots, cloning and
-private behaviors. Value and collection owners implement their own representation,
-equality and hashing. Ordinary Cells and reflection need no database. Optional
-[Store](rust/birnam-store/README.md) owns explicit facts, history, fact-backed Cells
-and opt-in publication protocols; [Relational](rust/birnam-relational/README.md)
-supplies queries, rules and aggregates. Select them with `Module load: #store` or
-`Module load: #relational`; they are not part of core bootstrap.
-
-[Execution](rust/birnam-execution/README.md) owns Methods, Blocks, frames, bounded
-Machines and continuations. [Codegen](rust/birnam-codegen-runtime/README.md) connects
-PEG/Lang compilation and TCC code ownership to Execution. Generated calls use Id
-messages. Blocks, Methods and suspended frames retain their executable owners;
-code is reclaimed after the final executable reference is released and an idle
-checkpoint is reached.
-[Image](rust/birnam-image/README.md) restores durable state through those same
-owners. [Host](rust/birnam-host/README.md) connects source, artifact, project,
-image and worker entry to the installed CLI and tooling.
-
-The standard library, task scheduling/lifecycle policy and most application-facing
-modules are Birnam source. The native runtime/compiler implementation remains
-Rust with C/libtcc support. The installed runtime stays on its creating thread;
-parallel workers use independent processes. A Birnam-authored runtime/compiler
-is the longer-term [self-hosting goal](docs/design/81-toward-a-birnam-implementation.md).
-Lang's grammar and parsing facade are authored in `modules/lang.birnam`.
-Bootstrap loads precompiled Module and Lang artifacts before source parsing.
-The installer uses `birnam-lang-seed` to compile those artifacts, then excludes
-that Rust grammar seed from the published runtime. PEG matching and Codegen
-remain Rust implementations.
-
-The installer prepares `lib/birnam-bootstrap.image` for ordinary and console
-startup and basic CLI/LSP use, plus `lib/birnam-tools.image` for the explicit
-documentation catalog. Both include the required
-authored methods and foreign-function wrappers. Normal startup maps compiled code
-without recompiling the bootstrap or tool adapters. Compilation also records
-source metadata with its ordinary source owner; startup restores those objects
-without parsing source or traversing syntax trees. The core is prepared and
-probed before optional providers are installed. A missing or incompatible image is an
-error; reinstall to regenerate it. `BIRNAM_FORCE_SOURCE=1 birnam ...` explicitly
-requests source bootstrap for development or recovery and can be slow.
-
-Birnam retains an independent cold source bootstrap through declared non-Birnam
-toolchains, without requiring a prebuilt Birnam artifact.
-
-`mise run native-messages` checks the native owner boundaries, including live
-method replacement, nested loading, collection and finalization. Installed Host,
-image and generation lifecycle checks are part of the
-[validation workflow](docs/validation.md).
+[ARCHITECTURE.md](ARCHITECTURE.md) describes startup, compilation, stackless
+execution, collection, images and the source layout. [INVARIANTS.md](INVARIANTS.md)
+is the design authority. Rust ownership and borrowing are not Birnam language
+features. The [validation guide](docs/validation.md) describes available checks.
 
 ## Repository Guide
 
@@ -842,8 +778,8 @@ image and generation lifecycle checks are part of the
   its artifacts and publishes an installation. Independent of the CLI and host.
 - `rust/birnam-host/` — runtime startup, resource discovery, project operations
   and execution bridges used by the CLI. No argument parser or Siphon implementation.
-- `rust/birnam-abi/` — opaque objects, the common Id protocol, borrowed buffers
-  and the stateless OS loader shared by Siphon and Id.
+- `rust/birnam-abi/` — opaque objects, the common Id protocol, native byte-transfer
+  helpers and the stateless OS loader shared by Siphon and Id.
 - `rust/birnam-id/` — native Id allocation, Symbols, dictionaries, message
   dispatch and module loading; depends only on the ABI crate.
 - `rust/birnam-bootstrap/` — native load order and initializer retention;
@@ -853,8 +789,8 @@ image and generation lifecycle checks are part of the
 - `rust/birnam-object-model/` — ordinary object storage and cloning, private
   behaviors and exact slot metadata; reflection uses existing Id messages.
 - Other `rust/birnam-*/` crates — native values, compiler/runtime,
-  storage, images, workers and language services. Owner READMEs describe their
-  message protocols and lifetime rules.
+  storage, images, workers and language services. Crate READMEs describe their
+  messages and native implementation requirements.
 - `modules/` — all modules written in Birnam: core language and startup policy,
   libraries, CLI/LSP tools, documentation and tests. Core sources are embedded
   for explicit source bootstrap; the installer lists modules for compilation and
@@ -865,55 +801,21 @@ image and generation lifecycle checks are part of the
 - `wrapped/` — native libraries used by optional applications.
 - `examples/` — programs, including images and AOT artifacts.
 - `docs/guide/` — language and user workflow guides.
-- `docs/design/` — current contracts and unfinished designs;
+- `docs/design/` — detailed references, proposals and implementation notes;
   `docs/archive/` holds historical decisions, experiments and completed plans.
 - `docs/measurements/` — benchmark evidence and payload-loading instructions.
 
 ## Design Notes
 
-The active design documents describe contracts and remaining work:
+Start with the [documentation index](docs/README.md). The
+[invariants](INVARIANTS.md) state the requirements; the
+[current runtime reference](docs/contracts/runtime.md) records Method construction,
+explicit edits and undo, execution, optimization and image behavior.
 
-- The [module design](docs/design/90-functional-modules.md) defines ownership,
-  opaque native messages, minimal dependencies and safety rules. The Id-message
-  migration is complete; its checkpoint history is not a current work queue.
-- [Object authority](docs/design/42-object-canonical-relational-derived.md) and
-  [relational semantics](docs/design/37-the-relational-reading.md) define the
-  relationship between objects, Store facts and queries.
-  The [optional Store and Relational decision](docs/design/optional-store-and-relational.md)
-  records the agreed direction to retain their self-description while removing
-  mandatory core dependence and making relational code description opt-in.
-- [Compiled units](docs/design/45-compiled-units.md) and
-  [their lifecycle](docs/design/47-compiled-unit-lifecycle.md) define executable
-  authority, staged activation, rollback and active-code lifetimes.
-- [Stackless execution](docs/design/60-stackless-native-execution.md) and
-  [V2 control](docs/design/60p-v2-control-completion.md) define resumable execution,
-  suspension and completion. [Artifact framing](docs/design/60i-stackless-artifact-byte-grammar.md)
-  and [PortableProgram grammar](docs/design/60l-portable-program-and-image-v7-byte-grammar.md)
-  remain format references; [image-v8](docs/design/60o-image-v8-identity-preservation.md)
-  and the [Image owner](rust/birnam-image/README.md) describe current persistence.
-  Live Machines and task capabilities are not durable image values.
-- [Project manifests](docs/design/51-project-manifests-and-dependency-resolution.md),
-  [command workflows](docs/design/52-project-check-build-and-run.md) and
-  [self-describing publications](docs/design/65-self-describing-project-publications.md)
-  define dependency resolution, build/run/install and execution without source.
-  [Language tooling](docs/design/53-project-aware-language-tools.md),
-  [relocatable bundles](docs/design/54-relocatable-bundles.md) and
-  [embedded files](docs/design/56-embedded-files.md) cover shipped integration.
-- [Concurrency domains](docs/design/80-concurrency-domains-and-structured-tasks.md)
-  and [cleanup transitions](docs/design/80n-cancellation-to-cleanup-transition.md)
-  define task and worker lifecycle. Structured tasks and process workers are
-  shipped; thread hosting, channels and general asynchronous timer/I/O remain
-  unfinished. Start with the [user guide](docs/guide/07-concurrency.md).
-- [Discarded-clone](docs/design/90-discarded-clone.md) and
-  [numeric-predicate](docs/design/90-numeric-predicate.md) optimizations are current
-  bounded allocation-elision contracts. Broader optimization remains separate.
-- [Map deletion](docs/design/70-persistent-map-deletion.md) remains a proposal;
-  [scalable ordering](docs/design/73-scalable-ordering-contract.md) has accepted
-  semantics with implementation work still open.
-- [The self-hosting roadmap](docs/design/81-toward-a-birnam-implementation.md)
-  retains the Birnam-authored runtime/compiler objective and independent bootstrap.
+The [design index](docs/design/README.md) separates detailed message and format
+references from proposals. It includes project tooling, concurrency, optional
+Store/Relational facilities and the longer-term Birnam implementation goal.
 
-Earlier architectures, retired Digla experiments, completed extraction plans and
-dated performance acceptance are in [docs/archive](docs/archive/). Those documents
-preserve rationale and evidence; the current owners and contracts above describe
-the implementation.
+Earlier architectures, completed refactors and dated investigations are in the
+[archive](docs/archive/README.md). They preserve reasoning and evidence, not a
+current work queue or additional language requirements.

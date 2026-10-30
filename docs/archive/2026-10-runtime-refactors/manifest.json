@@ -1,0 +1,670 @@
+{
+  "source_commit": "dd8b1c7f25d4bd6636c24efc146fb320f5e7fe8b",
+  "documents": [
+    {
+      "original_path": "docs/design/45-compiled-units.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/45-compiled-units.md",
+      "original_sha256": "ae0747cae72950778351d88eb7ddc1461687a9306970900ea9fc1899df672210"
+    },
+    {
+      "original_path": "docs/design/47-compiled-unit-lifecycle.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/47-compiled-unit-lifecycle.md",
+      "original_sha256": "3d5b8bf096ab793c14f176d146c9379afc61610c9bc0da4656489a6109de7bd0"
+    },
+    {
+      "original_path": "docs/design/60-stackless-native-execution.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60-stackless-native-execution.md",
+      "original_sha256": "d0a11be6f8a126852b8257af92e99d8f2f4a623d751ef6b43ce6528b4eac5210"
+    },
+    {
+      "original_path": "docs/design/60a-stackless-execution-semantics.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60a-stackless-execution-semantics.md",
+      "original_sha256": "7802a2f21f9d2f871e53de527ddf02bea491f39f22607e431f2352f35219fe81"
+    },
+    {
+      "original_path": "docs/design/60b-stackless-machine-and-frames.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60b-stackless-machine-and-frames.md",
+      "original_sha256": "fb1391dd25169b12344dd12af68d71831e9d5f7f312da6f22c11bdb193716957"
+    },
+    {
+      "original_path": "docs/design/60c-stepmethod-calling-abi-options.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60c-stepmethod-calling-abi-options.md",
+      "original_sha256": "bbe06662cda71b932947bd6201b7a481bd83b710f42392327765ea8ea2aee401"
+    },
+    {
+      "original_path": "docs/design/60d-stackless-concurrency-fit.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60d-stackless-concurrency-fit.md",
+      "original_sha256": "0f8836b04c0b7a24c6da4429c787a2213d25b4a0f59991b1a552515f14b808d1"
+    },
+    {
+      "original_path": "docs/design/60e-resumable-registration-and-entry.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60e-resumable-registration-and-entry.md",
+      "original_sha256": "c6683fe705643b23fbfa448fc5fd5909b5a739ea415dc50c44aba19d18f79800"
+    },
+    {
+      "original_path": "docs/design/60f-resumable-compiler-lowering.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60f-resumable-compiler-lowering.md",
+      "original_sha256": "2a773a2a1e2e1b24b1eea367926bba67f77582392419f10050d5810e87b3ff4c"
+    },
+    {
+      "original_path": "docs/design/60h-stackless-production-acceptance-and-rollout.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60h-stackless-production-acceptance-and-rollout.md",
+      "original_sha256": "dc736e7c4e81a4aab541e308a91679473b89da3c1fde89f34f20da36fadd5fae"
+    },
+    {
+      "original_path": "docs/design/60j-runtime-identity-and-history-compaction.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60j-runtime-identity-and-history-compaction.md",
+      "original_sha256": "87c2e83c7596a57862c64952672a7cdb5912e2e7a2c69734cd26fcf054003e25"
+    },
+    {
+      "original_path": "docs/design/60k-portable-codeobjects.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60k-portable-codeobjects.md",
+      "original_sha256": "6e898a4da19c332eb32b09f700c42de8200de8fa21c57786584ba7d9fbd586ee"
+    },
+    {
+      "original_path": "docs/design/60p-v2-control-completion.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/60p-v2-control-completion.md",
+      "original_sha256": "2a31b8222cc5ad44047b970255d118c4831e21870ef19e5ab48292ae281de086"
+    },
+    {
+      "original_path": "docs/design/62-rust-native-rungs-migration-plan.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/62-rust-native-rungs-migration-plan.md",
+      "original_sha256": "5f8c96a48353eb4ddf7651544f1430791c3e3360d095ab1f6a36a5605f498f15"
+    },
+    {
+      "original_path": "docs/design/75-code-quality-and-responsibility.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/75-code-quality-and-responsibility.md",
+      "original_sha256": "987311b799f22b6f9b0f34692d28d56c754baefd7e6f84ca138ee4bc4671fa44"
+    },
+    {
+      "original_path": "docs/design/90-functional-modules.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/90-functional-modules.md",
+      "original_sha256": "e5d09873c68563d52e258adced0ae7a2367e22281304e39a0ae9b4288a8a2632"
+    },
+    {
+      "original_path": "docs/design/90-numeric-chain-review.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/90-numeric-chain-review.md",
+      "original_sha256": "1a831280139db7a5a4e288a65e7ef893afb7e65192f389a629b7d6d038933c89"
+    },
+    {
+      "original_path": "docs/design/90-self-optimization-review.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/90-self-optimization-review.md",
+      "original_sha256": "4efe32690881692fd67904af72a82ba9c85fb0f8b85f244783ea113a6933a83d"
+    },
+    {
+      "original_path": "docs/design/abi-overhead-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/abi-overhead-investigation.md",
+      "original_sha256": "763a87e4de6b374ad1465359730e462206552dbcf270401637ac7dc9a19b31a0"
+    },
+    {
+      "original_path": "docs/design/addition-send-breakdown.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/addition-send-breakdown.md",
+      "original_sha256": "5425cd93076e219dfa0f8bed7dbca1a4a08a4fc09aa5dae86d8d287b35b5ca27"
+    },
+    {
+      "original_path": "docs/design/addition-send-investigations.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/addition-send-investigations.md",
+      "original_sha256": "43126c92c531fd36467ba7ef88556ad64bec3c737212d409801ea700b533b060"
+    },
+    {
+      "original_path": "docs/design/alien-recipes-migration-performance.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/alien-recipes-migration-performance.md",
+      "original_sha256": "4889b3e5b26dceeaf3a70b2f3ea1282083631922878300b9b672ff2bc510abab"
+    },
+    {
+      "original_path": "docs/design/application-cpu-profile.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/application-cpu-profile.md",
+      "original_sha256": "81567b02873f122b2cb51905a59d3363059b673263255660b6d02a5a19c22498"
+    },
+    {
+      "original_path": "docs/design/authored-access-costs.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/authored-access-costs.md",
+      "original_sha256": "39c2d508dad23158d5171f48c992adda05dc6f9c17d58ae641bfb4ed854cd04d"
+    },
+    {
+      "original_path": "docs/design/boolean-selection-simplification.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/boolean-selection-simplification.md",
+      "original_sha256": "26f9b18b461269b31cd3fde5930a9118ce744156f545e6ad29e1d62fd77450a9"
+    },
+    {
+      "original_path": "docs/design/bulk-capture-handoff.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/bulk-capture-handoff.md",
+      "original_sha256": "0b83ef38d867151ea86a2a9aa02b03ba9850f528313c2251136420eb1c6f1cb4"
+    },
+    {
+      "original_path": "docs/design/capture-access-simplification.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/capture-access-simplification.md",
+      "original_sha256": "ce11088c92dc3fa05d8db9440358680c29c85f9d39697410b5d35341229eb392"
+    },
+    {
+      "original_path": "docs/design/capture-receiver-query.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/capture-receiver-query.md",
+      "original_sha256": "8a239fc269d2dc0c2e087d729cdf6117439875999694b84ee94594c44983edc7"
+    },
+    {
+      "original_path": "docs/design/closure-construction-simplification.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/closure-construction-simplification.md",
+      "original_sha256": "cf2bb9a38ab84f056f059824af1ae67d20f144648fb77779736b9a5cd8cd1931"
+    },
+    {
+      "original_path": "docs/design/closure-machinery-necessity.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/closure-machinery-necessity.md",
+      "original_sha256": "4ff841592eea0dbcc4a8fa4590422d1426bce22cada1d23ae61774ac89789333"
+    },
+    {
+      "original_path": "docs/design/collection-search.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/collection-search.md",
+      "original_sha256": "bb937ac4e2710ee0b39073970d849d3d36e719f28c2e50215b664f6d3dfe8e16"
+    },
+    {
+      "original_path": "docs/design/compiler-metadata-ownership.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/compiler-metadata-ownership.md",
+      "original_sha256": "35c0bba0f7dcadcca43263034bbef0827955e416b8441ff681f416e3eaeb4854"
+    },
+    {
+      "original_path": "docs/design/coordination-cleanup.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/coordination-cleanup.md",
+      "original_sha256": "793507803f4003cda85618f59774e713422473f8448527fb452fc166f0ea1b47"
+    },
+    {
+      "original_path": "docs/design/execution-name-access.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/execution-name-access.md",
+      "original_sha256": "497e3bb62b82f873eac35d7cfcaa446c83a61432b1e9a95478c9127d69c6efea"
+    },
+    {
+      "original_path": "docs/design/execution-region-semantics.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/execution-region-semantics.md",
+      "original_sha256": "ffc3b51b1c4c5fd7af9a1ee6078dc28642293b1ebf8658cf00fee6d91f955614"
+    },
+    {
+      "original_path": "docs/design/fixed-abi-simplification.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/fixed-abi-simplification.md",
+      "original_sha256": "efb7bc79e0d0f7d6372ef05816ee7bcd16d4889571255d5596f71aa37b449729"
+    },
+    {
+      "original_path": "docs/design/fixed-names-and-local-protection.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/fixed-names-and-local-protection.md",
+      "original_sha256": "4aa4ff874405073e79d2d663f078decc214da235b70ca4bb49863c44440fcf7e"
+    },
+    {
+      "original_path": "docs/design/fixed-selector-digests.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/fixed-selector-digests.md",
+      "original_sha256": "764240b7cc2ffae9b1709b3a37294e27f3c5c31faf7b65138aa39efd16cda22e"
+    },
+    {
+      "original_path": "docs/design/formally-checked-performance.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/formally-checked-performance.md",
+      "original_sha256": "1ba055f01c1a3832a8ca0f7d296fad5c2e5360f9a96d86fbf1b0c047ec30c931"
+    },
+    {
+      "original_path": "docs/design/generation-lifecycle-review.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/generation-lifecycle-review.md",
+      "original_sha256": "c367e3146fdbc152445da9ed31a5dfd36c4cec0926b3f7ecf29fe472b4d05863"
+    },
+    {
+      "original_path": "docs/design/generation-post-simplification-review.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/generation-post-simplification-review.md",
+      "original_sha256": "0f391c5a718917ba9fe597efe4ecf4ed8dca389cf9de8ea377bab58b583a11f5"
+    },
+    {
+      "original_path": "docs/design/helper-lifetime-and-boxing.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/helper-lifetime-and-boxing.md",
+      "original_sha256": "1e670e9cd13da51515a1d872ed6405413e13e35a915fdaee7d3535709e0badbc"
+    },
+    {
+      "original_path": "docs/design/id-default-lookup-fact.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/id-default-lookup-fact.md",
+      "original_sha256": "0af56252ab0c2a95450146c39d860428df6751eacccc44d41d1fb4dbfc9502f4"
+    },
+    {
+      "original_path": "docs/design/id-send-correction-20261023.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/id-send-correction-20261023.md",
+      "original_sha256": "83db09e4a5a7580e28278e1f01fc98915127c2fa9df6209d8378d2279bcc5648"
+    },
+    {
+      "original_path": "docs/design/integer-performance-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/integer-performance-investigation.md",
+      "original_sha256": "2f31a577d7b047f196e2d041f91da9d8875beb8399141a6b15134a744a9374d5"
+    },
+    {
+      "original_path": "docs/design/integer-send-totality.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/integer-send-totality.md",
+      "original_sha256": "bef1ab2f53b1e8a09892d8a422664438cef3adfc7d3fea1bd74fd942fc78c4c0"
+    },
+    {
+      "original_path": "docs/design/integer-word-conversion-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/integer-word-conversion-investigation.md",
+      "original_sha256": "f387162ed6fb1bc8693deebd8856210b572217a2d39efa34531d9b564171f429"
+    },
+    {
+      "original_path": "docs/design/invocation-capture-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/invocation-capture-investigation.md",
+      "original_sha256": "b7b6d6cc030717143cfb9076d2997068fde0f6699b3ad2c62c6a01caab144cfa"
+    },
+    {
+      "original_path": "docs/design/json-number-conversion.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/json-number-conversion.md",
+      "original_sha256": "780d5996cef730cad77bb3c879dc646531c8217e08b638ddd549ba0d303ad220"
+    },
+    {
+      "original_path": "docs/design/json-unescape-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/json-unescape-investigation.md",
+      "original_sha256": "cbcdfd9488e113acc1a455ce2956f49316d242742adbb42e1808d3d60689db64"
+    },
+    {
+      "original_path": "docs/design/json-value-conversion.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/json-value-conversion.md",
+      "original_sha256": "0de514b34cbd0b61d209c6a488bbcb57a176f2a78fe8af34fc01d853812c076e"
+    },
+    {
+      "original_path": "docs/design/logue-latency.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/logue-latency.md",
+      "original_sha256": "38aa126fc26130acdbfaafd545bf3fd32a87597e4e031207e9b47a32d592719e"
+    },
+    {
+      "original_path": "docs/design/logue-message-log.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/logue-message-log.md",
+      "original_sha256": "b8ba0ee83b98af9bf4557e32ed9e12a147a8a290ce0c94b51e76a09dfe103bda"
+    },
+    {
+      "original_path": "docs/design/logue-reprofile-20261022.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/logue-reprofile-20261022.md",
+      "original_sha256": "18731d65ba3e180a899e5f75f9ffc61f7d758d3be5d57b6ff5195c46f72cb710"
+    },
+    {
+      "original_path": "docs/design/logue-runtime-work-summary.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/logue-runtime-work-summary.md",
+      "original_sha256": "5de7b076ab871aa5afd0e43435a43b1cf9051726b3ffbeb7f09b14f1df9886e4"
+    },
+    {
+      "original_path": "docs/design/lsp-and-globals-owners.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/lsp-and-globals-owners.md",
+      "original_sha256": "7be80707276c21f5e78b8b8b870a06a1a09a787ba0db557a45c006a019f98d00"
+    },
+    {
+      "original_path": "docs/design/method-binding-constructor.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/method-binding-constructor.md",
+      "original_sha256": "6932245eb821abb02042f9cd4fec8919849c73d11d93e7583ced3a5e2b85731d"
+    },
+    {
+      "original_path": "docs/design/method-code-admission.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/method-code-admission.md",
+      "original_sha256": "b8985e140ed8785001ab53ab62af637275f15288f4b2f96abb8f8d0926e2d80c"
+    },
+    {
+      "original_path": "docs/design/method-invocation-owner.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/method-invocation-owner.md",
+      "original_sha256": "b2c5b11257a34465da79f56961f2a493b9932a3f07f346257fae5587accfa5dc"
+    },
+    {
+      "original_path": "docs/design/method-lookup.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/method-lookup.md",
+      "original_sha256": "9100da9634a24f54d2ebff0dee1aa5fa986fd6f2b79848ba5713086d83d470e8"
+    },
+    {
+      "original_path": "docs/design/method-publication-owner.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/method-publication-owner.md",
+      "original_sha256": "2c456c847b7742a5f17d4de9cee0608d3266a980750f8b04d1ab89d5a75ef719"
+    },
+    {
+      "original_path": "docs/design/microbenchmarks.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/microbenchmarks.md",
+      "original_sha256": "082d57009ae3041b43ab879e7435e43d61b3568aa245ca1eed2de2220302a2d1"
+    },
+    {
+      "original_path": "docs/design/minimal-id-stackless-machinery.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/minimal-id-stackless-machinery.md",
+      "original_sha256": "b8e060bba53b5bfca726ec990ae9841c04919b5847dc789f8d3270bab52adb88"
+    },
+    {
+      "original_path": "docs/design/native-module-decomposition-roadmap.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/native-module-decomposition-roadmap.md",
+      "original_sha256": "7b59406e28749f2ac13e8d21a63578680c5b99f23c5a4f1edef6aeade95923c0"
+    },
+    {
+      "original_path": "docs/design/native-value-foundation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/native-value-foundation.md",
+      "original_sha256": "3743cce5db22bbc9fb497163b9a70fb3c3347d6e537df9292c6e2aa33f95bcb4"
+    },
+    {
+      "original_path": "docs/design/oop-compiler-execution-integration.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-compiler-execution-integration.md",
+      "original_sha256": "f95275209e7fc7412a61a6c18269fd9969eff872adb61552f21d5c63d89221cf"
+    },
+    {
+      "original_path": "docs/design/oop-continuation-id.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-continuation-id.md",
+      "original_sha256": "cae71c13599fb39f7e6231b232d0f88a23157515c3c21630265b3a761caf2854"
+    },
+    {
+      "original_path": "docs/design/oop-custom-lookup-tail-contract.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-custom-lookup-tail-contract.md",
+      "original_sha256": "c426ad2d3f9ecc9bfff647f72609bd72927f356a934937a72eaa9d90335deecc"
+    },
+    {
+      "original_path": "docs/design/oop-entry-seam-experiments.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-entry-seam-experiments.md",
+      "original_sha256": "0fde06b433738eb6a7427be2e30a0cd1a8197e0b7d557234186513d6d8a97b19"
+    },
+    {
+      "original_path": "docs/design/oop-id-slowdown-diagnosis-20261023.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-id-slowdown-diagnosis-20261023.md",
+      "original_sha256": "ee54dbdc542d40067b09971a4e23f79cc46a503f6c4df04c6aac55c5207095b5"
+    },
+    {
+      "original_path": "docs/design/oop-invariant-migration-20261023.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-invariant-migration-20261023.md",
+      "original_sha256": "7bb8a0aacc20db47da926ccc56e7c5b857e31728feca31b9dfc872568f3ca21f"
+    },
+    {
+      "original_path": "docs/design/oop-migration-architecture-cleanup.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-migration-architecture-cleanup.md",
+      "original_sha256": "57859e6801968975d7c6ba07945abe8f188aa7ef4f9beb9ff7695ff92c1c733c"
+    },
+    {
+      "original_path": "docs/design/oop-only-id-probes.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-only-id-probes.md",
+      "original_sha256": "a8a038ed4f1e181012d23b2ce81e36b363543bf3b6085bef79a491c6462faf65"
+    },
+    {
+      "original_path": "docs/design/oop-only-id-slice-20261023.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-only-id-slice-20261023.md",
+      "original_sha256": "c276881653ce28a79f923eee5c42d3baf3ebd3e2abfcb2504b0c68fe4d8e88a0"
+    },
+    {
+      "original_path": "docs/design/oop-only-id.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-only-id.md",
+      "original_sha256": "32d497a72cd1723d41f132b0980f0bdf6656610ac1f6fed77044aed04472f591"
+    },
+    {
+      "original_path": "docs/design/oop-payload-opacity-20261023.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-payload-opacity-20261023.md",
+      "original_sha256": "833dfb2c2208ee9c59c8b55da252f3830f3ae85353409917bfaf3adb27c638d0"
+    },
+    {
+      "original_path": "docs/design/oop-resumable-milestone.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-resumable-milestone.md",
+      "original_sha256": "4d6ed79f12d726cdc1a780565b0c5fdda2363f541e353e1b46b68734aa7de960"
+    },
+    {
+      "original_path": "docs/design/oop-runtime-simplification-20261023.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-runtime-simplification-20261023.md",
+      "original_sha256": "89b8d69b616fb9d8300bb3741d3bcafc2e900b4349431ae214e7688d4cb6e5d1"
+    },
+    {
+      "original_path": "docs/design/oop-tail-routing-diagnosis.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/oop-tail-routing-diagnosis.md",
+      "original_sha256": "7e5e45eb649c6df72e278c4728ae0f8a687d3c55dbb97471dccf178ceed8474f"
+    },
+    {
+      "original_path": "docs/design/outbound-bridge-retirement.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/outbound-bridge-retirement.md",
+      "original_sha256": "7f4839c3165a99e458089612d09950bd3fd3d9db2798878f3f30514dd7264998"
+    },
+    {
+      "original_path": "docs/design/presentation-repl-startup.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/presentation-repl-startup.md",
+      "original_sha256": "8bcc4e1588127470961e5e61d91bf36d47983008dfd877e58a434cd0699ff3b5"
+    },
+    {
+      "original_path": "docs/design/private-runtime-indexes.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/private-runtime-indexes.md",
+      "original_sha256": "7562ec1b8f55a3618cfb91e27421d1ab3d036bc1373d007dd49fcfb0f7dab3e2"
+    },
+    {
+      "original_path": "docs/design/publication-failure-boundary.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/publication-failure-boundary.md",
+      "original_sha256": "7b0e9a552377f2f19c583b6bb417edc1dc8949d77e766ccac83a74c5d49c7b48"
+    },
+    {
+      "original_path": "docs/design/range-handler-reuse.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/range-handler-reuse.md",
+      "original_sha256": "ea87abdfa69a8ce2d8fee1579f8ec89cb6489dabf6013b0ed5df54f0e96463fe"
+    },
+    {
+      "original_path": "docs/design/repl-owner-migration-performance.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/repl-owner-migration-performance.md",
+      "original_sha256": "e6ee1c079b1623c12af40edbbad04ae7b5f6bd6594aa27a055dd15c4ff9f1a00"
+    },
+    {
+      "original_path": "docs/design/representation-batch-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/representation-batch-investigation.md",
+      "original_sha256": "fa4ac1b0f901eb92af55724282d3eb9961d87be5ddda50a48234e09d8c9dfe71"
+    },
+    {
+      "original_path": "docs/design/representation-validation-and-lifetime.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/representation-validation-and-lifetime.md",
+      "original_sha256": "ae2268b47bef4118300e7b6bdeeda641c7d65c4333e026e285f40ff620d70d52"
+    },
+    {
+      "original_path": "docs/design/result-lifetime-handoff-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/result-lifetime-handoff-investigation.md",
+      "original_sha256": "941360971d68c2c54f1edbf9a34036201a6c1a177709d71fc0e0a933d7e63ec6"
+    },
+    {
+      "original_path": "docs/design/reusable-branches-and-native-inputs.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/reusable-branches-and-native-inputs.md",
+      "original_sha256": "12db3cee80cd686a22910b890912ac66081506a868fef828aa203d59e62c87c1"
+    },
+    {
+      "original_path": "docs/design/root-send-reduction.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/root-send-reduction.md",
+      "original_sha256": "2b1241f61293c3e9e6852261634b258da4c3d0ce0677be1d3624c9046306b7e2"
+    },
+    {
+      "original_path": "docs/design/runtime-and-abi-simplification.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/runtime-and-abi-simplification.md",
+      "original_sha256": "13af39f08ebcdb9caeaaacc6aff0a2a9eed4c0c64b50f67eb4bf37dfab795ae2"
+    },
+    {
+      "original_path": "docs/design/runtime-costs-exposed-by-logue.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/runtime-costs-exposed-by-logue.md",
+      "original_sha256": "222acf08e8d29c246fc91a74af87e18f8d337215230cdb4be1c4781d697fcfe7"
+    },
+    {
+      "original_path": "docs/design/runtime-simplification-results.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/runtime-simplification-results.md",
+      "original_sha256": "1e37fbba03238d3dc1c8820015e3f9b9d7b216670a740365c3de9b6bfd52515a"
+    },
+    {
+      "original_path": "docs/design/runtime-storage-simplification.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/runtime-storage-simplification.md",
+      "original_sha256": "db69d6ef5730ddc05a2c9a0ad711a991a914087d5bb21eaa5425b8a3594b5446"
+    },
+    {
+      "original_path": "docs/design/rust-bootstrap-migration-audit.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/rust-bootstrap-migration-audit.md",
+      "original_sha256": "d07f8ba7dcdc50f8c494dfc78439e8e18edd5a7ae0b289ef4e22e0d1059dc93d"
+    },
+    {
+      "original_path": "docs/design/send-reduction-breakage-diagnosis.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/send-reduction-breakage-diagnosis.md",
+      "original_sha256": "ef35c20398f4a00636ac3e43fd2399b6e1946d80326bc045ed4c471dbdeefbd3"
+    },
+    {
+      "original_path": "docs/design/shared-invocation-investigation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/shared-invocation-investigation.md",
+      "original_sha256": "cd4cd25c720f930313451a831bff0b6aaca804282733bc329bb332c98f2c7eff"
+    },
+    {
+      "original_path": "docs/design/slot-and-string-cost.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/slot-and-string-cost.md",
+      "original_sha256": "85f0f1f50b6e1094670711facd4f670385b7d3afda64529c5ebf203b9ba2666e"
+    },
+    {
+      "original_path": "docs/design/socket-owner-migration-performance.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/socket-owner-migration-performance.md",
+      "original_sha256": "d1ffd6d35510d0644cd4a64393e7c067eb8a40d6c58d7bd7ba79d56dfc70ac87"
+    },
+    {
+      "original_path": "docs/design/source-registry-id-boundary.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/source-registry-id-boundary.md",
+      "original_sha256": "0f40ce1e418cd9c5d0c5e0cc3ba1dd3d5bda588799c855af30414b12f8017432"
+    },
+    {
+      "original_path": "docs/design/stable-guard-batching.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/stable-guard-batching.md",
+      "original_sha256": "608a1f9660c41ac0a6431daf44386e86fe654ac258f1d787c54eab970af353f6"
+    },
+    {
+      "original_path": "docs/design/store-independent-core-completion.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/store-independent-core-completion.md",
+      "original_sha256": "f7945c2fe98f626082f99593c097118eab31b2303ef7cfd4cce332c799db758c"
+    },
+    {
+      "original_path": "docs/design/store-planner-experiment.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/store-planner-experiment.md",
+      "original_sha256": "c7aac8f51d8b8bc2317603df0dc4ad1236c4ab2627e9e14589477961639b72ff"
+    },
+    {
+      "original_path": "docs/design/store-refactor-concerns.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/store-refactor-concerns.md",
+      "original_sha256": "2f7f07b085c25af984844af4af32f5e431fb35c59359249ef2dbba7246ccf001"
+    },
+    {
+      "original_path": "docs/design/store-removal-audit.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/store-removal-audit.md",
+      "original_sha256": "1cdde9af7e76ad9013e017cab85177976bfe6de76bafa0ddf21ad58450327d95"
+    },
+    {
+      "original_path": "docs/design/supplied-method-templates.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/supplied-method-templates.md",
+      "original_sha256": "20d40499235c37ab8fea7463e5aab76242936b1887ae8a40b1581867906b1189"
+    },
+    {
+      "original_path": "docs/design/task-field-migration-performance.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/task-field-migration-performance.md",
+      "original_sha256": "3713f53f30925d31a0c26f24d7b94aea86f79967d101cdcbe82e4c3fd425e26c"
+    },
+    {
+      "original_path": "docs/misc/DESIGN.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/language-design.md",
+      "original_sha256": "1ec4cae73d3778725c97e328cf1647384705bef714f21a880e7a3bf7d283821a"
+    },
+    {
+      "original_path": "docs/validation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/validation-history.md",
+      "original_sha256": "97a14245ce982bfbdc41ccb2fbbfcb03ab18e38c08715d901ee64fac51ac05b1"
+    },
+    {
+      "original_path": "docs/documentation-review.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/documentation-review-20260930.md",
+      "original_sha256": "41046da5ec72cef6e92c9d4d5a345673676b2d82260cffacd15efad7fa88c1dc"
+    },
+    {
+      "original_path": "docs/design/prepared-operation-admission.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/prepared-operation-admission.md",
+      "original_sha256": "b7df74d61863531545f66c8f323a1afe170fa71271041a7c5a2e9f08e41d7023"
+    },
+    {
+      "original_path": "docs/design/retained-compilation-records.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/retained-compilation-records.md",
+      "original_sha256": "4460f4c0dbbf435dbdd10e0e8d88334e93bb888a5d558074663d7f5374e49205"
+    },
+    {
+      "original_path": "docs/design/minimal-mutation-and-coordination.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/minimal-mutation-and-coordination.md",
+      "original_sha256": "15745f4cb99a84323b7cd26d71b589523d40366503d320809491ff5c2d3ba79c"
+    },
+    {
+      "original_path": "docs/design/module-owned-registry.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/module-owned-registry.md",
+      "original_sha256": "a1ef8c48d18f10c02b941a48787572d7fc1a49a8aca19ee90c0b240cb64e0258"
+    },
+    {
+      "original_path": "docs/design/scoped-generation-transactions.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/scoped-generation-transactions.md",
+      "original_sha256": "d65643fead6a5a0118f8d465c1bf446905ca6951c34d5b0d38fdd6fc9a13b489"
+    },
+    {
+      "original_path": "docs/design/owned-globals.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/owned-globals.md",
+      "original_sha256": "9295dd9f0fdf475fdff7ff2abcb56fae5c673900b55a2a1c84a692918d1010df"
+    },
+    {
+      "original_path": "docs/design/standalone-cells.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/standalone-cells.md",
+      "original_sha256": "598d346386befc194e44a7a075774ef7fc894eb362f62a0d9588017c86cf4ae9"
+    },
+    {
+      "original_path": "docs/design/lifecycle-record-owners.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/lifecycle-record-owners.md",
+      "original_sha256": "b2974d7b4eca5857da314bcba0cf4ea39b15645a9d2c8ab4dd3a0806f12b3dde"
+    },
+    {
+      "original_path": "docs/design/operation-dispatch-and-global-resolution.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/operation-dispatch-and-global-resolution.md",
+      "original_sha256": "246491eace7f669c0e30d1a99015bc32709409ad785e7eddef293956a02fd50c"
+    },
+    {
+      "original_path": "docs/design/reflect-without-store.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/reflect-without-store.md",
+      "original_sha256": "ebc473fc2715bb27c20bfb59f7930bc80e62ca6d8a520f7685d514fdb8a223f5"
+    },
+    {
+      "original_path": "docs/design/optional-provider-loading.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/optional-provider-loading.md",
+      "original_sha256": "ae6914cb6a0b03e1f640dae924b2bd7f8e224bb8f2a82a467b0cb77d76263989"
+    },
+    {
+      "original_path": "docs/design/optional-store-image.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/optional-store-image.md",
+      "original_sha256": "ae77206071566cdb1f7caa02902113f54edc6a42ac5a9b65c69ba6f0e4143cd8"
+    },
+    {
+      "original_path": "docs/design/basic-live-image-loading.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/basic-live-image-loading.md",
+      "original_sha256": "6789c023632363577b99ff767f4d1e9d0115b6acb5b02c87d1acfb5f22b87871"
+    },
+    {
+      "original_path": "docs/design/explicit-image-adoption.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/explicit-image-adoption.md",
+      "original_sha256": "0f00663d0276f730c7b3dd4ec97bf396b844673b9c1ef2dfbda9c55fcb35b63a"
+    },
+    {
+      "original_path": "docs/design/one-way-image-application.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/one-way-image-application.md",
+      "original_sha256": "700bbdf293fc347aa36178ee9edc168a2030f2c89afab6ea4035e6713aa7afff"
+    },
+    {
+      "original_path": "docs/design/candidate-policy-migration.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/candidate-policy-migration.md",
+      "original_sha256": "d67bd8efb3cf944e8ab76c85a51237273a1d93dc94586ca2b23a50c03f48edcc"
+    },
+    {
+      "original_path": "docs/design/module-scoped-candidates.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/module-scoped-candidates.md",
+      "original_sha256": "d163f0fc9d5768574f3c238f7e402fadc128e974f58647ef686699898815adc3"
+    },
+    {
+      "original_path": "docs/design/opt-in-generation-baselines.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/opt-in-generation-baselines.md",
+      "original_sha256": "2dd55fb845e0c61850f6063d3363ac01f749ca1c04b5498bbc932ad3aab431c3"
+    },
+    {
+      "original_path": "docs/design/ordinary-candidate-activation.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/ordinary-candidate-activation.md",
+      "original_sha256": "e2ea1ef11379e79d964afc8dee0d981e8d59f87b291cf7c83639b22d18c7c975"
+    },
+    {
+      "original_path": "docs/design/ordinary-edit-and-snapshot.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/ordinary-edit-and-snapshot.md",
+      "original_sha256": "fea63135d77ea55d1129e71a7837a53b1d5ddb9650582e658814e04a9b1ae21c"
+    },
+    {
+      "original_path": "docs/design/logical-candidate-discard.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/logical-candidate-discard.md",
+      "original_sha256": "9d792081ae82d45e97ca908e85c25abd3400eba0c8f332c69b4cbca0b64f0492"
+    },
+    {
+      "original_path": "docs/design/42-object-canonical-relational-derived.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/42-object-canonical-relational-derived.md",
+      "original_sha256": "c1497b32870719197dc84dd6d102edad0821049e11db5b46921a4d591d4af911"
+    },
+    {
+      "original_path": "docs/design/37-the-relational-reading.md",
+      "archived_path": "docs/archive/2026-10-runtime-refactors/37-the-relational-reading.md",
+      "original_sha256": "55485b166cfc269c9beaad975d0e0408d57b4d7eeed14867394aadcb0d159c19"
+    }
+  ]
+}

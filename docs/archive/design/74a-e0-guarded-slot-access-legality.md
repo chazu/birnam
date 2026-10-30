@@ -10,7 +10,7 @@
 Design 74 asks whether generated StepMethods may replace the late-bound
 `oopAt:` and `oopAt:put:` sends to the Machine with a guarded direct access,
 while preserving every current semantic and lifetime contract. The governing
-rule is [Design 60F §4](../../design/60f-resumable-compiler-lowering.md): machine microcode
+rule is [Design 60F §4](../2026-10-runtime-refactors/60f-resumable-compiler-lowering.md): machine microcode
 remains late-bound, and an optimizer may remove those sends only if it proves
 the same mutation, lookup, failure, and reflection behavior under the ordinary
 Birnam protocol.
@@ -277,8 +277,8 @@ not part of the frozen IdApi struct, not persisted.
 
 ### 6.1 Pending-transition reads and writes
 
-[Design 60B §1](../../design/60b-stackless-machine-and-frames.md) and
-[Design 60F §10.3](../../design/60f-resumable-compiler-lowering.md) state that checked Frame
+[Design 60B §1](../2026-10-runtime-refactors/60b-stackless-machine-and-frames.md) and
+[Design 60F §10.3](../2026-10-runtime-refactors/60f-resumable-compiler-lowering.md) state that checked Frame
 mutation while a layout-v2 transition is pending fails with
 `frameTransitionPending`. In the checkout, `Arena::read_oop` and `write_oop`
 do not consult `pending_edge`; only `begin_v2_transition` rejects a second

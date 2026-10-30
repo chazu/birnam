@@ -11,7 +11,7 @@
 > I1a's executable contracts were accepted by the
 > [plan-hardening follow-up review](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/50a-i1a-plan-hardening-follow-up-review.md).
 > The implemented starting point remains
-> [47 — CompiledUnit Lifecycle](../../design/47-compiled-unit-lifecycle.md).
+> [47 — CompiledUnit Lifecycle](../2026-10-runtime-refactors/47-compiled-unit-lifecycle.md).
 
 ## 1. Outcome and order
 

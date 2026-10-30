@@ -114,7 +114,7 @@
 > code-unit count, and a reason. The current implementation accepts and emits
 > v4 only; v2/v3 are rejected. `--rebuild` and ABI/architecture fallback visibly enter source
 > recovery rather than pretending to be normal boot. The next live replacement
-> boundary is [45 — Compiled Units](../../design/45-compiled-units.md). Its accepted successor
+> boundary is [45 — Compiled Units](../2026-10-runtime-refactors/45-compiled-units.md). Its accepted successor
 > uses one sealed runtime-generation authority; the file-backed evolution workflow
 > planned in [49 — Live Module Evolution](49-live-module-evolution.md) was
 > withdrawn after the lower-level candidate boundary shipped.
@@ -125,7 +125,7 @@
 > is retained as the compatibility oracle used by the cross-floor image matrix.
 >
 > **Stackless image-v5 design boundary (2026-08-15; not implemented):**
-> [60F](../../design/60f-resumable-compiler-lowering.md) owns the semantic requirement for a
+> [60F](../2026-10-runtime-refactors/60f-resumable-compiler-lowering.md) owns the semantic requirement for a
 > `Resumables` record, generation selection provenance, and tagged generated
 > block-vtable references. [60I](../../design/60i-stackless-artifact-byte-grammar.md) is the
 > sole authority for their exact v5 record tags, payload bytes, manifest-index

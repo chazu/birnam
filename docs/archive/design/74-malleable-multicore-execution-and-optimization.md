@@ -54,7 +54,7 @@
 > fit at the user's request. Bounded missing-Frame reconstruction, Id-authored
 > recovery policy and continuation storage pass in debug/release and full
 > verification. Counterexamples establish identity/effect/observation limits;
-> [60P](../../design/60p-v2-control-completion.md) completes V2 capture/suspend publication
+> [60P](../2026-10-runtime-refactors/60p-v2-control-completion.md) completes V2 capture/suspend publication
 > and removes Frame layout V1.
 > [74P](74p-production-recovery-and-leaf-inlining.md) implements the checked
 > Id-facing recovery contract and guarded projection inlining. Validation and
@@ -140,8 +140,8 @@ make those modules safe for independent threaded Runtimes.
 This is an incomplete concurrency product, not evidence that the delivered
 suspension mechanism is malfunctioning. Design 48 contains historical constraints
 that predate stackless execution; read its retained isolate contract together
-with [60A](../../design/60a-stackless-execution-semantics.md) and
-[60D](../../design/60d-stackless-concurrency-fit.md), rather than treating every historical
+with [60A](../2026-10-runtime-refactors/60a-stackless-execution-semantics.md) and
+[60D](../2026-10-runtime-refactors/60d-stackless-concurrency-fit.md), rather than treating every historical
 statement as current implementation status.
 
 ## 3. Properties to preserve
@@ -164,8 +164,8 @@ The following are requirements for this investigation:
 - Identity remains meaningful, including distinct boxed values where the current
   system preserves them. Numeric equality is not permission to merge objects.
 
-These follow [42](../../design/42-object-canonical-relational-derived.md),
-[60F section 4](../../design/60f-resumable-compiler-lowering.md#4-semantic-preservation-and-late-binding),
+These follow [42](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md),
+[60F section 4](../2026-10-runtime-refactors/60f-resumable-compiler-lowering.md#4-semantic-preservation-and-late-binding),
 and [60O](../../design/60o-image-v8-identity-preservation.md). Design 60F currently prohibits
 call-site target caching and defines no optimization tier. This proposal does
 not override that rule. A future reviewed optimization contract must explain its
@@ -195,7 +195,7 @@ its overridability through guards before proposing that reduction in malleabilit
 Keep the independent source-only cold bootstrap with the declared non-Birnam
 toolchain, currently Rust. Historical Zig references in
 [44](44-toward-self-hosting.md) describe earlier implementations, not a permanent
-language requirement; [62](../../design/62-rust-native-rungs-migration-plan.md) records the
+language requirement; [62](../2026-10-runtime-refactors/62-rust-native-rungs-migration-plan.md) records the
 native-rung and cold-compiler migration.
 
 A Birnam-authored compiler may emit efficient native operations. A Birnam-authored
@@ -385,7 +385,7 @@ The consequences are observable in ordinary programs:
 - **Native stack growth:** fully resumable call chains can keep native stack use
   bounded. Repeated recursion through synchronous native methods and Birnam
   callbacks still adds native activations and can overflow the native stack.
-  [Design 60E's boundary analysis](../../design/60e-resumable-registration-and-entry.md#53-what-migration-does-and-does-not-preserve)
+  [Design 60E's boundary analysis](../2026-10-runtime-refactors/60e-resumable-registration-and-entry.md#53-what-migration-does-and-does-not-preserve)
 - **Live editing and recovery:** future ordinary sends must observe supported
   method changes, while active implementations retain their existing lifetime
   semantics. Birnam cannot reconstruct or rewrite the internal execution of an

@@ -88,7 +88,7 @@ or the smallest missing transition, not to assume an ABI break is necessary.
 
 | Existing mechanism | Consequence for this proposal |
 | --- | --- |
-| [60P](60p-v2-control-completion.md) stages a Call edge with predecessor roots and commits it when supplied an answer. | The internal park call can receive a tagged wake through ordinary resume. |
+| [60P](../archive/2026-10-runtime-refactors/60p-v2-control-completion.md) stages a Call edge with predecessor roots and commits it when supplied an answer. | The internal park call can receive a tagged wake through ordinary resume. |
 | [resume_suspended](../../rust/birnam-runtime/src/execution.rs#L2281) validates and commits the top pending Call before driving its successor. | The top pending Call must belong to a library adapter, not the application's `receive` call. |
 | [commit_v2_transition](../../rust/birnam-runtime/src/execution.rs#L1371) applies parallel copies, result insertion, clears, and the successor root state. | The handler's exit result must use a real descriptor-admitted Call edge. No arbitrary PC assignment. |
 | [finish_stackless_return](../../rust/birnam-runtime/src/runtime.rs#L3296) pops a frame, commits its caller's Call, and releases its entry pin without invoking user code while borrowed. | Delimited exit can follow the same transfer discipline, but must preflight the entire multi-frame transition. This function is not already a delimited unwinder. |

@@ -19,8 +19,8 @@
 >
 > Builds on [40 — The Image](40-the-image.md),
 > [43 — Modules and the Self-Hosted Layer](43-modules-and-config.md),
-> [45 — Compiled Units Are Primary](../../design/45-compiled-units.md),
-> [47 — CompiledUnit Lifecycle](../../design/47-compiled-unit-lifecycle.md), and
+> [45 — Compiled Units Are Primary](../2026-10-runtime-refactors/45-compiled-units.md),
+> [47 — CompiledUnit Lifecycle](../2026-10-runtime-refactors/47-compiled-unit-lifecycle.md), and
 > [48 — Concurrency: Reactors, Isolates, and Structured Operations](48-concurrency-reactors-and-isolates.md).
 > The first review is retained as
 > [49a — Adversarial Review: Live Module Evolution](https://github.com/chazu/birnam/blob/6339747b7e7b51df74fab518001281322510cac5/docs/design/49a-live-module-evolution-adversarial-review.md).

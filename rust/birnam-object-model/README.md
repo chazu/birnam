@@ -173,8 +173,8 @@ slot, clone and image operations now use the same nested inventory
 for private temporary protection; explicit program Root sends are unchanged.
 The boxed slot adapter retains fixed Symbol names, while namespace bindings,
 numeric conversion and raw slot access remain current sends. See
-[the slot and String cost slice](../../docs/design/slot-and-string-cost.md). See
-[the lifetime and boxing slice](../../docs/design/helper-lifetime-and-boxing.md).
+[the slot and String cost slice](../../docs/archive/2026-10-runtime-refactors/slot-and-string-cost.md). See
+[the lifetime and boxing slice](../../docs/archive/2026-10-runtime-refactors/helper-lifetime-and-boxing.md).
 
 ## Atomic representation facts
 
@@ -182,4 +182,4 @@ The owner uses Id `tryRepresentationIdentityOf:behavior:bytes:` for exact behavi
 extent and nonzero allocation identity. Canonical admission is callback-free and
 consumed immediately. Unit/UNBOUND uses the original ordered getter sequence;
 other failures propagate. Metadata/query/lookup replacement declines admission.
-See [the contract and evidence](../../docs/design/representation-validation-and-lifetime.md).
+See [the contract and evidence](../../docs/archive/2026-10-runtime-refactors/representation-validation-and-lifetime.md).

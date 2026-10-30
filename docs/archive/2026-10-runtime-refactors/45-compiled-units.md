@@ -1,0 +1,181 @@
+# Compiled Units Are Primary
+
+> Archived 2026-10-30. Historical decisions, implementations and measurements;
+> not current architectural authority or a work queue. Statements such as
+> “current,” “required,” and “remaining” describe the recorded period.
+> Use [Birnam invariants](../../../INVARIANTS.md) for current requirements.
+
+> **Status:** Current contract, revised 2026-07-22 for self-describing standalone
+> artifacts and reconciled 2026-07-23 with the implemented image v4
+> single-generation authority. This document records the authority model
+> implemented by image format v4 and the live-reload boundary. It
+> refines [40 — The Image](../design/40-the-image.md), [42 — Object Canonical](42-object-canonical-relational-derived.md),
+> and [43 — Modules](../design/43-modules-and-config.md).
+
+> **Image-format amendment (2026-08-25):** The v4 sections below describe the
+> former single-generation authority contract. Current runtimes admit v5 and
+> later and deliberately provide no v4 compatibility reader. The authority
+> ordering remains current; v4 wire-format and boot-compatibility claims are
+> historical.
+
+## The authority order
+
+Birnam is simultaneously live and native. Those are not competing modes:
+compatible compiled dylibs are the **primary executable layer** of a running
+image. They own installed dispatch and top-level runtime initialization. A
+normal image boot maps those units and starts sending messages without
+recompiling them.
+
+The remaining layers have distinct supporting roles:
+
+- The **active object environment** supplies live identity, dispatch, and data.
+- The **fact store** is durable data plus an informal reflection/meta API. Its
+  method facts mirror the dispatch dictionary; they do not override it.
+- **Source** is retained for authoring, inspection, bootstrap, and explicit
+  recovery. It is not the normal runtime authority for a compatible image.
+
+This order prevents a subtle but damaging interpretation: the dylib embedded in
+an image is not a cache that can be discarded in favor of facts or source. It is
+the executable artifact the image saved.
+
+## Standalone compiled artifacts
+
+The same authority rule applies outside an image. Every production module dylib
+contains a pointer-free descriptor with its canonical identity, artifact ABI,
+target, roots, module and native requirements, capabilities, and source/revision
+digests. Authored source and reflection metadata travel in the compiled unit;
+loose production `.birnam` files are build inputs, not installed runtime files.
+
+`[Artifact inspect:]` reads that descriptor directly from artifact bytes without
+`dlopen`, running constructors, or invoking `__birnam_unit_init` or `__ev`. The
+siphon uses only `libid` and the artifact-inspector rung to inspect a selected
+root and its complete sibling dependency closure. A wrong kind, requested
+identity, target, ABI, cycle, or unavailable native requirement is rejected
+before the language activation stack or any artifact initializer runs.
+
+After inspection succeeds, `Module` builds a complete dependency-first plan and
+only then asks Codegen to activate each artifact. This separation means an
+invalid later dependency cannot leave an earlier sibling partially installed.
+The descriptor is publication and runtime authority; there is no external
+artifact inventory. Installed roots carry no project or build TOML sidecar.
+
+See [Design 54](../../design/54-relocatable-bundles.md) for distribution and [Shipping
+compiled artifacts](../guide/09-shipping-artifacts.md) for the user-facing
+workflow.
+
+## What Is Shipped
+
+### Image v4
+
+`src/id/image.zig` writes and accepts v4 images. Each image contains exactly one
+current-generation authority record followed by exactly one checksum-bound
+`.code` record with its relocatable dylib bytes. Loading preflights the complete
+record stream before it replaces store state or materializes heap objects.
+Missing, duplicate, reordered, or mismatched authority/code records reject the
+load. Unsupported v2/v3 images remain rejected; compatibility in this contract
+means frozen v4 images from the Zig implementation or a previous compatible
+release.
+
+A full save captures the primary unit before classifying data that depends on
+it, then publishes the completed image with an atomic rename. A rejected save
+does not truncate or replace the prior image.
+
+### Primary Unit Contents
+
+`[Codegen compileImageCode:]` compiles both:
+
+- recorded module programs (`__modsrc__`), which run top-level initializers for
+  named live objects such as parser grammars; and
+- recorded method definitions (`__methods__`), which install compiled dispatch.
+
+This is necessary for a compiled image to be self-consistent. Method sources
+alone cannot recreate a module-owned object established by its top-level
+program. Appended image generations that change either source category carry a
+composing `.code` unit; later units win in stream order.
+
+### Durable State Contract
+
+Every durable value must be one of the following:
+
+1. **Directly encodable** into facts and heap records.
+2. **Source recoverable**, such as a top-level block with a recorded
+   `__globalsrc__` definition.
+3. **Compiled-unit recoverable**, such as a method-mirror fact, a code-owned
+   global, or a module-owned global whose recorded module program initializes
+   it.
+
+Anything else rejects the save. It is never silently omitted from a published
+image. `[System imageSaveReport]` provides the status, fact and slot counts,
+captured code-unit count, and a diagnostic reason.
+
+### Explicit Recovery
+
+`--rebuild`, an ABI/architecture mismatch, or a data-only legacy image takes
+the source-recovery path. The boot message says this explicitly, then replay
+evaluates recorded module programs before method definitions. Alien replay and
+source-backed-global derivation run after code resolution.
+
+Recovery is a portability and repair mechanism. It does not redefine the
+normal compatible-image boot path.
+
+## Current Boundary
+
+The runtime can compile and load native code live, images compose compiled
+generations, and `CompiledUnit` provides a first-class staged dispatch lifecycle
+for replacing one active generation while preserving an exact rollback point.
+The transaction covers method additions, replacements, and explicit removals; it
+does not pretend arbitrary initializer effects are reversible. Existing dylibs
+remain loaded for process lifetime because Birnam cannot safely unload code while
+closures or dispatch entries may still reference it.
+
+The current platform and verification boundary is deliberately narrow:
+
+- [arm64 macOS only](../../misc/PLATFORM-SUPPORT.md);
+- `zig build verify` is the required cross-layer gate; and
+- the verification suite covers checksums, rejected-save preservation, mapped
+  boot, source recovery, module initialization, and composing code generations.
+
+## CompiledUnit Lifecycle
+
+The concrete design is [47 — CompiledUnit Lifecycle](47-compiled-unit-lifecycle.md),
+implemented after adversarial review. It scopes "transactional" to staged dispatch
+generations (add/replace/remove), keeps arbitrary initializer effects outside the
+claim, routes supported mutation through Store's MOP, and gives image composition
+an honest reflected executable generation.
+
+The implemented vertical slice:
+
+1. compile a named candidate unit without changing active dispatch;
+2. validate its metadata and load it as a candidate;
+3. atomically activate its method bindings as one generation;
+4. retain the prior unit as the rollback generation; and
+5. expose active units and activation history through the reflection/meta API.
+
+The implementation retains old dylibs indefinitely. Safe unloading
+requires a later proof that no method, block, callback, or object slot can reach
+their code. Correct live replacement and observable provenance come first.
+
+The verification suite covers named-unit reload, failed-candidate inertness,
+supersession and rollback, managed drift, and compatible/rebuilt image boot. See
+the [user guide](../../guide/05-compiled-units.md) for the supported API.
+
+## Adjacent Architecture Boundary
+
+The retained adjacent runtime slices are:
+
+```text
+L1a — generation authority and image coherence
+→ I1a — blocking single-worker isolate substrate
+```
+
+[Design 49](../design/49-live-module-evolution.md) records the generation authority and
+candidate boundary; [design 48](../design/48-concurrency-reactors-and-isolates.md) records
+I1a's clean worker boot, bounded copied-value wire protocol, single blocking
+request, and owned termination. The later file-backed, replacement, and
+cross-worker rollout slices were withdrawn as unnecessary policy surface.
+
+Initialization, image-native source patching, migration, structured operations,
+and pool-wide live-evolution policy remain later evidence-driven slices.
+
+The retired executable work breakdown is preserved in
+[50 — Five-Phase Implementation Plan](../design/50-five-phase-live-modules-and-isolates-implementation-plan.md).

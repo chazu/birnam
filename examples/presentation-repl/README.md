@@ -92,7 +92,7 @@ normal Birnam name to keep it beyond transcript eviction, for example
 
 **Historical prototype startup:** preparing the code reduced the measured median from **4.63 s
 to 3.18 s** (31%); ordinary Birnam startup was 2.93 s in the same series. See the
-[startup profile and acceptance](../../docs/design/presentation-repl-startup.md).
+[startup profile and acceptance](../../docs/archive/2026-10-runtime-refactors/presentation-repl-startup.md).
 Initial preparation is paid once when inputs change; these launch times exclude it.
 
 From the repository root:

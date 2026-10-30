@@ -57,7 +57,7 @@ of Store. The native Globals seed/facade, import and automatic-fact cleanup are
 removed. Explicit `#__globals__` facts are ordinary independent data; they do not
 change bindings, and binding writes do not change Store's basis. Loading Store
 after Globals preserves the binding facade, storage owner and existing values.
-See [the ownership contract](../../docs/design/owned-globals.md).
+See [the ownership contract](../../docs/archive/2026-10-runtime-refactors/owned-globals.md).
 
 The existing MOP responsibilities are preserved through messages:
 

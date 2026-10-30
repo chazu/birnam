@@ -1,12 +1,12 @@
 # 74AK — Bounded qualification and default selection
 
 > **Allocation policy superseded (2026-09-24):**
-> [Design 90](../../design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> [Design 90](../2026-10-runtime-refactors/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
 > retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
 > prepaid deferred identities. Preserve language effects, observable identity,
 > recovery and actual resource lifetimes. Older algorithms, receipts and commands
 > below record history; they do not require restoring that machinery. See the
-> [Self implementation review](../../design/90-self-optimization-review.md).
+> [Self implementation review](../2026-10-runtime-refactors/90-self-optimization-review.md).
 
 The user authorized one hour on 2026-09-14, then authorized enabling optimizations
 when the comparisons show no apparent slowdown. This replaces the earlier need

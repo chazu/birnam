@@ -3,7 +3,7 @@
 > **Status:** Historical pre-id-stack demo. Its `.bim`, module names, CLI flags,
 > and fact-canonical execution description do not describe the current system.
 > Use the root [README](../../../README.md), the current [guides](../../guide), and
-> [Compiled Units Are Primary](../../design/45-compiled-units.md). This file remains
+> [Compiled Units Are Primary](../2026-10-runtime-refactors/45-compiled-units.md). This file remains
 > only as a record of the earlier demonstration.
 
 End-to-end demonstration of the relational-fact-store substrate running a tiny

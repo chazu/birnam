@@ -1559,7 +1559,7 @@ release after the runtime/ABI migration. The release package targets arm64 macOS
   resumable per-step evidence and configuration-specific development build reuse.
   CI shares builds across disjoint matrix workers; cold release builds remain
   independent. Historical measurement payloads are archived losslessly, and
-  [the validation guide](docs/validation.md) replaces temporary controller instructions.
+  [the validation guide](docs/archive/2026-10-runtime-refactors/validation-history.md) replaces temporary controller instructions.
 - Ordinary sends guard canonical Machine slot access and default lookup inside
   the runtime (Designs 74J/74L). Current methods, inheritance, custom lookup and
   native/resumable overrides retain their effects. IdApi, exported functions,

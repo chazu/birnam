@@ -172,7 +172,7 @@ use this path and do not enter application code after failed admission.
 `System loadImage:` and its existing variants remain explicit live restoration.
 A caller that may inspect the current world after failure must use that contract
 and accept partial application. See
-[basic live loading](../../docs/design/basic-live-image-loading.md).
+[basic live loading](../../docs/archive/2026-10-runtime-refactors/basic-live-image-loading.md).
 
 Generation keeps only an application-in-progress flag, not a recoverable copy of
 old capabilities or a composition-digest recovery handshake. A staging failure
@@ -190,7 +190,7 @@ New executable images include v8 record 12, an ordered native-provider declarati
 Module activates that declared closure before heap restoration; core declarations
 are empty. Older executable images require rebuilding. The retained-facts codec
 is unchanged. See the
-[optional participation contract](../../docs/design/optional-store-image.md).
+[optional participation contract](../../docs/archive/2026-10-runtime-refactors/optional-store-image.md).
 
 After ordinary bindings are installed, Image asks the foreign owner for its projected
 recipe rows using captured-receiver preparation, installs foreign bindings through

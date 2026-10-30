@@ -1,7 +1,7 @@
 # Historical measurement evidence
 
 For the Logue/runtime work through `683c9fc2`, start with the
-[work summary](../design/logue-runtime-work-summary.md). The latest corrected native
+[work summary](../archive/2026-10-runtime-refactors/logue-runtime-work-summary.md). The latest corrected native
 qualification is [id-send-correction-20261023.json](id-send-correction-20261023.json).
 Earlier Logue timings, Oop prototypes and owner-migration receipts retain their
 original baselines and acceptance limits. In particular, receipts from the removed
@@ -26,7 +26,7 @@ restores exact original files for external tools that do not understand stubs.
 Never edit a historical archive payload to make old qualification pass. This
 migration affects the working tree; it does not rewrite Git history.
 
-For current commands see [validation](../validation.md), and for current
+For current commands see [validation](../archive/2026-10-runtime-refactors/validation-history.md), and for current
 optimization decisions see [74AK](../archive/design/74ak-bounded-qualification-and-defaults.md).
 
 The [Design 81 closeout receipt](81-production-closeout.json) records the final

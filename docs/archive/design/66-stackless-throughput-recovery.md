@@ -200,10 +200,10 @@ authorize replacing the late-bound execution model.
 
 ## 5. Semantic and release gates
 
-[60E](../../design/60e-resumable-registration-and-entry.md) requires protected lookup through
+[60E](../2026-10-runtime-refactors/60e-resumable-registration-and-entry.md) requires protected lookup through
 classification and acquisition, including lookup-triggered mutation. No new
 per-resolution allocation, mutex, atomic RMW or reference-count work belongs in
-that fast path. [60F §4](../../design/60f-resumable-compiler-lowering.md) explicitly preserves
+that fast path. [60F §4](../2026-10-runtime-refactors/60f-resumable-compiler-lowering.md) explicitly preserves
 late-bound Machine microcode and source sends. [60O](../../design/60o-image-v8-identity-preservation.md)
 preserves boxed identity. No proposal may assume these contracts away.
 

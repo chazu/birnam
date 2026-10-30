@@ -449,7 +449,7 @@ and tracing witness; [81I](81i-ordinary-storage-reclamation.md) adds ordinary
 reclamation and metadata retirement. Callable ownership, behavior/weak-Symbol
 retirement and execution roots remain before claiming the harder layers are
 extractable. Each L1–L13 proof above is a separate
-acceptance obligation. Runtime changes use the [validation workflow](../../validation.md);
+acceptance obligation. Runtime changes use the [validation workflow](../2026-10-runtime-refactors/validation-history.md);
 existing aggregate-runtime tests remain useful regressions but cannot prove an
 isolated boundary by themselves. Birnam replacement additionally requires a
 compiled primitive-body demonstration with stage-0 runtime libraries unavailable.

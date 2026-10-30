@@ -1,17 +1,17 @@
 # 74O — Deoptimization architectural fit
 
 > **Allocation policy superseded (2026-09-24):**
-> [Design 90](../../design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> [Design 90](../2026-10-runtime-refactors/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
 > retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
 > prepaid deferred identities. Preserve language effects, observable identity,
 > recovery and actual resource lifetimes. Older algorithms, receipts and commands
 > below record history; they do not require restoring that machinery. See the
-> [Self implementation review](../../design/90-self-optimization-review.md).
+> [Self implementation review](../2026-10-runtime-refactors/90-self-optimization-review.md).
 
 Status: bounded feasibility experiments complete, 2026-09-11. General
 reconstruction is test-only; no production admission or performance claim.
 
-> Superseded implementation gap: [60P](../../design/60p-v2-control-completion.md) completes
+> Superseded implementation gap: [60P](../2026-10-runtime-refactors/60p-v2-control-completion.md) completes
 > V2 suspend/capture publication and result transfer, and removes Frame layout
 > V1. The original 74O receipt and findings below describe the earlier feasibility
 > snapshot. The live continuation probe now expects valid Call-edge publication

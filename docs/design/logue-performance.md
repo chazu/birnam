@@ -4,7 +4,7 @@ The second application workload exercises stateful computation: seeded dungeon
 generation followed by repeated monster movement, combat and player-state
 updates. The original baseline below used the unchanged `logue-core.birnam`
 and passed its 28-assertion headless regression. The subsequent
-[bounded-message fix](logue-message-log.md) expands that regression to 34 checks.
+[bounded-message fix](../archive/2026-10-runtime-refactors/logue-message-log.md) expands that regression to 34 checks.
 
 The [runner](../../scripts/logue-bench.py) drives the
 [Birnam harness](../../examples/logue/logue-bench.birnam) and compares results
@@ -111,5 +111,5 @@ attributed wholly to the game or Store history. Retention needs a separate
 controlled investigation if it remains significant after fixing the log.
 
 This original baseline included no game or language optimization. The
-[follow-up](logue-message-log.md) records the bounded-message correction and
+[follow-up](../archive/2026-10-runtime-refactors/logue-message-log.md) records the bounded-message correction and
 post-fix profiling, separately from these historical measurements.

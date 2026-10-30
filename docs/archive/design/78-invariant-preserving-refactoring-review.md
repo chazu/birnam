@@ -30,7 +30,7 @@ prerequisite receipts. That is an evidence audit, not a fresh test run or
 exhaustive, release, or hosted-CI acceptance. These results describe the inspected
 baseline, not future refactor correctness.
 
-[75](../../design/75-code-quality-and-responsibility.md) remains substantially applicable.
+[75](../2026-10-runtime-refactors/75-code-quality-and-responsibility.md) remains substantially applicable.
 This review adds optimizer preparation and recovery-transition opportunities,
 and narrows the earlier recommendation to meet the user's invariant-preserving
 scope. In particular, the worker-selector correction is **excluded from the
@@ -56,17 +56,17 @@ are concrete rejection criteria, not a claim that documentation proves safety.
 
 | Invariant | What a refactor must preserve | Authority |
 | --- | --- | --- |
-| Malleability and dispatch | Fresh dynamic lookup at the existing send points; method replacement, inherited dispatch, shadowing, custom metacircular lookup, DNU, and reflection remain effective. Existing guard checks and fallbacks keep their exact authority and timing. | [42](../../design/42-object-canonical-relational-derived.md), [60A](../../design/60a-stackless-execution-semantics.md), [60F](../../design/60f-resumable-compiler-lowering.md), [74I](74i-public-api-guard-boundary.md) |
+| Malleability and dispatch | Fresh dynamic lookup at the existing send points; method replacement, inherited dispatch, shadowing, custom metacircular lookup, DNU, and reflection remain effective. Existing guard checks and fallbacks keep their exact authority and timing. | [42](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md), [60A](../2026-10-runtime-refactors/60a-stackless-execution-semantics.md), [60F](../2026-10-runtime-refactors/60f-resumable-compiler-lowering.md), [74I](74i-public-api-guard-boundary.md) |
 | Evaluation and observation | Receiver evaluated once, then arguments once left to right, before lookup. Preserve send/callback counts, error precedence, effects, allocation charges, GC/finalizer boundaries, and observable Frame state. Equal final values alone are insufficient. | 60A, 60F, [74](74-malleable-multicore-execution-and-optimization.md) |
-| Active implementation ownership | Active/suspended Frames retain their entered implementation; later sends see current dispatch. Blocks, Continuations, bindings and leases retain needed code. Cache eviction is not permission to unload. | [60E](../../design/60e-resumable-registration-and-entry.md), [60J](../../design/60j-runtime-identity-and-history-compaction.md), [60N](../../design/60n-portable-resumable-native-carrier.md) |
+| Active implementation ownership | Active/suspended Frames retain their entered implementation; later sends see current dispatch. Blocks, Continuations, bindings and leases retain needed code. Cache eviction is not permission to unload. | [60E](../2026-10-runtime-refactors/60e-resumable-registration-and-entry.md), [60J](../2026-10-runtime-refactors/60j-runtime-identity-and-history-compaction.md), [60N](../../design/60n-portable-resumable-native-carrier.md) |
 | Value and lexical semantics | Preserve numeric results and error cases, lexical scope, shared mutable Cells, capture binding/identity, and global/Store reads at their original execution points. No expression is reevaluated or hoisted across observation. | 60F, [64](../../design/64-pipeline-threading-and-combinators.md), 74 |
 | Object identity and durability | Preserve shared versus equal-but-distinct Oops, private vtables, captures and aliases; image round trips retain the same identity graph. Process-local Machine/control objects do not become durable. | [60O](../../design/60o-image-v8-identity-preservation.md), [60M](../../design/60m-portable-code-object-protocol.md), 60A |
 | GC and bounded retention | Keep exact root ownership and safe-point handoffs; no raw Oop in a Rust container becomes an implicit root. Preserve weak indexes, retirement ordering, resource limits and the fixed-live-set retention bound. | 60J, 60N, [74AF](74af-consumer-teardown.md) |
 | Metacircular protocol and expressibility | Preserve the existing overridability of Machine microcode and the Birnam-visible identity/reflection of Machine and StepAction Oops. Language/compiler policy must remain expressible in Id semantics. Keep the existing canonical action recognition and direct payload decoding; this does not introduce a send to interpret each action or support new action kinds. | 60A §3, 60F §4, 74 §§3.1/3.3 |
 | Arbitrary native participation | Ordinary native Methods remain callable without compiler, Frame, deoptimization or recovery metadata. Opaque native calls are never replayed, speculated or reconstructed by this refactor. Preserve the existing bounded native-stack behavior of resumable execution, native barriers and legal control operations; do not promise suspension across arbitrary native calls. | 60A, 60E, 74 §§3.2, 5.3, 6.3 |
-| Reentry and thread ownership | Preserve owner-thread Machines/Runtimes, native barriers, nested entry, and one-shot continuation behavior. No newly extended exclusive borrow or lock spans a callback-capable operation. | 60A, 60E, [60P](../../design/60p-v2-control-completion.md) |
+| Reentry and thread ownership | Preserve owner-thread Machines/Runtimes, native barriers, nested entry, and one-shot continuation behavior. No newly extended exclusive borrow or lock spans a callback-capable operation. | 60A, 60E, [60P](../2026-10-runtime-refactors/60p-v2-control-completion.md) |
 | Object authority and policy | Store remains derived from the live object environment. Birnam-authored compilation/project policy stays replaceable where it is today; Rust sharing must not freeze it into a native shortcut. | 42, [44](44-toward-self-hosting.md), [65](../../design/65-self-describing-project-publications.md) |
-| ABI, formats and bootstrap | Preserve IdApi/Method layouts, exported symbols, exact-current format admission, descriptor/generated-code contracts, source/native-load equivalence and independent cold bootstrap. Historical superseded layouts are not restored. | [60I](../../design/60i-stackless-artifact-byte-grammar.md), [60L](../../design/60l-portable-program-and-image-v7-byte-grammar.md) as amended by 60O/60P, [62](../../design/62-rust-native-rungs-migration-plan.md) |
+| ABI, formats and bootstrap | Preserve IdApi/Method layouts, exported symbols, exact-current format admission, descriptor/generated-code contracts, source/native-load equivalence and independent cold bootstrap. Historical superseded layouts are not restored. | [60I](../../design/60i-stackless-artifact-byte-grammar.md), [60L](../../design/60l-portable-program-and-image-v7-byte-grammar.md) as amended by 60O/60P, [62](../2026-10-runtime-refactors/62-rust-native-rungs-migration-plan.md) |
 | Publication | Ordinary run/install consume the successful publication without reading source or reparsing manifests; preserve rollback, offline dependency rules, diagnostics and native-library lifetimes. | 65 |
 | Independent evidence | Production implementations may share proven mechanics; independent byte readers, golden fixtures, compiler interpreters and semantic comparison oracles remain independent. | [72](72-rust-mechanical-consolidation.md), 75, 77 |
 
@@ -355,7 +355,7 @@ For each selected slice:
    results or existing independent oracles. Compare effects, errors, identity,
    callback order, Frame state, allocation accounting and lifetime—not just
    values or successful execution.
-4. Follow [the current validation guide](../../validation.md): focused checks for
+4. Follow [the current validation guide](../2026-10-runtime-refactors/validation-history.md): focused checks for
    iteration; routine correctness; exhaustive coverage for compiler/runtime/GC/
    recovery/language/ABI changes; release qualification when bootstrap, loading
    or publication changes affect cold/relocated behavior. Both supported GC

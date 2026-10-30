@@ -704,7 +704,7 @@ The helper-emission work was committed as `17cb5d54`. The next slice sizes each
 unit's private name table at compilation instead of reserving 512 entries in
 every unit. Names still resolve to retained canonical Symbols; every real send
 still dispatches in the current world. This follows the existing
-[fixed-name contract](design/fixed-names-and-local-protection.md), which does not
+[fixed-name contract](archive/2026-10-runtime-refactors/fixed-names-and-local-protection.md), which does not
 preserve repeated internal interning hooks or private root-registration counts.
 It does not authorize caching a selected method entry.
 

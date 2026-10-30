@@ -366,7 +366,7 @@ stale artifacts instead of interpreting them using the new layout. Retain old
 fixture provenance while replacing obsolete compatibility gates with independent
 checks for the new contract. No unrelated image-format change is implied.
 
-Follow the [validation workflow](../../validation.md) for implementation changes,
+Follow the [validation workflow](../2026-10-runtime-refactors/validation-history.md) for implementation changes,
 including exhaustive runtime/ABI/lifetime coverage and appropriate installed
 import audits. This document records a proposed design, not completed checks or
 authorization to omit existing semantic tests.

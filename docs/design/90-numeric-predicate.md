@@ -1,6 +1,6 @@
 # Design 90 — Arithmetic predicate with an unboxed intermediate
 
-Implemented after the [numeric-chain reassessment](90-numeric-chain-review.md).
+Implemented after the [numeric-chain reassessment](../archive/2026-10-runtime-refactors/90-numeric-chain-review.md).
 This combines a short numeric chain and removal of its intermediate Integer.
 It does not restore the old fused driver, loop cache or deferred-identity system.
 

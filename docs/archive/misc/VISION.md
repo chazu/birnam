@@ -7,8 +7,8 @@ A **system** is a binary that runs as an executable OR loads as a library, and w
 > behavior**; the active object environment provides live dispatch and identity;
 > the relational store is a durable data and reflection/meta mirror; and source
 > serves authoring, bootstrap, and explicit recovery. Read
-> [42 — Object Canonical](../../design/42-object-canonical-relational-derived.md)
-> and [45 — Compiled Units](../../design/45-compiled-units.md) for the current
+> [42 — Object Canonical](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md)
+> and [45 — Compiled Units](../2026-10-runtime-refactors/45-compiled-units.md) for the current
 > contract. Treat the tenets below as historical mechanisms and aspirations, not
 > as the authority model for the running system.
 

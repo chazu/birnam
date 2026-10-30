@@ -1,13 +1,9 @@
 # Source compiler over Id
 
-Current Oop migration checkpoint: synchronous and resumable source paths are
-connected through explicit `Codegen compileSynchronous:` / `compileResumable:`.
-The resumable path uses the retained Machine engine with `runBlock:budget:`,
-`continueWithBudget:` and `executionState`. See the
-[resumable milestone](../../docs/design/oop-resumable-milestone.md) for acceptance.
-Suspension/control/recovery, default compiler and full-runtime integration remain
-pending. Historical feature descriptions below are preservation requirements,
-not claims that every feature is available. No v1 compatibility path is built.
+Codegen compiles synchronous and resumable code through Id messages. The default
+source path produces resumable Methods executed by Execution Machines. See the
+[current architecture](../../ARCHITECTURE.md) and
+[runtime reference](../../docs/contracts/runtime.md) for the integrated design.
 
 Codegen consumes Lang CST messages and produces canonical portable programs and
 compiler metadata. [Generation](../birnam-generation/README.md) owns publication,
@@ -39,7 +35,7 @@ callable objects are not method bodies. Image and candidate binding preparation
 use the same current Reflect constructor. `implementationOf:` asks Execution's
 public `bodyOfMethod:` operation for its retained body; neither Codegen nor Id
 interprets Execution's representation. See the
-[necessity audit](../../docs/design/minimal-id-stackless-machinery.md).
+[Method behavior reference](../../docs/contracts/runtime.md#methods-and-definitions).
 
 Ordinary Reflect installation sends the current vtable `addMethod:as:` with the
 owned Method and selector. Removal checks direct presence and uses that vtable's
@@ -57,7 +53,7 @@ query. These operations inspect no foreign payloads or private owner tables.
 Image binding installation uses the same direct owner path. General snapshots
 preserve actual live Methods even if an opted-in managed revision has drifted;
 that metadata reloads as descriptive state, not a recovered activation capability.
-See [ordinary editing and snapshots](../../docs/design/ordinary-edit-and-snapshot.md).
+See [ordinary editing and snapshots](../../docs/archive/2026-10-runtime-refactors/ordinary-edit-and-snapshot.md).
 
 The uncompiled legacy compiler orchestration and its orphaned helpers/tests have
 been deleted. Git retains the historical implementation; it is not current
@@ -146,7 +142,7 @@ Source ownership in images is now `#[#sourceRegistryV2 owner]`: the heap and
 Globals preserve the actual owner, its state and aliases. Old registry inventories
 and source-less images require rebuilding. Early bootstrap installs the authored
 owner before named artifacts; no native registry seed is retained. Artifact
-metadata encoding is unchanged. See [retained compilation records](../../docs/design/retained-compilation-records.md).
+metadata encoding is unchanged. See [retained compilation records](../../docs/archive/2026-10-runtime-refactors/retained-compilation-records.md).
 
 Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
 Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated

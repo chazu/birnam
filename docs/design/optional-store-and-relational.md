@@ -3,7 +3,7 @@
 2026-10-13; implementation status reviewed 2026-10-20.
 **Status: completed and released in [v0.18.0](https://github.com/chazu/birnam/releases/tag/v0.18.0), with clean-candidate and archive acceptance.**
 The user selected completion of the Store-independent core before releasing.
-The [source-backed completion plan](store-independent-core-completion.md) defines
+The [source-backed completion plan](../archive/2026-10-runtime-refactors/store-independent-core-completion.md) defines
 completed boundaries, qualification status and the required core-absent
 and optional-facility acceptance matrix. Native implementation language alone is
 not a dependency failure: further artifact/certification ports remain separate
@@ -12,12 +12,12 @@ self-hosting work unless this acceptance exposes a concrete Store dependency.
 The direction is:
 retain Store and Relational, including their self-describing bootstrap, and
 remove their mandatory role in core language operations. The migration contracts
-and sequence below record the migration. The completion plan is authoritative for
-current qualification and release status.
+and sequence below record the migration. The completion plan records historical qualification. Current requirements are
+in the [runtime reference](../contracts/runtime.md) and [invariants](../../INVARIANTS.md).
 
 The delivered slices provide owner-based reflection, local Cells, owned Module,
 LSP and Globals state, and [ordinary record fields](ordinary-record-owners.md).
-[Ordinary mutation and explicit coordination](coordination-cleanup.md) now have
+[Ordinary mutation and explicit coordination](../archive/2026-10-runtime-refactors/coordination-cleanup.md) now have
 separate contracts: ordinary edits need no Store observer or Generation handshake;
 fresh startup and advanced live loading are distinct. Live loading now leaves
 applied changes in place on failure; the user owns the recovery snapshot. Retained compiler metadata now uses compilation records;
@@ -53,7 +53,7 @@ dependency graph must permit core execution without loading them.
 
 ## Why this boundary
 
-The [Store audit and planner experiment](store-planner-experiment.md) distinguish
+The [Store audit and planner experiment](../archive/2026-10-runtime-refactors/store-planner-experiment.md) distinguish
 three needs that the current integration often combines: owning state, exposing
 it to generic queries, and coordinating publication or recovery.
 
@@ -70,17 +70,17 @@ it does not establish that relational queries or temporal databases are generall
 inferior. Cross-domain queries and deliberate fact history remain useful reasons
 to select Store.
 
-The separate [private runtime index optimization](private-runtime-indexes.md)
+The separate [private runtime index optimization](../archive/2026-10-runtime-refactors/private-runtime-indexes.md)
 improved application CPU without removing any public Store dependency. Runtime
 cost and architectural value must continue to be evaluated separately.
 
 ## Relationship to existing decisions
 
-This direction preserves [Design 42's object authority](42-object-canonical-relational-derived.md)
-and [Design 90's functional ownership](90-functional-modules.md). It changes
+This direction preserves [Design 42's object authority](../archive/2026-10-runtime-refactors/42-object-canonical-relational-derived.md)
+and [Design 90's functional ownership](../archive/2026-10-runtime-refactors/90-functional-modules.md). It changes
 Design 42's requirement that supported post-bootstrap method mutation be
 Store-arbitrated and that a system-wide fact mirror be mandatory. Those mandatory contracts have been removed from ordinary edits by the
-[coordination cleanup](coordination-cleanup.md). Explicit coordinated operations
+[coordination cleanup](../archive/2026-10-runtime-refactors/coordination-cleanup.md). Explicit coordinated operations
 still own their admission and recovery contracts.
 
 Where a relational description is enabled, the honesty requirement remains:
@@ -125,7 +125,7 @@ history. Explicit database-backed mutation remains available through
 transition does not rewrite existing fact-backed Cell objects or remove their
 facts. The implementation and validation scope are recorded in
 [local Cells by default](local-cells-by-default.md). Local Cell construction
-now uses the [authored Cell owner](standalone-cells.md) over ordinary reference
+now uses the [authored Cell owner](../archive/2026-10-runtime-refactors/standalone-cells.md) over ordinary reference
 slots. Legacy Store Cells remain supported for explicit callers and old images.
 
 ## Reflection and code descriptions
@@ -164,7 +164,7 @@ installation still works and documentation recording remains a no-op.
 
 Optional relational code descriptions consume Reflect and other owner protocols;
 Reflect does not depend on those descriptions. See
-[Reflect without mandatory Store](reflect-without-store.md) for the current API
+[Reflect without mandatory Store](../archive/2026-10-runtime-refactors/reflect-without-store.md) for the current API
 inventory, gaps and proposed shape of this meta-object protocol.
 
 An opted-in code description may be a snapshot, a live derived view, or retained
@@ -265,7 +265,7 @@ different answers about authority, history or inspection in each module.
 ## Historical progress as of 2026-10-19
 
 This dated table precedes the final owner migrations and production cutover. See
-the [current completion ledger](store-independent-core-completion.md#dependency-completion-ledger)
+the [current completion ledger](../archive/2026-10-runtime-refactors/store-independent-core-completion.md#dependency-completion-ledger)
 for present status; the remaining work below is historical.
 
 The five ordinary-object field migrations are committed as `e41c4f35`; Bench/Test
@@ -283,23 +283,23 @@ Implementation status does not imply release or local installation.
 | Step 6: durable/coordinated and process-local state | Globals participates in explicit owner recovery; non-publishing inspections and retained compilation records; lifecycle fields, pure status reads and non-destructive record retirement implemented and qualified; authored source-registry ownership and candidate preparation/undo policy implemented and qualified | Store-independent bootstrap bindings, resource persistence policy, Alien recipes/publication, Image's mandatory Store operations, task/worker/I/O state and optional tool composition. Further native artifact/certification migration is a separate self-hosting follow-up. |
 | Final independence | Individual Store-absent floor tests exist | Core cold bootstrap, compile/run, reflection/editing and image roundtrip without Store/Relational; companion optional-module/self-description acceptance. |
 
-The [supplied-template report](supplied-method-templates.md) records constructor
+The [supplied-template report](../archive/2026-10-runtime-refactors/supplied-method-templates.md) records constructor
 qualification. The earlier universal publication-owner proposal was superseded by
-the [minimal-mutation decision](minimal-mutation-and-coordination.md); the
-[coordination cleanup](coordination-cleanup.md) implements that boundary. Broader
-representation-independent error normalization remains separate work. The [retained compilation record cutover](retained-compilation-records.md) implements
+the [minimal-mutation decision](../archive/2026-10-runtime-refactors/minimal-mutation-and-coordination.md); the
+[coordination cleanup](../archive/2026-10-runtime-refactors/coordination-cleanup.md) implements that boundary. Broader
+representation-independent error normalization remains separate work. The [retained compilation record cutover](../archive/2026-10-runtime-refactors/retained-compilation-records.md) implements
 compiler metadata ownership with its compiled-startup, lifetime and image contracts.
 Source-registry ownership is implemented in [the authored-owner slice](authored-source-registry.md). Lifecycle field ownership is
-implemented in [the record-owner slice](lifecycle-record-owners.md); the approved
+implemented in [the record-owner slice](../archive/2026-10-runtime-refactors/lifecycle-record-owners.md); the approved
 coordination simplifications are implemented and qualified.
 
-The [source-registry Id boundary check](source-registry-id-boundary.md)
+The [source-registry Id boundary check](../archive/2026-10-runtime-refactors/source-registry-id-boundary.md)
 (2026-10-18) supports an ordinary authored owner with Id-only consumers. It is
 design evidence, not an implemented port. Before cutover, resolve candidate
 commit's newly callback-capable source write and the owner's early bootstrap
 installation. Remove unused image-source rollback rather than preserving it by
 translation; settle counter semantics and image-owner identity explicitly.
-The follow-up [one-way application slice](one-way-image-application.md) removes
+The follow-up [one-way application slice](../archive/2026-10-runtime-refactors/one-way-image-application.md) removes
 recoverable capability backups and image-source rollback and passes its formal,
 Host, native/image, language and compiled-startup qualification. The implementation
 is committed with its qualification report. The subsequent
@@ -307,7 +307,7 @@ is committed with its qualification report. The subsequent
 migration and records passing formal, native/image, Host, language and cold/compiled
 bootstrap qualification.
 
-The [candidate policy migration](candidate-policy-migration.md) removes automatic
+The [candidate policy migration](../archive/2026-10-runtime-refactors/candidate-policy-migration.md) removes automatic
 candidate failure compensation, lifecycle-field admission and setter postchecks.
 Preparation, activation, explicit conditional undo and discard now use ordinary
 Birnam objects/messages; the native artifact carrier roots an opaque policy Cell.
@@ -315,9 +315,9 @@ This supersedes the earlier candidate compensation and reservation promises belo
 Artifact mapping/admission, optional certification and the existing TaskExecutor
 bootstrap dependency remain; no full Store-absent core is claimed.
 
-The [Generation lifecycle review](generation-lifecycle-review.md) sequence is
+The [Generation lifecycle review](../archive/2026-10-runtime-refactors/generation-lifecycle-review.md) sequence is
 complete: code ownership, module-scoped batch edits/undo and optional whole-program
-certification are separate. The [post-simplification review](generation-post-simplification-review.md)
+certification are separate. The [post-simplification review](../archive/2026-10-runtime-refactors/generation-post-simplification-review.md)
 records the resolutions of two reproduced API inconsistencies and explicit
 certificate release, with regression and native ownership evidence.
 
@@ -328,17 +328,17 @@ current-world recovery, or preserving a permanent native service under a new nam
 
 ### Superseded investigations and current implementation
 
-The [concerns investigation](store-refactor-concerns.md) recorded callback-write
+The [concerns investigation](../archive/2026-10-runtime-refactors/store-refactor-concerns.md) recorded callback-write
 loss on its historical baseline and explored a result-aware publication pipeline.
-The [minimal-mutation decision](minimal-mutation-and-coordination.md) superseded
+The [minimal-mutation decision](../archive/2026-10-runtime-refactors/minimal-mutation-and-coordination.md) superseded
 that universal pipeline: ordinary edits need no publisher, mandatory description
 step or managed observer. Broad error normalization and startup-memory proposals
 remain separate work, not prerequisites for optional Store.
 
-The [ordinary editing/snapshot cutover](ordinary-edit-and-snapshot.md) implements
+The [ordinary editing/snapshot cutover](../archive/2026-10-runtime-refactors/ordinary-edit-and-snapshot.md) implements
 direct Reflect edits and snapshots of edited worlds. Drifted managed metadata stays
 descriptive and cannot reactivate old capabilities. The
-[coordination cleanup](coordination-cleanup.md) removes default mirror registration
+[coordination cleanup](../archive/2026-10-runtime-refactors/coordination-cleanup.md) removes default mirror registration
 and Generation's observer handshake, separates startup from live loading, and fixed
 callback-write erasure with conditional recovery. The later basic-live-loading
 decision below replaces compensation with explicit partial application. These are delivered changes,
@@ -373,10 +373,10 @@ image format are unchanged. Explicit Generation rollback remains a separate
 requested operation with its own contract; ordinary edits have no rollback journal.
 
 This replaces the preceding conditional live-compensation implementation. The
-[coordination cleanup](coordination-cleanup.md) remains historical evidence for why
+[coordination cleanup](../archive/2026-10-runtime-refactors/coordination-cleanup.md) remains historical evidence for why
 unconditional snapshot rollback was wrong; its inverse pass and conservative
 conflict admission are no longer the basic loader contract. The
-[basic live-loading report](basic-live-image-loading.md) records the simplification.
+[basic live-loading report](../archive/2026-10-runtime-refactors/basic-live-image-loading.md) records the simplification.
 
 Future robust loading could add an explicitly selected operation with owner receipts,
 isolated staging or checkpoints. It must state its limits and retain the basic
@@ -399,7 +399,7 @@ unobservable representation optimization, and does not copy or delete user facts
 
 ## Actionable migration safeguards
 
-- [x] Establish the [remaining-dependency ledger](store-independent-core-completion.md#dependency-completion-ledger),
+- [x] Establish the [remaining-dependency ledger](../archive/2026-10-runtime-refactors/store-independent-core-completion.md#dependency-completion-ledger),
   including hidden Globals seed import, image transient policy, Alien publication,
   late optional initialization and tool-image composition. Keep it current during
   each slice and close entries with owner, lifetime and acceptance evidence.
@@ -418,7 +418,7 @@ unobservable representation optimization, and does not copy or delete user facts
 - [x] Qualify non-publishing `moduleMetadataOf:` / `embeddedFilesOf:` queries.
   Leave revision preparation and compiled admission separate; do not replace Store
   with a permanent source-keyed cache. Record the durable dependency ledger in
-  [compiler metadata ownership](compiler-metadata-ownership.md).
+  [compiler metadata ownership](../archive/2026-10-runtime-refactors/compiler-metadata-ownership.md).
 - [x] Qualify retained compilation records and their registry/image integration.
   Metadata is now ordinary data with explicit inspection/replacement APIs. Preserve source identities and entered/captured code lifetimes; exercise
   source-free mapped startup with parsing/compilation unavailable and the explicit
@@ -426,33 +426,33 @@ unobservable representation optimization, and does not copy or delete user facts
 - [x] Move lifecycle fields to ordinary owners, keep explicit facts independent,
   remove implicit status reconciliation and destructive record retirement, and
   qualify exact rollback, retained code and images. See
-  [lifecycle record owners](lifecycle-record-owners.md).
+  [lifecycle record owners](../archive/2026-10-runtime-refactors/lifecycle-record-owners.md).
 - [x] Remove token-long global dictionary/Globals counter checks and the
   exactly-one setter mutation rule; retain observed-value checks and conditional
-  inverses. See [prepared operation admission](prepared-operation-admission.md).
+  inverses. See [prepared operation admission](../archive/2026-10-runtime-refactors/prepared-operation-admission.md).
 - [x] Narrow transaction admission, postconditions and compensation to selected
   bindings/Globals and lifecycle observations. Preserve outside managed edits and
   allow retry after an affected binding is restored. See
-  [scoped transactions](scoped-generation-transactions.md).
+  [scoped transactions](../archive/2026-10-runtime-refactors/scoped-generation-transactions.md).
 - [x] Restore/resave images without automatic generation adoption, replacement
   component units or lifecycle reconciliation. Keep explicit baseline adoption and
-  source-free mapped/rebuilt restoration; see [explicit image adoption](explicit-image-adoption.md).
+  source-free mapped/rebuilt restoration; see [explicit image adoption](../archive/2026-10-runtime-refactors/explicit-image-adoption.md).
 - [x] Remove ordinary console/TCP/worker adoption and all source-registry sealing;
-  make explicit validation observational. See [opt-in baselines](opt-in-generation-baselines.md).
+  make explicit validation observational. See [opt-in baselines](../archive/2026-10-runtime-refactors/opt-in-generation-baselines.md).
 - [x] Finish separating optional whole-program certification from ordinary
   compilation/loading. Preserve meaningful conditional
   undo and source-free restoration; do not relocate the old policy unchanged.
 - [x] Complete generation simplification before resuming Store migration: module-scoped
   candidates, renewable optional certificates, ordinary activation, and logical
-  discard separate from files/diagnostics. See [generation review status](generation-lifecycle-review.md).
-- [x] Close the [post-simplification review](generation-post-simplification-review.md)
+  discard separate from files/diagnostics. See [generation review status](../archive/2026-10-runtime-refactors/generation-lifecycle-review.md).
+- [x] Close the [post-simplification review](../archive/2026-10-runtime-refactors/generation-post-simplification-review.md)
   findings: dependency comparison without certification, discarded-predecessor
   status on successor rollback, and explicit release of optional certificate roots.
   Keep exact code ownership and undo; do not reintroduce whole-world admission.
 - [x] Move candidate preparation and explicit undo policy to Birnam after choosing
   the failure contract. Remove automatic compensation and reservation banks;
   retain partial writes, one-use preparations, at-most-once construction and
-  conditional undo. See [candidate policy](candidate-policy-migration.md).
+  conditional undo. See [candidate policy](../archive/2026-10-runtime-refactors/candidate-policy-migration.md).
 - [ ] Continue the separate self-hosting migration of artifact admission/mapping
   and optional certification at their owner boundaries; remove the opaque policy-Cell
   carrier bridge with the artifact implementation. Do not make it permanent. This
@@ -477,7 +477,7 @@ unobservable representation optimization, and does not copy or delete user facts
 - [x] Establish the final Store/Relational-absent core acceptance path and companion
   optional-module/self-description path. Isolated exported-method floor tests are
   useful evidence but do not prove cold bootstrap, compile/run or complete loading.
-- [x] Keep this status table authoritative. Mark historical probes and superseded
+- [x] Record this migration status. Mark historical probes and superseded
   proposals at their source; distinguish implemented/qualified, committed, released
   and installed state. Review owner boundaries before accepting a new registry,
   mirror, transaction framework or native service as a dependency replacement.
@@ -526,7 +526,7 @@ of them.**
 ## Release gate selected on 2026-10-19
 
 Do not prepare the next release as a merely intermediate Store-refactor milestone.
-Complete and qualify the [core-independence plan](store-independent-core-completion.md)
+Complete and qualify the [core-independence plan](../archive/2026-10-runtime-refactors/store-independent-core-completion.md)
 first. The completion criterion is the actual absence of Store/Relational from core
 bootstrap and execution, plus preserved explicit optional use and self-description.
 This does not resume Relational conversion, require a generic live mirror, or expand

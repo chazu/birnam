@@ -24,6 +24,17 @@ what they mean rather than silently rewriting evidence.
 vtable; the second searches the applicable vtables for a selector's method. Do not
 use either term for the whole message send without saying so.
 
+Birnam has no language-level ownership, borrowing or borrow checking. In native
+implementation notes, name the actual responsibility: retaining a reference,
+keeping executable code mapped, releasing a buffer, or preventing concurrent
+mutation. A Rust borrow is a Rust detail. “Owner” in an existing identifier or
+object association does not imply exclusive access.
+
+Use **compile**, **map executable code**, **create a Method**, and **install a
+Method** for those distinct actions. Avoid “prepare” or “publication” when they
+hide which action occurs. Publishing a release or installing a distribution is
+still an ordinary use of the word.
+
 ## Other terms
 
 - **Oop:** a reference to a Birnam object. A supported immediate representation is
@@ -33,12 +44,12 @@ use either term for the whole message send without saying so.
 - **Selector:** the name identifying the requested method, normally a Symbol.
 - **Live dispatch:** choosing the method using the current bindings and lookup
   behavior. Already captured or entered Methods retain their established meaning
-  and code lifetime; future sends still observe replacement.
+  and usable code; future sends still observe replacement.
 - **Malleability:** the ability to replace and rewrite behavior and implementation
   through the language's supported protocols. A storage optimization must not
   quietly freeze a binding or bypass a supported replacement.
 - **Method:** the implementation selected by message lookup. `send` enters it
-  directly; there is no separate application protocol. The bootstrap owner stores
+  directly; there is no separate application protocol. The bootstrap implementation stores
   its code declaration index, context and code owner and interprets that format.
 - **Send:** the message operation: find the receiver's current method for the
   selector, then enter that selected implementation with Oop arguments/results.
@@ -56,12 +67,12 @@ use either term for the whole message send without saying so.
 - **GC root:** a reference from which the collector starts finding live objects.
   Registering a root records a reference; it does not copy the object.
 - **GC / garbage collection:** finding live objects and reclaiming objects that
-  are no longer reachable under the runtime's lifetime rules.
+  are no longer reachable and can be safely reclaimed.
 - **Marking:** following references from roots to identify live objects.
 - **Sweeping:** reclaiming the identified dead objects, with the required table
   cleanup and finalization ordering.
-- **Finalization:** performing an owner's required cleanup before storage release.
-  State the supported lifetime and reentry rules rather than implying resurrection
+- **Finalization:** performing required cleanup before storage release.
+  State when cleanup occurs and what reentry permits rather than implying resurrection
   or ordinary use of a dead object is supported.
 - **Phase timers:** diagnostic clock readings around parts of an operation, such
   as listing objects, marking, or freeing storage. State whether they measure CPU
@@ -71,7 +82,7 @@ use either term for the whole message send without saying so.
   one another, including argument and result representation. Distinguish these
   rules from Id's language-level message semantics.
 - **Stackless execution:** keeping logical execution state and continuations in
-  explicit runtime-owned frames rather than depending on the native call stack
+  explicit frames rather than depending on the native call stack
   to preserve a suspended language computation.
 - **Operand / Outcome:** names of the old non-object structs in Id's calling
   convention. Operand carried a tagged native value; Outcome added native status

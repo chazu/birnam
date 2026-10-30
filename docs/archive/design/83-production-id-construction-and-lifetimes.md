@@ -35,9 +35,9 @@ validating their language inputs. A native author violating the contract is not
 an excuse to add another runtime authority system.
 
 This follows the existing distinction in
-[60E section 8](../../design/60e-resumable-registration-and-entry.md#8-keeping-the-microcode-late-bound)
+[60E section 8](../2026-10-runtime-refactors/60e-resumable-registration-and-entry.md#8-keeping-the-microcode-late-bound)
 between storage safety and semantic correctness after replacement, and
-[60C section 13](../../design/60c-stepmethod-calling-abi-options.md#13-deferred-and-rejected-alternatives)
+[60C section 13](../2026-10-runtime-refactors/60c-stepmethod-calling-abi-options.md#13-deferred-and-rejected-alternatives)
 on trusted native artifacts. It changes the dispatch protection mechanism below,
 not that distinction.
 
@@ -358,7 +358,7 @@ GC sends these operations through the real Id message protocol. It may retain
 receiver and selector identities, but must not capture their implementations at
 construction and bypass lookup on subsequent calls. The next send observes the
 current method. The former cached-callable exception was an error, removed under
-[Design 90](../../design/90-functional-modules.md); GC has no exemption from message dispatch.
+[Design 90](../2026-10-runtime-refactors/90-functional-modules.md); GC has no exemption from message dispatch.
 
 Fresh lookup and synchronous callbacks remain subject to the established upper
 collection-phase rules: no allocation during collection, no recursive collection,

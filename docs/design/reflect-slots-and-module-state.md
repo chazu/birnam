@@ -148,5 +148,5 @@ BIRNAM_PREFIX=PREFIX bash scripts/repl-golden.sh
 mise exec -- python3 scripts/check-rooting-model.py
 ```
 
-The subsequent [owned-registry slice](module-owned-registry.md) implements the
+The subsequent [owned-registry slice](../archive/2026-10-runtime-refactors/module-owned-registry.md) implements the
 remaining Module record migration and its explicit snapshot/edit interface.

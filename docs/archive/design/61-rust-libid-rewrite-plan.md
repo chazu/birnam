@@ -1,7 +1,7 @@
 # 61 — Rust libid Floor Rewrite Plan
 
 > **Post-parity lifetime amendment (2026-08-24):**
-> [Design 60J](../../design/60j-runtime-identity-and-history-compaction.md) supersedes this
+> [Design 60J](../2026-10-runtime-refactors/60j-runtime-identity-and-history-compaction.md) supersedes this
 > completed rewrite's process-lifetime permanence for dynamically created
 > vtables and Symbols. Canonical bootstrap identities remain permanent; dynamic
 > identity indexes become weak and compactable. The IdApi v1 layout and
@@ -28,10 +28,10 @@
 >
 > Builds on [32 — Refound on libid](32-refound-on-libid.md),
 > [40 — The Image](40-the-image.md),
-> [42 — Object-Canonical, Relational-Derived](../../design/42-object-canonical-relational-derived.md),
+> [42 — Object-Canonical, Relational-Derived](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md),
 > [46 — Benchmarks](../../design/46-benchmarks.md),
 > [54 — Relocatable Bundles](../../design/54-relocatable-bundles.md), and
-> [60 — Stackless Native Execution](../../design/60-stackless-native-execution.md).
+> [60 — Stackless Native Execution](../2026-10-runtime-refactors/60-stackless-native-execution.md).
 
 ## 1. Outcome
 

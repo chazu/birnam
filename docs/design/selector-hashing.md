@@ -122,6 +122,6 @@ live replacement case. The formal gate passes **198 theorems**, rejects **40
 mutations**, and checks **118 TLA+ configurations**. Production and diagnostic
 prefixes are disposable; the user's normal installation was not changed.
 
-The [fixed-digest follow-up](fixed-selector-digests.md) investigates repeated
+The [fixed-digest follow-up](../archive/2026-10-runtime-refactors/fixed-selector-digests.md) investigates repeated
 primary name hashing for Id's fixed internal queries, while retaining current
 weak-Symbol resolution and method lookup.

@@ -92,34 +92,34 @@ Startup, warm processing, image size and peak RSS were essentially unchanged.
 Record this as a modest storage saving; the next cycle should return to profiling
 application CPU costs.
 
-The [CPU profiling follow-up](application-cpu-profile.md) finds JSON string
+The [CPU profiling follow-up](../archive/2026-10-runtime-refactors/application-cpu-profile.md) finds JSON string
 unescaping dominant: 1.63 seconds for the fixture's strings versus 1.99 seconds
 for the full 50-record application. Native samples and an untimed dispatch
 census identify repeated namespace, guard, rooting and conversion work inside
 the string loop. The phase harness checks independent results; this cycle adds
 measurement evidence without changing runtime semantics.
 
-The [Execution follow-up](execution-name-access.md) avoids repeated hashing when
+The [Execution follow-up](../archive/2026-10-runtime-refactors/execution-name-access.md) avoids repeated hashing when
 retrieving eight retained selector Symbols. The final local comparison reduced
 full application CPU by 2.3% and string-unescaping CPU by 1.9%, preserving current
 namespace reads, admission and recovery. A separate admission-batching experiment
 was removed because its send reduction did not produce a clear CPU improvement.
 
-The [JSON algorithm rewrite](json-unescape-investigation.md) scans for backslashes
+The [JSON algorithm rewrite](../archive/2026-10-runtime-refactors/json-unescape-investigation.md) scans for backslashes
 and copies unescaped nonempty bodies once. All operations use ordinary current
 dispatch. Paired measurements improved the full application from 1.92 s to 405 ms
 and string unescaping from 1.60 s to 86 ms; a short-escape microcase was 1.5% slower.
 Full-pass allocation charge fell from 11.43 MiB to 2.95 MiB. The fixed GC budget,
 runtime guards and bootstrap behavior are unchanged.
 
-The [value-conversion follow-up](json-value-conversion.md) stops kind dispatch
+The [value-conversion follow-up](../archive/2026-10-runtime-refactors/json-value-conversion.md) stops kind dispatch
 after a match, then removes the second copy of unescaped quoted string bodies.
 Together they reduced full application CPU from 410 ms to 352 ms (14.1%) in a
 paired comparison. The second change independently saved 3.4% on top of dispatch;
 short escaped tokens cost 1.1% more. The full pass now adds 95,604 live objects
 and 2.50 MiB of allocation charge with automatic collection disabled for counting.
 
-The [numeric-conversion follow-up](json-number-conversion.md) uses `asNumber`
+The [numeric-conversion follow-up](../archive/2026-10-runtime-refactors/json-number-conversion.md) uses `asNumber`
 directly for valid tokens shorter than 19 bytes, with a proved signed-integer
 bound, and short-circuits classification of longer tokens. The paired application
 result improves from 350 ms to 330 ms (5.6% less CPU); short/long Float-array parsing
@@ -127,7 +127,7 @@ also improves. A long-integer-only conversion workload is 14.6% slower, an expli
 tradeoff for retaining exact overflow behavior. Grammar, CST layout, late binding
 and runtime deoptimization remain unchanged.
 
-The [Range handler investigation](range-handler-reuse.md) reduces repeated
+The [Range handler investigation](../archive/2026-10-runtime-refactors/range-handler-reuse.md) reduces repeated
 branch construction in authored Range operations while retaining exact bootstrap
 comparisons and live bounds. It also records discarded iteration/rooting ideas.
 
@@ -140,7 +140,7 @@ collection, dispatch, arithmetic, allocation and state-retention costs outside
 JSON parsing. This establishes a second baseline before choosing another runtime
 optimization.
 
-The [bounded-message follow-up](logue-message-log.md) corrects Logue's six-entry
+The [bounded-message follow-up](../archive/2026-10-runtime-refactors/logue-message-log.md) corrects Logue's six-entry
 log contract, removes redundant traversals, and profiles the remaining turn
 work. It retains a paired comparison against the original application behavior.
 
@@ -155,16 +155,16 @@ work. It retains a paired comparison against the original application behavior.
 3. **First-match collection traversal:** investigate genuine early termination in
    shared search operations, including callback, nil, GC and suspension contracts.
 
-The [fixed-selector digest follow-up](fixed-selector-digests.md) tests reusing
+The [fixed-selector digest follow-up](../archive/2026-10-runtime-refactors/fixed-selector-digests.md) tests reusing
 per-Id hashes for fixed query names. It holds the Symbol inventory and all method
 lookups live; neither Symbol identities nor binding results are cached.
 
-The [ordinary method-lookup investigation](method-lookup.md) measures registry,
+The [ordinary method-lookup investigation](../archive/2026-10-runtime-refactors/method-lookup.md) measures registry,
 slot-hint and compiler-inlining alternatives on both applications. The retained
 candidate changes private Rust code generation while keeping the lookup
 algorithm, current bindings and recovery behavior intact.
 
-The [shared collection-search investigation](collection-search.md) replaces
+The [shared collection-search investigation](../archive/2026-10-runtime-refactors/collection-search.md) replaces
 remaining suffix traversal with authored early return, preserves the nil and
 resumable callback contracts, and measures the library separately from Logue
 adopting the search API.

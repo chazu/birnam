@@ -2,7 +2,7 @@
 
 > **Status:** implemented 2026-07-07 (commits `e8616b6`..`ada506c`). Builds on
 > [40 — The Image](40-the-image.md) (the relocatable `.code`/artifact machinery this
-> reuses), [42 — Object Canonical](../../design/42-object-canonical-relational-derived.md) (the
+> reuses), [42 — Object Canonical](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md) (the
 > store as MOP + relational data), and the retired `2c-modules.md`/`2d-ffi.md`
 > (legacy-kernel module/FFI notes — superseded).
 >
@@ -130,7 +130,7 @@ but its compiled module program recreates it on mapped boot.
 The source records remain in the store for reflection and explicit recovery.
 `--rebuild` replays module programs before individual method sources; normal
 compatible boot maps the image unit without recompiling. See
-[45 — Compiled Units](../../design/45-compiled-units.md) for the authority and integrity
+[45 — Compiled Units](../2026-10-runtime-refactors/45-compiled-units.md) for the authority and integrity
 contract.
 
 The sealed current generation's ordered source map is authoritative and

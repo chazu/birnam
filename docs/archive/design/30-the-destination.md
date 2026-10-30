@@ -12,8 +12,8 @@
 > **Status (2026-07-10):** the *primacy* argument here is superseded by the
 > object-canonical and compiled-unit decisions: compatible native units are the
 > primary executable layer, while the relational store is a derived durable/meta
-> mirror. See [42 — Object Canonical](../../design/42-object-canonical-relational-derived.md)
-> and [45 — Compiled Units](../../design/45-compiled-units.md). The five invariant goals and
+> mirror. See [42 — Object Canonical](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md)
+> and [45 — Compiled Units](../2026-10-runtime-refactors/45-compiled-units.md). The five invariant goals and
 > extensional-identity thesis still stand; the layer-primacy discussion below is
 > historical design context rather than the runtime authority contract.
 

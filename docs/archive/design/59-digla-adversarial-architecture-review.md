@@ -23,8 +23,8 @@ Two independent adversarial passes were made:
    and 58.
 
 The authority baseline is the current contract in
-[42 — Object Canonical](../../design/42-object-canonical-relational-derived.md) and
-[45 — Compiled Units](../../design/45-compiled-units.md). The older tenets in
+[42 — Object Canonical](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md) and
+[45 — Compiled Units](../2026-10-runtime-refactors/45-compiled-units.md). The older tenets in
 `docs/misc/VISION.md` are used only where they remain compatible with those
 decisions. In particular:
 

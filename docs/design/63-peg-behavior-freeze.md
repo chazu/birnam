@@ -1,11 +1,11 @@
 # 63 — PEG behavior freeze
 
-> **Status:** N3.1 complete, 2026-07-23. This document freezes the current
-> Zig PEG rung before a Rust implementation is introduced.
+> **Scope:** PEG grammar and behavior reference retained from the completed
+> port. Historical Zig and `IdApi` details are not implementation requirements.
+> The current implementation is `rust/birnam-peg`; the
+> [invariants](../../INVARIANTS.md) remain authoritative.
 
-The PEG engine is a native dynamic rung over `IdApi`. Patterns and grammars are
-libid objects; the parse tree is transient and is not represented as Store
-facts. The Rust port must preserve this boundary and the message protocol.
+Patterns and grammars are objects. Parsing does not require Store facts.
 
 ## Construction contract
 

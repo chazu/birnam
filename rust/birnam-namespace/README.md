@@ -19,7 +19,7 @@ precedence and does not create facts.
 read, and an export fallback using the fetched nil identity. Nested owner scopes
 report those temporary values through `rootsDo:` while getters may rebind or
 collect. The compiler delegates this pipeline through Id; exports/getter entries
-remain live. See [contract and tests](../../docs/design/operation-dispatch-and-global-resolution.md).
+remain live. See [contract and tests](../../docs/archive/2026-10-runtime-refactors/operation-dispatch-and-global-resolution.md).
 
 Before authored Globals is installed, an absent Namespace `Globals` entry (native
 Unit) goes directly to the Namespace export fallback. This permits the actual

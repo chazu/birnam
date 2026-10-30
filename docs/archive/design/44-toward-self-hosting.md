@@ -9,7 +9,7 @@
 > compiler). A findings
 > document, not a plan of record. Builds on [43 — Modules & the Self-Hosted
 > Layer](43-modules-and-config.md) (the staging model this extends),
-> [42 — Object Canonical](../../design/42-object-canonical-relational-derived.md),
+> [42 — Object Canonical](../2026-10-runtime-refactors/42-object-canonical-relational-derived.md),
 > [40 — The Image](40-the-image.md), [32 — Refound on libid](32-refound-on-libid.md).
 > Code: `src/id/*.zig`, `src/id/stdlib.birnam`, `modules/*.birnam`.
 >

@@ -1,5 +1,10 @@
 # 60N — Portable Resumable Native Carrier
 
+> Scope: versioned format/protocol reference. Historical migration stages and
+> native implementation arrangements are not additional language requirements.
+> Follow [INVARIANTS.md](../../INVARIANTS.md) for architecture; retain the
+> specified bytes when reading or writing the documented format.
+
 > **Status:** Implementation contract derived from the accepted 60K and frozen
 > 60L designs. This record supplies the private native-carrier declaration
 > deliberately left open by 60L and identified as delivery gate H6 in 60LA. It

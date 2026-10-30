@@ -1,7 +1,7 @@
 # Memory management over Oop-only Id
 
 This branch migrates the collector to ordinary Oop messages. Current implemented
-coverage and evidence are in the [migration log](../../docs/design/oop-invariant-migration-20261023.md).
+coverage and evidence are in the [migration log](../../docs/archive/2026-10-runtime-refactors/oop-invariant-migration-20261023.md).
 All sizes, counts, flags, roots and callbacks cross Id as Oops. `retire:` now takes
 the dead objects as its Oop arguments, without an address-byte packet.
 
@@ -152,8 +152,8 @@ with the budget privately. The speculative public `canAllocate:` preview was
 removed because no production consumer needed it. There is no separate Allocation
 Budget module, descriptor, setter or native service API.
 
-Under Design 90's
-[optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history),
+Under the current runtime
+[optimization contract](../../docs/contracts/runtime.md#execution-and-optimization),
 only actual construction is charged. Eliminated allocations require no synthetic
 charges, deferred identities or dead-payload journal. Recovery construction uses
 ordinary accounting. Optimization may change allocation diagnostics, automatic
