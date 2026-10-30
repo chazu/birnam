@@ -176,12 +176,9 @@ impl Text {
     }
     unsafe fn string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            // Keep the established single-provider constructor protocol replaceable.
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let source = self.send(self.id.root, b"sequence", &values)?;
+            // The replaceable constructor receives an ordinary byte provider.
+            // Keep its data packed instead of constructing one Oop per byte.
+            let source = self.make(bytes.to_vec(), Kind::String)?;
             self.send(self.prototype, b"fromBytes:", &[source])
         }
     }

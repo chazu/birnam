@@ -69,10 +69,17 @@ impl Scope<'_> {
         self.call(self.host.id.root, b"sequence", &values)
     }
     pub fn string(&self, bytes: &[u8]) -> Result<Oop, HostError> {
+        let factory = self.host.named(b"Bytes")?;
+        let mut chunks = bytes.chunks(abi::byte_transfer::CHUNK_BYTES);
+        let values = |chunk: &[u8]| chunk.iter().map(|&b| abi::size(b as usize).unwrap()).collect::<Vec<_>>();
+        let source = self.call(factory, b"fromByteValues", &values(chunks.next().unwrap_or(&[])))?;
+        for chunk in chunks {
+            self.host.send(source, b"appendByteValues", &values(chunk))?;
+        }
         self.call(
             self.host.named(b"String")?,
             b"fromBytes:",
-            &[self.byte_values(bytes)?],
+            &[source],
         )
     }
     pub fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {

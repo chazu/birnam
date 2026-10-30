@@ -1,0 +1,641 @@
+{
+  "baseline": "16f9fe1044aa9c86e450197dca2b270467f90351",
+  "benchmark": "rust/birnam-siphon/examples/invariant_costs.rs strings",
+  "scope": "Release native composition; elapsed nanoseconds per operation. Setup and explicit collection outside timing; automatic collection and result size validation included. Seven sequential samples, median. Not application/startup measurements.",
+  "summary": [
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "before_ns": 1767.334,
+      "after_ns": 2026.5,
+      "speedup": 0.8721115223291389
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "before_ns": 18012.5,
+      "after_ns": 8831.66,
+      "speedup": 2.039537301028346
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "before_ns": 56347692.625,
+      "after_ns": 868291.75,
+      "speedup": 64.89488426557088
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "before_ns": 4778.084,
+      "after_ns": 6422.832,
+      "speedup": 0.7439216843909353
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "before_ns": 26332.92,
+      "after_ns": 24316.66,
+      "speedup": 1.0829168150560151
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "before_ns": 114022703.125,
+      "after_ns": 3650260.375,
+      "speedup": 31.23686844530919
+    }
+  ],
+  "before": [
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 0,
+      "calls": 500,
+      "ns_per_call": 4927.166
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 0,
+      "calls": 500,
+      "ns_per_call": 1756.918
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 1,
+      "calls": 500,
+      "ns_per_call": 4744.75
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 1,
+      "calls": 500,
+      "ns_per_call": 1767.334
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 2,
+      "calls": 500,
+      "ns_per_call": 4778.084
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 2,
+      "calls": 500,
+      "ns_per_call": 1751.832
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 3,
+      "calls": 500,
+      "ns_per_call": 4765.666
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 3,
+      "calls": 500,
+      "ns_per_call": 1786.416
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 4,
+      "calls": 500,
+      "ns_per_call": 4790.418
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 4,
+      "calls": 500,
+      "ns_per_call": 1771.916
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 5,
+      "calls": 500,
+      "ns_per_call": 4769.084
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 5,
+      "calls": 500,
+      "ns_per_call": 1761.084
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 6,
+      "calls": 500,
+      "ns_per_call": 4811.416
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 6,
+      "calls": 500,
+      "ns_per_call": 1768.416
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 31830.83
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 36571.25
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 26332.92
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 21146.25
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 29265.41
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 17593.33
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 25915
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 17442.92
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 25848.34
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 17410.83
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 26061.25
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 18012.5
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 26530.42
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 18735
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 8,
+      "ns_per_call": 111858088.625
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 8,
+      "ns_per_call": 52961755.125
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 8,
+      "ns_per_call": 116043067.75
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 8,
+      "ns_per_call": 53550453.125
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 8,
+      "ns_per_call": 114639583.375
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 8,
+      "ns_per_call": 58517192.75
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 8,
+      "ns_per_call": 115313093.75
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 8,
+      "ns_per_call": 57778187.5
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 8,
+      "ns_per_call": 109335380.25
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 8,
+      "ns_per_call": 59012828.125
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 8,
+      "ns_per_call": 114022703.125
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 8,
+      "ns_per_call": 56347692.625
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 8,
+      "ns_per_call": 106936526.125
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 8,
+      "ns_per_call": 53624927.125
+    }
+  ],
+  "after": [
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 0,
+      "calls": 500,
+      "ns_per_call": 6645.416
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 0,
+      "calls": 500,
+      "ns_per_call": 2044.75
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 1,
+      "calls": 500,
+      "ns_per_call": 6599.25
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 1,
+      "calls": 500,
+      "ns_per_call": 2001.75
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 2,
+      "calls": 500,
+      "ns_per_call": 6643.834
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 2,
+      "calls": 500,
+      "ns_per_call": 1994.668
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 3,
+      "calls": 500,
+      "ns_per_call": 6389.582
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 3,
+      "calls": 500,
+      "ns_per_call": 2026.5
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 4,
+      "calls": 500,
+      "ns_per_call": 6403.168
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 4,
+      "calls": 500,
+      "ns_per_call": 2019
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 5,
+      "calls": 500,
+      "ns_per_call": 6422.832
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 5,
+      "calls": 500,
+      "ns_per_call": 2027.084
+    },
+    {
+      "operation": "host_string",
+      "bytes": 16,
+      "sample": 6,
+      "calls": 500,
+      "ns_per_call": 6412.416
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 16,
+      "sample": 6,
+      "calls": 500,
+      "ns_per_call": 2062.668
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 27089.58
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 100,
+      "ns_per_call": 9010
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 24510
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 100,
+      "ns_per_call": 8831.66
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 24316.66
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 100,
+      "ns_per_call": 8736.67
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 24146.67
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 100,
+      "ns_per_call": 8851.25
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 24173.75
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 100,
+      "ns_per_call": 8659.17
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 23935.42
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 100,
+      "ns_per_call": 8820.83
+    },
+    {
+      "operation": "host_string",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 24884.58
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 100,
+      "ns_per_call": 8876.25
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 8,
+      "ns_per_call": 3770114.625
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 0,
+      "calls": 8,
+      "ns_per_call": 865937.5
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 8,
+      "ns_per_call": 3661593.75
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 1,
+      "calls": 8,
+      "ns_per_call": 868291.75
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 8,
+      "ns_per_call": 3642442.75
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 2,
+      "calls": 8,
+      "ns_per_call": 874031.25
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 8,
+      "ns_per_call": 3613932.25
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 3,
+      "calls": 8,
+      "ns_per_call": 887588.625
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 8,
+      "ns_per_call": 3650260.375
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 4,
+      "calls": 8,
+      "ns_per_call": 880026
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 8,
+      "ns_per_call": 3639010.375
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 5,
+      "calls": 8,
+      "ns_per_call": 868109.375
+    },
+    {
+      "operation": "host_string",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 8,
+      "ns_per_call": 3674729.125
+    },
+    {
+      "operation": "builder_string",
+      "bytes": 1048576,
+      "sample": 6,
+      "calls": 8,
+      "ns_per_call": 868062.5
+    }
+  ]
+}
