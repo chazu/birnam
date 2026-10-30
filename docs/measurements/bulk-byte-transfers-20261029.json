@@ -1,0 +1,148 @@
+{
+  "runtime_revision": "f4a7834086c1df40385721d74c6ee124eda57c0c",
+  "baseline": "installed v0.19.0, commit 2040afcb1582f9aa27204f339c084006fc3ad350",
+  "change": "Whole-buffer and range consumers use owner-defined bulk data operations; the per-byte Protocol::read_bytes helper and handwritten whole-buffer byte loops are removed.",
+  "contract": {
+    "operation": "copyByteValuesFrom:count:to:",
+    "delivery": "The provider snapshots the requested range, then sends byte values in batches of at most 8192 Oops through the recipient appendByteValues operation.",
+    "owners": [
+      "Bytes",
+      "String",
+      "bootstrap Name",
+      "bootstrap Symbol",
+      "bootstrap Sequence"
+    ],
+    "consumer_lifetime": "Each native consumer owns its output Vec and scoped recipient identity. Nested reads are distinct; callbacks after completion fail. No mutable owner borrow spans a callback.",
+    "validation": [
+      "Every delivered value is an immediate byte in 0..255.",
+      "Exact promised length is required; overflow, underfill and ignored receiver failure reject the read.",
+      "Provider failure propagates with cleanup and error rooting.",
+      "Read limits are checked before copying.",
+      "Current bulk-operation replacement remains observable; indexed access replacement no longer defines whole-buffer conversion."
+    ],
+    "other_bulk_operation": "Bytes matchesByteValues compares a whole argument group; generated code factories use it for checksum comparison.",
+    "unchanged": "Id message ABI and direct dispatch, object-payload opacity, code ownership, stackless execution and callback boundaries. The bootstrap data owners gain the bulk data operation; generic Id does not gain an application protocol."
+  },
+  "microbenchmark": {
+    "scope": "Old per-byte reference algorithm versus the new reader, using the same native floor and Bytes providers. Alternating order, six samples per mode and size; outputs checked. GC and receiver preparation outside timers.",
+    "summary": {
+      "16": {
+        "cpu_ns_per_read": {
+          "scalar": 816.7085,
+          "bulk": 665.1035
+        },
+        "speedup": 1.2279419669269518
+      },
+      "8192": {
+        "cpu_ns_per_read": {
+          "scalar": 320892.90625,
+          "bulk": 7055.3359375
+        },
+        "speedup": 45.48230007651567
+      },
+      "1048576": {
+        "cpu_ns_per_read": {
+          "scalar": 44506229.125,
+          "bulk": 798888.0
+        },
+        "speedup": 55.71022361707774
+      }
+    },
+    "source": "#[path=\"/Users/chazu/dev/zig/birnam/rust/birnam-siphon/tests/support/minimal.rs\"] mod minimal;\nuse birnam_abi::{Oop,as_size,size};\nunsafe extern \"C\" { fn clock_gettime_nsec_np(clock:u32)->u64; }\nfn main(){let h=minimal::native_floor();let q=h.scope();let gc=h.named(b\"GC\").unwrap();let at=q.keep(h.intern(b\"atWord:\").unwrap()).unwrap();let length=q.keep(h.intern(b\"sizeWord\").unwrap()).unwrap();\n for n in [16usize,8192,1<<20] {\n  let input:Vec<_>=(0..n).map(|i|(i%256) as u8).collect();let provider=q.call(h.named(b\"Bytes\").unwrap(),b\"fromBytes:\",&[q.byte_values(&input).unwrap()]).unwrap();\n  assert_eq!(q.read_bytes(provider).unwrap(),input);\n  for sample in 0..6 {for mode in if sample%2==0 {[\"scalar\",\"bulk\"]}else{[\"bulk\",\"scalar\"]} {\n   q.call(gc,b\"collectPrecisely\",&[]).unwrap();let calls=if n<8192 {1000}else if n<1<<20 {64}else{8};\n   let start=unsafe{clock_gettime_nsec_np(16)};\n   for _ in 0..calls {\n    let bytes=if mode==\"bulk\" {q.read_bytes(provider).unwrap()}else{\n     q.keep(provider).unwrap();let count=as_size(unsafe{h.id.send(provider,length,&[]).unwrap()}).unwrap();let mut out=Vec::with_capacity(count);\n     for i in 0..count {let v=unsafe{h.id.send(provider,at,&[size(i).unwrap()]).unwrap()};out.push(u8::try_from(as_size(v).unwrap()).unwrap());}out\n    };assert_eq!(bytes,input);\n   }\n   println!(\"{n} {mode} {calls} {}\",unsafe{clock_gettime_nsec_np(16)}-start);\n  }}\n }\n}\n"
+  },
+  "startup": {
+    "prefixes": {
+      "baseline": "/tmp/birnam-pre-bulk-v019",
+      "bulk": "/Users/chazu/.local/opt/birnam"
+    },
+    "runs": [
+      {
+        "lane": "baseline",
+        "wall_seconds": 11.693417334,
+        "cpu_seconds": 11.584893999999998,
+        "stdout": "ready\n",
+        "stderr": "",
+        "exit": 0
+      },
+      {
+        "lane": "bulk",
+        "wall_seconds": 5.314522208000001,
+        "cpu_seconds": 5.2228699999999995,
+        "stdout": "ready\n",
+        "stderr": "",
+        "exit": 0
+      },
+      {
+        "lane": "bulk",
+        "wall_seconds": 5.192362458000002,
+        "cpu_seconds": 5.189058000000003,
+        "stdout": "ready\n",
+        "stderr": "",
+        "exit": 0
+      },
+      {
+        "lane": "baseline",
+        "wall_seconds": 11.600609458000001,
+        "cpu_seconds": 11.541875,
+        "stdout": "ready\n",
+        "stderr": "",
+        "exit": 0
+      }
+    ],
+    "summary": {
+      "baseline": {
+        "wall_seconds": 11.647013396,
+        "cpu_seconds": 11.563384499999998
+      },
+      "bulk": {
+        "wall_seconds": 5.2534423330000015,
+        "cpu_seconds": 5.205964000000002
+      }
+    }
+  },
+  "installed_build": {
+    "prefix": "/Users/chazu/.local/opt/birnam",
+    "profile": "release",
+    "build_mode": "development-cache",
+    "source_identity": {
+      "git_clean": true,
+      "git_commit": "f4a7834086c1df40385721d74c6ee124eda57c0c"
+    }
+  },
+  "validation": [
+    "Workspace all-target/all-feature check passed.",
+    "Core Oop checks passed, including constructor purity, direct dispatch, GC, callbacks and independent C caller.",
+    "New bulk tests passed at 0, 1, 8192, 8193 and 1048576 bytes; no indexed byte accessor calls.",
+    "Bulk tests cover nested reads, GC, malformed bytes, underfill, overflow, ignored destination failures, expired sinks, and mutation/reallocation of the producer during delivery.",
+    "Byte ABI, external-allocation accounting, native values, native incoming conversions, construction purity and String/Error tests passed.",
+    "Image roundtrip passed with mapped loading, rebuild and stripped-code cases. The retained image-resave test also passed.",
+    "Complete candidate and clean local installation succeeded, including bootstrap/tools image creation and startup checks."
+  ],
+  "compatibility": [
+    "Custom byte providers implement the new bulk operation. There is no scalar fallback.",
+    "Existing indexed methods remain for indexed reads and general Oop collections/capture arrays.",
+    "The executable facade declares its receiving callback once through existing TCC facilities; native module consumers declare theirs in module metadata. No callbacks are compiled per transfer."
+  ],
+  "remaining_ownership_limits": [
+    "Cross-owner copying now works in bulk without relaxing opacity.",
+    "Directly borrowing another owner's native byte pointer or sharing mutable native storage remains outside the current contract. This implementation performs owned copies and Oop batch encoding rather than zero-copy native views."
+  ],
+  "limits": [
+    "Startup figures are fresh processes with warm filesystem caches, serial ABBA, and the same trivial source program. They include source evaluation and process exit.",
+    "Microbenchmark gains are specific to transfer size and do not imply that all byte operations become 45-56 times faster.",
+    "The local installation is updated from the fix commit; the published v0.19.0 GitHub archive remains immutable and predates this fix."
+  ],
+  "evidence": {
+    ".cargo-target/bulk-byte-transfer/micro.txt": "fad4351ffde736232d96f2325ec89047a04c67dd5c9c61ba0b7ebffd0c394b24",
+    ".cargo-target/bulk-byte-transfer/micro.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    ".cargo-target/bulk-byte-transfer/startup-final.json": "e7352ffd658019981714570cce06b2c9c4a8c3a185efd7ce4c0db2a451ac1a37",
+    ".cargo-target/bulk-byte-transfer/core.log": "0d0034d168bbb19a84ac432d18a75013065d93835e2837c54e49d4e3999d45f9",
+    ".cargo-target/bulk-byte-transfer/bulk-test.log": "1c40774c6ba91e4e3ed913d63592b9dd76f6a635e136c79ed97fdaf64d5265de",
+    ".cargo-target/bulk-byte-transfer/integration.log": "d2c553296fb7d189b5295893d1bef54fbe932a7913f5ba463167407318cc30c8",
+    ".cargo-target/bulk-byte-transfer/integration2.log": "de79cd8619885fa4f47600a317a79507435363752edc99421f1ada464dd88bc8",
+    ".cargo-target/bulk-byte-transfer/image-roundtrip.log": "b070fff9d201d637da01a91c95fb7bd4d1ed0fcd8456004c9885dd0c37715848",
+    ".cargo-target/bulk-byte-transfer/check-final.log": "a3a09bf7aa627c029605d302fe28a0923b4791207b5352acc9726dd5094fc16f",
+    ".cargo-target/bulk-byte-transfer/install-final.log": "4404cbb87e324e45b7558a284510d86ae0c68ff18b32c4a1f25a11a50aa19787"
+  },
+  "validation_note": "The first image run exposed late facade callback preparation after compilation had been disabled; preparation was moved earlier, and image roundtrip was rerun successfully. The original combined log retains that earlier failure alongside the successful resave test."
+}
