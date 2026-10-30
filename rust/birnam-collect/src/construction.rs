@@ -186,7 +186,7 @@ pub(super) unsafe extern "C" fn activate(
             s.phase.set(Phase::Marking);
             collection::validate(s).and_then(|charge| { s.reset_accounting(charge)?; Ok(charge) })
         })();
-        *s.walk.borrow_mut() = None;
+        collection::clear_walk(s);
         s.phase.set(if answer.is_ok() {
             Phase::Idle
         } else {

@@ -1,0 +1,192 @@
+{
+  "baseline": "09f59bca229f4e6b8101e97b58b67a3a93a18daa",
+  "scope": "Repeated precise collection of live zero-payload objects, seven samples after one warmup. Same minimal composition; allocation and input setup excluded.",
+  "summary": [
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "before_ns": 2443834,
+      "after_ns": 2549500,
+      "speedup": 0.9585542263188861
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "before_ns": 13715042,
+      "after_ns": 14153417,
+      "speedup": 0.9690269141367064
+    }
+  ],
+  "before": [
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 0,
+      "ns": 2495417
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 1,
+      "ns": 2421167
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 2,
+      "ns": 2380041
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 3,
+      "ns": 2395583
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 4,
+      "ns": 2482459
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 5,
+      "ns": 2530750
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 6,
+      "ns": 2443834
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 0,
+      "ns": 14175000
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 1,
+      "ns": 13715833
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 2,
+      "ns": 13145333
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 3,
+      "ns": 13538833
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 4,
+      "ns": 13715042
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 5,
+      "ns": 13659792
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 6,
+      "ns": 13938000
+    }
+  ],
+  "after": [
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 0,
+      "ns": 2568209
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 1,
+      "ns": 2551416
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 2,
+      "ns": 2546875
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 3,
+      "ns": 2550167
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 4,
+      "ns": 2549500
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 5,
+      "ns": 2526083
+    },
+    {
+      "operation": "collect_live",
+      "n": 1024,
+      "sample": 6,
+      "ns": 2533208
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 0,
+      "ns": 14803917
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 1,
+      "ns": 14153417
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 2,
+      "ns": 13859416
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 3,
+      "ns": 13893500
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 4,
+      "ns": 13778458
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 5,
+      "ns": 14185500
+    },
+    {
+      "operation": "collect_live",
+      "n": 16384,
+      "sample": 6,
+      "ns": 14568625
+    }
+  ]
+}

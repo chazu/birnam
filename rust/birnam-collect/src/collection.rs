@@ -1,6 +1,7 @@
 //! Port of the production census/LIFO walk/ordered retirement algorithm to Oops.
 //! All traversal storage remains in the explicit Memory/Walk owner.
 use super::*;
+#[derive(Default)]
 pub(super) struct Walk {
     allocations: Vec<Allocation>,
     indices: HashMap<usize, usize>,
@@ -143,22 +144,47 @@ unsafe fn inventory(s: &Memory) -> Result<Vec<Allocation>, Oop> {
         return Err(s.invalid());
     }
     *s.inventory.borrow_mut() = Some(Inventory {
-        values: Vec::new(),
+        values: std::mem::take(&mut s.spare.borrow_mut().allocations),
         failure: None,
     });
     let answer = unsafe { s.send(s.id.root, b"allocationsDo:", &[s.receiver]) };
     let inventory = s.inventory.borrow_mut().take().unwrap();
-    answer?;
-    if let Some(error) = inventory.failure {
-        return Err(error);
-    }
     let mut rows = inventory.values;
-    rows.sort_unstable_by_key(|a| a.identity);
-    if rows.windows(2).any(|w| w[0].identity == w[1].identity) {
-        return Err(s.invalid());
+    let checked = (|| {
+        answer?;
+        if let Some(error) = inventory.failure { return Err(error); }
+        rows.sort_unstable_by_key(|a| a.identity);
+        if rows.windows(2).any(|w| w[0].identity == w[1].identity) { return Err(s.invalid()); }
+        Ok(())
+    })();
+    if let Err(error) = checked {
+        rows.clear();
+        s.spare.borrow_mut().allocations = rows;
+        return Err(error);
     }
     Ok(rows)
 }
+// Only capacity survives. No allocation identities, roots, marks or failures do.
+pub(super) fn clear_walk(s: &Memory) {
+    if let Some(mut walk) = s.walk.borrow_mut().take() {
+        walk.allocations.clear(); walk.indices.clear(); walk.marked.clear();
+        walk.pending.clear(); walk.failure = None;
+        walk.core.values.clear(); walk.core.failure = None; walk.core.accepting = false;
+        *s.spare.borrow_mut() = walk;
+    }
+}
+unsafe fn begin_walk(s: &Memory) -> Result<usize, Oop> {
+    let allocations = unsafe { inventory(s)? };
+    let mut walk = std::mem::take(&mut *s.spare.borrow_mut());
+    walk.allocations = allocations;
+    let count = walk.allocations.len();
+    walk.indices.extend(walk.allocations.iter().enumerate().map(|(i,a)|(a.object.addr(),i)));
+    walk.marked.resize(count, 0);
+    let valid = walk.indices.len() == count;
+    *s.walk.borrow_mut() = Some(walk);
+    if valid { Ok(count) } else { Err(s.invalid()) }
+}
+
 pub(super) fn emit(s: &Memory, v: Oop) -> Result<(), Oop> {
     let mut state = s.walk.borrow_mut();
     let walk = state.as_mut().ok_or(s.invalid())?;
@@ -170,24 +196,7 @@ pub(super) fn emit(s: &Memory, v: Oop) -> Result<(), Oop> {
 unsafe fn mark(s: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Oop> {
     unsafe {
         let epoch = s.send(s.id.root, b"allocationEpoch", &[])?;
-        let allocations = inventory(s)?;
-        let count = allocations.len();
-        let indices: HashMap<_, _> = allocations
-            .iter()
-            .enumerate()
-            .map(|(i, a)| (a.object.addr(), i))
-            .collect();
-        if indices.len() != count {
-            return Err(s.invalid());
-        }
-        *s.walk.borrow_mut() = Some(Walk {
-            allocations,
-            indices,
-            marked: vec![0; count],
-            pending: Vec::new(),
-            failure: None,
-            core: CoreEdges::default(),
-        });
+        begin_walk(s)?;
         s.send(s.id.root, b"rootsDo:", &[s.receiver])?;
         s.send(s.roots, b"rootsDo:", &[s.receiver])?;
         for address in native {
@@ -296,9 +305,9 @@ pub(super) unsafe fn run(s: &Memory, native: &[usize]) -> Result<Oop,Oop> {
     }
     s.phase.set(Phase::Marking);
     let result = match unsafe { mark(s, native) } {
-        Ok(dead) => {
+        Ok(mut dead) => {
             s.phase.set(Phase::Finalizing);
-            match unsafe { sweep(s, &dead) } {
+            let result = match unsafe { sweep(s, &dead) } {
                 Ok(n) => {
                     match unsafe { s.reset_accounting(0) } {
                         Ok(())=>{s.charged.set(0);s.phase.set(Phase::Idle);Ok(abi::size(n).unwrap())},
@@ -309,24 +318,24 @@ pub(super) unsafe fn run(s: &Memory, native: &[usize]) -> Result<Oop,Oop> {
                     s.phase.set(Phase::Failed);
                     Err(e)
                 }
-            }
+            };
+            dead.clear();
+            s.walk.borrow_mut().as_mut().unwrap().allocations = dead;
+            result
         }
         Err(e) => {
             s.phase.set(Phase::Idle);
             Err(e)
         }
     };
-    *s.walk.borrow_mut() = None;
+    clear_walk(s);
     result
 }
 
 pub(super) unsafe fn validate(s: &Memory) -> Result<usize,Oop>{
     unsafe{
         let epoch=s.send(s.id.root,b"allocationEpoch",&[])?;
-        let allocations=inventory(s)?;
-        let indices:HashMap<_,_>=allocations.iter().enumerate().map(|(i,a)|(a.object.addr(),i)).collect();
-        let count=allocations.len();if indices.len()!=count{return Err(s.invalid());}
-        *s.walk.borrow_mut()=Some(Walk{allocations,indices,marked:vec![0;count],pending:Vec::new(),failure:None,core:CoreEdges::default()});
+        let count=begin_walk(s)?;
         s.send(s.id.root,b"rootsDo:",&[s.receiver])?;s.send(s.roots,b"rootsDo:",&[s.receiver])?;
         let mut charged=0;
         for i in 0..count{

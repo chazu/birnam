@@ -56,6 +56,7 @@ struct Memory {
     finalizers: RefCell<HashMap<usize, Owner>>,
     retirement: RefCell<Vec<Oop>>,
     walk: RefCell<Option<collection::Walk>>,
+    spare: RefCell<collection::Walk>,
     inventory: RefCell<Option<collection::Inventory>>,
 }
 impl Memory {
@@ -384,6 +385,7 @@ unsafe extern "C" fn initialize(
                 finalizers: RefCell::new(HashMap::new()),
                 retirement: RefCell::new(Vec::new()),
                 walk: RefCell::new(None),
+                spare: RefCell::new(collection::Walk::default()),
                 inventory: RefCell::new(None),
             });
             let raw = Box::into_raw(s);
