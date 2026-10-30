@@ -1,0 +1,144 @@
+{
+  "baseline": "f494099ed6e3bc5b1336f3cead8668f709c160dd",
+  "scope": "NativeBackend emitSynchronous: C text emission including byte transfer; one string literal, five samples, setup and explicit GC excluded.",
+  "summary": [
+    {
+      "operation": "emit",
+      "n": 8192,
+      "before_ns": 416834,
+      "after_ns": 316084,
+      "speedup": 1.3187443844041458
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "before_ns": 13307667,
+      "after_ns": 9079875,
+      "speedup": 1.465622269029034
+    }
+  ],
+  "before": [
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 0,
+      "ns": 689500
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 1,
+      "ns": 416834
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 2,
+      "ns": 413125
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 3,
+      "ns": 422208
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 4,
+      "ns": 410333
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 0,
+      "ns": 13413792
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 1,
+      "ns": 12783959
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 2,
+      "ns": 13307667
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 3,
+      "ns": 13494208
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 4,
+      "ns": 13283791
+    }
+  ],
+  "after": [
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 0,
+      "ns": 499833
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 1,
+      "ns": 313625
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 2,
+      "ns": 316084
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 3,
+      "ns": 315375
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 4,
+      "ns": 316709
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 0,
+      "ns": 9079875
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 1,
+      "ns": 9296000
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 2,
+      "ns": 9000917
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 3,
+      "ns": 9050000
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 4,
+      "ns": 9087292
+    }
+  ]
+}

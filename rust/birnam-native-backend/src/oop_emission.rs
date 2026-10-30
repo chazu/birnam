@@ -97,17 +97,10 @@ impl Emitter {
                     NodeKind::Integer => format!("integer(&c,UINT64_C({}))", node.payload),
                     NodeKind::FloatBits => format!("float_bits(&c,UINT64_C({}))", node.payload),
                     NodeKind::String => {
-                        let data = if node.data.is_empty() {
-                            "0".to_owned()
-                        } else {
-                            node.data
-                                .iter()
-                                .map(u8::to_string)
-                                .collect::<Vec<_>>()
-                                .join(",")
-                        };
-                        writeln!(out, "static const unsigned char text{next}[]={{{data}}};")
-                            .unwrap();
+                        write!(out, "static const unsigned char text{next}[]={{").unwrap();
+                        if node.data.is_empty() { out.push('0'); }
+                        else { write!(out, "{}", DecimalBytes(node.data)).unwrap(); }
+                        out.push_str("};\n");
                         format!("string(&c,text{next},{})", node.data.len())
                     }
                     NodeKind::Symbol => format!("symbols[{}]", self.name(node.data)?),
@@ -331,7 +324,8 @@ fn compile_mode(
         let capc = p.capture_count;
         let bound_index = e.functions.len() + ordinal * 3 + 1;
         let dnu_index = bound_index + 1;
-        let digest = Sha256::digest(&e.programs[i]).iter().map(u8::to_string).collect::<Vec<_>>().join(",");
+        let digest_bytes = Sha256::digest(&e.programs[i]);
+        let digest = DecimalBytes(&digest_bytes);
         for (label, test) in [("bound", format!("n+1!={argc}")), ("dnu", format!("n+1<{argc}"))] {
             writeln!(out,"static O {label}_{i}(O root,O context,O receiver,const O*args,size_t n){{Call c={{0}};if({argc}==0||{test})return finish(&c,named(&c,{nil_name}));O block=call(&c,context,{environment},0,0);if(c.error)return finish(&c,0);O values[{}];values[0]=receiver;for(size_t k=1;k<{argc};k++)values[k]=args[k-1];O result=function_{i}(root,context,block,values,{argc});if(failed(result))c.error=result;return finish(&c,result);}}",argc.max(1)).unwrap();
         }
@@ -347,11 +341,7 @@ fn compile_mode(
                 writeln!(
                     out,
                     "static const unsigned char {label}_{i}[]={{{}}};",
-                    bytes
-                        .iter()
-                        .map(u8::to_string)
-                        .collect::<Vec<_>>()
-                        .join(",")
+                    DecimalBytes(bytes)
                 )
                 .unwrap();
             }
@@ -361,11 +351,7 @@ fn compile_mode(
         writeln!(
             out,
             "static const unsigned char program_{i}[]={{{}}};",
-            bytes
-                .iter()
-                .map(u8::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
+            DecimalBytes(bytes)
         )
         .unwrap();
     }
@@ -420,4 +406,26 @@ fn compile_mode(
     }
     out.push_str("return finish(&c,methods[0]);}\nconst Module birnam_native_module_v3={3,sizeof(Module),literals,SYMBOL_COUNT,declarations,METHOD_COUNT,initialize};\n");
     Ok(out.into_bytes())
+}
+
+// Format into the caller's output buffer without a String allocation per byte.
+struct DecimalBytes<'a>(&'a [u8]);
+impl std::fmt::Display for DecimalBytes<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, byte) in self.0.iter().enumerate() {
+            if i != 0 { f.write_str(",")?; }
+            write!(f, "{byte}")?;
+        }
+        Ok(())
+    }
+}
+#[cfg(test)]
+mod decimal_tests {
+    use super::DecimalBytes;
+    #[test]
+    fn decimal_initializer_preserves_every_byte_and_empty_input() {
+        for bytes in [vec![], (0..=255).collect::<Vec<u8>>()] {
+            assert_eq!(DecimalBytes(&bytes).to_string(), bytes.iter().map(u8::to_string).collect::<Vec<_>>().join(","));
+        }
+    }
 }
