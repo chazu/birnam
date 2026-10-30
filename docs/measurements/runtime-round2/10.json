@@ -1,0 +1,77 @@
+{
+  "baseline": "7b19e6602d2425140611da547096cc478c8d1afa",
+  "scope": "round2_language sort: 128 reverse-ordered item names with common prefixes, identity key block. Existing insertion sort versus existing merge sort, five samples. Setup/GC excluded; output size and complete sorted contents verified after merge timing. The larger exploratory case was stopped rather than spending minutes repeating quadratic comparisons.",
+  "summary": [
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "before_ns": 23211704459,
+      "after_ns": 1092007500,
+      "speedup": 21.255993625501656
+    }
+  ],
+  "before": [
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 0,
+      "ns": 22713663833
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 1,
+      "ns": 23011626625
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 2,
+      "ns": 23211704459
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 3,
+      "ns": 24047083917
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 4,
+      "ns": 24690703958
+    }
+  ],
+  "after": [
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 0,
+      "ns": 1081304541
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 1,
+      "ns": 1082369291
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 2,
+      "ns": 1112016458
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 3,
+      "ns": 1092007500
+    },
+    {
+      "operation": "name_sort",
+      "n": 128,
+      "sample": 4,
+      "ns": 1169850750
+    }
+  ]
+}

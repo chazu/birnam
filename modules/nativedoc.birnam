@@ -150,7 +150,7 @@
 [Reflect defineMethod: #scanRustCrate:at:kind: on: NativeDoc as: [:self :crate :root :kind |
   let dir := [[[[root , "/rust/"] , crate] , "/"] , "src"];
   let listed := [File listDir: dir];
-  let names := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] sortBy: [:x | x]];
+  let names := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] mergeSortBy: [:x | x]];
   let mods := [names inject: #[] into: [:acc :nm |
     [[nm endsWith: ".rs"]
       ifTrue: [|
@@ -166,7 +166,7 @@
 [Reflect defineMethod: #scanRustWorkspace: on: NativeDoc as: [:self :root |
   let rustRoot := [root , "/rust"];
   let listed := [File listDir: rustRoot];
-  let crates := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] sortBy: [:x | x]];
+  let crates := [[[listed isNil] ifTrue: [| #[]] ifFalse: [| listed]] mergeSortBy: [:x | x]];
   let mods := [crates inject: #[] into: [:acc :crate |
     let cratePath := [[rustRoot , "/"] , crate];
     [[File isDir: cratePath]
