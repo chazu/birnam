@@ -1,0 +1,41 @@
+{
+  "scope": "Fresh process loads installed startup image, compiles and executes one println; includes process startup, warm filesystem caches; alternating order, one excluded warmup per binary.",
+  "machine": "macOS-14.6-arm64-arm-64bit",
+  "results": {
+    "before": {
+      "binary": "/tmp/birnam-round2-verified/bin/birnam",
+      "sha256": "506a5d73d3d0ffbb5f6dfc4fa623d07a212a38e76002244779c2c3bfa83c4409",
+      "source_manifest_sha256": "7b7ee7b2901caaafa4d187986646043ba7a6fe41ff13b49637cac4f947061030",
+      "seconds": [
+        4.488427958999999,
+        4.575192165999997,
+        4.528433166999999,
+        4.561345000000003,
+        4.575150458000003
+      ],
+      "median_seconds": 4.561345000000003,
+      "source_identity": {
+        "git_clean": true,
+        "git_commit": "fd90082af2d1b613b1294356e53d6d21469e51aa"
+      }
+    },
+    "after": {
+      "binary": "/tmp/birnam-round3-final/bin/birnam",
+      "sha256": "ded0bef5034a419ab186cc90e4f6e5da8c13296b09bfd065c43e802a34b4dbbe",
+      "source_manifest_sha256": "f4ebb213c41680efd4faea73366ae2e6113f68507b72f9ce8741d66dfcd2d986",
+      "seconds": [
+        4.536576667,
+        4.4959785409999995,
+        4.580066542000001,
+        4.543897417000004,
+        4.553925833000001
+      ],
+      "median_seconds": 4.543897417000004,
+      "source_identity": {
+        "git_clean": true,
+        "git_commit": "33b3488a58100b9227f5fe7ba9b67650a5ecb41d"
+      }
+    }
+  },
+  "speedup": 1.0038397836480029
+}

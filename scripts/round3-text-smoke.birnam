@@ -1,3 +1,5 @@
+[Module load: #toml];
+[Module load: #process];
 let textAssert := [:ok | [[ok == true] ifFalse: [| [System exit: 1]]]];
 [textAssert value: [["a\\nb\\t\\\\c" tomlUnescape] = "a\nb\t\\c"]];
 [textAssert value: [["" tomlUnescape] = ""]];

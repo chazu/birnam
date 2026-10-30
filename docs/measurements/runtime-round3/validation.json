@@ -1,0 +1,49 @@
+{
+  "implementation_commit": "33b3488a58100b9227f5fe7ba9b67650a5ecb41d",
+  "source_clean": true,
+  "source_manifest_sha256": "f4ebb213c41680efd4faea73366ae2e6113f68507b72f9ce8741d66dfcd2d986",
+  "profile": "release",
+  "machine": "macOS-14.6-arm64-arm-64bit",
+  "installed_prefix": "/tmp/birnam-round3-final",
+  "validation": [
+    {
+      "command": "cargo check --offline --locked --workspace --all-targets",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-artifact -p birnam-codegen -p birnam-native-backend --lib",
+      "result": "passed; performance test ignored as declared"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-artifact --lib child_views",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-peg --lib",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-host-support --lib",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-siphon --test image_slot_values --test installed_scheduler --test queue_data --test compiler_source --test direct_native_method --test native_boundaries --test memory --test memory_activation --test allocation_accounting --test command_values --test accumulator_roots -- --include-ignored",
+      "environment": {
+        "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-round3-final/lib"
+      },
+      "result": "11 tests passed; image and scheduler tests use installed code without source reload"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-siphon --test native_conversion_construction -- --include-ignored",
+      "result": "passed against staged installed runtime with current Execution"
+    },
+    {
+      "command": "/tmp/birnam-round3-final/bin/birnam scripts/round3-text-smoke.birnam",
+      "result": "ROUND3_TEXT_OK; loads installed toml and process modules"
+    },
+    {
+      "command": "BIRNAM_BIN=/tmp/birnam-round3-final/bin/birnam bash scripts/rust-project-check-smoke.sh",
+      "result": "passed: human/JSON check, build, run, install, test, path dependencies, pinned Git dependencies, relocation and incomplete-native rejection"
+    }
+  ]
+}
