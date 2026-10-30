@@ -1,0 +1,144 @@
+{
+  "baseline": "85776142870a2c627025783376a251b349f562f8",
+  "scope": "round3_costs: childAt on immutable CSTs with 128/4096 children; 1000 lookups/sample, five samples. Parse/setup and explicit GC excluded; same current index conversion and collection preparation retained.",
+  "summary": [
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "before_ns": 661,
+      "after_ns": 679,
+      "speedup": 0.9734904270986745
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "before_ns": 955,
+      "after_ns": 663,
+      "speedup": 1.440422322775264
+    }
+  ],
+  "before": [
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 0,
+      "ns": 672
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 1,
+      "ns": 661
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 2,
+      "ns": 653
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 3,
+      "ns": 676
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 4,
+      "ns": 660
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 0,
+      "ns": 972
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 1,
+      "ns": 955
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 2,
+      "ns": 958
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 3,
+      "ns": 952
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 4,
+      "ns": 952
+    }
+  ],
+  "after": [
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 0,
+      "ns": 674
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 1,
+      "ns": 680
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 2,
+      "ns": 664
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 3,
+      "ns": 679
+    },
+    {
+      "operation": "cst_child",
+      "n": 128,
+      "sample": 4,
+      "ns": 680
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 0,
+      "ns": 663
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 1,
+      "ns": 655
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 2,
+      "ns": 924
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 3,
+      "ns": 654
+    },
+    {
+      "operation": "cst_child",
+      "n": 4096,
+      "sample": 4,
+      "ns": 668
+    }
+  ]
+}

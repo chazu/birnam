@@ -47,7 +47,7 @@ unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
 enum Value {
     Pattern(PatternState),
     Grammar(Vec<(Oop, Oop)>, usize),
-    Cst(Oop, usize, usize, Vec<Oop>),
+    Cst(Oop, usize, usize, std::rc::Rc<[Oop]>),
 }
 impl Value {
     fn refs(&self) -> Vec<Oop> {
@@ -239,7 +239,7 @@ impl State {
             for &i in &n.children {
                 children.push(self.cst(scope, m, i)?);
             }
-            self.allocate(scope, Value::Cst(n.rule, n.start, n.end, children))
+            self.allocate(scope, Value::Cst(n.rule, n.start, n.end, children.into()))
         }
     }
     unsafe fn parse(
@@ -437,8 +437,9 @@ unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
             }
             Op::Parse => return s.parse(&scope, r, s.bytes(a[0])?, a[1]),
             Op::Fail => {
-                let Value::Grammar(_, v) = s.value(r)? else {
-                    return Err(invalid());
+                let v = match s.values.borrow().get(&r.addr()) {
+                    Some(Value::Grammar(_, position)) => *position,
+                    _ => return Err(invalid()),
                 };
                 return s.number(v);
             }
@@ -459,7 +460,7 @@ unsafe fn execute(s: &State, r: Oop, a: &[Oop], op: Op) -> Result<Oop, Oop> {
                     6 => {
                         let mut v =
                             scope.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?);
-                        for child in children {
+                        for &child in children.iter() {
                             v = scope.keep(object(s.send(v, b"add:", &[child])?)?);
                         }
                         Ok(v)
