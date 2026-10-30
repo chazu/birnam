@@ -10,7 +10,7 @@ use std::{
 struct References {
     id: Protocol,
     visit: Oop,
-    scopes: Vec<Option<Vec<Oop>>>,
+    scopes: Vec<Vec<Oop>>,
     free: Vec<usize>,
 }
 thread_local! {
@@ -33,16 +33,13 @@ pub(crate) struct Scope {
 }
 impl Scope {
     pub fn keep(&self, value: Oop) {
-        self.references.borrow_mut().scopes[self.index]
-            .as_mut()
-            .unwrap()
-            .push(value);
+        self.references.borrow_mut().scopes[self.index].push(value);
     }
 }
 impl Drop for Scope {
     fn drop(&mut self) {
         let mut r = self.references.borrow_mut();
-        r.scopes[self.index] = None;
+        r.scopes[self.index].clear();
         r.free.push(self.index);
     }
 }
@@ -50,10 +47,9 @@ impl Provider {
     pub fn scope(&self) -> Scope {
         let mut r = self.references.borrow_mut();
         let index = r.free.pop().unwrap_or_else(|| {
-            r.scopes.push(None);
+            r.scopes.push(Vec::new());
             r.scopes.len() - 1
         });
-        r.scopes[index] = Some(Vec::new());
         Scope {
             references: self.references.clone(),
             index,
@@ -160,7 +156,6 @@ pub unsafe extern "C" fn trace_entry(
             r.visit,
             r.scopes
                 .iter()
-                .flatten()
                 .flatten()
                 .copied()
                 .collect::<Vec<_>>(),
