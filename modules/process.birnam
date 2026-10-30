@@ -48,13 +48,13 @@
 
 // -- draining stdout ----------------------------------------------------------
 
-// Read the rest of `fp` through the reusable buffer `buf`, accumulating onto `acc`.
-// A recursive method (self-sends late-bind); fgets answers NULL at EOF.
+// Read chunks through the reusable buffer and assemble the output once.
 [Reflect defineMethod: #drainFp:buf:into: on: Process as: [:self :fp :buf :acc |
-  let r := [buf fgetsSize: 4096 stream: fp];
-  [[r isNull]
-    ifTrue:  [| acc]
-    ifFalse: [| [self drainFp: fp buf: buf into: [acc , [buf peekStringAt: 0]]]]]] doc:
+  let out := [StringBuilder new];
+  [out add: acc];
+  [[| [[[buf fgetsSize: 4096 stream: fp] isNull] not]] whileTrue: [|
+    [out add: [buf peekStringAt: 0]]]];
+  [out asString]] doc:
   "Read the rest of `fp` through reusable buffer `buf`, accumulating onto `acc`; answers the text at EOF."];
 
 // -- the public surface -------------------------------------------------------

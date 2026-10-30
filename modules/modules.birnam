@@ -173,14 +173,17 @@
 // live-module workflows. Every part after the entry is ordinary source and must
 // not carry another Module named:requires: declaration.
 [Reflect defineMethod: #composeSources: on: Module as: [:self :paths |
-  [paths inject: "" into: [:text :path |
-    [[text isError]
-      ifTrue: [| text]
-      ifFalse: [|
-        let part := [System readFile: path];
-        [[part isError]
-          ifTrue: [| part]
-          ifFalse: [| [[text , part] , "\n"]]]]]]]]];
+  let text := [StringBuilder new];
+  let failure := [nil asCell];
+  [paths do: [:path |
+    [[[failure value] isNil] ifTrue: [|
+      let part := [System readFile: path];
+      [[part isError]
+        ifTrue: [| [failure set: part]]
+        ifFalse: [| [text add: part]; [text add: "\n"]]]]]]];
+  [[[failure value] isNil]
+    ifTrue: [| [text asString]]
+    ifFalse: [| [failure value]]]]];
 
 // Inspect and validate one requested identity before walking any dependency.
 [Reflect defineMethod: #descriptionOf:path: on: Module as: [:self :name :p |

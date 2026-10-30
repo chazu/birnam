@@ -139,23 +139,29 @@
   [[self = "r"] ifTrue: [| "\r"] ifFalse: [| b]]] doc:
   "The unescaped meaning of `self`, the byte after a backslash: n/t/r map to control chars, any other byte answers itself."];
 
-// Process backslash escapes in a string body (a fold that skips the byte
-// consumed by each escape).
+// Scan before decoding. Most TOML keys and values have no backslashes; a single
+// slice preserves fresh nonempty results without building one String per byte.
+// These are ordinary late-bound sends, not guarded copies of an older algorithm.
 [Reflect defineMethod: #tomlUnescape on: String as: [:self |
   let n := [self size];
-  let step := [:st :i |
-    let out := [st at: 0];
-    let wasEsc := [st at: 1];
-    let ch := [self at: i];
-    [[wasEsc = 1]
-      ifTrue: [| #[ out 0 ]]
-      ifFalse: [| [[ch = "\\"]
-        ifTrue: [| #[ [out , [[self at: [i + 1]] tomlEscChar]] 1 ]]
-        ifFalse: [| #[ [out , ch] 0 ]]]]]];
   [[n = 0]
     ifTrue: [| self]
-    ifFalse: [| [[[0 to: [n - 1]] inject: #[ "" 0 ] into: step] at: 0]]]] doc:
-  "Answers `self` with backslash escapes in a string body processed (a fold that skips the byte each escape consumes)."];
+    ifFalse: [| [[self includesSubstring: "\\"]
+      ifTrue: [|
+        let out := [StringBuilder new];
+        let wasEsc := [false asCell];
+        [[0 to: [n - 1]] do: [:i |
+          [[wasEsc value]
+            ifTrue: [| [wasEsc set: false]]
+            ifFalse: [|
+              let ch := [self at: i];
+              [[ch = "\\"]
+                ifTrue: [| [out add: [[self at: [i + 1]] tomlEscChar]]; [wasEsc set: true]]
+                ifFalse: [| [out add: ch]]]]]]];
+        [out asString]]
+      ifFalse: [| [self copyFrom: 0 to: n]]]]]
+] doc:
+  "Processes backslash escapes in a TOML string body; scans and copies bodies without escapes."];
 
 // -- CST → birnam value lowering (on the parse-tree node vtable) --------------
 

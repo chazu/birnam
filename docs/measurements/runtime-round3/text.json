@@ -1,0 +1,412 @@
+{
+  "baseline": "e328212c7b68e4f38138726b9c8d0140edd01e91",
+  "scope": "Authored TOML unescaping, ordered file composition, and shell stdout capture on round2 installed runtime with the definitions under test reloaded. Five samples; setup and explicit GC excluded, file IO and process spawn included.",
+  "summary": [
+    {
+      "operation": "compose",
+      "n": 16,
+      "before_ns": 3870459,
+      "after_ns": 3118125,
+      "speedup": 1.241277690920024
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "before_ns": 3279478417,
+      "after_ns": 45742667,
+      "speedup": 71.69407977457895
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "before_ns": 6036500,
+      "after_ns": 5661417,
+      "speedup": 1.0662524947376248
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "before_ns": 85925291,
+      "after_ns": 14361834,
+      "speedup": 5.982891251911142
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "before_ns": 38158708,
+      "after_ns": 95250,
+      "speedup": 400.6163569553806
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "before_ns": 3500575958,
+      "after_ns": 112917,
+      "speedup": 31001.31918134559
+    }
+  ],
+  "before": [
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 0,
+      "ns": 39389208
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 1,
+      "ns": 38493625
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 2,
+      "ns": 38158708
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 3,
+      "ns": 36970166
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 4,
+      "ns": 37501959
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 0,
+      "ns": 3629007333
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 1,
+      "ns": 3500575958
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 2,
+      "ns": 3447462416
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 3,
+      "ns": 3481291334
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 4,
+      "ns": 3535034625
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 0,
+      "ns": 3870459
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 1,
+      "ns": 3858625
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 2,
+      "ns": 4188417
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 3,
+      "ns": 4067083
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 4,
+      "ns": 3854417
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 0,
+      "ns": 3295142709
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 1,
+      "ns": 3161937334
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 2,
+      "ns": 3050663375
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 3,
+      "ns": 3279478417
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 4,
+      "ns": 3293162542
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 0,
+      "ns": 7280625
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 1,
+      "ns": 6036500
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 2,
+      "ns": 5765084
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 3,
+      "ns": 5668166
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 4,
+      "ns": 6056334
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 0,
+      "ns": 85925291
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 1,
+      "ns": 85837667
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 2,
+      "ns": 86200584
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 3,
+      "ns": 83276625
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 4,
+      "ns": 91154375
+    }
+  ],
+  "after": [
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 0,
+      "ns": 139000
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 1,
+      "ns": 94333
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 2,
+      "ns": 91583
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 3,
+      "ns": 113667
+    },
+    {
+      "operation": "toml_plain",
+      "n": 128,
+      "sample": 4,
+      "ns": 95250
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 0,
+      "ns": 123250
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 1,
+      "ns": 107500
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 2,
+      "ns": 121167
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 3,
+      "ns": 112917
+    },
+    {
+      "operation": "toml_plain",
+      "n": 4096,
+      "sample": 4,
+      "ns": 105500
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 0,
+      "ns": 3337208
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 1,
+      "ns": 3164167
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 2,
+      "ns": 3088042
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 3,
+      "ns": 3090000
+    },
+    {
+      "operation": "compose",
+      "n": 16,
+      "sample": 4,
+      "ns": 3118125
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 0,
+      "ns": 50538125
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 1,
+      "ns": 45742667
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 2,
+      "ns": 45809875
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 3,
+      "ns": 45343583
+    },
+    {
+      "operation": "compose",
+      "n": 256,
+      "sample": 4,
+      "ns": 43975875
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 0,
+      "ns": 6023083
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 1,
+      "ns": 5661417
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 2,
+      "ns": 5686750
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 3,
+      "ns": 5641625
+    },
+    {
+      "operation": "process_output",
+      "n": 8192,
+      "sample": 4,
+      "ns": 5504166
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 0,
+      "ns": 14468792
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 1,
+      "ns": 14522458
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 2,
+      "ns": 14361834
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 3,
+      "ns": 14264917
+    },
+    {
+      "operation": "process_output",
+      "n": 262144,
+      "sample": 4,
+      "ns": 14223417
+    }
+  ]
+}

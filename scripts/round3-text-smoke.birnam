@@ -1,0 +1,17 @@
+let textAssert := [:ok | [[ok == true] ifFalse: [| [System exit: 1]]]];
+[textAssert value: [["a\\nb\\t\\\\c" tomlUnescape] = "a\nb\t\\c"]];
+[textAssert value: [["" tomlUnescape] = ""]];
+[textAssert value: [[Module composeSources: #[]] = ""]];
+let savedRead := [Vtable bind: #readFile: to: System];
+let reads := [0 asCell];
+let missing := [Error kind: #missing message: "expected"];
+[Reflect defineMethod: #readFile: on: System as: [:self :path |
+  [reads set: [[reads value] + 1]];
+  [[path = "first"] ifTrue: [| "one"] ifFalse: [| missing]]]];
+let composed := [Module composeSources: #["first" "missing" "must-not-read"]];
+[[Reflect vtableOf: System] addMethod: savedRead as: #readFile:];
+[textAssert value: [composed == missing]];
+[textAssert value: [[reads value] = 2]];
+[textAssert value: [[Process output: "printf ''"] = ""]];
+[textAssert value: [[Process output: "printf 'one\ntwo'"] = "one\ntwo"]];
+[System println: "ROUND3_TEXT_OK"];
