@@ -1,0 +1,192 @@
+{
+  "baseline": "9cf63b5a0b81de962728e00d78d2f91ad5f2c025",
+  "scope": "Release invariant_costs calls: inline generated token storage versus the simpler original dynamic storage, both omitting immediate/discarded roots. Seven samples. This experiment removes the inline-storage mechanism; it is not an additional language-runtime speedup claim.",
+  "summary": [
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "before_ns": 45455.42,
+      "after_ns": 47522.5,
+      "speedup": 0.9565031300962702
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "before_ns": 373565,
+      "after_ns": 372797.08,
+      "speedup": 1.0020598873789461
+    }
+  ],
+  "before": [
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 0,
+      "ns": 50572.5
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 1,
+      "ns": 44882.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 2,
+      "ns": 45127.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 3,
+      "ns": 45328.75
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 4,
+      "ns": 45554.58
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 5,
+      "ns": 45455.42
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 6,
+      "ns": 45912.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 0,
+      "ns": 400084.17
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 1,
+      "ns": 364498.34
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 2,
+      "ns": 367012.5
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 3,
+      "ns": 389952.08
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 4,
+      "ns": 370919.17
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 5,
+      "ns": 373565
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 6,
+      "ns": 374142.5
+    }
+  ],
+  "after": [
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 0,
+      "ns": 50177.5
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 1,
+      "ns": 46760.84
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 2,
+      "ns": 46922.08
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 3,
+      "ns": 46797.08
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 4,
+      "ns": 48785.42
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 5,
+      "ns": 47522.5
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 6,
+      "ns": 48090.83
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 0,
+      "ns": 416204.58
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 1,
+      "ns": 368415
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 2,
+      "ns": 371672.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 3,
+      "ns": 372581.25
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 4,
+      "ns": 372797.08
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 5,
+      "ns": 378689.16
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 6,
+      "ns": 372899.58
+    }
+  ]
+}

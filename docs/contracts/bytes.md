@@ -26,6 +26,15 @@ the bulk operation changes whole-buffer access.
 values and returns immediate 0 or 1. Generated native factories currently use it
 to compare checksums without one message per checksum byte.
 
+## Constructing byte values
+
+Native producers construct Bytes with the current `fromByteValues` and
+`appendByteValues` messages in bounded groups. String factories receive that
+ordinary byte provider. The shared native helper contains no runtime state and
+adds no Id operation. A complete native buffer need not become a Sequence with
+one Oop per byte. Explicit Oop argument lists and layout-kind lists remain valid
+uses of Sequence.
+
 ## Current native implementation
 
 The current implementation delivers groups of at most 8192 Oops. Producers copy

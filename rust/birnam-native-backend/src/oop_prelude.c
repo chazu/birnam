@@ -16,13 +16,12 @@ static O symbols[SYMBOL_COUNT],methods[METHOD_COUNT];
 static inline O size_oop(size_t n){return (O)((n<<1)|1);}
 static inline int failed(O v){return ((uintptr_t)v&3)==2;}
 static inline O error_object(O v){return (O)((uintptr_t)v&~(uintptr_t)2);}
-typedef struct {O error;O*tokens;size_t count,capacity;O local[17];} Call;
+typedef struct {O error;O*tokens;size_t count,capacity;} Call;
 static inline O raw(Call*c,O receiver,size_t selector,const O*a,size_t n){if(c->error)return 0;O result=id.message(id.root,receiver,symbols[selector],a,n);if(failed(result)){c->error=result;return 0;}return result;}
 static inline O keep(Call*c,O result){
  if(c->error)return 0;
  if(!result||((uintptr_t)result&1))return result;
- if(!c->capacity){c->tokens=c->local;c->capacity=17;}
- if(c->count+1>=c->capacity){size_t cap=c->capacity?c->capacity*2:32;if(cap<=c->capacity||cap>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*p=c->tokens==c->local?malloc(cap*sizeof(O)):realloc(c->tokens,cap*sizeof(O));if(!p){c->error=id.invalid;return 0;}if(c->tokens==c->local)for(size_t i=1;i<=c->count;i++)p[i]=c->local[i];c->tokens=p;c->capacity=cap;}
+ if(c->count+1>=c->capacity){size_t cap=c->capacity?c->capacity*2:32;if(cap<=c->capacity||cap>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*p=realloc(c->tokens,cap*sizeof(O));if(!p){c->error=id.invalid;return 0;}c->tokens=p;c->capacity=cap;}
  O token=raw(c,roots,S_RETAIN,&result,1);if(c->error)return 0;
  if(!((uintptr_t)token&1)||token==size_oop(0)){c->error=id.invalid;return 0;}
  c->tokens[++c->count]=token;return result;
@@ -37,7 +36,7 @@ static inline int is_error(Call*c,O value){
 static inline O finish(Call*c,O result){
  O failure=c->error;
  if(c->count){c->tokens[0]=failure?error_object(failure):result;O cleanup=id.message(id.root,roots,symbols[S_CLEANUP],c->tokens,c->count+1);if(!failure&&failed(cleanup))failure=cleanup;}
- if(c->tokens!=c->local)free(c->tokens);return failure?failure:result;
+ free(c->tokens);return failure?failure:result;
 }
 static inline O full_word(Call*c,uint64_t bits){O factory=named(c,S_WORD);O a[2]={size_oop((uint32_t)bits),size_oop((uint32_t)(bits>>32))};return call(c,factory,S_FROM_PARTS,a,2);}
 static inline O integer(Call*c,uint64_t bits){O word=full_word(c,bits);O factory=named(c,S_INTEGER);return call(c,factory,S_FROM_WORD,&word,1);}
