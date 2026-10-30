@@ -87,3 +87,9 @@ and resume against an installed image without reloading scheduler source; it is
 included in the native-message test script. The new test failed on the affected
 installation at the reset assertion. The queue measurement was repeated with the
 corrected setter and the same native runtime for both scheduler versions.
+
+Final installed validation: a clean source installation of `fd90082a` passed the
+installed nil-reset/wait/resume regression and all 177 scheduler assertions without
+reloading scheduler source. Compiler integration, native callbacks, collections,
+text/GC checks and image-owner round trips passed on the rebuilt runtime. The
+working tree was clean at installation. No startup-speedup claim is made.

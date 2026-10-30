@@ -208,5 +208,8 @@
       "ns": 563954000
     }
   ],
-  "rejected_experiment": "An authored linked-list implementation passed correctness but took about 2.28 seconds to drain 2048 jobs, versus about 0.91 seconds for the Vector baseline. It was replaced with the small Queue data operations in the existing persistent-collection module; scheduling policy remains authored."
+  "rejected_experiment": "An authored linked-list implementation passed correctness but took about 2.28 seconds to drain 2048 jobs, versus about 0.91 seconds for the Vector baseline. It was replaced with the small Queue data operations in the existing persistent-collection module; scheduling policy remains authored.",
+  "native_runtime_revision": "6d3b43a4",
+  "baseline_source_revision": "2c004c74",
+  "corrected_source_revision": "fd90082a"
 }
