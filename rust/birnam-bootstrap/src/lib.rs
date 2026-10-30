@@ -112,11 +112,8 @@ impl State {
         unsafe {
             let q = self.scope(&[]);
             let factory = q.keep(self.named(b"String")?);
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|b| abi::size(*b as usize).unwrap())
-                .collect();
-            let data = q.keep(self.send(self.id.root, b"sequence", &values)?);
+            let data = abi::byte_transfer::buffer(bytes, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| Ok(q.keep(v)))?;
             self.send(factory, b"fromBytes:", &[data])
         }
     }
@@ -334,6 +331,8 @@ literals![
     b"copyByteValuesFrom:count:to:",
     b"appendByteValues",
     b"releaseTokensProtecting",
+    b"Bytes",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[

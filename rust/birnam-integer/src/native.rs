@@ -157,14 +157,11 @@ impl Number {
         }
     }
     unsafe fn text(&self, bytes: &[u8]) -> Result<Oop, Oop> {
-        unsafe {
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let source = self.send(self.id.root, b"sequence", &values)?;
+        unsafe { self.rooted(&[], || {
+            let source = abi::byte_transfer::buffer(bytes, self.binding(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| {self.scoped.borrow_mut().push(v); Ok(v)})?;
             self.send(self.string, b"fromBytes:", &[source])
-        }
+        }) }
     }
     unsafe fn error(&self, kind: &[u8], message: &[u8]) -> Result<Oop, Oop> {
         unsafe {
@@ -743,6 +740,9 @@ literals![
     b"word",
     b"wordOf:",
     b"zeroDivide",
+    b"Bytes",
+    b"fromByteValues",
+    b"appendByteValues",
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;

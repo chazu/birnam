@@ -129,3 +129,18 @@ pub type Bootstrap = unsafe extern "C" fn(*const Seed, usize) -> *const Protocol
 const _: () = {
     assert!(size_of::<Oop>() == size_of::<*const c_void>());
 };
+
+/// Resolve a declaration's selector at compile time; numeric positions are local
+/// to that module, not an independently maintained contract.
+pub const fn literal_index(names: &[&[u8]], name: &[u8]) -> usize {
+    let mut i = 0;
+    while i < names.len() {
+        if names[i].len() == name.len() {
+            let mut j = 0;
+            while j < name.len() && names[i][j] == name[j] { j += 1; }
+            if j == name.len() { return i; }
+        }
+        i += 1;
+    }
+    panic!("undeclared method selector")
+}

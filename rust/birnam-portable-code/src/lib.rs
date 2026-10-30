@@ -243,22 +243,15 @@ impl Scope<'_> {
     }
     fn blob(&self, bytes: &[u8], factory: &[u8]) -> Result<Oop, Oop> {
         let factory = self.keep(self.state.named(factory)?)?;
-        let values: Vec<_> = bytes
-            .iter()
-            .map(|b| abi::size(*b as usize).unwrap())
-            .collect();
-        let sequence = self.call(self.state.id.root, b"sequence", &values)?;
+        let sequence = self.byte_values(bytes)?;
         self.call(factory, b"fromBytes:", &[sequence])
     }
     fn string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
         self.blob(bytes, b"String")
     }
     fn byte_values(&self, bytes: &[u8]) -> Result<Oop, Oop> {
-        let values: Vec<_> = bytes
-            .iter()
-            .map(|b| abi::size(*b as usize).unwrap())
-            .collect();
-        self.call(self.state.id.root, b"sequence", &values)
+        abi::byte_transfer::buffer(bytes, self.state.named(b"Bytes")?,
+            |r,n,a| self.call(r,n,a), |v| self.keep(v))
     }
     fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
         let value = self.call(value, b"bytes", &[])?;
@@ -1637,6 +1630,7 @@ const NAMES: &[&[u8]] = &[
     b"copyByteValuesFrom:count:to:",
     b"appendByteValues",
     b"objectBehavior",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
@@ -1781,315 +1775,316 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"copyByteValuesFrom:count:to:"),
     Literal::new(b"appendByteValues"),
     Literal::new(b"objectBehavior"),
+    Literal::new(b"fromByteValues"),
     Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 134,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
     MethodSpec {
-        name: 135,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"referencesOf:do:"),
         entry: Some(references),
     },
     MethodSpec {
-        name: 136,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"finalize:"),
         entry: Some(finalize),
     },
     MethodSpec {
-        name: 31,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"integer:"),
         entry: Some(node_integer_new),
     },
     MethodSpec {
-        name: 34,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"floatBits:"),
         entry: Some(node_float_bits_new),
     },
     MethodSpec {
-        name: 33,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"string:"),
         entry: Some(node_string_new),
     },
     MethodSpec {
-        name: 35,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"symbol:"),
         entry: Some(node_symbol_new),
     },
     MethodSpec {
-        name: 37,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"nilLiteral"),
         entry: Some(node_nil_new),
     },
     MethodSpec {
-        name: 38,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"trueLiteral"),
         entry: Some(node_true_new),
     },
     MethodSpec {
-        name: 39,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"falseLiteral"),
         entry: Some(node_false_new),
     },
     MethodSpec {
-        name: 32,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"lexicalReadAt:"),
         entry: Some(node_lexical_read_new),
     },
     MethodSpec {
-        name: 36,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"globalRead:"),
         entry: Some(node_global_read_new),
     },
     MethodSpec {
-        name: 40,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"send:operands:"),
         entry: Some(node_send_new),
     },
     MethodSpec {
-        name: 41,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"block:captureBindings:"),
         entry: Some(node_block_new),
     },
     MethodSpec {
-        name: 44,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"kind"),
         entry: Some(node_kind),
     },
     MethodSpec {
-        name: 45,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"integer"),
         entry: Some(node_integer),
     },
     MethodSpec {
-        name: 56,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"floatBits"),
         entry: Some(node_float_bits),
     },
     MethodSpec {
-        name: 47,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"string"),
         entry: Some(node_string),
     },
     MethodSpec {
-        name: 48,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"symbol"),
         entry: Some(node_symbol),
     },
     MethodSpec {
-        name: 59,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bindingIndex"),
         entry: Some(node_binding_index),
     },
     MethodSpec {
-        name: 57,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"global"),
         entry: Some(node_global),
     },
     MethodSpec {
-        name: 58,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"selector"),
         entry: Some(node_selector),
     },
     MethodSpec {
-        name: 61,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"operandCount"),
         entry: Some(node_operand_count),
     },
     MethodSpec {
-        name: 42,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"operandAt:"),
         entry: Some(node_operand_at),
     },
     MethodSpec {
-        name: 60,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"program"),
         entry: Some(node_program),
     },
     MethodSpec {
-        name: 62,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"captureCount"),
         entry: Some(node_capture_count),
     },
     MethodSpec {
-        name: 43,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"captureBindingAt:"),
         entry: Some(node_capture_binding_at),
     },
     MethodSpec {
-        name: 112,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"clone"),
         entry: Some(clone_0),
     },
     MethodSpec {
-        name: 63,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"expression:"),
         entry: Some(statement_expression_new),
     },
     MethodSpec {
-        name: 64,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"letNamed:expression:"),
         entry: Some(statement_let_new),
     },
     MethodSpec {
-        name: 44,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"kind"),
         entry: Some(statement_kind),
     },
     MethodSpec {
-        name: 65,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"expression"),
         entry: Some(statement_expression),
     },
     MethodSpec {
-        name: 67,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bindingName"),
         entry: Some(statement_binding_name),
     },
     MethodSpec {
-        name: 112,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"clone"),
         entry: Some(clone_1),
     },
     MethodSpec {
-        name: 70,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"parameters:captures:statements:"),
         entry: Some(program_new),
     },
     MethodSpec {
-        name: 77,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"format"),
         entry: Some(program_format),
     },
     MethodSpec {
-        name: 79,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"arity"),
         entry: Some(program_arity),
     },
     MethodSpec {
-        name: 80,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"parameterCount"),
         entry: Some(program_parameter_count),
     },
     MethodSpec {
-        name: 62,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"captureCount"),
         entry: Some(program_capture_count),
     },
     MethodSpec {
-        name: 81,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"letCount"),
         entry: Some(program_let_count),
     },
     MethodSpec {
-        name: 82,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bindingCount"),
         entry: Some(program_binding_count),
     },
     MethodSpec {
-        name: 83,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"statementCount"),
         entry: Some(program_statement_count),
     },
     MethodSpec {
-        name: 71,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"statementAt:"),
         entry: Some(program_statement_at),
     },
     MethodSpec {
-        name: 72,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bindingAt:"),
         entry: Some(program_any_binding_at),
     },
     MethodSpec {
-        name: 73,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"parameterAt:"),
         entry: Some(program_parameter_at),
     },
     MethodSpec {
-        name: 74,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"captureAt:"),
         entry: Some(program_capture_at),
     },
     MethodSpec {
-        name: 75,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"letAt:"),
         entry: Some(program_let_at),
     },
     MethodSpec {
-        name: 112,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"clone"),
         entry: Some(clone_2),
     },
     MethodSpec {
-        name: 44,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"kind"),
         entry: Some(binding_kind),
     },
     MethodSpec {
-        name: 84,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"index"),
         entry: Some(binding_index),
     },
     MethodSpec {
-        name: 87,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"ordinal"),
         entry: Some(binding_ordinal),
     },
     MethodSpec {
-        name: 88,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"name"),
         entry: Some(binding_name),
     },
     MethodSpec {
-        name: 89,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"definingStatementIndex"),
         entry: Some(binding_defining_statement),
     },
     MethodSpec {
-        name: 112,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"clone"),
         entry: Some(clone_3),
     },
     MethodSpec {
-        name: 93,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"canonicalBytesOf:"),
         entry: Some(canonical_bytes),
     },
     MethodSpec {
-        name: 119,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"parameterCountOf:"),
         entry: Some(parameter_count_of),
     },
     MethodSpec {
-        name: 120,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"captureCountOf:"),
         entry: Some(capture_count_of),
     },
     MethodSpec {
-        name: 90,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"inspectInventory:bindings:selection:"),
         entry: Some(inventory_inspect),
     },
     MethodSpec {
-        name: 91,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"inventory:matchesRoots:"),
         entry: Some(inventory_closure),
     },
     MethodSpec {
-        name: 92,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bindings:referencesBelow:"),
         entry: Some(inventory_references),
     },
     MethodSpec {
-        name: 95,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"fromCanonicalBytes:"),
         entry: Some(admit_bytes),
     },
     MethodSpec {
-        name: 97,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"fromProgram:"),
         entry: Some(code_object_from_program),
     },
     MethodSpec {
-        name: 98,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"fromProgram:provenance:"),
         entry: Some(code_object_from_program_provenance),
     },
     MethodSpec {
-        name: 77,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"format"),
         entry: Some(code_object_format),
     },
     MethodSpec {
-        name: 79,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"arity"),
         entry: Some(code_object_arity),
     },
     MethodSpec {
-        name: 107,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"captureSchema"),
         entry: Some(code_object_capture_schema),
     },
     MethodSpec {
-        name: 60,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"program"),
         entry: Some(code_object_program),
     },
     MethodSpec {
-        name: 106,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"digest"),
         entry: Some(code_object_digest),
     },
     MethodSpec {
-        name: 103,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"sourceProvenance"),
         entry: Some(code_object_source_provenance),
     },
     MethodSpec {
-        name: 99,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"nativeSignature:matchesProgram:"),
         entry: Some(code_object_signature_matches),
     },
     MethodSpec {
-        name: 100,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"isNativeSignature:"),
         entry: Some(code_object_is_native_signature),
     },
     MethodSpec {
-        name: 104,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"nativeSignature"),
         entry: Some(code_object_native_signature),
     },
     MethodSpec {
-        name: 101,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"withNativeSignature:"),
         entry: Some(code_object_with_native_signature),
     },
     MethodSpec {
-        name: 102,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"withProgram:"),
         entry: Some(code_object_with_program),
     },
     MethodSpec {
-        name: 105,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"withoutSourceProvenance"),
         entry: Some(code_object_without_source_provenance),
     },
     MethodSpec {
-        name: 112,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"clone"),
         entry: Some(clone_4),
     },
 
-    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
+    MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"receiveByteValues"), entry: Some(abi::byte_transfer::receive_entry) },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,

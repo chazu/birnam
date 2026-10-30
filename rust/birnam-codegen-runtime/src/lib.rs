@@ -133,11 +133,8 @@ impl State {
         unsafe {
             let q = self.scope(&[]);
             let factory = q.keep(self.named(b"String")?);
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let data = self.send(self.id.root, b"sequence", &values)?;
+            let data = abi::byte_transfer::buffer(bytes, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| Ok(q.keep(v)))?;
             self.send(factory, b"fromBytes:", &[data])
         }
     }
@@ -892,332 +889,332 @@ static LITERALS: &[Literal] = &[
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 49,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compileSynchronous:"),
         entry: Some(compile),
         convention: 0,
     },
     MethodSpec {
-        name: 38,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
         convention: 0,
     },
     MethodSpec {
-        name: 50,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compileResumable:"),
         entry: Some(compile_resumable),
         convention: 0,
     },
     MethodSpec {
-        name: 54,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"defineMethod:on:as:"),
         entry: Some(define_method),
         convention: 0,
     },
     MethodSpec {
-        name: 55,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"methodForArity:implementation:"),
         entry: Some(construct_method),
         convention: 0,
     },
     MethodSpec {
-        name: 61,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"vtableOf:"),
         entry: Some(vtable_of),
         convention: 0,
     },
     MethodSpec {
-        name: 20,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:"),
         entry: Some(compile_resumable),
         convention: 0,
     },
     MethodSpec {
-        name: 62,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"emit:"),
         entry: Some(emit),
         convention: 0,
     },
     MethodSpec {
-        name: 63,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"eval:"),
         entry: Some(evaluate),
         convention: 1,
     },
     MethodSpec {
-        name: 66,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"sourceTextOf:"),
         entry: Some(source::text),
         convention: 0,
     },
     MethodSpec {
-        name: 67,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compiledSourceFor:"),
         entry: Some(source::compilation),
         convention: 0,
     },
     MethodSpec {
-        name: 68,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retainedSourceMetadataOf:"),
         entry: Some(source::retained),
         convention: 0,
     },
     MethodSpec {
-        name: 69,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compiledSource:metadata:"),
         entry: Some(source::make),
         convention: 0,
     },
     MethodSpec {
-        name: 70,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"sourceRevisionOf:"),
         entry: Some(source::revision),
         convention: 0,
     },
     MethodSpec {
-        name: 71,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"moduleMetadataOf:"),
         entry: Some(source::metadata),
         convention: 0,
     },
     MethodSpec {
-        name: 72,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"analyzeSourceMetadata:"),
         entry: Some(source::prepare),
         convention: 0,
     },
     MethodSpec {
-        name: 73,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compiledSourceMetadataFor:"),
         entry: Some(source::encoded),
         convention: 0,
     },
     MethodSpec {
-        name: 74,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"embeddedFilesOf:"),
         entry: Some(source::embedded),
         convention: 0,
     },
     MethodSpec {
-        name: 75,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"lastError"),
         entry: Some(source::last_error),
         convention: 0,
     },
     MethodSpec {
-        name: 76,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"noteCompilationError:"),
         entry: Some(source::note),
         convention: 0,
     },
     MethodSpec {
-        name: 77,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"clearCompilationError"),
         entry: Some(source::clear),
         convention: 0,
     },
     MethodSpec {
-        name: 78,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"recordModuleSource:named:"),
         entry: Some(source::record),
         convention: 1,
     },
     MethodSpec {
-        name: 79,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"recordCompiledSource:named:"),
         entry: Some(source::record_compiled),
         convention: 1,
     },
     MethodSpec {
-        name: 80,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"moduleSourceFor:"),
         entry: Some(source::find),
         convention: 1,
     },
     MethodSpec {
-        name: 81,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"replaceCompiledSource:named:"),
         entry: Some(source::replace),
         convention: 1,
     },
     MethodSpec {
-        name: 95,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"recordedMethodSources"),
         entry: Some(source::method_sources),
         convention: 0,
     },
     MethodSpec {
-        name: 97,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"evalPersisting:"),
         entry: Some(source_evaluation::eval),
         convention: 1,
     },
     MethodSpec {
-        name: 98,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"evalPersisting:from:"),
         entry: Some(source_evaluation::eval_from),
         convention: 1,
     },
     MethodSpec {
-        name: 104,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:output:"),
         entry: Some(artifact::compile_output),
         convention: 0,
     },
     MethodSpec {
-        name: 105,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:output:from:"),
         entry: Some(artifact::compile_from),
         convention: 0,
     },
     MethodSpec {
-        name: 106,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"load:"),
         entry: Some(artifact::load),
         convention: 0,
     },
     MethodSpec {
-        name: 124,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:output:root:"),
         entry: Some(artifact::compile_root),
         convention: 0,
     },
     MethodSpec {
-        name: 125,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:output:from:synchronousBodies:"),
         entry: Some(artifact::compile_synchronous),
         convention: 0,
     },
     MethodSpec {
-        name: 126,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:output:root:embeddedLibraries:"),
         entry: Some(artifact::compile_embedded),
         convention: 0,
     },
     MethodSpec {
-        name: 133,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"implementationOf:"),
         entry: Some(implementation_of),
         convention: 0,
     },
     MethodSpec {
-        name: 136,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"methodDescriptorFor:"),
         entry: Some(method_descriptor),
         convention: 0,
     },
     MethodSpec {
-        name: 137,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"initialGenerationProjection"),
         entry: Some(generation_projection::initial),
         convention: 0,
     },
     MethodSpec {
-        name: 138,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"candidateInventory:selection:"),
         entry: Some(candidate_inventory::inventory),
         convention: 0,
     },
     MethodSpec {
-        name: 140,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"portableImageBindings"),
         entry: Some(image::bindings_entry),
         convention: 0,
     },
     MethodSpec {
-        name: 141,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compilePortableImageCode:bindings:selection:"),
         entry: Some(image::compile),
         convention: 0,
     },
     MethodSpec {
-        name: 142,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"beginPortableImageRebuild:bindings:selection:"),
         entry: Some(image::rebuild),
         convention: 0,
     },
     MethodSpec {
-        name: 143,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"beginPortableImageMapped:programs:bindings:selection:"),
         entry: Some(image::mapped),
         convention: 0,
     },
     MethodSpec {
-        name: 144,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"portableImageBlockMethod:synchronous:"),
         entry: Some(image::method),
         convention: 0,
     },
     MethodSpec {
-        name: 145,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"preparePortableImageBinding:implementation:"),
         entry: Some(image::prepare),
         convention: 0,
     },
     MethodSpec {
-        name: 146,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"installPortableImageBinding:on:as:source:"),
         entry: Some(image::install),
         convention: 0,
     },
     MethodSpec {
-        name: 147,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"finishPortableImageUnit"),
         entry: Some(image::finish),
         convention: 0,
     },
     MethodSpec {
-        name: 148,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"cancelPortableImageUnit"),
         entry: Some(image::cancel),
         convention: 0,
     },
     MethodSpec {
-        name: 149,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"portableImageSources"),
         entry: Some(image::sources),
         convention: 0,
     },
     MethodSpec {
-        name: 150,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"preparePortableImageSources:"),
         entry: Some(image::prepare_sources),
         convention: 0,
     },
     MethodSpec {
-        name: 151,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"finishPortableImageSources"),
         entry: Some(image::finish_sources),
         convention: 0,
     },
     MethodSpec {
-        name: 152,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"preparedPortableImageBinding:"),
         entry: Some(image::prepared),
         convention: 0,
     },
     MethodSpec {
-        name: 153,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"beginPortableImageApplication"),
         entry: Some(image::begin_application),
         convention: 0,
     },
     MethodSpec {
-        name: 154,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"allocation:bytes:identity:"),
         entry: Some(image::allocation),
         convention: 0,
     },
     MethodSpec {
-        name: 155,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"binding:value:weak:"),
         entry: Some(image::binding),
         convention: 0,
     },
     MethodSpec {
-        name: 165,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"materializeSynchronous:captures:"),
         entry: Some(materialization::synchronous),
         convention: 0,
     },
     MethodSpec {
-        name: 166,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"materializeResumable:captures:"),
         entry: Some(materialization::resumable),
         convention: 0,
     },
     MethodSpec {
-        name: 167,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"materializationCount"),
         entry: Some(materialization::count),
         convention: 0,
     },
     MethodSpec {
-        name: 168,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"evictMaterializations"),
         entry: Some(materialization::evict),
         convention: 0,
     },
     MethodSpec {
-        name: 172,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"allMethodsOf:"),
         entry: Some(reflection::all_methods),
         convention: 0,
     },
     MethodSpec {
-        name: 173,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"directMethodsOf:"),
         entry: Some(reflection::direct_methods),
         convention: 0,
     },
     MethodSpec {
-        name: 174,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"removeMethod:on:"),
         entry: Some(reflection::remove),
         convention: 0,
     },
     MethodSpec {
-        name: 164,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"nameOf:"),
         entry: Some(reflection::name_of),
         convention: 0,
     },
     MethodSpec {
-        name: 184,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"globalNamed:"),
         entry: Some(reflection::global_named),
         convention: 0,
     },
     MethodSpec {
-        name: 185,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"allGlobalNames"),
         entry: Some(reflection::global_names),
         convention: 0,
     },
     MethodSpec {
-        name: 134,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"parentOf:"),
         entry: Some(reflection::parent),
         convention: 0,
     },
 
-    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
+    MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"receiveByteValues"), entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,

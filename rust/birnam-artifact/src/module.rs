@@ -155,11 +155,11 @@ impl State {
         }
     }
     unsafe fn string(&self, b: &[u8]) -> Result<Oop, Oop> {
-        unsafe {
-            let values: Vec<_> = b.iter().map(|&b| abi::size(b as usize).unwrap()).collect();
-            let source = self.send(self.id.root, b"sequence", &values)?;
-            object(self.send(self.string, b"fromBytes:", &[source])?)
-        }
+        unsafe { self.rooted(&[], || {
+            let source = abi::byte_transfer::buffer(b, self.send(self.ns,b"at:",&[self.names[b"Bytes".as_slice()]])?,
+                |r,n,a| self.send(r,n,a), |v| {self.scoped.borrow_mut().push(v); Ok(v)})?;
+            self.send(self.string, b"fromBytes:", &[source])
+        }) }
     }
     unsafe fn number(&self, n: usize) -> Result<Oop, Oop> {
         object(unsafe {
@@ -575,6 +575,8 @@ literals![
     b"appendByteValues",
     b"objectBehavior",
     b"releaseTokensProtecting",
+    b"Bytes",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 const fn index(n: &[u8]) -> usize {

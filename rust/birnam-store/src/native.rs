@@ -1261,7 +1261,7 @@ const METHOD_COUNT: usize = STORE_METHODS.len() + CELL_METHODS.len() + OWNER_MET
 const METHODS: [MethodSpec; METHOD_COUNT] = {
     let mut a = [const {
         MethodSpec {
-            name: 0,
+            name: birnam_abi::id_protocol::literal_index(NAMES, b"imageFieldAt:"),
             entry: None,
         }
     }; METHOD_COUNT];

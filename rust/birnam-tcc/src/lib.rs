@@ -147,11 +147,8 @@ impl State {
         unsafe {
             let scope = self.scope(&[]);
             let factory = scope.keep(self.named(factory)?);
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let source = self.send(self.id.root, b"sequence", &values)?;
+            let source = abi::byte_transfer::buffer(bytes, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| Ok(scope.keep(v)))?;
             self.send(factory, b"fromBytes:", &[source])
         }
     }
@@ -725,6 +722,7 @@ const NAMES: &[&[u8]] = &[
     b"objectBehavior",
     b"allocate",
     b"releaseTokensProtecting",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
@@ -786,107 +784,108 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"objectBehavior"),
     Literal::new(b"allocate"),
     Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"fromByteValues"),
     Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 18,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compile:"),
         entry: Some(compile),
         convention: 0,
     },
     MethodSpec {
-        name: 20,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compileObject:"),
         entry: Some(compile_object),
         convention: 0,
     },
     MethodSpec {
-        name: 30,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadObject:"),
         entry: Some(load_object),
         convention: 0,
     },
     MethodSpec {
-        name: 17,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"checkpoint"),
         entry: Some(checkpoint),
         convention: 0,
     },
     MethodSpec {
-        name: 29,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"liveNativeUnits"),
         entry: Some(live_units),
         convention: 0,
     },
     MethodSpec {
-        name: 32,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"mappingIdentityOf:"),
         entry: Some(mapping_identity),
         convention: 0,
     },
     MethodSpec {
-        name: 31,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"mappingBytes:"),
         entry: Some(mapping_bytes),
         convention: 0,
     },
     MethodSpec {
-        name: 43,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
         convention: 0,
     },
     MethodSpec {
-        name: 36,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"referencesOf:do:"),
         entry: Some(references),
         convention: 0,
     },
     MethodSpec {
-        name: 41,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retire:"),
         entry: Some(retire),
         convention: 0,
     },
     MethodSpec {
-        name: 25,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"initialize"),
         entry: Some(initialize_unit),
         convention: 0,
     },
     MethodSpec {
-        name: 26,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"initializeWith:"),
         entry: Some(initialize_unit),
         convention: 0,
     },
     MethodSpec {
-        name: 40,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retain:"),
         entry: Some(keep),
         convention: 0,
     },
     MethodSpec {
-        name: 21,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"declaredMethodAt:"),
         entry: Some(method_at),
         convention: 0,
     },
     MethodSpec {
-        name: 24,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"generatedEntry"),
         entry: Some(generated),
         convention: 0,
     },
     #[cfg(feature = "resource-metrics")]
     MethodSpec {
-        name: 28,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"liveNativeBytes"),
         entry: Some(live_bytes),
         convention: 0,
     },
     MethodSpec {
-        name: 49,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"generatedContinuationEntry"),
         entry: Some(generated),
         convention: 1,
     },
     MethodSpec {
-        name: 50,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"declaredMethodAt:context:"),
         entry: Some(method_with_context),
         convention: 0,
     },
     MethodSpec {
-        name: 51,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"contextOfMethod:"),
         entry: Some(context_of_method),
         convention: 0,
     },
 
-    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
+    MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"receiveByteValues"), entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,

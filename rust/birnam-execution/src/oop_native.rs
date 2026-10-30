@@ -19,11 +19,8 @@ unsafe fn byte_snapshot(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<u8>,
 }
 unsafe fn new_bytes(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
     unsafe {
-        let values: Vec<_> = bytes
-            .iter()
-            .map(|b| abi::size(*b as usize).unwrap())
-            .collect();
-        let values = q.keep(s.send(s.id.root, b"sequence", &values)?);
+        let values = abi::byte_transfer::buffer(bytes, s.named(b"Bytes")?,
+            |r,n,a| s.send(r,n,a), |v| Ok(q.keep(v)))?;
         Ok(q.keep(s.send(s.named(b"Bytes")?, b"fromBytes:", &[values])?))
     }
 }

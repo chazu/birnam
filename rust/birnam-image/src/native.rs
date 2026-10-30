@@ -147,31 +147,15 @@ impl State {
     // A managed Sequence for the entire image would make GC visit every byte.
     unsafe fn blob(&self, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Failure> {
         unsafe {
-            let mut chunks = bytes.chunks(8192);
-            let values = |chunk: &[u8]| {
-                chunk
-                    .iter()
-                    .map(|b| abi::size(*b as usize).unwrap())
-                    .collect::<Vec<_>>()
-            };
-            let first = values(chunks.next().unwrap_or(&[]));
-            let mut output =
-                q.keep(self.send(self.named(b"Bytes")?, b"fromByteValues", &first)?)?;
-            for chunk in chunks {
-                let next = object(self.send(output, b"appendByteValues", &values(chunk))?)?;
-                if next != output {
-                    q.keep(next)?;
-                }
-                output = next;
-            }
-            Ok(output)
+            abi::byte_transfer::buffer(bytes, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| q.keep(v))
         }
     }
     unsafe fn text(&self, q: &Scope<'_>, family: &[u8], b: &[u8]) -> Result<Oop, Failure> {
         unsafe {
             let value = {
                 let input = Scope::new(self);
-                let v = input.keep(self.byte_value(b)?)?;
+                let v = self.blob(&input, b)?;
                 self.send(self.named(family)?, b"fromBytes:", &[v])?
             };
             q.keep(value)
@@ -2108,6 +2092,9 @@ literals![
     b"sizeWord",
     b"atWord:",
     b"symbolBytesOf:",
+    b"Bytes",
+    b"fromByteValues",
+    b"appendByteValues",
     b"sequence",
     b"fromBytes:",
     b"Word",

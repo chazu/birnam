@@ -40,10 +40,6 @@ static inline O finish(Call*c,O result){
 static inline O full_word(Call*c,uint64_t bits){O factory=named(c,S_WORD);O a[2]={size_oop((uint32_t)bits),size_oop((uint32_t)(bits>>32))};return call(c,factory,S_FROM_PARTS,a,2);}
 static inline O integer(Call*c,uint64_t bits){O word=full_word(c,bits);O factory=named(c,S_INTEGER);return call(c,factory,S_FROM_WORD,&word,1);}
 static inline O float_bits(Call*c,uint64_t bits){O word=full_word(c,bits);O factory=named(c,S_FLOAT);return call(c,factory,S_FROM_BITS,&word,1);}
-static inline O string(Call*c,const unsigned char*bytes,size_t n){
- if(n>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*values=n?malloc(n*sizeof(O)):0;if(n&&!values){c->error=id.invalid;return 0;}
- for(size_t i=0;i<n;i++)values[i]=size_oop(bytes[i]);O sequence=call(c,id.root,S_SEQUENCE,values,n);free(values);O factory=named(c,S_STRING);return call(c,factory,S_FROM_BYTES,&sequence,1);
-}
 /* Descriptor/program metadata is binary data, independent of String literals. */
 static inline O blob(Call*c,const unsigned char*bytes,size_t n){
  const size_t batch=8192;O*values=n?malloc((n<batch?n:batch)*sizeof(O)):0;
@@ -57,6 +53,9 @@ static inline O blob(Call*c,const unsigned char*bytes,size_t n){
   if(!c->error&&next!=result)keep(c,next);result=next;
  }
  free(values);return result;
+}
+static inline O string(Call*c,const unsigned char*bytes,size_t n){
+ O data=blob(c,bytes,n);O factory=named(c,S_STRING);return call(c,factory,S_FROM_BYTES,&data,1);
 }
 static inline O global(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_GLOBAL,&key,1);}
 /* Machine owns logical slots; generated code never reads its payload. */

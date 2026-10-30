@@ -1,0 +1,144 @@
+{
+  "baseline": "05cca00a8520a5c492b462eea8ef4f0ea095aaab",
+  "scope": "Release round2_runtime emit: synchronous C emission for a program containing an 8 KiB/256 KiB String. Parsing/byte input setup and output verification outside timing. Five samples. Includes C text generation and object construction, not native C compilation.",
+  "summary": [
+    {
+      "operation": "emit",
+      "n": 8192,
+      "before_ns": 490375,
+      "after_ns": 446750,
+      "speedup": 1.0976496922216004
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "before_ns": 17958917,
+      "after_ns": 14167667,
+      "speedup": 1.2675987514387514
+    }
+  ],
+  "before": [
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 0,
+      "ns": 859375
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 1,
+      "ns": 490375
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 2,
+      "ns": 474542
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 3,
+      "ns": 460875
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 4,
+      "ns": 503625
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 0,
+      "ns": 18200250
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 1,
+      "ns": 17581666
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 2,
+      "ns": 18316791
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 3,
+      "ns": 17958917
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 4,
+      "ns": 17309250
+    }
+  ],
+  "after": [
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 0,
+      "ns": 628083
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 1,
+      "ns": 421375
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 2,
+      "ns": 432292
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 3,
+      "ns": 448208
+    },
+    {
+      "operation": "emit",
+      "n": 8192,
+      "sample": 4,
+      "ns": 446750
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 0,
+      "ns": 14365083
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 1,
+      "ns": 14167667
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 2,
+      "ns": 14208667
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 3,
+      "ns": 13871792
+    },
+    {
+      "operation": "emit",
+      "n": 262144,
+      "sample": 4,
+      "ns": 13962667
+    }
+  ]
+}

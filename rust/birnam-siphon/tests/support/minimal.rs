@@ -53,7 +53,7 @@ fn compose(artifact_dependencies: bool) -> Context {
         };
         let mount = |n: &str, args: &[Oop]| {
             host.load_native(&q, &lib.join(format!("libbirnam_{n}.dylib")), args)
-                .unwrap()
+                .unwrap_or_else(|e| panic!("load {n}: {e}"))
         };
         let base = call(id.root, b"objectBehavior", &[]);
         publish(b"ObjectVt", base);

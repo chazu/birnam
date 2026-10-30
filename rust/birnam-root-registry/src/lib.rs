@@ -217,27 +217,27 @@ unsafe extern "C" fn release_many(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
 }
 static METHODS: [MethodSpec; 6] = [
     MethodSpec {
-        name: 12,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"releaseTokensProtecting"),
         entry: Some(release_many),
     },
     MethodSpec {
-        name: 6,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retain:"),
         entry: Some(retain),
     },
     MethodSpec {
-        name: 7,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"release:"),
         entry: Some(release),
     },
     MethodSpec {
-        name: 8,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"register:"),
         entry: Some(register),
     },
     MethodSpec {
-        name: 9,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
     MethodSpec {
-        name: 10,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"referencesOf:do:"),
         entry: Some(references),
     },
 ];

@@ -107,11 +107,8 @@ unsafe fn send2(b: &Build<'_>, r: Oop, n: &[u8], a: Oop, c: Oop) -> Result<Oop, 
 unsafe fn string(b: &Build<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
     unsafe {
         let factory = b.keep(named(b.s, b"String")?)?;
-        let values: Vec<_> = bytes
-            .iter()
-            .map(|&v| abi::size(v as usize).unwrap())
-            .collect();
-        let source = send(b, b.s.id.root, b"sequence", &values)?;
+        let source = abi::byte_transfer::buffer(bytes, named(b.s,b"Bytes")?,
+            |r,n,a| b.s.send(r,n,a), |v| b.keep(v))?;
         send1(b, factory, b"fromBytes:", source)
     }
 }
@@ -262,6 +259,9 @@ const NAMES: &[&[u8]] = &[
     b"{",
     b"|",
     b"}",
+    b"Bytes",
+    b"fromByteValues",
+    b"appendByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"#"),
@@ -351,22 +351,25 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"{"),
     Literal::new(b"|"),
     Literal::new(b"}"),
+    Literal::new(b"Bytes"),
+    Literal::new(b"fromByteValues"),
+    Literal::new(b"appendByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 59,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"parse:"),
         entry: Some(parse),
     },
     MethodSpec {
-        name: 43,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"grammar"),
         entry: Some(get_grammar),
     },
     MethodSpec {
-        name: 42,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"furthestFail"),
         entry: Some(furthest),
     },
     MethodSpec {
-        name: 67,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
 ];

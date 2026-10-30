@@ -172,11 +172,8 @@ impl<'a> Scope<'a> {
     }
     unsafe fn text(&self, bytes: &[u8]) -> Result<Oop> {
         unsafe {
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|b| abi::size(*b as usize).unwrap())
-                .collect();
-            let data = self.send(self.s.id.root, b"sequence", &values)?;
+            let data = abi::byte_transfer::buffer(bytes, self.call(self.s.namespace,b"at:",&[self.name(b"Bytes")])?,
+                |r,n,a| self.send(r,n,a), |v| Ok(self.keep(v)))?;
             self.send(self.value(b"String"), b"fromBytes:", &[data])
         }
     }
@@ -1016,6 +1013,8 @@ const NAMES: &[&[u8]] = &[
     b"appendByteValues",
     b"objectBehavior",
     b"releaseTokensProtecting",
+    b"Bytes",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 
@@ -1062,7 +1061,7 @@ const METHOD_COUNT: usize =
 const METHODS: [MethodSpec; METHOD_COUNT] = {
     let mut a = [const {
         MethodSpec {
-            name: 0,
+            name: birnam_abi::id_protocol::literal_index(NAMES, b"!="),
             entry: None,
         }
     }; METHOD_COUNT];
@@ -1087,7 +1086,7 @@ const METHODS: [MethodSpec; METHOD_COUNT] = {
         }
         t += 1;
     }
-    a[i] = MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) };
+    a[i] = MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"receiveByteValues"), entry: Some(abi::byte_transfer::receive_entry) };
     a
 };
 unsafe extern "C" fn initialize(

@@ -252,3 +252,24 @@ pub unsafe fn deliver(id: &Protocol, sink: Oop, append: Oop, bytes: &[u8]) -> Re
     }
     Ok(())
 }
+
+/// Construct an ordinary Bytes value through its current bulk messages.
+/// The caller keeps returned objects alive; this helper owns no runtime state.
+pub fn buffer<E>(
+    bytes: &[u8],
+    factory: Oop,
+    mut send: impl FnMut(Oop, &'static [u8], &[Oop]) -> Result<Oop, E>,
+    mut keep: impl FnMut(Oop) -> Result<Oop, E>,
+) -> Result<Oop, E> {
+    let mut chunks = bytes.chunks(CHUNK_BYTES);
+    let mut values = Vec::with_capacity(CHUNK_BYTES.min(bytes.len()));
+    values.extend(chunks.next().unwrap_or(&[]).iter().map(|&b| size(b as usize).unwrap()));
+    let mut output = keep(send(factory, b"fromByteValues", &values)?)?;
+    for chunk in chunks {
+        values.clear();
+        values.extend(chunk.iter().map(|&b| size(b as usize).unwrap()));
+        let next = send(output, b"appendByteValues", &values)?;
+        if next != output { output = keep(next)?; }
+    }
+    Ok(output)
+}

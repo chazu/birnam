@@ -218,11 +218,8 @@ impl State {
     }
     unsafe fn error(&self, scope: &Scope<'_>, kind: &[u8], msg: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let values: Vec<_> = msg
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let source = scope.keep(self.send(self.id.root, b"sequence", &values)?);
+            let source = abi::byte_transfer::buffer(msg, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| Ok(scope.keep(v)))?;
             let m = scope.keep(object(self.send(
                 self.named(b"String")?,
                 b"fromBytes:",
@@ -657,6 +654,8 @@ literals![
     b"objectBehavior",
     b"allocate",
     b"releaseTokensProtecting",
+    b"Bytes",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 const fn index(n: &[u8]) -> usize {

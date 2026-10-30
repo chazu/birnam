@@ -91,11 +91,8 @@ impl State {
         unsafe {
             let q = self.scope(&[]);
             let factory = q.keep(self.named(b"String")?);
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|&b| abi::size(b as usize).unwrap())
-                .collect();
-            let data = self.send(self.id.root, b"sequence", &values)?;
+            let data = abi::byte_transfer::buffer(bytes, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| Ok(q.keep(v)))?;
             self.send(factory, b"fromBytes:", &[data])
         }
     }
@@ -274,6 +271,8 @@ const NAMES: &[&[u8]] = &[
     b"appendByteValues",
     b"objectBehavior",
     b"releaseTokensProtecting",
+    b"Bytes",
+    b"fromByteValues",
     b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
@@ -316,35 +315,37 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"appendByteValues"),
     Literal::new(b"objectBehavior"),
     Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"Bytes"),
+    Literal::new(b"fromByteValues"),
     Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 13,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"emitSynchronous:"),
         entry: Some(emit),
     },
     MethodSpec {
-        name: 20,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
     MethodSpec {
-        name: 25,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"emitResumable:source:"),
         entry: Some(emit_resumable),
     },
     MethodSpec {
-        name: 26,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"emit:source:filename:persistent:synchronous:"),
         entry: Some(emit_program),
     },
     MethodSpec {
-        name: 29,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"moduleFactory:source:dispositions:"),
         entry: Some(module_factory),
     },
     MethodSpec {
-        name: 30,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"factory:source:dispositions:"),
         entry: Some(block_factory),
     },
 
-    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
+    MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"receiveByteValues"), entry: Some(abi::byte_transfer::receive_entry) },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,

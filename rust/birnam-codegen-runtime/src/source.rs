@@ -42,11 +42,9 @@ impl State {
     }
     pub(super) unsafe fn byte_values(&self, bytes: &[u8]) -> Result<Oop, Oop> {
         unsafe {
-            let values: Vec<_> = bytes
-                .iter()
-                .map(|b| abi::size(*b as usize).unwrap())
-                .collect();
-            self.send(self.id.root, b"sequence", &values)
+            let q = self.scope(&[]);
+            abi::byte_transfer::buffer(bytes, self.named(b"Bytes")?,
+                |r,n,a| self.send(r,n,a), |v| Ok(q.keep(v)))
         }
     }
     pub(super) unsafe fn source_text(&self, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
