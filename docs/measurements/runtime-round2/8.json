@@ -1,0 +1,278 @@
+{
+  "baseline": "204200cacfda2c2d820bcaf92c8ed4232f65bf25",
+  "scope": "Release round2_runtime metadata: adds 128 then 1024 Method instances from one compiled Block; times codeObject lookup on the last Method and its ordinary captured alias. Five samples; 1000 known or 20 captured lookups per sample; ns per query. Setup and explicit GC excluded. Unknown aliases retain the comparison fallback.",
+  "summary": [
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "before_ns": 3327,
+      "after_ns": 93,
+      "speedup": 35.774193548387096
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "before_ns": 51497,
+      "after_ns": 89,
+      "speedup": 578.6179775280899
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "before_ns": 66,
+      "after_ns": 94,
+      "speedup": 0.7021276595744681
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "before_ns": 389,
+      "after_ns": 96,
+      "speedup": 4.052083333333333
+    }
+  ],
+  "before": [
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 0,
+      "ns": 65
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 0,
+      "ns": 3389
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 1,
+      "ns": 65
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 1,
+      "ns": 3304
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 2,
+      "ns": 66
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 2,
+      "ns": 3293
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 3,
+      "ns": 66
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 3,
+      "ns": 3327
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 4,
+      "ns": 66
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 4,
+      "ns": 3843
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 0,
+      "ns": 384
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 0,
+      "ns": 48125
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 1,
+      "ns": 396
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 1,
+      "ns": 53970
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 2,
+      "ns": 404
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 2,
+      "ns": 49741
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 3,
+      "ns": 389
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 3,
+      "ns": 51497
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 4,
+      "ns": 389
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 4,
+      "ns": 51568
+    }
+  ],
+  "after": [
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 0,
+      "ns": 89
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 0,
+      "ns": 106
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 1,
+      "ns": 89
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 1,
+      "ns": 91
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 2,
+      "ns": 101
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 2,
+      "ns": 100
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 3,
+      "ns": 100
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 3,
+      "ns": 93
+    },
+    {
+      "operation": "known_method",
+      "n": 128,
+      "sample": 4,
+      "ns": 94
+    },
+    {
+      "operation": "captured_method",
+      "n": 128,
+      "sample": 4,
+      "ns": 89
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 0,
+      "ns": 96
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 0,
+      "ns": 106
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 1,
+      "ns": 96
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 1,
+      "ns": 89
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 2,
+      "ns": 96
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 2,
+      "ns": 91
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 3,
+      "ns": 97
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 3,
+      "ns": 87
+    },
+    {
+      "operation": "known_method",
+      "n": 1024,
+      "sample": 4,
+      "ns": 97
+    },
+    {
+      "operation": "captured_method",
+      "n": 1024,
+      "sample": 4,
+      "ns": 87
+    }
+  ]
+}

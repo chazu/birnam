@@ -42,6 +42,8 @@ pub(super) struct Runtime {
     sink_template: Oop,
     bridge_template: Oop,
     records: HashMap<usize, Registered>,
+    // Derived weak Method -> context association, including known captures.
+    by_method: HashMap<usize, usize>,
     context_vt: Oop,
     template: Oop,
     dnu_template: Oop,
@@ -50,6 +52,21 @@ pub(super) struct Runtime {
     pending: HashSet<u64>,
     recovery: recovery::Runtime,
     controls: Vec<(&'static [u8], Oop)>,
+}
+impl Runtime {
+    fn insert_record(&mut self, context: usize, record: Registered) {
+        self.by_method.insert(record.method.addr(), context);
+        self.records.insert(context, record);
+    }
+}
+pub(super) fn knows(s: &State, method: Oop) -> bool {
+    s.resume.borrow().by_method.contains_key(&method.addr())
+}
+pub(super) fn note_capture(s: &State, original: Oop, captured: Oop) {
+    let mut runtime = s.resume.borrow_mut();
+    if let Some(&context) = runtime.by_method.get(&original.addr()) {
+        runtime.by_method.insert(captured.addr(), context);
+    }
 }
 pub(super) const METHOD_NAMES: &[&[u8]] = &[
     b"methodFromBlock:",
@@ -338,7 +355,7 @@ unsafe fn register_descriptor(
                 .insert(method.addr(), CodeShape { parameters: binding.argument_count, captures: descriptor.entry_capture_slots().len() });
         }
         let mut runtime = s.resume.borrow_mut();
-        runtime.records.insert(
+        runtime.insert_record(
             context.addr(),
             Registered {
                 method,
@@ -361,16 +378,11 @@ unsafe fn register_descriptor(
 // descriptions, not a second metadata database for arbitrary Methods.
 unsafe fn owned_record(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Registered>, Oop> {
     unsafe {
-        if let Some(record) = s
-            .resume
-            .borrow()
-            .records
-            .values()
-            .find(|r| r.method == method)
-            .cloned()
-        {
-            return Ok(Some(record));
-        }
+        let known = {
+            let runtime = s.resume.borrow();
+            runtime.by_method.get(&method.addr()).and_then(|key| runtime.records.get(key)).cloned()
+        };
+        if let Some(record) = known { return Ok(Some(record)); }
         let records: Vec<_> = s.resume.borrow().records.values().cloned().collect();
         for record in &records {
             q.keep(record.method);
@@ -435,7 +447,7 @@ pub(super) unsafe fn with_source(
             .ok_or_else(invalid)?
             .argument_count;
         let captures = record.descriptor.entry_capture_slots().len();
-        s.resume.borrow_mut().records.insert(context.addr(), record);
+        s.resume.borrow_mut().insert_record(context.addr(), record);
         s.admitted.borrow_mut().insert(copy.addr(), CodeShape { parameters: arity, captures });
         Ok(Some(copy))
     }
@@ -466,24 +478,12 @@ pub(super) unsafe extern "C" fn method_from_block(
                 .and_then(|bytes| (bytes / size_of::<Oop>()).checked_sub(1))
                 .ok_or_else(invalid)?
         };
-        if let Some(method) = native_code::method_from_block(s, *body, &q)? { return Ok(method); }
-        if let Some(method) = native_adapters::method_from_block(s, *body, &q)? { return Ok(method); }
         let code = q.keep(s.field(*body, 0)?);
-        // Ask Id about executable identity; only Execution reads its own
-        // Block representation and code descriptions.
-        let records: Vec<_> = s.resume.borrow().records.values().cloned().collect();
-        for record in &records {
-            q.keep(record.method);
+        if !knows(s, code) {
+            if let Some(method) = native_code::method_from_block(s, *body, &q)? { return Ok(method); }
+            if let Some(method) = native_adapters::method_from_block(s, *body, &q)? { return Ok(method); }
         }
-        let mut selected = None;
-        for record in records {
-            if s.send(s.id.root, b"sameNativeMethod:as:", &[code, record.method])?
-                == abi::size(1).unwrap()
-            {
-                selected = Some(record);
-                break;
-            }
-        }
+        let selected = owned_record(s, code, &q)?;
         let mut record = selected.ok_or_else(invalid)?;
         let binding = record.descriptor.v2_entry_binding().ok_or_else(invalid)?;
         if record.environment.is_some()
@@ -509,7 +509,7 @@ pub(super) unsafe extern "C" fn method_from_block(
         record.candidate = None;
         // Retain the original descriptor/code owner and registration. No
         // per-instance dictionary, code admission or second registration.
-        s.resume.borrow_mut().records.insert(context.addr(), record);
+        s.resume.borrow_mut().insert_record(context.addr(), record);
         Ok(method)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -524,7 +524,7 @@ pub(super) unsafe fn for_dnu(s: &State, method: Oop, q: &Scope<'_>) -> Result<Op
         let copy = q.keep(s.send(template, b"withContext:", &[context])?);
         record.method = copy;
         record.candidate = None;
-        s.resume.borrow_mut().records.insert(context.addr(), record);
+        s.resume.borrow_mut().insert_record(context.addr(), record);
         Ok(Some(copy))
     }
 }
@@ -2053,6 +2053,7 @@ pub(super) fn retire(s: &State, values: &[Oop]) -> Result<(), Oop> {
     runtime.return_methods
         .retain(|method, context| !dead.contains(method) && !dead.contains(context));
     for value in values {
+        runtime.by_method.remove(&value.addr());
         runtime.runs.remove(&value.addr());
         runtime.returns.remove(&value.addr());
         let record = runtime.records.remove(&value.addr());

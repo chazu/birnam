@@ -32,5 +32,20 @@ fn main(){
     println!("{{\"operation\":\"vector_reverse\",\"n\":{n},\"sample\":{sample},\"ns\":{elapsed}}}");
    }
   }
+ }else if mode=="metadata"{
+  for name in ["peg","lang_seed"]{h.load_native(&q,&h.resources.lib_dir.join(format!("libbirnam_{name}.dylib")),&[h.namespace]).unwrap();}
+  let m=q.call(h.named(b"Codegen").unwrap(),b"compileResumable:",&[q.string(b"[:self | 37]").unwrap()]).unwrap();
+  let wrapper=q.call(h.named(b"Block").unwrap(),b"fromMethod:captureOperands:",&[m]).unwrap();let body=q.call(wrapper,b"value",&[]).unwrap();
+  let exec=h.named(b"Execution").unwrap();let selector=h.intern(b"codeObject").unwrap();
+  for n in [128,1024]{
+   let mut method=m;for _ in 0..n{method=q.call(exec,b"methodFromBlock:",&[body]).unwrap();}
+   let alias=q.call(method,b"captured",&[]).unwrap();let expected=q.call(method,b"codeObject",&[]).unwrap();
+   for sample in 0..5{for (operation,target,calls) in [("known_method",method,1000),("captured_method",alias,20)]{
+    q.call(gc,b"collectPrecisely",&[]).unwrap();let start=Instant::now();
+    for _ in 0..calls{assert_eq!(unsafe{h.id.send(target,selector,&[])}.unwrap(),expected);}
+    println!("{{\"operation\":\"{operation}\",\"n\":{n},\"sample\":{sample},\"ns\":{}}}",start.elapsed().as_nanos()/calls);
+   }}
+  }
+
  }
 }

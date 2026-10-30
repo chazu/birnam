@@ -100,22 +100,7 @@ pub(in crate::synchronous) unsafe extern "C" fn with_inline(
         let return_slot = index(s, *slot)?;
         // Captured aliases share the declared entry/context. Only Id interprets
         // Method representation; these records belong solely to Execution.
-        let records: Vec<_> = s.resume.borrow().records.values().cloned().collect();
-        for record in &records {
-            q.keep(record.method);
-        }
-        let mut selected = None;
-        for record in records {
-            if abi::as_size(s.send(
-                s.id.root,
-                b"sameNativeMethod:as:",
-                &[receiver, record.method],
-            )?) == Some(1)
-            {
-                selected = Some(record);
-                break;
-            }
-        }
+        let selected = owned_record(s, receiver, &q)?;
         let selected = selected.ok_or_else(invalid)?;
         if selected.descriptor.slot_kind(return_slot) != Some(SlotKind::Oop)
             || abi::as_size(s.send(s.id.root, b"sameNativeMethod:as:", &[*method, *method])?)
@@ -143,7 +128,7 @@ pub(in crate::synchronous) unsafe extern "C" fn with_inline(
             owner: *owner,
             return_slot,
         });
-        s.resume.borrow_mut().records.insert(context.addr(), annotated);
+        s.resume.borrow_mut().insert_record(context.addr(), annotated);
         let admitted = s.admitted.borrow().get(&receiver.addr()).cloned();
         if let Some(admitted) = admitted {
             s.admitted.borrow_mut().insert(copy.addr(), admitted);

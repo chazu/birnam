@@ -18,6 +18,16 @@ struct Instance {
 pub(super) struct Runtime {
     context_vt: Oop,
     instances: HashMap<usize, Instance>,
+    by_method: HashMap<usize, usize>,
+}
+pub(super) fn knows(s: &State, method: Oop) -> bool {
+    s.native_code.borrow().by_method.contains_key(&method.addr())
+}
+pub(super) fn note_capture(s: &State, original: Oop, captured: Oop) {
+    let mut runtime = s.native_code.borrow_mut();
+    if let Some(&context) = runtime.by_method.get(&original.addr()) {
+        runtime.by_method.insert(captured.addr(), context);
+    }
 }
 pub(super) unsafe fn install(s: &State, image: Oop, base: Oop) -> Result<Oop, Oop> {
     unsafe {
@@ -81,6 +91,7 @@ unsafe fn construct(
             .get_mut(&context.addr())
             .ok_or_else(invalid)?
             .method = method;
+        s.native_code.borrow_mut().by_method.insert(method.addr(), context.addr());
         if environment.is_none() {
             s.admitted.borrow_mut().insert(
                 method.addr(),
@@ -125,16 +136,11 @@ pub(super) unsafe extern "C" fn from_factory(
 }
 unsafe fn instance(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<Instance>, Oop> {
     unsafe {
-        if let Some(v) = s
-            .native_code
-            .borrow()
-            .instances
-            .values()
-            .find(|v| v.method == method && !method.is_null())
-            .cloned()
-        {
-            return Ok(Some(v));
-        }
+        let known = {
+            let runtime = s.native_code.borrow();
+            runtime.by_method.get(&method.addr()).and_then(|key| runtime.instances.get(key)).cloned()
+        };
+        if let Some(value) = known { return Ok(Some(value)); }
         let entries: Vec<_> = s
             .native_code
             .borrow()
@@ -248,6 +254,7 @@ pub(super) fn references(s: &State, object: Oop) -> Option<Vec<Oop>> {
 pub(super) fn retire(s: &State, objects: &[Oop]) {
     let mut code = s.native_code.borrow_mut();
     for object in objects {
+        code.by_method.remove(&object.addr());
         code.instances.remove(&object.addr());
     }
 }

@@ -23,6 +23,9 @@ pub(super) unsafe extern "C" fn code_object(
 }
 unsafe fn owned_source(s: &State, method: Oop, q: &Scope<'_>) -> Result<Option<(Oop, bool)>, Oop> {
     unsafe {
+        if native_code::knows(s, method) {
+            return Ok(native_code::source(s, method, q)?.map(|code| (code, true)));
+        }
         if let Some(code) = resumable::source_code(s, method, q)? {
             return Ok(Some((code, false)));
         }
@@ -38,6 +41,12 @@ pub(super) unsafe extern "C" fn method_body(_: Oop, c: Oop, _: Oop, a: *const Oo
         let s = state(c)?;
         let [method] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
         let q = s.scope(&[*method]);
+        if resumable::knows(s, *method) {
+            return Ok(resumable::body(s, *method, &q)?.unwrap_or(s.nil));
+        }
+        if native_code::knows(s, *method) {
+            return Ok(native_code::body(s, *method, &q)?.unwrap_or(s.nil));
+        }
         if let Some(body) = native_code::body(s, *method, &q)? { return Ok(body); }
         if let Some(body) = resumable::body(s, *method, &q)? { return Ok(body); }
         Ok(native_adapters::body(s, *method, &q)?.unwrap_or(s.nil))
@@ -50,6 +59,7 @@ pub(super) unsafe extern "C" fn for_dnu(_: Oop, c: Oop, r: Oop, _: *const Oop, n
             return Err(invalid());
         }
         let q = s.scope(&[r]);
+        if resumable::knows(s, r) { return Ok(resumable::for_dnu(s, r, &q)?.unwrap_or(r)); }
         if let Some(method) = native_code::for_dnu(s, r, &q)? {
             return Ok(method);
         }
@@ -107,6 +117,8 @@ pub(super) unsafe extern "C" fn captured(_: Oop, c: Oop, r: Oop, _: *const Oop, 
         // The Method owner preserves behavior when it allocates the captured
         // executable. Capturing does not mutate a dispatch binding.
         let method = q.keep(s.invoke(s.capture_seed, r, &[])?);
+        resumable::note_capture(s, r, method);
+        native_code::note_capture(s, r, method);
         let admitted = s.admitted.borrow().get(&r.addr()).cloned();
         if let Some(admitted) = admitted {
             s.admitted.borrow_mut().insert(method.addr(), admitted);
