@@ -1,0 +1,144 @@
+{
+  "baseline": "d73516907e08b308042d85018494057dd2e5f2f8",
+  "scope": "Release round2_runtime vector: reverse a persistent Vector with 1024/8192 elements. Input construction and precise GC outside timing; elapsed nanoseconds for one reverse, five samples. Result size checked outside timing. Inputs rooted without retaining their intermediate versions.",
+  "summary": [
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "before_ns": 1589708,
+      "after_ns": 124625,
+      "speedup": 12.755931795386159
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "before_ns": 13268958,
+      "after_ns": 1309166,
+      "speedup": 10.13542820390997
+    }
+  ],
+  "before": [
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 0,
+      "ns": 1599833
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 1,
+      "ns": 1586834
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 2,
+      "ns": 1586458
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 3,
+      "ns": 1589708
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 4,
+      "ns": 1674666
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 0,
+      "ns": 13201000
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 1,
+      "ns": 13268958
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 2,
+      "ns": 13277792
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 3,
+      "ns": 13097417
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 4,
+      "ns": 13371208
+    }
+  ],
+  "after": [
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 0,
+      "ns": 117542
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 1,
+      "ns": 125542
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 2,
+      "ns": 124625
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 3,
+      "ns": 117000
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 1024,
+      "sample": 4,
+      "ns": 126042
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 0,
+      "ns": 1390542
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 1,
+      "ns": 1309166
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 2,
+      "ns": 1303000
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 3,
+      "ns": 1371167
+    },
+    {
+      "operation": "vector_reverse",
+      "n": 8192,
+      "sample": 4,
+      "ns": 1298458
+    }
+  ]
+}

@@ -388,16 +388,61 @@ unsafe fn push(s: &State, scope: &Scope<'_>, source: Vector, value: Oop) -> Resu
         )
     }
 }
+// Assemble only fresh nodes; no intermediate Vector escapes or needs persistence.
 unsafe fn build(s: &State, values: impl IntoIterator<Item = Oop>) -> Result<Oop, Oop> {
-    unsafe {
-        Scope::run(s, &[], |work| {
-            let mut result = empty(s, work)?;
-            for value in values {
-                result = push(s, work, payload(s, result)?, value)?;
-                work.reset(result);
+    let values: Vec<_> = values.into_iter().collect();
+    unsafe { Scope::run(s, &values, |work| {
+        let count = values.len();
+        let tail_len = if count == 0 { 0 } else { (count - 1) % WIDTH + 1 };
+        let tail_start = count - tail_len;
+        let tail = new_node(s, work)?;
+        (&mut *node(tail))[..tail_len].copy_from_slice(&values[tail_start..]);
+        let mut level = Vec::new();
+        for chunk in values[..tail_start].chunks(WIDTH) {
+            let leaf = new_node(s, work)?;
+            (*node(leaf)).copy_from_slice(chunk);
+            level.push(leaf);
+        }
+        let mut shift = BITS;
+        while level.len() > WIDTH {
+            let mut parents = Vec::new();
+            for children in level.chunks(WIDTH) {
+                let parent = new_node(s, work)?;
+                (&mut *node(parent))[..children.len()].copy_from_slice(children);
+                parents.push(parent);
             }
-            Ok(result)
-        })
+            level = parents;
+            shift += BITS;
+        }
+        let root = new_node(s, work)?;
+        (&mut *node(root))[..level.len()].copy_from_slice(&level);
+        make(s, work, Vector {count, shift, root, tail, tail_len})
+    }) }
+}
+// Copy the published tail once, then fill fresh tails before linking them.
+unsafe fn append_many(s: &State, scope: &Scope<'_>, mut v: Vector, values: &[Oop]) -> Result<Oop, Oop> {
+    unsafe {
+        v.count.checked_add(values.len()).ok_or_else(invalid)?;
+        v.tail = copy_node(s, scope, v.tail)?;
+        for &value in values {
+            if v.tail_len == WIDTH {
+                if (v.count >> BITS) > (1usize << v.shift) {
+                    let root = new_node(s, scope)?;
+                    (*node(root))[0] = v.root;
+                    (*node(root))[1] = new_path(s, scope, v.shift, v.tail)?;
+                    v.root = root;
+                    v.shift += BITS;
+                } else {
+                    v.root = push_tail(s, scope, v.count, v.shift, v.root, v.tail)?;
+                }
+                v.tail = new_node(s, scope)?;
+                v.tail_len = 0;
+            }
+            (*node(v.tail))[v.tail_len] = value;
+            v.tail_len += 1;
+            v.count += 1;
+        }
+        make(s, scope, v)
     }
 }
 unsafe fn execute(
@@ -568,14 +613,10 @@ unsafe fn execute(
                     return Ok(s.nil());
                 }
                 let other = payload(s, args[0])?;
-                Scope::run(s, &[r], |work| {
-                    let mut result = r;
-                    for i in 0..other.count {
-                        result = push(s, work, payload(s, result)?, at(s, other, i)?)?;
-                        work.reset(result);
-                    }
-                    Ok(result)
-                })
+                if other.count == 0 { return Ok(r); }
+                let values = (0..other.count).map(|i| Ok(scope.keep(at(s, other, i)?)))
+                    .collect::<Result<Vec<_>, Oop>>()?;
+                append_many(s, scope, v, &values)
             }
             _ => Err(invalid()),
         }

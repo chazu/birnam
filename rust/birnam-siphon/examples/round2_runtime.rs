@@ -24,7 +24,8 @@ fn main(){
   let factory=h.named(b"Vector").unwrap();let add=h.intern(b"add:").unwrap();let reversed=h.intern(b"reversed").unwrap();let size_word=h.intern(b"sizeWord").unwrap();
   for n in [1024,8192]{
    let scope=h.scope();let mut v=scope.call(factory,b"new",&[]).unwrap();
-   for i in 0..n{v=scope.keep(unsafe{h.id.send(v,add,&[size(i).unwrap()])}.unwrap()).unwrap();}
+   let holder=scope.call(h.id.root,b"sequence",&[v]).unwrap();let put=h.intern(b"at:put:").unwrap();
+   for i in 0..n{v=unsafe{h.id.send(v,add,&[size(i).unwrap()])}.unwrap();unsafe{h.id.send(holder,put,&[size(0).unwrap(),v])}.unwrap();}
    for sample in 0..5{
     q.call(gc,b"collectPrecisely",&[]).unwrap();let start=Instant::now();let result=unsafe{h.id.send(v,reversed,&[])}.unwrap();let elapsed=start.elapsed().as_nanos();
     assert_eq!(as_size(unsafe{h.id.send(result,size_word,&[])}.unwrap()),Some(n));black_box(result);
