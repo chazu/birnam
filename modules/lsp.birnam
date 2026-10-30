@@ -194,10 +194,9 @@ let analysisThreadedSpecialSelectors := {
   let lines := [prefix split: "\n"];
   let line := [[lines size] - 1];
   let lineText := [lines at: line];
-  [Map
-    => new
-    => at: "line" put: line
-    => at: "character" put: [self utf16Offset: [lineText size] in: lineText]]
+  {
+    "line" -> line,
+    "character" -> [self utf16Offset: [lineText size] in: lineText]}
   ] doc:
   "Converts an absolute UTF-8 byte offset in `text` to an LSP line/UTF-16 position." ];
 
@@ -213,31 +212,29 @@ let analysisThreadedSpecialSelectors := {
   let c0 := [self utf16Offset: byte0 in: lineText];
   let endByte := [[byte0 < [lineText size]] ifTrue: [| [byte0 + 1]] ifFalse: [| byte0]];
   let c1 := [self utf16Offset: endByte in: lineText];
-  let startP := [Map => new => at: "line" put: l0 => at: "character" put: c0];
+  let startP := {"line" -> l0, "character" -> c0};
   let endCharacter := [[c1 <= c0] ifTrue: [| [c0 + 1]] ifFalse: [| c1]];
-  let endP := [Map => new => at: "line" put: l0 => at: "character" put: endCharacter];
-  let range := [Map => new => at: "start" put: startP => at: "end" put: endP];
-  [Map
-    => new
-    => at: "range" put: range
-    => at: "severity" put: 1
-    => at: "source" put: "birnam"
-    => at: "message" put: firstLine]] doc:
+  let endP := {"line" -> l0, "character" -> endCharacter};
+  let range := {"start" -> startP, "end" -> endP};
+  {
+    "range" -> range,
+    "severity" -> 1,
+    "source" -> "birnam",
+    "message" -> firstLine}] doc:
   "Answers one LSP Diagnostic (severity 1 = Error) with a UTF-16 range built from `err`'s \"line:col: message\" first line."];
 
 [Reflect defineMethod: #diagFromProject: on: Lsp as: [:self :snapshot |
-  let start := [Map => new => at: "line" put: 0 => at: "character" put: 0];
-  let finish := [Map => new => at: "line" put: 0 => at: "character" put: 1];
-  let range := [Map => new => at: "start" put: start => at: "end" put: finish];
+  let start := {"line" -> 0, "character" -> 0};
+  let finish := {"line" -> 0, "character" -> 1};
+  let range := {"start" -> start, "end" -> finish};
   let kind := [snapshot at: "kind" ifAbsent: [| "projectResolutionFailed"]];
   let message := [snapshot at: "message" ifAbsent: [| "project resolution failed"]];
-  [Map
-    => new
-    => at: "range" put: range
-    => at: "severity" put: 1
-    => at: "source" put: "birnam"
-    => at: "code" put: kind
-    => at: "message" put: message]
+  {
+    "range" -> range,
+    "severity" -> 1,
+    "source" -> "birnam",
+    "code" -> kind,
+    "message" -> message}
   ] doc:
   "Answers one LSP Diagnostic for a shared project-resolver failure, preserving its kind and message." ];
 
@@ -271,46 +268,42 @@ let analysisThreadedSpecialSelectors := {
   "Appends one analysis entry through a persistent-vector cell." ];
 
 [Reflect defineMethod: #analysisDiagnostic:message:start:end: on: Lsp as: [:self :kind :message :start :finish |
-  [Map
-    => new
-    => at: "kind" put: kind
-    => at: "message" put: message
-    => at: "start" put: start
-    => at: "end" put: finish]
+  {
+    "kind" -> kind,
+    "message" -> message,
+    "start" -> start,
+    "end" -> finish}
   ] doc:
   "Builds one byte-span static-analysis diagnostic." ];
 
 [Reflect defineMethod: #analysisSymbolEntry:kind:name:detail:start:end:selectionStart: on: Lsp as: [:self :kind :name :detail :start :finish :selectionStart :selectionEnd |
-  [Map
-    => new
-    => at: "name" put: name
-    => at: "kind" put: kind
-    => at: "detail" put: detail
-    => at: "start" put: start
-    => at: "end" put: finish
-    => at: "selectionStart" put: selectionStart
-    => at: "selectionEnd" put: selectionEnd]
+  {
+    "name" -> name,
+    "kind" -> kind,
+    "detail" -> detail,
+    "start" -> start,
+    "end" -> finish,
+    "selectionStart" -> selectionStart,
+    "selectionEnd" -> selectionEnd}
   ] doc:
   "Builds one source-symbol entry with byte spans." ];
 
 [Reflect defineMethod: #analysisOccurrenceEntry:name:start: on: Lsp as: [:self :name :start :finish |
-  [Map
-    => new
-    => at: "name" put: name
-    => at: "start" put: start
-    => at: "end" put: finish]
+  {
+    "name" -> name,
+    "start" -> start,
+    "end" -> finish}
   ] doc:
   "Builds one lexical occurrence entry with a byte span." ];
 
 [Reflect defineMethod: #analysisBindingEntry:kind:name:start:end:scopeStart: on: Lsp as: [:self :kind :name :start :finish :scopeStart :scopeEnd |
-  [Map
-    => new
-    => at: "kind" put: kind
-    => at: "name" put: name
-    => at: "start" put: start
-    => at: "end" put: finish
-    => at: "scopeStart" put: scopeStart
-    => at: "scopeEnd" put: scopeEnd]
+  {
+    "kind" -> kind,
+    "name" -> name,
+    "start" -> start,
+    "end" -> finish,
+    "scopeStart" -> scopeStart,
+    "scopeEnd" -> scopeEnd}
   ] doc:
   "Builds one lexical binding entry with its CST-derived scope." ];
 
@@ -682,30 +675,27 @@ let analysisThreadedSpecialSelectors := {
     [self analysisCollectSymbols: root source: text out: symbols];
     [self analysisCollectOccurrences: root source: text out: occurrences];
     [self analysisCollectBindings: root source: text scopeStart: 0 scopeEnd: [text size] out: bindings]]];
-  [Map
-    => new
-    => at: "symbols" put: [symbols value]
-    => at: "occurrences" put: [occurrences value]
-    => at: "bindings" put: [bindings value]]
+  {
+    "symbols" -> [symbols value],
+    "occurrences" -> [occurrences value],
+    "bindings" -> [bindings value]}
   ] doc:
   "Parses once and answers the three source indexes used by project-aware navigation." ];
 
 [Reflect defineMethod: #diagFromStatic:text: on: Lsp as: [:self :snapshot :text |
   let start := [snapshot at: "start" ifAbsent: [| 0]];
   let finish := [snapshot at: "end" ifAbsent: [| start]];
-  let range := [Map
-    => new
-    => at: "start" put: [self positionAtByte: start in: text]
-    => at: "end" put: [self positionAtByte: finish in: text]];
+  let range := {
+    "start" -> [self positionAtByte: start in: text],
+    "end" -> [self positionAtByte: finish in: text]};
   let kind := [snapshot at: "kind" ifAbsent: [| "static" ]];
   let message := [snapshot at: "message" ifAbsent: [| "static diagnostic" ]];
-  [Map
-    => new
-    => at: "range" put: range
-    => at: "severity" put: 1
-    => at: "source" put: "birnam"
-    => at: "code" put: kind
-    => at: "message" put: message]
+  {
+    "range" -> range,
+    "severity" -> 1,
+    "source" -> "birnam",
+    "code" -> kind,
+    "message" -> message}
   ] doc:
   "Converts one source-analysis diagnostic with byte spans into an LSP Diagnostic." ];
 
@@ -726,7 +716,7 @@ let analysisThreadedSpecialSelectors := {
       ifTrue: [| diags]
       ifFalse: [| [diags add: [self diagFromProject: project]]]]]
     ifFalse: [| diags]];
-  let params := [Map => new => at: "uri" put: uri => at: "diagnostics" put: all];
+  let params := {"uri" -> uri, "diagnostics" -> all};
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self] doc:
   "Statically diagnoses `text`, appends a shared project-resolution diagnostic when needed, and publishes the resulting diagnostics for `uri`." ];
@@ -734,10 +724,9 @@ let analysisThreadedSpecialSelectors := {
 // -- source-backed navigation -----------------------------------------------
 
 [Reflect defineMethod: #rangeForStart:end:in: on: Lsp as: [:self :start :finish :text |
-  [Map
-    => new
-    => at: "start" put: [self positionAtByte: start in: text]
-    => at: "end" put: [self positionAtByte: finish in: text]]
+  {
+    "start" -> [self positionAtByte: start in: text],
+    "end" -> [self positionAtByte: finish in: text]}
   ] doc:
   "Builds an LSP range from absolute UTF-8 byte spans." ];
 
@@ -751,13 +740,12 @@ let analysisThreadedSpecialSelectors := {
   let selectionEnd := [entry at: "selectionEnd" ifAbsent: [| finish]];
   let range := [self rangeForStart: start end: finish in: text];
   let selection := [self rangeForStart: selectionStart end: selectionEnd in: text];
-  [Map
-    => new
-    => at: "name" put: name
-    => at: "kind" put: kind
-    => at: "detail" put: detail
-    => at: "range" put: range
-    => at: "selectionRange" put: selection]
+  {
+    "name" -> name,
+    "kind" -> kind,
+    "detail" -> detail,
+    "range" -> range,
+    "selectionRange" -> selection}
   ] doc:
   "Converts one source-analysis symbol into an LSP DocumentSymbol." ];
 
@@ -771,7 +759,7 @@ let analysisThreadedSpecialSelectors := {
   let start := [entry at: "start" ifAbsent: [| 0]];
   let finish := [entry at: "end" ifAbsent: [| start]];
   let range := [self rangeForStart: start end: finish in: text];
-  [Map => new => at: "uri" put: uri => at: "range" put: range]
+  {"uri" -> uri, "range" -> range}
   ] doc:
   "Answers an LSP Location for a source occurrence or declaration entry." ];
 
@@ -779,7 +767,7 @@ let analysisThreadedSpecialSelectors := {
   let start := [entry at: "selectionStart" ifAbsent: [| [entry at: "start" ifAbsent: [| 0]]]];
   let finish := [entry at: "selectionEnd" ifAbsent: [| [entry at: "end" ifAbsent: [| start]]]];
   let range := [self rangeForStart: start end: finish in: text];
-  [Map => new => at: "uri" put: uri => at: "range" put: range]
+  {"uri" -> uri, "range" -> range}
   ] doc:
   "Answers an LSP definition Location using a symbol's selection range." ];
 
@@ -862,11 +850,10 @@ let analysisThreadedSpecialSelectors := {
         [[[already isNil] & [[query isEmpty] | [name includesSubstring: query]]]
           ifTrue: [|
             [seen set: [[seen value] at: name put: true]];
-            [out add: [Map
-              => new
-              => at: "name" put: name
-              => at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]
-              => at: "location" put: [self locationForIndexedSymbol: entry]]]]
+            [out add: {
+              "name" -> name,
+              "kind" -> [entry at: "kind" ifAbsent: [| 13]],
+              "location" -> [self locationForIndexedSymbol: entry]}]]
           ifFalse: [| out]]]]]]
   ] doc:
   "Answers workspace/symbol over the resolver-selected authored modules, including unopened dependencies." ];
@@ -880,12 +867,11 @@ let analysisThreadedSpecialSelectors := {
 [Reflect defineMethod: #completionItemForBinding: on: Lsp as: [:self :entry |
   let name := [entry at: "name" ifAbsent: [| ""]];
   let module := [entry at: "module" ifAbsent: [| "<buffer>"]];
-  [Map
-    => new
-    => at: "label" put: name
-    => at: "kind" put: 6
-    => at: "detail" put: [[entry at: "kind" ifAbsent: [| "local"]] , " in #" , module]
-    => at: "documentation" put: ["authored binding in " , [entry at: "path" ifAbsent: [| ""]]]]
+  {
+    "label" -> name,
+    "kind" -> 6,
+    "detail" -> [[entry at: "kind" ifAbsent: [| "local"]] , " in #" , module],
+    "documentation" -> ["authored binding in " , [entry at: "path" ifAbsent: [| ""]]]}
   ] doc:
   "Builds a variable or parameter CompletionItem from an authored binding." ];
 
@@ -896,12 +882,11 @@ let analysisThreadedSpecialSelectors := {
   let detail := [[kind = 6]
     ifTrue: [| ["method on " , [entry at: "detail" ifAbsent: [| ""]]]]
     ifFalse: [| [{3 -> "module"} at: kind ifAbsent: [| "symbol"]]]];
-  [Map
-    => new
-    => at: "label" put: name
-    => at: "kind" put: itemKind
-    => at: "detail" put: detail
-    => at: "documentation" put: [self symbolSourceBody: entry]]
+  {
+    "label" -> name,
+    "kind" -> itemKind,
+    "detail" -> detail,
+    "documentation" -> [self symbolSourceBody: entry]}
   ] doc:
   "Builds a method, module, or authored symbol CompletionItem." ];
 
@@ -948,11 +933,10 @@ let analysisThreadedSpecialSelectors := {
 
 [Reflect defineMethod: #completionItemForRuntimeGlobalName: on: Lsp as: [:self :globalName |
   let name := [Reflect nameOf: globalName];
-  [Map
-    => new
-    => at: "label" put: name
-    => at: "kind" put: 6
-    => at: "detail" put: "exported runtime global"]
+  {
+    "label" -> name,
+    "kind" -> 6,
+    "detail" -> "exported runtime global"}
   ] doc:
   "Builds one CompletionItem from an exported runtime global name." ];
 
@@ -995,11 +979,10 @@ let analysisThreadedSpecialSelectors := {
   let name := [[selector isNil] ifTrue: [| ""] ifFalse: [| [Reflect nameOf: selector]]];
   let target := [entry at: #target ifAbsent: [| nil]];
   let targetName := [[target isNil] ifTrue: [| receiverName] ifFalse: [| [Reflect nameOf: target]]];
-  [Map
-    => new
-    => at: "label" put: name
-    => at: "kind" put: 2
-    => at: "detail" put: ["runtime method on " , targetName]]
+  {
+    "label" -> name,
+    "kind" -> 2,
+    "detail" -> ["runtime method on " , targetName]}
   ] doc:
   "Builds a bounded method CompletionItem without scanning historical source generations." ];
 
@@ -1063,11 +1046,10 @@ let analysisThreadedSpecialSelectors := {
   "Answers a retained completion only for byte-identical text and the same LSP position." ];
 
 [Reflect defineMethod: #rememberCompletion:text:uri:position: on: Lsp as: [:self :result :text :uri :position |
-  let entry := [Map
-    => new
-    => at: "text" put: text
-    => at: "position" put: position
-    => at: "result" put: result];
+  let entry := {
+    "text" -> text,
+    "position" -> position,
+    "result" -> result};
   [ObjectModel slot: 10 in: self put:
     [[self completionResponseCacheMap] at: uri put: entry]];
   result
@@ -1160,14 +1142,13 @@ let analysisThreadedSpecialSelectors := {
   [[count > 0] ifTrue: [|
     [0 to: [count - 1] do: [:i |
       let label := ["arg" , [[i + 1] printString]];
-      let parameter := [Map => new => at: "label" put: label];
+      let parameter := {"label" -> label};
       [params add: parameter]]]]];
   let label := [["#" , selector] , " on " , [entry at: "detail" ifAbsent: [| ""]]];
-  [Map
-    => new
-    => at: "label" put: label
-    => at: "documentation" put: [self symbolSourceBody: entry]
-    => at: "parameters" put: params]
+  {
+    "label" -> label,
+    "documentation" -> [self symbolSourceBody: entry],
+    "parameters" -> params}
   ] doc:
   "Builds one LSP SignatureInformation from a source-backed method selector." ];
 
@@ -1181,11 +1162,10 @@ let analysisThreadedSpecialSelectors := {
   let found := [[index isNil] ifTrue: [| nil] ifFalse: [| [self symbolForPosition: position uri: uri index: index]]];
   let result := [[found isNil] ifTrue: [| nil] ifFalse: [|
     let signature := [self signatureForSymbol: found];
-    [Map
-      => new
-      => at: "signatures" put: #[signature]
-      => at: "activeSignature" put: 0
-      => at: "activeParameter" put: 0]]];
+    {
+      "signatures" -> #[signature],
+      "activeSignature" -> 0,
+      "activeParameter" -> 0}]];
   [self respond: id result: result];
   self] doc:
   "Answers signature help for a method selector under the cursor; dynamic receiver dispatch remains intentionally unresolved." ];
@@ -1193,32 +1173,29 @@ let analysisThreadedSpecialSelectors := {
 // -- JSON-RPC response builders -----------------------------------------------
 
 [Reflect defineMethod: #respond:result: on: Lsp as: [:self :id :result |
-  let msg := [Map
-    => new
-    => at: "jsonrpc" put: "2.0"
-    => at: "id" put: id
-    => at: "result" put: result];
+  let msg := {
+    "jsonrpc" -> "2.0",
+    "id" -> id,
+    "result" -> result};
   [self sendMessage: [Json stringify: msg]];
   self] doc:
   "Sends a JSON-RPC success response: `result` under request `id`."];
 
 [Reflect defineMethod: #respondError: on: Lsp as: [:self :id |
-  let error := [Map => new => at: "code" put: -32601 => at: "message" put: "method not found"];
-  let msg := [Map
-    => new
-    => at: "jsonrpc" put: "2.0"
-    => at: "id" put: id
-    => at: "error" put: error];
+  let error := {"code" -> -32601, "message" -> "method not found"};
+  let msg := {
+    "jsonrpc" -> "2.0",
+    "id" -> id,
+    "error" -> error};
   [self sendMessage: [Json stringify: msg]];
   self] doc:
   "Sends a JSON-RPC error response for `id`: -32601 method not found."];
 
 [Reflect defineMethod: #sendNote:params: on: Lsp as: [:self :method :params |
-  let note := [Map
-    => new
-    => at: "jsonrpc" put: "2.0"
-    => at: "method" put: method
-    => at: "params" put: params];
+  let note := {
+    "jsonrpc" -> "2.0",
+    "method" -> method,
+    "params" -> params};
   [self sendMessage: [Json stringify: note]];
   self] doc:
   "Sends a JSON-RPC notification: `method` with `params` (no id, no reply expected)."];
@@ -1308,35 +1285,33 @@ let analysisThreadedSpecialSelectors := {
   "Answers open-buffer text when available, otherwise the authored source at `path`; errors become empty analysis text." ];
 
 [Reflect defineMethod: #indexedSymbol:module:path:uri:text: on: Lsp as: [:self :entry :module :path :uri :text |
-  [Map
-    => new
-    => at: "name" put: [entry at: "name" ifAbsent: [| ""]]
-    => at: "kind" put: [entry at: "kind" ifAbsent: [| 13]]
-    => at: "detail" put: [entry at: "detail" ifAbsent: [| ""]]
-    => at: "start" put: [entry at: "start" ifAbsent: [| 0]]
-    => at: "end" put: [entry at: "end" ifAbsent: [| 0]]
-    => at: "selectionStart" put: [entry at: "selectionStart" ifAbsent: [| 0]]
-    => at: "selectionEnd" put: [entry at: "selectionEnd" ifAbsent: [| 0]]
-    => at: "module" put: module
-    => at: "path" put: path
-    => at: "uri" put: uri
-    => at: "source" put: text]
+  {
+    "name" -> [entry at: "name" ifAbsent: [| ""]],
+    "kind" -> [entry at: "kind" ifAbsent: [| 13]],
+    "detail" -> [entry at: "detail" ifAbsent: [| ""]],
+    "start" -> [entry at: "start" ifAbsent: [| 0]],
+    "end" -> [entry at: "end" ifAbsent: [| 0]],
+    "selectionStart" -> [entry at: "selectionStart" ifAbsent: [| 0]],
+    "selectionEnd" -> [entry at: "selectionEnd" ifAbsent: [| 0]],
+    "module" -> module,
+    "path" -> path,
+    "uri" -> uri,
+    "source" -> text}
   ] doc:
   "Adds canonical module/path/URI/source provenance to one parser-backed source symbol." ];
 
 [Reflect defineMethod: #indexedBinding:module:path:uri:text: on: Lsp as: [:self :entry :module :path :uri :text |
-  [Map
-    => new
-    => at: "kind" put: [entry at: "kind" ifAbsent: [| "local"]]
-    => at: "name" put: [entry at: "name" ifAbsent: [| ""]]
-    => at: "start" put: [entry at: "start" ifAbsent: [| 0]]
-    => at: "end" put: [entry at: "end" ifAbsent: [| 0]]
-    => at: "scopeStart" put: [entry at: "scopeStart" ifAbsent: [| 0]]
-    => at: "scopeEnd" put: [entry at: "scopeEnd" ifAbsent: [| 0]]
-    => at: "module" put: module
-    => at: "path" put: path
-    => at: "uri" put: uri
-    => at: "source" put: text]
+  {
+    "kind" -> [entry at: "kind" ifAbsent: [| "local"]],
+    "name" -> [entry at: "name" ifAbsent: [| ""]],
+    "start" -> [entry at: "start" ifAbsent: [| 0]],
+    "end" -> [entry at: "end" ifAbsent: [| 0]],
+    "scopeStart" -> [entry at: "scopeStart" ifAbsent: [| 0]],
+    "scopeEnd" -> [entry at: "scopeEnd" ifAbsent: [| 0]],
+    "module" -> module,
+    "path" -> path,
+    "uri" -> uri,
+    "source" -> text}
   ] doc:
   "Adds canonical module/path/URI/source provenance to one lexical binding." ];
 
@@ -1349,15 +1324,14 @@ let analysisThreadedSpecialSelectors := {
   let rawBindings := [raw at: "bindings"];
   let bindings := [rawBindings inject: #[] into: [:out :entry |
     [out add: [self indexedBinding: entry module: module path: path uri: uri text: text]]]];
-  [Map
-    => new
-    => at: "module" put: module
-    => at: "path" put: path
-    => at: "uri" put: uri
-    => at: "source" put: text
-    => at: "symbols" put: symbols
-    => at: "occurrences" put: rawOccurrences
-    => at: "bindings" put: bindings]
+  {
+    "module" -> module,
+    "path" -> path,
+    "uri" -> uri,
+    "source" -> text,
+    "symbols" -> symbols,
+    "occurrences" -> rawOccurrences,
+    "bindings" -> bindings}
   ] doc:
   "Builds one parser-backed authored document index without evaluating its source." ];
 
@@ -1387,12 +1361,11 @@ let analysisThreadedSpecialSelectors := {
       let allDocs := [addCurrent ifTrue: [| [docs add: currentDoc]] ifFalse: [| docs]];
       let currentSymbols := [addCurrent ifTrue: [| [currentDoc at: "symbols" ifAbsent: [| #[]]]] ifFalse: [| #[]]];
       let allSymbols := [currentSymbols inject: symbols into: [:out :entry | [out add: entry]]];
-      let index := [Map
-        => new
-        => at: "digest" put: digest
-        => at: "root" put: root
-        => at: "documents" put: allDocs
-        => at: "symbols" put: allSymbols];
+      let index := {
+        "digest" -> digest,
+        "root" -> root,
+        "documents" -> allDocs,
+        "symbols" -> allSymbols};
       [ObjectModel slot: 6 in: self put: [[self projectIndexesMap] at: root put: index]];
       index]]
   ] doc:
@@ -1447,10 +1420,9 @@ let analysisThreadedSpecialSelectors := {
   let start := [entry at: "selectionStart" ifAbsent: [| [entry at: "start" ifAbsent: [| 0]]]];
   let finish := [entry at: "selectionEnd" ifAbsent: [| [entry at: "end" ifAbsent: [| start]]]];
   let range := [self rangeForStart: start end: finish in: [entry at: "source" ifAbsent: [| ""]]];
-  [Map
-    => new
-    => at: "uri" put: [entry at: "uri" ifAbsent: [| ""]]
-    => at: "range" put: range]
+  {
+    "uri" -> [entry at: "uri" ifAbsent: [| ""]],
+    "range" -> range}
   ] doc:
   "Answers an LSP Location for an indexed authored symbol definition." ];
 
@@ -1458,10 +1430,9 @@ let analysisThreadedSpecialSelectors := {
   let start := [entry at: "start" ifAbsent: [| 0]];
   let finish := [entry at: "end" ifAbsent: [| start]];
   let range := [self rangeForStart: start end: finish in: [doc at: "source" ifAbsent: [| ""]]];
-  [Map
-    => new
-    => at: "uri" put: [doc at: "uri" ifAbsent: [| ""]]
-    => at: "range" put: range]
+  {
+    "uri" -> [doc at: "uri" ifAbsent: [| ""]],
+    "range" -> range}
   ] doc:
   "Answers an LSP Location for an indexed authored occurrence." ];
 
@@ -1572,23 +1543,21 @@ let analysisThreadedSpecialSelectors := {
   let rootRaw := [folder at: "uri" ifAbsent: [| [p at: "rootUri" ifAbsent: [| [p at: "rootPath" ifAbsent: [| ""]]]]]];
   let root := [[rootRaw isNil] ifTrue: [| ""] ifFalse: [| rootRaw]];
   [[root isEmpty] ifFalse: [| [self primeWorkspaceFor: root]]];
-  let sync := [Map
-    => new
-    => at: "openClose" put: true
-    => at: "change" put: 1
-    => at: "save" put: true];
-  let caps := [Map
-    => new
-    => at: "textDocumentSync" put: sync
-    => at: "hoverProvider" put: true
-    => at: "documentSymbolProvider" put: true
-    => at: "definitionProvider" put: true
-    => at: "referencesProvider" put: true
-    => at: "workspaceSymbolProvider" put: true
-    => at: "completionProvider" put: [Map => new => at: "resolveProvider" put: false]
-    => at: "signatureHelpProvider" put: [Map => new => at: "triggerCharacters" put: #[":"]]];
-  let info := [Map => new => at: "name" put: "birnam" => at: "version" put: "0.1"];
-  let result := [Map => new => at: "capabilities" put: caps => at: "serverInfo" put: info];
+  let sync := {
+    "openClose" -> true,
+    "change" -> 1,
+    "save" -> true};
+  let caps := {
+    "textDocumentSync" -> sync,
+    "hoverProvider" -> true,
+    "documentSymbolProvider" -> true,
+    "definitionProvider" -> true,
+    "referencesProvider" -> true,
+    "workspaceSymbolProvider" -> true,
+    "completionProvider" -> {"resolveProvider" -> false},
+    "signatureHelpProvider" -> {"triggerCharacters" -> #[":"]}};
+  let info := {"name" -> "birnam", "version" -> "0.1"};
+  let result := {"capabilities" -> caps, "serverInfo" -> info};
   [self respond: id result: result];
   self] doc:
   "Answers initialize after selecting an explicit workspace URI when supplied; project resolution remains read-only."];
@@ -1651,7 +1620,7 @@ let analysisThreadedSpecialSelectors := {
   [ObjectModel slot: 1 in: self put: [[self versionsMap] at: uri put: nil]];
   [ObjectModel slot: 5 in: self put: [[self documentPathsMap] at: uri put: nil]];
   [self invalidateProjectIndexes];
-  let params := [Map => new => at: "uri" put: uri => at: "diagnostics" put: #[]];
+  let params := {"uri" -> uri, "diagnostics" -> #[]};
   [self sendNote: "textDocument/publishDiagnostics" params: params];
   self] doc:
   "didClose: releases the retained document text/version and clears its diagnostics."];
@@ -1737,8 +1706,8 @@ let analysisThreadedSpecialSelectors := {
 // Build an LSP Hover result (markdown): a bold token header over a rendered body.
 [Reflect defineMethod: #hoverResult:token: on: Lsp as: [:self :body :tok |
   let value := ["**" , tok , "**\n\n" , body];
-  let contents := [Map => new => at: "kind" put: "markdown" => at: "value" put: value];
-  [Map => new => at: "contents" put: contents]] doc:
+  let contents := {"kind" -> "markdown", "value" -> value};
+  {"contents" -> contents}] doc:
   "Answers an LSP Hover result (markdown): a bold `tok` header over the rendered `body`."];
 
 // textDocument/hover: the Doc body for the token under the cursor — a hand-written
