@@ -39,7 +39,7 @@ const HOST_NAMES: &[&[u8]] = &[
 // subsequent send, then releases them on success and on every error path.
 pub struct Scope<'a> {
     pub host: &'a Context,
-    tokens: RefCell<Vec<Oop>>,
+    tokens: RefCell<Vec<(Oop, Oop)>>,
     reported: Option<crate::roots::Scope>,
     finished: bool,
 }
@@ -52,7 +52,22 @@ impl Scope<'_> {
                 .send(self.host.roots, self.host.retain, &[value])
         }
         .map_err(|e| native_error("retain Host value", e))?;
-        self.tokens.borrow_mut().push(token);
+        self.tokens.borrow_mut().push((value, token));
+        Ok(value)
+    }
+    /// Replace one reference held by this native scope once its caller has
+    /// finished using the previous value. Other retained aliases stay intact.
+    pub fn replace_kept(&self, previous: Oop, value: Oop) -> Result<Oop, HostError> {
+        if let Some(scope) = &self.reported {
+            if !scope.replace(previous, value) { return Err(HostError("missing accumulator root".into())); }
+            return Ok(value);
+        }
+        let index = self.tokens.borrow().iter().rposition(|(v, _)| *v == previous)
+            .ok_or_else(|| HostError("missing accumulator root".into()))?;
+        self.keep(value)?;
+        let (_, token) = self.tokens.borrow_mut().swap_remove(index);
+        unsafe { self.host.id.send(self.host.roots, self.host.release_many, &[value, token]) }
+            .map_err(|e| native_error("replace Host accumulator root", e))?;
         Ok(value)
     }
     // Protect returned Oops while replaceable release: callbacks run.
@@ -64,7 +79,7 @@ impl Scope<'_> {
     fn release(&self, protected: Oop) -> Result<(), HostError> {
         if self.reported.is_some() { return Ok(()); }
         let mut values = vec![protected];
-        values.extend(self.tokens.take());
+        values.extend(self.tokens.take().into_iter().map(|(_, token)| token));
         unsafe {
             self.host
                 .id

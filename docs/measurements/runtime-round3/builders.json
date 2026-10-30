@@ -1,0 +1,144 @@
+{
+  "baseline": "8af726f456ab56fd00e83405690ce0618b568b08",
+  "scope": "Build project dependency records through Map and Vector messages, five samples; includes automatic collection, excludes input construction.",
+  "summary": [
+    {
+      "operation": "project_records",
+      "n": 128,
+      "before_ns": 3203417,
+      "after_ns": 3362042,
+      "speedup": 0.9528188523522312
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "before_ns": 55043750,
+      "after_ns": 60868833,
+      "speedup": 0.904301056667211
+    }
+  ],
+  "before": [
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 0,
+      "ns": 3148958
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 1,
+      "ns": 3203417
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 2,
+      "ns": 3035583
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 3,
+      "ns": 3340416
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 4,
+      "ns": 3481209
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 0,
+      "ns": 54160291
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 1,
+      "ns": 57531292
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 2,
+      "ns": 55043750
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 3,
+      "ns": 55966958
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 4,
+      "ns": 53209750
+    }
+  ],
+  "after": [
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 0,
+      "ns": 3199750
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 1,
+      "ns": 3362042
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 2,
+      "ns": 3224000
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 3,
+      "ns": 3450917
+    },
+    {
+      "operation": "project_records",
+      "n": 128,
+      "sample": 4,
+      "ns": 3558417
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 0,
+      "ns": 59971833
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 1,
+      "ns": 60868833
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 2,
+      "ns": 61838917
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 3,
+      "ns": 62616542
+    },
+    {
+      "operation": "project_records",
+      "n": 2048,
+      "sample": 4,
+      "ns": 60229916
+    }
+  ]
+}

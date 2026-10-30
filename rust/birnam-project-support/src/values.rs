@@ -584,15 +584,11 @@ impl Builder<'_, '_> {
         self.q.call(self.q.host.named(b"Map")?, b"new", &[])
     }
     fn add(&self, v: Oop, item: Oop) -> Result<Oop, HostError> {
-        self.q.call(v, b"add:", &[item])
+        self.q.replace_kept(v, self.q.host.send(v, b"add:", &[item])?)
     }
     fn put(&self, v: Oop, k: &str, item: Oop) -> Result<Oop, HostError> {
         let key = self.q.string(k.as_bytes())?;
-        self.q.call(
-            v,
-            b"at:put:",
-            &[key, item],
-        )
+        self.q.replace_kept(v, self.q.host.send(v, b"at:put:", &[key, item])?)
     }
     fn string(&self, v: &str) -> Result<Oop, HostError> {
         self.q.string(v.as_bytes())

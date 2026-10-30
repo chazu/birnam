@@ -52,14 +52,15 @@ impl State {
     }
     pub(super) unsafe fn vector(&self, q: &Scope<'_>, values: &[Oop]) -> Result<Oop, Oop> {
         unsafe {
-            for &value in values {
-                q.keep(value);
-            }
-            let mut result = q.keep(self.send(self.named(b"Vector")?, b"new", &[])?);
+            let local = self.scope(values);
+            let mut result = local.keep(self.send(self.named(b"Vector")?, b"new", &[])?);
+            let accumulator = self.scoped.borrow().len() - 1;
             for value in values {
-                result = q.keep(self.send(result, b"add:", &[*value])?);
+                result = self.send(result, b"add:", &[*value])?;
+                self.scoped.borrow_mut()[accumulator] = result;
             }
-            Ok(result)
+            drop(local);
+            Ok(q.keep(result))
         }
     }
     pub(super) unsafe fn symbol_bytes(

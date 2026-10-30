@@ -32,6 +32,16 @@ pub(crate) struct Scope {
     index: usize,
 }
 impl Scope {
+    pub fn replace(&self, previous: Oop, value: Oop) -> bool {
+        let mut references = self.references.borrow_mut();
+        let values = &mut references.scopes[self.index];
+        let Some(index) = values.iter().rposition(|&v| v == previous) else { return false; };
+        values[index] = value;
+        // Accumulators are normally updated again after only a few inputs.
+        let last = values.len() - 1;
+        values.swap(index, last);
+        true
+    }
     pub fn keep(&self, value: Oop) {
         self.references.borrow_mut().scopes[self.index].push(value);
     }
