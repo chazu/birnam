@@ -13,32 +13,21 @@
 
 // -- small value helpers ------------------------------------------------------
 
+[Reflect defineMethod: #find:field:in:at: on: ProjectPolicy as: [:self :value :field :records :index |
+  [[index >= [records size]]
+    ifTrue: [| nil]
+    ifFalse: [|
+      let record := [records at: index];
+      [[[record at: field] = value]
+        ifTrue: [| record]
+        ifFalse: [| [self find: value field: field in: records at: [index + 1]]]]]]]];
+
 [Reflect defineMethod: #projectNamed:in:at: on: ProjectPolicy as: [:self :root :projects :index |
-  [[index >= [projects size]]
-    ifTrue: [| nil]
-    ifFalse: [|
-      let project := [projects at: index];
-      [[[project at: "root"] = root]
-        ifTrue: [| project]
-        ifFalse: [| [self projectNamed: root in: projects at: [index + 1]]]]]]]];
-
+  [self find: root field: "root" in: projects at: index]]];
 [Reflect defineMethod: #sourceNamed:in:at: on: ProjectPolicy as: [:self :name :sources :index |
-  [[index >= [sources size]]
-    ifTrue: [| nil]
-    ifFalse: [|
-      let source := [sources at: index];
-      [[[source at: "name"] = name]
-        ifTrue: [| source]
-        ifFalse: [| [self sourceNamed: name in: sources at: [index + 1]]]]]]]];
-
+  [self find: name field: "name" in: sources at: index]]];
 [Reflect defineMethod: #dependencyNamed:in:at: on: ProjectPolicy as: [:self :name :dependencies :index |
-  [[index >= [dependencies size]]
-    ifTrue: [| nil]
-    ifFalse: [|
-      let dependency := [dependencies at: index];
-      [[[dependency at: "name"] = name]
-        ifTrue: [| dependency]
-        ifFalse: [| [self dependencyNamed: name in: dependencies at: [index + 1]]]]]]]];
+  [self find: name field: "name" in: dependencies at: index]]];
 
 [Reflect defineMethod: #hasName:in: on: ProjectPolicy as: [:self :name :names |
   [[names indexOf: name] notNil]]];
@@ -230,13 +219,7 @@
 // may be published. No build receipt is read or written.
 
 [Reflect defineMethod: #artifactNamed:in:at: on: ProjectPolicy as: [:self :name :artifacts :index |
-  [[index >= [artifacts size]]
-    ifTrue: [| nil]
-    ifFalse: [|
-      let artifact := [artifacts at: index];
-      [[[artifact at: "name"] = name]
-        ifTrue: [| artifact]
-        ifFalse: [| [self artifactNamed: name in: artifacts at: [index + 1]]]]]]]];
+  [self find: name field: "name" in: artifacts at: index]]];
 
 [Reflect defineMethod: #sameStrings:with:at: on: ProjectPolicy as: [:self :left :right :index |
   [[index >= [left size]]

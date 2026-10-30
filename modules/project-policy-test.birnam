@@ -252,3 +252,12 @@ let s := [TestSuite named: "ProjectPolicy" module: #projectPolicy];
   let ready := [ready0 at: "stageReady" put: true];
   let published := [ProjectPolicy publicationPlan: ready];
   [t expect: [published at: "decision"] equals: "publish" describes: "complete staging is publishable"]]];
+
+[s test: "record searches preserve starting indices and first matches" do: [:t |
+  let a := {"name" -> "x", "root" -> "x"}; let b := {"name" -> "x", "root" -> "x"};
+  let rows := #[a b];
+  [t assert: [[ProjectPolicy projectNamed: "x" in: rows at: 0] == a] describes: "first match"];
+  [t assert: [[ProjectPolicy sourceNamed: "x" in: rows at: 1] == b] describes: "start index"];
+  [t assert: [[ProjectPolicy dependencyNamed: "x" in: rows at: 1] == b] describes: "dependency start"];
+  [t assert: [[ProjectPolicy artifactNamed: "x" in: rows at: 2] isNil] describes: "end returns nil"]
+]];
