@@ -1146,18 +1146,20 @@ pub struct BlockLiveness {
 /// Oops at this layer. Sorted sets keep the result deterministic and make it a
 /// stable input to the later coloring pass.
 pub fn reference_liveness(program: &LogicalProgram<'_>) -> Vec<BlockLiveness> {
+    let mut positions = std::collections::HashMap::with_capacity(program.blocks.len());
+    for (index, block) in program.blocks.iter().enumerate() {
+        positions.entry(block.pc).or_insert(index);
+    }
+    let successors = program.blocks.iter().map(|block| match &block.terminator {
+        Terminator::Call { successor, .. } | Terminator::Continue(successor) => positions.get(successor).copied(),
+        Terminator::TailCall { .. } | Terminator::Return(_) => None,
+    }).collect::<Vec<_>>();
     let mut live_in = vec![BTreeSet::new(); program.blocks.len()];
     let mut live_out = vec![BTreeSet::new(); program.blocks.len()];
     loop {
         let mut changed = false;
         for (index, block) in program.blocks.iter().enumerate().rev() {
-            let successor = match &block.terminator {
-                Terminator::Call { successor, .. } | Terminator::Continue(successor) => program
-                    .blocks
-                    .iter()
-                    .position(|block| block.pc == *successor),
-                Terminator::TailCall { .. } | Terminator::Return(_) => None,
-            };
+            let successor = successors[index];
             let new_out = successor
                 .map(|successor| live_in[successor].clone())
                 .unwrap_or_default();

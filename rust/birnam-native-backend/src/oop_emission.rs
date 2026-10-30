@@ -13,7 +13,7 @@ pub enum Error {
 }
 struct Emitter {
     source_revision: [u8; 32],
-    names: Vec<Vec<u8>>,
+    names: std::collections::HashMap<Vec<u8>, usize>,
     functions: Vec<String>,
     programs: Vec<Vec<u8>>,
     descriptors: Vec<Option<ResumableMetadata>>,
@@ -30,11 +30,10 @@ impl Emitter {
         if n.contains(&0) {
             return Err(Error::InvalidName);
         }
-        if let Some(i) = self.names.iter().position(|v| v == n) {
-            return Ok(i);
-        }
-        self.names.push(n.to_vec());
-        Ok(self.names.len() - 1)
+        if let Some(&i) = self.names.get(n) { return Ok(i); }
+        let i = self.names.len();
+        self.names.insert(n.to_vec(), i);
+        Ok(i)
     }
     fn selected_function(
         &mut self,
@@ -229,7 +228,7 @@ fn compile_mode(
 ) -> Result<Vec<u8>, Error> {
     let mut e = Emitter {
         source_revision: Sha256::digest(source).into(),
-        names: Vec::new(),
+        names: std::collections::HashMap::new(),
         functions: Vec::new(),
         programs: Vec::new(),
         descriptors: Vec::new(),
@@ -356,7 +355,9 @@ fn compile_mode(
         .unwrap();
     }
     out.push_str("static const Literal literals[]={\n");
-    for name in &e.names {
+    let mut ordered_names = e.names.iter().collect::<Vec<_>>();
+    ordered_names.sort_unstable_by_key(|(_, ordinal)| **ordinal);
+    for (name, _) in ordered_names {
         let mut quoted = b"\"".to_vec();
         crate::c_string::push_c_string_body(&mut quoted, name);
         quoted.push(b'"');

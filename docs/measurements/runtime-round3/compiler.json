@@ -1,0 +1,278 @@
+{
+  "baseline": "314c84452ce1a0a1c718756c2045e8d05597fefc",
+  "scope": "Private compiler algorithms: liveness on sparse-PC chains and synchronous emission of distinct Symbol expressions. Five samples, input construction excluded.",
+  "summary": [
+    {
+      "operation": "liveness",
+      "n": 256,
+      "before_ns": 55250,
+      "after_ns": 35542,
+      "speedup": 1.554498902706657
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "before_ns": 8011125,
+      "after_ns": 565833,
+      "speedup": 14.158108487840051
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "before_ns": 325750,
+      "after_ns": 302625,
+      "speedup": 1.0764147046674928
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "before_ns": 15494917,
+      "after_ns": 4574667,
+      "speedup": 3.3871136412770593
+    }
+  ],
+  "before": [
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 0,
+      "ns": 166084
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 1,
+      "ns": 55875
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 2,
+      "ns": 55250
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 3,
+      "ns": 54666
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 4,
+      "ns": 54334
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 0,
+      "ns": 396458
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 1,
+      "ns": 341709
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 2,
+      "ns": 324584
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 3,
+      "ns": 321167
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 4,
+      "ns": 325750
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 0,
+      "ns": 8100083
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 1,
+      "ns": 8011125
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 2,
+      "ns": 7860292
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 3,
+      "ns": 8088417
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 4,
+      "ns": 7835417
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 0,
+      "ns": 15359667
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 1,
+      "ns": 15346250
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 2,
+      "ns": 15494917
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 3,
+      "ns": 16253875
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 4,
+      "ns": 15644250
+    }
+  ],
+  "after": [
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 0,
+      "ns": 119208
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 1,
+      "ns": 35542
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 2,
+      "ns": 35125
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 3,
+      "ns": 35708
+    },
+    {
+      "operation": "liveness",
+      "n": 256,
+      "sample": 4,
+      "ns": 34583
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 0,
+      "ns": 363041
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 1,
+      "ns": 309541
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 2,
+      "ns": 297167
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 3,
+      "ns": 295625
+    },
+    {
+      "operation": "names",
+      "n": 256,
+      "sample": 4,
+      "ns": 302625
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 0,
+      "ns": 607208
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 1,
+      "ns": 554500
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 2,
+      "ns": 575291
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 3,
+      "ns": 565542
+    },
+    {
+      "operation": "liveness",
+      "n": 4096,
+      "sample": 4,
+      "ns": 565833
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 0,
+      "ns": 4603667
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 1,
+      "ns": 4573750
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 2,
+      "ns": 4596917
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 3,
+      "ns": 4574667
+    },
+    {
+      "operation": "names",
+      "n": 4096,
+      "sample": 4,
+      "ns": 4508167
+    }
+  ]
+}
