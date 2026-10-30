@@ -78,6 +78,17 @@ impl Literal {
         }
     }
 }
+/// Expand an ordered declaration at compile time; no runtime interning or state.
+pub const fn literal_table<const N: usize>(names: &[&'static [u8]]) -> [Literal; N] {
+    assert!(names.len() == N);
+    let mut result = [const { Literal::new(b"") }; N];
+    let mut i = 0;
+    while i < N {
+        result[i] = Literal::new(names[i]);
+        i += 1;
+    }
+    result
+}
 #[repr(C)]
 pub struct MethodSpec {
     pub name: usize,
