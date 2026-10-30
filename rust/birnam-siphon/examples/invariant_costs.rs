@@ -93,5 +93,23 @@ fn main() {
                 println!("{{\"operation\":\"compiled_calls\",\"sends\":{sends},\"sample\":{sample},\"calls\":{calls},\"ns_per_call\":{ns}}}");
             }
         }
+    } else if mode == "roots" {
+        let input = q.string(b"reference").unwrap();
+        q.read_bytes(input).unwrap(); // Initialize native callback declarations outside timing.
+        for batch in [1usize, 100] {
+            for sample in 0..7 {
+                q.call(gc, b"collectPrecisely", &[]).unwrap();
+                let calls = 200;
+                let start = Instant::now();
+                for _ in 0..calls {
+                    let scope = h.scope();
+                    for _ in 0..batch {
+                        assert_eq!(scope.call(input, b"printString", &[]).unwrap(), input);
+                    }
+                }
+                let ns = start.elapsed().as_nanos() as f64 / calls as f64;
+                println!("{{\"operation\":\"host_scope\",\"batch\":{batch},\"sample\":{sample},\"calls\":{calls},\"ns_per_call\":{ns}}}");
+            }
+        }
     } else { panic!("unknown benchmark {mode}"); }
 }

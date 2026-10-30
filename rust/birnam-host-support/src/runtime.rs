@@ -28,10 +28,12 @@ pub fn object(value: Oop) -> Result<Oop, HostError> {
 pub struct Scope<'a> {
     pub host: &'a Context,
     tokens: RefCell<Vec<Oop>>,
+    reported: Option<crate::roots::Scope>,
     finished: bool,
 }
 impl Scope<'_> {
     pub fn keep(&self, value: Oop) -> Result<Oop, HostError> {
+        if let Some(scope) = &self.reported { scope.keep(value); return Ok(value); }
         let token = unsafe {
             self.host
                 .id
@@ -48,6 +50,7 @@ impl Scope<'_> {
         Ok(value)
     }
     fn release(&self, protected: Oop) -> Result<(), HostError> {
+        if self.reported.is_some() { return Ok(()); }
         let mut values = vec![protected];
         values.extend(self.tokens.take());
         unsafe {
@@ -197,8 +200,8 @@ pub struct Context {
     pub namespace: Oop,
     pub roots: Oop,
     constructor: Oop,
-    sequence: Oop,
     byte_reader: RefCell<Option<abi::byte_transfer::Reader>>,
+    root_provider: RefCell<Option<crate::roots::Provider>>,
     retain: Oop,
     release_many: Oop,
     permanent: Vec<Oop>,
@@ -216,20 +219,31 @@ impl Context {
             .collect::<Result<std::collections::HashMap<_,_>,_>>()?;
         let reader = unsafe { abi::byte_transfer::Reader::new(self.id,image,self.roots,|n|keys[n]) }
             .map_err(|e|native_error("byte reader",e))?;
-        *self.byte_reader.borrow_mut()=Some(reader); Ok(())
+        *self.byte_reader.borrow_mut()=Some(reader);
+        let method = self.send(image, b"methodAt:", &[self.intern(b"traceHostRoots").map_err(|e|native_error("Host roots",e))?])?;
+        self.install_root_provider(method)
+
+    }
+    fn install_root_provider(&self, method: Oop) -> Result<(), HostError> {
+        if self.root_provider.borrow().is_none() {
+            let provider = crate::roots::Provider::new(self, method)?;
+            *self.root_provider.borrow_mut() = Some(provider);
+        }
+        Ok(())
     }
     fn ensure_byte_reader(&self) -> Result<(), HostError> {
         if self.byte_reader.borrow().is_some() { return Ok(()); }
         // The executable has no native Module descriptor. Declare its callback
         // through the existing TCC owner; the Unit retains the forwarding code.
-        let literals=abi::byte_transfer::NAMES.iter().map(|n|format!("{{\"{}\",{}}}",String::from_utf8_lossy(n),n.len())).collect::<Vec<_>>().join(",");
+        let literals=abi::byte_transfer::NAMES.iter().copied().chain([b"traceHostRoots".as_slice()]).map(|n|format!("{{\"{}\",{}}}",String::from_utf8_lossy(n),n.len())).collect::<Vec<_>>().join(",");
         let source=format!(r#"typedef void *O; typedef unsigned long U;
 struct L{{const unsigned char *p;U n;}}; struct M{{U name;O(*entry)(O,O,O,const O*,U);}};
 static O receive(O root,O c,O r,const O*a,U n){{return ((O(*)(O,O,O,const O*,U))0x{:x})(root,c,r,a,n);}}
+static O trace(O root,O c,O r,const O*a,U n){{return ((O(*)(O,O,O,const O*,U))0x{:x})(root,c,r,a,n);}}
 static O init(const void*p,O image,const O*l,U n,const O*a,U count){{return image;}}
-static const struct L literals[]={{{}}}; static const struct M methods[]={{{{0,receive}}}};
-const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U nm;O(*init)(const void*,O,const O*,U,const O*,U);}} birnam_native_module_v2={{2,sizeof(birnam_native_module_v2),literals,{},methods,1,init}};
-"#,abi::byte_transfer::receive_entry as *const () as usize,literals,abi::byte_transfer::NAMES.len());
+static const struct L literals[]={{{}}}; static const struct M methods[]={{{{0,receive}},{{{},trace}}}};
+const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U nm;O(*init)(const void*,O,const O*,U,const O*,U);}} birnam_native_module_v2={{2,sizeof(birnam_native_module_v2),literals,{},methods,2,init}};
+"#,abi::byte_transfer::receive_entry as *const () as usize,crate::roots::trace_entry as *const () as usize,literals,abi::byte_transfer::NAMES.len(),abi::byte_transfer::NAMES.len()+1);
         let q=self.scope(); let source=q.string(source.as_bytes())?;
         let unit=q.call(self.named(b"TCC")?,b"compile:",&[source])?;
         q.call(unit,b"initialize",&[])?;
@@ -239,7 +253,9 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
             .collect::<Result<std::collections::HashMap<_,_>,_>>()?;
         let reader=unsafe { abi::byte_transfer::Reader::from_method(self.id,receive,self.roots,|n|keys[n]) }
             .map_err(|e|native_error("byte reader",e))?;
-        *self.byte_reader.borrow_mut()=Some(reader); Ok(())
+        *self.byte_reader.borrow_mut()=Some(reader);
+        let method=q.call(unit,b"declaredMethodAt:",&[size(1)?])?;
+        self.install_root_provider(method)
     }
     pub fn intern(&self, name: &[u8]) -> Result<Oop, Oop> {
         unsafe {
@@ -256,29 +272,16 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
             if self.thread != std::thread::current().id() {
                 return Err(HostError("Host context used from another thread".into()));
             }
-            let mut values = Vec::with_capacity(args.len() + 1);
-            values.push(receiver);
-            values.extend_from_slice(args);
-            let snapshot = self
-                .id
-                .send(self.id.root, self.sequence, &values)
-                .map_err(|e| native_error("snapshot Host arguments", e))?;
-            let token = self
-                .id
-                .send(self.roots, self.retain, &[snapshot])
-                .map_err(|e| native_error("retain Host arguments", e))?;
-            let result = self
-                .intern(name)
-                .and_then(|name| self.id.send(receiver, name, args));
-            let protected = match result {
-                Ok(v) | Err(v) => v,
-            };
-            let cleanup = self
-                .id
-                .send(self.roots, self.release_many, &[protected, token]);
-            result
-                .and_then(|v| cleanup.map(|_| v))
-                .map_err(|e| native_error(&String::from_utf8_lossy(name), e))
+            let q = self.scope();
+            q.keep(receiver)?;
+            for &argument in args { q.keep(argument)?; }
+            match self.intern(name).and_then(|name| self.id.send(receiver, name, args)) {
+                Ok(value) => q.finish(value),
+                Err(error) => {
+                    let _ = q.finish(error);
+                    Err(native_error(&String::from_utf8_lossy(name), error))
+                }
+            }
         }
     }
     pub fn named(&self, name: &[u8]) -> Result<Oop, HostError> {
@@ -291,6 +294,7 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
         Scope {
             host: self,
             tokens: RefCell::new(Vec::new()),
+            reported: self.root_provider.borrow().as_ref().map(|provider| provider.scope()),
             finished: false,
         }
     }
@@ -319,6 +323,7 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
 }
 impl Drop for Context {
     fn drop(&mut self) {
+        self.root_provider.get_mut().take();
         let mut args = vec![std::ptr::null_mut()];
         args.append(&mut self.permanent);
         let _ = unsafe { self.id.send(self.roots, self.release_many, &args) };
@@ -374,18 +379,13 @@ impl Context {
                 id.send(roots, retain, &[release_many])
                     .map_err(|e| native_error("retain release selector", e))?,
             );
-            let sequence = intern(b"sequence").map_err(|e| native_error("sequence name", e))?;
-            permanent.push(
-                id.send(roots, retain, &[sequence])
-                    .map_err(|e| native_error("retain sequence", e))?,
-            );
             Ok(Self {
                 id,
                 namespace,
                 roots,
                 constructor,
-                sequence,
                 byte_reader: RefCell::new(None),
+                root_provider: RefCell::new(None),
                 retain,
                 release_many,
                 permanent,

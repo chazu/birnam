@@ -1,0 +1,219 @@
+{
+  "baseline": "5ad34a26926d637b3c96d3cad88edeb2e7facf5a",
+  "benchmark": "rust/birnam-siphon/examples/invariant_costs.rs roots",
+  "scope": "Release native composition. Each scope performs 1/100 printString sends returning the same String. Includes scope creation, returned reference retention, identity checks and cleanup. Setup and explicit GC excluded; seven samples, median.",
+  "summary": [
+    {
+      "batch": 1,
+      "before_ns": 1030.415,
+      "after_ns": 468.54,
+      "speedup": 2.1992039100183547
+    },
+    {
+      "batch": 100,
+      "before_ns": 97570,
+      "after_ns": 47131.875,
+      "speedup": 2.0701489172667116
+    }
+  ],
+  "before": [
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 1052.915
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 958.54
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 1030.415
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 1028.96
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 1026.46
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 1082.295
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 1038.54
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 98638.75
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 96376.67
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 93537.29
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 97570
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 96820.415
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 100972.5
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 99786.455
+    }
+  ],
+  "after": [
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 472.5
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 466.665
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 472.29
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 468.54
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 464.795
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 476.25
+    },
+    {
+      "operation": "host_scope",
+      "batch": 1,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 468.54
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 0,
+      "calls": 200,
+      "ns_per_call": 47298.335
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 1,
+      "calls": 200,
+      "ns_per_call": 46025.205
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 2,
+      "calls": 200,
+      "ns_per_call": 46060.625
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 3,
+      "calls": 200,
+      "ns_per_call": 46232.71
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 4,
+      "calls": 200,
+      "ns_per_call": 47958.75
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 5,
+      "calls": 200,
+      "ns_per_call": 47226.875
+    },
+    {
+      "operation": "host_scope",
+      "batch": 100,
+      "sample": 6,
+      "calls": 200,
+      "ns_per_call": 47131.875
+    }
+  ]
+}

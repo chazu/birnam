@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
+pub use crate::roots::trace_entry as trace_roots;
 pub type Handler = fn(&Context, &str, &[Oop]) -> Result<Oop, HostError>;
 pub struct Owner {
     context: Context,
@@ -77,7 +78,7 @@ pub unsafe fn initialize(
         let invalid = id.invalid;
         let result = (|| -> Result<Oop, HostError> {
             let symbols = borrowed_slice(l, n)
-                .filter(|s| s.len() == methods.len() + 2 + abi::byte_transfer::NAMES.len())
+                .filter(|s| s.len() == methods.len() + 3 + abi::byte_transfer::NAMES.len())
                 .ok_or_else(|| HostError("invalid Host literals".into()))?;
             let [ns, prefix, lib, workspace, guides, id_path] = borrowed_slice(a, count)
                 .ok_or_else(|| HostError("invalid Host initialization".into()))?
@@ -169,14 +170,14 @@ macro_rules! host_owner {
   })+
   static LITERALS:&[birnam_abi::id_protocol::Literal]=&{
    const OWN:&[&[u8]]=&[b"nameWithBytes",$name,$($selector.as_bytes()),+];
-   let mut a=[const {birnam_abi::id_protocol::Literal::new(b"")};OWN.len()+birnam_abi::byte_transfer::NAMES.len()];
+   let mut a=[const {birnam_abi::id_protocol::Literal::new(b"")};OWN.len()+birnam_abi::byte_transfer::NAMES.len()+1];
    let mut i=0;while i<OWN.len(){a[i]=birnam_abi::id_protocol::Literal::new(OWN[i]);i+=1;}
-   let mut j=0;while j<birnam_abi::byte_transfer::NAMES.len(){a[i+j]=birnam_abi::id_protocol::Literal::new(birnam_abi::byte_transfer::NAMES[j]);j+=1;}a
+   let mut j=0;while j<birnam_abi::byte_transfer::NAMES.len(){a[i+j]=birnam_abi::id_protocol::Literal::new(birnam_abi::byte_transfer::NAMES[j]);j+=1;}a[i+j]=birnam_abi::id_protocol::Literal::new(b"traceHostRoots");a
   };
   static METHODS:&[birnam_abi::id_protocol::MethodSpec]=&{
    const ENTRIES:&[birnam_abi::id_protocol::Method]=&[$($entry as birnam_abi::id_protocol::Method),+];
-   let mut specs=[const {birnam_abi::id_protocol::MethodSpec{name:0,entry:None}};ENTRIES.len()+1];
-   let mut i=0;while i<ENTRIES.len(){specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(ENTRIES[i])};i+=1;}specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(birnam_abi::byte_transfer::receive_entry)};specs
+   let mut specs=[const {birnam_abi::id_protocol::MethodSpec{name:0,entry:None}};ENTRIES.len()+2];
+   let mut i=0;while i<ENTRIES.len(){specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(ENTRIES[i])};i+=1;}specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(birnam_abi::byte_transfer::receive_entry)};specs[i+1]=birnam_abi::id_protocol::MethodSpec{name:i+2+birnam_abi::byte_transfer::NAMES.len(),entry:Some($crate::native::trace_roots)};specs
   };
   unsafe extern "C" fn initialize(p:*const birnam_abi::id_protocol::Protocol,image:birnam_abi::Oop,l:*const birnam_abi::Oop,n:usize,a:*const birnam_abi::Oop,count:usize)->birnam_abi::Oop{
    unsafe{$crate::native::initialize(p,image,l,n,a,count,&INSTANCE,&BUSY,&[$($selector),+])}
