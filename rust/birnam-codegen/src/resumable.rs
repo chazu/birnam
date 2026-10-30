@@ -986,65 +986,6 @@ pub fn lower_block_with_captures<'a>(
     })
 }
 
-/// Build the fixed one-step named-method adapter. It performs a fresh
-/// `value:`-family lookup on the retained implementation object and tail-calls
-/// through the ordinary Machine boundary.
-pub fn lower_named_adapter<'a>(
-    language_arity: u32,
-    implementation_selector: &'a [u8],
-) -> Result<LogicalProgram<'a>, LowerError> {
-    let mut operations = Vec::new();
-    let receiver = ValueId(0);
-    operations.push(Operation {
-        result: receiver,
-        kind: OperationKind::EntryReceiver,
-    });
-    let mut arguments = Vec::with_capacity(language_arity as usize + 1);
-    arguments.push(receiver);
-    for index in 0..language_arity {
-        let value = ValueId(index.checked_add(1).ok_or(LowerError::QuantityOverflow)?);
-        operations.push(Operation {
-            result: value,
-            kind: OperationKind::EntryArgument {
-                index,
-                binding: BindingId(index),
-                name: b"",
-            },
-        });
-        arguments.push(value);
-    }
-    let implementation = ValueId(
-        language_arity
-            .checked_add(1)
-            .ok_or(LowerError::QuantityOverflow)?,
-    );
-    operations.push(Operation {
-        result: implementation,
-        kind: OperationKind::EntryImplementation,
-    });
-    Ok(LogicalProgram {
-        entry: ProgramCounter(0),
-        argument_count: language_arity,
-        capture_count: 0,
-        value_count: language_arity
-            .checked_add(2)
-            .ok_or(LowerError::QuantityOverflow)?,
-        binding_count: language_arity,
-        call_site_count: 1,
-        blocks: vec![BasicBlock {
-            pc: ProgramCounter(0),
-            operations,
-            terminator: Terminator::TailCall {
-                call_site: CallSiteId(0),
-                receiver: implementation,
-                selector: implementation_selector,
-                arguments,
-                source: b"",
-            },
-        }],
-    })
-}
-
 fn assemble_blocks<'a>(
     linear: Vec<Linear<'a>>,
     final_value: ValueId,
