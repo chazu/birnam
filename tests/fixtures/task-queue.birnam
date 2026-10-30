@@ -1,6 +1,10 @@
 // Ordered values and snapshots survive successive enqueues and removals.
 [Globals at: #QueueCheckFailures put: [0 asCell]];
 let assertQueue := [:condition | [[condition = true] ifTrue: [| true] ifFalse: [| [QueueCheckFailures inc]; false]]];
+[TaskExecutor queue: nil];
+[assertQueue value: [[TaskExecutor queue] isNil]];
+[TaskExecutor initialize];
+[assertQueue value: [[TaskExecutor queue] = #[]]];
 let empty := [Queue new];
 let first := [empty add: 1];
 let second := [first add: 2];

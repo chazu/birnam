@@ -406,7 +406,6 @@ let externalResultSlot := 21;
 [Reflect defineMethod: #asQueue on: Collection as: [:self |
   [self inject: [Queue new] into: [:queue :value | [queue add: value]]]]];
 [Reflect defineMethod: #asQueue on: Queue as: [:self | self]];
-[Reflect defineMethod: #asQueue on: nil as: [:self | self]];
 [Reflect defineMethod: #at: on: Queue as: [:self :index | [[self asVector] at: index]]];
 [Reflect defineMethod: #copyFrom:to: on: Queue as: [:self :first :last |
   [[self asVector] copyFrom: first to: last]]];
@@ -442,7 +441,7 @@ let model := ObjectModel;
 let queueSlot := 0;
 [Reflect defineMethod: #queue on: prototype as: [:self | [model slot: queueSlot in: self]]];
 [Reflect defineMethod: #queue: on: prototype as: [:self :value |
-  [model slot: queueSlot in: self put: [value asQueue]]; self
+  [model slot: queueSlot in: self put: [[value isNil] ifTrue: [| nil] ifFalse: [| [value asQueue]]]]; self
 ]];
 let ingressSlot := 1;
 [Reflect defineMethod: #ingress on: prototype as: [:self | [model slot: ingressSlot in: self]]];

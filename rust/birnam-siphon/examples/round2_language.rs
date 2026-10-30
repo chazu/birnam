@@ -20,7 +20,9 @@ fn main(){
    }
   }
  }else if mode=="queue" || mode=="queue-test"{
-  if std::env::args().any(|a|a=="--current") {
+  if let Some(path)=std::env::var_os("BIRNAM_QUEUE_SOURCE") {
+   let path=std::path::PathBuf::from(path);q.evaluate(&std::fs::read(&path).unwrap(),&path,None).unwrap();
+  } else if std::env::args().any(|a|a=="--current") {
    q.evaluate(include_bytes!("../../../modules/stackless-control.birnam"),Path::new("<stackless-control>"),None).unwrap();
   }
   if mode=="queue-test"{
@@ -35,8 +37,7 @@ fn main(){
    for name in [b"observe:".as_slice(),b"failTask:",b"ensureTask:body:"]{let key=h.intern(name).unwrap();let method=q.call(image,b"methodAt:",&[key]).unwrap();let method=q.call(method,b"withContext:",&[context]).unwrap();q.call(behavior,b"addMethod",&[key,method]).unwrap();}
    q.call(h.named(b"Globals").unwrap(),b"at:put:",&[h.intern(b"NativeTaskObserver").unwrap(),observer]).unwrap();
    q.evaluate(include_bytes!("../../../scripts/task-control-smoke.birnam"),Path::new("<task-control-smoke>"),None).unwrap();
-   let check=h.global(&q,b"TaskCheck").unwrap();
-   let result=q.call(check,b"run",&[]).unwrap();q.check_result(result).unwrap();
+   q.evaluate(b"[TaskCheck run]",Path::new("<task-control-run>"),None).unwrap();
    let failures=h.global(&q,b"TaskCheckFailures").unwrap();let count=q.call(failures,b"value",&[]).unwrap();
    assert_eq!(q.word_bits(q.call(h.named(b"Integer").unwrap(),b"wordOf:",&[count]).unwrap()).unwrap(),0);
   }else{

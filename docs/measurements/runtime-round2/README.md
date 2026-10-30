@@ -14,7 +14,7 @@ Results below are incremental and must not be multiplied into an overall speedup
 | Host scope storage reuse | 100 sends/scope: 9.19 → 7.45 µs (1.23×) | Empty buffers retain capacity, not references. |
 | JSON unescaping | 4,096-byte escaped body: 3.34 → 2.59 s (1.29×) | Authored dispatch still dominates; this removes growing-string copies and per-character state vectors. |
 | Compiled-Method metadata | Known Method: ~4× at the larger registry; captured alias: 51.5 µs → 89 ns (579×) | The small known-Method case regressed; hash iteration made its old scan unusually cheap. Unknown aliases retain comparison fallback. |
-| Persistent ready queue | 2,048 jobs: 0.91 → 0.52 s (1.75×); 512 jobs: 1.30× | 128-job case nearly flat/slightly slower. Enqueue setup excluded. |
+| Persistent ready queue | 2,048 jobs: 0.91 → 0.56 s (1.62×); 512 jobs: 1.10× | 128-job case ~8% slower. Enqueue setup excluded; nil reset handling retained. |
 | NativeDoc ordering | 128 reverse-ordered names: 23.21 → 1.09 s (21.3×) | A worst-case sorting workload, not whole documentation generation. |
 
 The compiler also hashes the source once per emission instead of once per nested
@@ -56,8 +56,8 @@ call and Host measurements. All are examples in `rust/birnam-siphon`.
 `round2_language` requires a complete installed prefix via
 `BIRNAM_TEST_MODULE_DIRECTORY=<prefix>/lib`. It supports `json`, `json-test`,
 `queue`, `queue-test`, and `sort`. `--current` loads this checkout's scheduler;
-`--merge` selects the merge-sort comparison. Queue baseline measurements require
-the pre-queue scheduler recorded in the JSON. JSON runs embed the decoder source,
+`--merge` selects the merge-sort comparison. Queue measurements can use `BIRNAM_QUEUE_SOURCE` to load the pre-queue scheduler
+recorded in the JSON and the corrected scheduler on the same native runtime. JSON runs embed the decoder source,
 so rebuild the example for the selected revision. NativeDoc's consumer change
 uses the existing `mergeSortBy:` operation.
 
@@ -79,3 +79,11 @@ The authored JSON suite passed all 107 assertions. The updated scheduler passed
 all 177 task-control checks, including quantum 1/128, cancellation, cleanup, native
 barriers and interleaving. Workspace all-target/all-feature compilation and the
 focused native tests passed. These checks are not the entire release matrix.
+
+The installed-image check exposed a nil-reset regression that source reload had
+masked: the executor must not depend on a `nil asQueue` extension. The setter now
+handles nil explicitly. `installed_scheduler` checks reset, initialization, wait
+and resume against an installed image without reloading scheduler source; it is
+included in the native-message test script. The new test failed on the affected
+installation at the reset assertion. The queue measurement was repeated with the
+corrected setter and the same native runtime for both scheduler versions.
