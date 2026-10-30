@@ -268,7 +268,19 @@ let formatByteMask := [255 word]; let formatByteShift := [8 word];
     [[family = "MapNode"] ifTrue: [| "MapNodeVt"] ifFalse: [| family]]]];
   [self require: [name notNil] context: familyContext];
   let allowed := #["ObjectVt" "SystemVt" "VectorVt" "VectorNodeVt" "MapVt" "MapNodeVt" "RangeVt" "ErrorVt" "IntegerVt" "FloatVt" "WordVt" "StringVt" "BytesVt" "CellVt" "CodeObjectVt"];
-  [self require: [[allowed indexOf: name] notNil] context: familyContext]; name
+  [[[allowed indexOf: name] isNil] ifTrue: [|
+    let behavior := [Namespace at: [name asSymbol]];
+    [self require: [behavior notNil] context: familyContext];
+    [self require: [[Integer fromWord: [Vtable isBehavior: behavior]] = 1] context: familyContext];
+    let owner := [Vtable ownerOf: behavior];
+    [self require: [owner notNil] context: familyContext];
+    [self require: [[Vtable bind: #imageAcceptsSlots: to: owner] notNil] context: familyContext];
+    let words := [[[object at: 1] size] word];
+    [self require: [[owner imageAcceptsSlots: words] == true] context: familyContext];
+    [self require: [[Integer fromWord: [ObjectModel allOopLayoutOf: behavior words: words]] = 1] context: familyContext];
+    [self each: [object at: 1] do: [:field :i |
+      [self require: [[[field at: 0] = 3] not] context: familyContext]]]
+  ]]; name
   ]]
 ]];
 [Reflect defineMethod: #wordLayout: on: ImageFormat as: [:self :object |

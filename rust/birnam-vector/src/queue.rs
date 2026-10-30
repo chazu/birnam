@@ -1,5 +1,5 @@
 //! Persistent FIFO data operations. Queue owns its three reference slots;
-//! bootstrap Sequence nodes are accessed only through their current messages.
+//! private pair nodes are ordinary ObjectModel slots, accessed through messages.
 use super::*;
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -39,10 +39,16 @@ unsafe fn make(s: &State, scope: &Scope<'_>, q: Queue) -> Result<Oop, Oop> {
     }
 }
 unsafe fn part(s: &State, node: Oop, i: usize) -> Result<Oop, Oop> {
-    unsafe { object(s.send(node, b"at:", &[abi::size(i).unwrap()])?) }
+    unsafe { object(s.send(s.model, b"slotAt:in:", &[abi::size(i).unwrap(), node])?) }
 }
 unsafe fn link(s: &State, scope: &Scope<'_>, value: Oop, next: Oop) -> Result<Oop, Oop> {
-    unsafe { Ok(scope.keep(s.send(s.id.root, b"sequence", &[value, next])?)) }
+    unsafe {
+        scope.keep(value); scope.keep(next);
+        let node = scope.keep(s.send(s.pair,b"clone",&[])?);
+        s.send(s.model,b"slotAt:in:put:",&[abi::size(0).unwrap(),node,value])?;
+        s.send(s.model,b"slotAt:in:put:",&[abi::size(1).unwrap(),node,next])?;
+        Ok(node)
+    }
 }
 unsafe fn run(s: &State, r: Oop, args: &[Oop], op: u8) -> Result<Oop, Oop> {
     unsafe {
@@ -147,9 +153,18 @@ entry!(size, 2);
 entry!(take, 3);
 entry!(vector, 4);
 pub(super) const BINDINGS: &[(&[u8], &[u8])] = &[
+    (b"queueImageSlots", b"imageAcceptsSlots:"),
     (b"queueNew", b"new"),
     (b"queueAdd", b"add:"),
     (b"queueSize", b"size"),
     (b"queueTake", b"takeFirst"),
     (b"queueVector", b"asVector"),
 ];
+
+pub(super) unsafe extern "C" fn image_slots(_:Oop,c:Oop,_:Oop,a:*const Oop,n:usize)->Oop {
+    done((|| unsafe {
+        let s=state(c)?;
+        let [words]=borrowed_slice(a,n).ok_or_else(invalid)? else {return Err(invalid());};
+        Ok(s.value(if abi::as_size(*words)==Some(3) {b"true"} else {b"false"}))
+    })())
+}

@@ -250,6 +250,18 @@ impl State {
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Failure> {
         unsafe { Ok(optional(self.send(o, b"isError", &[])?) == Some(self.named(b"true")?)) }
     }
+    unsafe fn accepts_slots(&self, behavior: Oop, words: usize) -> Result<bool, Failure> {
+        unsafe {
+            if abi::as_size(self.send(self.id.root,b"isBehavior:",&[behavior])?) != Some(1) {return Ok(false);}
+            let owner=self.send(self.id.root,b"ownerOf:",&[behavior])?;
+            if owner.is_null() {return Ok(false);}
+            let operation=self.intern(b"imageAcceptsSlots:")?;
+            if self.send(self.id.root,b"bind:to:",&[operation,owner])?.is_null() {return Ok(false);}
+            let count=abi::size(words).ok_or_else(bad)?;
+            Ok(self.id.send(owner,operation,&[count])? == self.named(b"true")?
+                && abi::as_size(self.send(self.model,b"allOopLayoutOf:words:",&[behavior,count])?)==Some(1))
+        }
+    }
     fn reject(&self, detail: &[u8]) {
         *self.report.borrow_mut() = Report {
             status: b"rejected",
@@ -660,12 +672,10 @@ impl Graph<'_, '_> {
                                 | b"RangeVt"
                                 | b"ErrorVt"
                         );
-                        if !allowed {
-                            return Err(bad());
-                        }
                         let bytes =
                             abi::as_size(self.s.send(self.s.model, b"imageSizeOf:", &[payload])?)
                                 .ok_or_else(bad)?;
+                        if !allowed && !self.s.accepts_slots(vt, bytes / size_of::<usize>())? {return Err(bad());}
                         // Prelude owns System as an empty Object. Native service state
                         // belongs to module contexts, never to a cloned receiver.
                         if (name == b"SystemVt" && bytes != 0)
@@ -685,6 +695,7 @@ impl Graph<'_, '_> {
                                 b"imageSlotKindAt:in:",
                                 &[abi::size(slot).ok_or_else(bad)?, payload],
                             )?;
+                            if !allowed && abi::as_size(kind) != Some(1) {return Err(bad());}
                             node.fields.push(if abi::as_size(kind) == Some(1) {
                                 self.reference(v)?
                             } else {
@@ -1110,7 +1121,7 @@ unsafe fn restore_heap(
                     s.call(q, store, b"cellFor:attr:", &[nil, nil])?
                 }
                 Value::Export(n) if n != b"CodeObjectVt" => {
-                    if !matches!(
+                    let known = matches!(
                         n.as_slice(),
                         b"ObjectVt"
                             | b"SystemVt"
@@ -1122,13 +1133,12 @@ unsafe fn restore_heap(
                             | b"MapNodeVt"
                             | b"RangeVt"
                             | b"ErrorVt"
-                    ) {
-                        return Err(bad());
-                    }
+                    );
+                    let vt = q.keep(s.named(n)?)?;
+                    if !known && (node.fields.iter().any(|f|matches!(f,Value::Raw(_))) || !s.accepts_slots(vt,node.fields.len())?) {return Err(bad());}
                     if n == b"SystemVt" && !node.fields.is_empty() {
                         return Err(bad());
                     }
-                    let vt = q.keep(s.named(n)?)?;
                     object(
                         s.send(
                             s.model,
@@ -2269,6 +2279,8 @@ literals![
     b"inspect:architecture:abi:",
     b"compose:",
     b"isBehavior:",
+    b"bind:to:",
+    b"allOopLayoutOf:words:",
     b"fromByteValues",
     b"appendByteValues",
     b"clone",

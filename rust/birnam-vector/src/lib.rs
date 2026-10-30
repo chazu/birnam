@@ -22,6 +22,7 @@ struct State {
     prototype: Oop,
     queue: Oop,
     queue_behavior: Oop,
+    pair: Oop,
     values: HashMap<&'static [u8], Oop>,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
@@ -182,6 +183,7 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, count: usize) 
             s.prototype,
             s.queue,
             s.queue_behavior,
+            s.pair,
         ];
         values.extend(s.values.values().copied());
         values.extend(s.names.values().copied());
@@ -669,6 +671,8 @@ unsafe extern "C" fn at_word(_: Oop, c: Oop, r: Oop, a: *const Oop, count: usize
 }
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
+    b"imageAcceptsSlots:", b"queueImageSlots",
+    b"slotAt:in:", b"slotAt:in:put:",
     b"Queue",
     b"QueueVt",
     b"takeFirst",
@@ -762,6 +766,7 @@ const fn index(n: &[u8]) -> usize {
     panic!("missing literal")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name: index(b"queueImageSlots"), entry: Some(queue::image_slots) },
     MethodSpec { name: index(b"queueNew"), entry: Some(queue::new) },
     MethodSpec { name: index(b"queueAdd"), entry: Some(queue::add) },
     MethodSpec { name: index(b"queueSize"), entry: Some(queue::size) },
@@ -904,6 +909,9 @@ unsafe extern "C" fn initialize(
             let queue_behavior = keep(send(parent, b"delegated", &[])?)?;
             let queue_layout = keep(send(id.root,b"sequence",&[abi::size(1).unwrap();3])?)?;
             send(model,b"setLayoutOf:to:rest:",&[queue_behavior,queue_layout,abi::size(0).unwrap()])?;
+            let pair_behavior = keep(send(object_parent, b"delegated", &[])?)?;
+            let pair_layout = keep(send(id.root,b"sequence",&[abi::size(1).unwrap();2])?)?;
+            send(model,b"setLayoutOf:to:rest:",&[pair_behavior,pair_layout,abi::size(0).unwrap()])?;
             let mut allocate = |behavior, bytes| -> Result<Oop, Oop> {
                 let value = keep(send(
                     model,
@@ -929,6 +937,9 @@ unsafe extern "C" fn initialize(
             });
             let queue = allocate(queue_behavior, size_of::<queue::Queue>())?;
             queue.cast::<queue::Queue>().write(queue::Queue::empty(values[b"nil".as_slice()]));
+            let pair = allocate(pair_behavior, 2 * size_of::<Oop>())?;
+            pair.cast::<[Oop;2]>().write([values[b"nil".as_slice()];2]);
+            send(id.root,b"ownerOf:put:",&[pair_behavior,pair])?;
             let s = Box::into_raw(Box::new(State {
                 id,
                 namespace: *namespace,
@@ -939,6 +950,7 @@ unsafe extern "C" fn initialize(
                 prototype,
                 queue,
                 queue_behavior,
+                pair,
                 values,
                 names: names.clone(),
                 scoped: RefCell::new(Vec::new()),

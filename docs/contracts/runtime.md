@@ -81,7 +81,7 @@ produces an ordered snapshot. Successive dequeues use two immutable lists, with
 one reversal when the front list is exhausted; old queue snapshots stay valid.
 
 The data operations are implemented with the other persistent collections.
-Queue's three slots contain only Oops. Its Sequence list nodes are accessed by
+Queue's three slots contain only Oops. Its ordinary two-slot ObjectModel list nodes are accessed by
 messages; Id does not inspect Queue data. Scheduling policy remains authored.
 `TaskExecutor queue:` converts ordered collections through `asQueue`. Explicit
 `field: #queue` views remain ordinary slot views; a supplied Vector still works
@@ -122,3 +122,18 @@ requirements. Address concrete faults without adding universal locks, registries
 or a new runtime architecture to compensate for hypothetical native misbehavior.
 These are implementation responsibilities, not ownership or borrowing features
 that Birnam programs must express.
+
+### Images of native Oop-slot values
+
+An exported native behavior outside the special image encodings can opt into
+ordinary slot restoration. Image sends `imageAcceptsSlots:` to the behavior's
+owner with its native Word slot count. The owner must return `true`, and
+ObjectModel must independently report an all-Oop layout of that size. Unknown
+families without that operation, raw fields, and rejected sizes remain errors.
+Queue accepts exactly three Oop slots; its private pair nodes use ordinary
+ObjectModel image encoding. This adds no Id operation or image format tag.
+
+Save previously rejected Queue through a central family list. Save now checks
+the owner's explicit approval and records Oop fields; load repeats that approval
+before allocation. Specialized existing image encodings retain their validation.
+Shared identities and private method bindings survive restoration.

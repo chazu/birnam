@@ -17,7 +17,7 @@ fn fifo_data_preserves_snapshots_and_current_node_access() {
     let first = q.call(empty, b"add:", &[size(11).unwrap()]).unwrap();
     let second = q.call(first, b"add:", &[size(22).unwrap()]).unwrap();
     let model = h.named(b"ObjectModel").unwrap();
-    let back = q
+    let _back = q
         .call(
             model,
             b"slot:in:",
@@ -32,10 +32,8 @@ fn fifo_data_preserves_snapshots_and_current_node_access() {
             ],
         )
         .unwrap();
-    let vt = q
-        .call(h.id.root, b"ensurePrivateVtableFor:", &[back])
-        .unwrap();
-    let at = hooks.symbol(b"at:");
+    let vt = q.call(h.id.root,b"behaviorOf:",&[model]).unwrap();
+    let at = hooks.symbol(b"slotAt:in:");
     let original = q.call(vt, b"lookup", &[at]).unwrap();
     let denied = hooks.context(&[hooks.fault(71), size(0).unwrap()]);
     q.call(vt, b"addMethod", &[at, hooks.method(b"deny", denied)])
