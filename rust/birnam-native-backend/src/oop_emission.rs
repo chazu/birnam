@@ -11,11 +11,11 @@ pub enum Error {
     DepthLimit,
     InvalidName,
 }
-struct Emitter {
+struct Emitter<'a> {
     source_revision: [u8; 32],
     names: std::collections::HashMap<Vec<u8>, usize>,
     functions: Vec<String>,
-    programs: Vec<Vec<u8>>,
+    programs: Vec<portable_program::Program<'a>>,
     descriptors: Vec<Option<ResumableMetadata>>,
     persistent: bool,
     dispositions: Option<Vec<bool>>,
@@ -25,7 +25,7 @@ struct ResumableMetadata {
     selection: Vec<u8>,
     call_plans: Vec<u8>,
 }
-impl Emitter {
+impl<'a> Emitter<'a> {
     fn name(&mut self, n: &[u8]) -> Result<usize, Error> {
         if n.contains(&0) {
             return Err(Error::InvalidName);
@@ -37,7 +37,7 @@ impl Emitter {
     }
     fn selected_function(
         &mut self,
-        bytes: &[u8],
+        p: portable_program::Program<'a>,
         source: &[u8],
         filename: &[u8],
         depth: usize,
@@ -50,14 +50,14 @@ impl Emitter {
             None => synchronous,
         };
         if synchronous {
-            self.function(bytes, source, filename, depth)
+            self.function(p, source, filename, depth)
         } else {
-            self.resumable_function(bytes, source, filename, depth)
+            self.resumable_function(p, source, filename, depth)
         }
     }
     fn function(
         &mut self,
-        bytes: &[u8],
+        p: portable_program::Program<'a>,
         source: &[u8],
         filename: &[u8],
         depth: usize,
@@ -65,10 +65,9 @@ impl Emitter {
         if depth > 256 {
             return Err(Error::DepthLimit);
         }
-        let p = portable_program::inspect(bytes).map_err(|_| Error::InvalidProgram)?;
         let index = self.functions.len();
         self.functions.push(String::new());
-        self.programs.push(bytes.to_vec());
+        self.programs.push(p.clone());
         self.descriptors.push(None);
         let nil = self.name(b"nil")?;
         let mut out = format!(
@@ -133,7 +132,7 @@ impl Emitter {
                     }
                     NodeKind::BlockLiteral => {
                         let child =
-                            self.selected_function(node.data, source, filename, depth + 1, true)?;
+                            self.selected_function(p.nested(node.data).ok_or(Error::InvalidProgram)?, source, filename, depth + 1, true)?;
                         let mut captures = vec![format!("methods[{child}]")];
                         for i in 0..node.operand_count as usize {
                             captures.push(format!(
@@ -267,7 +266,7 @@ fn compile_mode(
     let roots = e.name(b"Roots")?;
     let declared = e.name(b"declaredMethodAt:")?;
     let native_declared = e.name(b"newMethodAt:")?;
-    e.selected_function(bytes, source, filename, 0, !resumable)?;
+    e.selected_function(portable_program::inspect(bytes).map_err(|_| Error::InvalidProgram)?, source, filename, 0, !resumable)?;
     if e.dispositions
         .as_ref()
         .is_some_and(|v| v.len() != e.functions.len())
@@ -318,12 +317,12 @@ fn compile_mode(
     }
     out.push_str("static O code_provider;static int native_provider;\n");
     for (ordinal, &i) in native_bodies.iter().enumerate() {
-        let p = portable_program::inspect(&e.programs[i]).map_err(|_| Error::InvalidProgram)?;
+        let p = &e.programs[i];
         let argc = p.parameter_count as usize;
         let capc = p.capture_count;
         let bound_index = e.functions.len() + ordinal * 3 + 1;
         let dnu_index = bound_index + 1;
-        let digest_bytes = Sha256::digest(&e.programs[i]);
+        let digest_bytes = Sha256::digest(e.programs[i].canonical_bytes());
         let digest = DecimalBytes(&digest_bytes);
         for (label, test) in [("bound", format!("n+1!={argc}")), ("dnu", format!("n+1<{argc}"))] {
             writeln!(out,"static O {label}_{i}(O root,O context,O receiver,const O*args,size_t n){{Call c={{0}};if({argc}==0||{test})return finish(&c,named(&c,{nil_name}));O block=call(&c,context,{environment},0,0);if(c.error)return finish(&c,0);O values[{}];values[0]=receiver;for(size_t k=1;k<{argc};k++)values[k]=args[k-1];O result=function_{i}(root,context,block,values,{argc});if(failed(result))c.error=result;return finish(&c,result);}}",argc.max(1)).unwrap();
@@ -350,7 +349,7 @@ fn compile_mode(
         writeln!(
             out,
             "static const unsigned char program_{i}[]={{{}}};",
-            DecimalBytes(bytes)
+            DecimalBytes(bytes.canonical_bytes())
         )
         .unwrap();
     }

@@ -834,7 +834,10 @@ impl<'a> PortableLowerer<'a> {
 /// CFG form. Lexical identity, float bits, and nested capture operands are
 /// consumed from the canonical program and are never rediscovered from names.
 pub fn lower_portable_block(bytes: &[u8]) -> Result<LogicalProgram<'_>, LowerError> {
-    let program = portable_program::inspect(bytes).map_err(|_| LowerError::InvalidProgram)?;
+    lower_portable_view(portable_program::inspect(bytes).map_err(|_| LowerError::InvalidProgram)?)
+}
+/// Lower an immutable view whose complete nested program tree was admitted.
+pub fn lower_portable_view(program: portable_program::Program<'_>) -> Result<LogicalProgram<'_>, LowerError> {
     let mut lowerer = PortableLowerer {
         linear: Vec::new(),
         bindings: vec![None; program.binding_count as usize],

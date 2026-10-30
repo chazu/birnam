@@ -136,6 +136,7 @@ pub struct Program<'a> {
     operands: &'a [u8],
     bytes: &'a [u8],
     offsets: std::sync::Arc<Offsets>,
+    canonical: &'a [u8],
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -143,6 +144,7 @@ struct Offsets {
     names: Vec<usize>,
     data: Vec<usize>,
     operands: Vec<usize>,
+    children: std::collections::HashMap<usize, ProgramLayout>,
 }
 
 /// Immutable canonical bytes with their already-validated root section layout.
@@ -166,7 +168,9 @@ struct ProgramLayout {
 
 impl ProgramLayout {
     fn inspect(bytes: &[u8]) -> Result<Self, Error> {
-        let program = inspect(bytes)?;
+        Self::from_view(bytes, inspect(bytes)?)
+    }
+    fn from_view(bytes: &[u8], program: Program<'_>) -> Result<Self, Error> {
         let counts = [
             program.parameter_count,
             program.capture_count,
@@ -208,20 +212,20 @@ impl ValidatedProgram {
     }
 
     /// Reconstitute a checked view without validation or scratch allocation.
-    pub fn view(&self) -> Program<'_> {
+    pub fn view(&self) -> Program<'_> { self.layout.view(&self.bytes) }
+}
+impl ProgramLayout {
+    fn view<'a>(&self, bytes: &'a [u8]) -> Program<'a> {
         Program {
-            parameter_count: self.layout.counts[0],
-            capture_count: self.layout.counts[1],
-            binding_count: self.layout.counts[2],
-            statement_count: self.layout.counts[3],
-            node_count: self.layout.counts[4],
-            operand_count: self.layout.counts[5],
-            bindings: &self.bytes[self.layout.sections[0].clone()],
-            statements: &self.bytes[self.layout.sections[1].clone()],
-            nodes: &self.bytes[self.layout.sections[2].clone()],
-            operands: &self.bytes[self.layout.sections[3].clone()],
-            bytes: &self.bytes[self.layout.sections[4].clone()],
-            offsets: self.layout.offsets.clone(),
+            parameter_count: self.counts[0], capture_count: self.counts[1],
+            binding_count: self.counts[2], statement_count: self.counts[3],
+            node_count: self.counts[4], operand_count: self.counts[5],
+            bindings: &bytes[self.sections[0].clone()],
+            statements: &bytes[self.sections[1].clone()],
+            nodes: &bytes[self.sections[2].clone()],
+            operands: &bytes[self.sections[3].clone()],
+            bytes: &bytes[self.sections[4].clone()],
+            offsets: self.offsets.clone(), canonical: bytes,
         }
     }
 }
@@ -241,6 +245,16 @@ impl AsRef<[u8]> for ValidatedProgram {
 }
 
 impl<'a> Program<'a> {
+    pub fn canonical_bytes(&self) -> &'a [u8] { self.canonical }
+    /// Return a previously checked direct child of these exact immutable bytes.
+    pub fn nested(&self, bytes: &'a [u8]) -> Option<Program<'a>> {
+        let offset = bytes.as_ptr().addr().checked_sub(self.canonical.as_ptr().addr())?;
+        let layout = self.offsets.children.get(&offset)?;
+        let expected = read_u64(self.canonical.get(offset..)?, 0x28)?;
+        if expected != bytes.len() as u64 { return None; }
+        Some(layout.view(bytes))
+    }
+
     pub fn binding(&self, index: usize) -> Option<Binding<'a>> {
         if index >= self.binding_count as usize {
             return None;
@@ -771,27 +785,27 @@ pub fn inspect(bytes: &[u8]) -> Result<Program<'_>, Error> {
     #[cfg(test)]
     tests::INSPECTION_COUNT.with(|count| count.set(count.get() + 1));
     let mut aggregate_bytes = 0usize;
-    let mut root = None;
-    let mut stack = vec![(bytes, 1usize)];
-    while let Some((current, depth)) = stack.pop() {
-        if depth > 4096 {
-            return Err(Error::Quantity);
-        }
-        aggregate_bytes = aggregate_bytes
-            .checked_add(current.len())
-            .ok_or(Error::Quantity)?;
-        if aggregate_bytes > 64 << 20 {
-            return Err(Error::Quantity);
-        }
+    let mut programs = Vec::new();
+    let mut stack = vec![(bytes, 1usize, None)];
+    while let Some((current, depth, parent)) = stack.pop() {
+        if depth > 4096 { return Err(Error::Quantity); }
+        aggregate_bytes = aggregate_bytes.checked_add(current.len()).ok_or(Error::Quantity)?;
+        if aggregate_bytes > 64 << 20 { return Err(Error::Quantity); }
         let (program, nested_programs) = inspect_one(current)?;
-        if root.is_none() {
-            root = Some(program);
-        }
+        let index = programs.len();
+        programs.push((program, parent));
         for nested in nested_programs.into_iter().rev() {
-            stack.push((nested, depth + 1));
+            let offset = nested.as_ptr().addr() - current.as_ptr().addr();
+            stack.push((nested, depth + 1, Some((index, offset))));
         }
     }
-    root.ok_or(Error::Format)
+    while let Some((program, parent)) = programs.pop() {
+        if let Some((index, offset)) = parent {
+            let layout = ProgramLayout::from_view(program.canonical, program)?;
+            std::sync::Arc::get_mut(&mut programs[index].0.offsets).unwrap().children.insert(offset, layout);
+        } else { return Ok(program); }
+    }
+    Err(Error::Format)
 }
 
 fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
@@ -1099,7 +1113,8 @@ fn inspect_one(bytes: &[u8]) -> Result<(Program<'_>, Vec<&[u8]>), Error> {
             nodes,
             operands,
             bytes: names,
-            offsets: std::sync::Arc::new(Offsets { names: name_starts, data: data_starts, operands: operand_starts }),
+            canonical: bytes,
+            offsets: std::sync::Arc::new(Offsets { names: name_starts, data: data_starts, operands: operand_starts, children: std::collections::HashMap::new() }),
         },
         nested_programs,
     ))
@@ -1199,6 +1214,25 @@ fn align8(value: usize) -> Option<usize> {
 mod tests {
     thread_local! {
         pub(super) static INSPECTION_COUNT: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    }
+
+    #[test]
+    fn child_views_reuse_admission_and_reject_unrelated_bytes() {
+        let bytes = include_bytes!("../../../tests/fixtures/portable-code-v1/program-nested-captures.bin");
+        let owner = super::ValidatedProgram::copy_from_slice(bytes).unwrap();
+        let root = owner.view();
+        let before = INSPECTION_COUNT.with(|count| count.get());
+        let child = (0..root.node_count as usize).map(|i|root.node(i).unwrap())
+            .find(|n| n.semantic_kind()==Some(super::NodeKind::BlockLiteral)).unwrap();
+        let copy = child.data.to_vec();
+        assert!(root.nested(&copy).is_none());
+        assert!(root.nested(&child.data[..child.data.len()-1]).is_none());
+        for _ in 0..100 {
+            let checked = root.nested(child.data).unwrap();
+            assert_eq!(checked.canonical_bytes(), child.data);
+            assert_eq!(checked.capture_count, child.operand_count);
+        }
+        assert_eq!(INSPECTION_COUNT.with(|count| count.get()), before);
     }
 
     #[test]

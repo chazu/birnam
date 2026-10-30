@@ -43,21 +43,21 @@ struct Row<'a> {
 }
 
 pub fn encode_closure<'a>(roots: &'a [&'a [u8]]) -> Result<Vec<u8>, Error> {
-    let mut pending = roots.to_vec();
+    let mut pending = roots.iter().map(|bytes| portable_program::inspect(bytes)).collect::<Result<Vec<_>, _>>()?;
     let mut rows = Vec::new();
     let mut seen = BTreeSet::new();
-    while let Some(bytes) = pending.pop() {
+    while let Some(program) = pending.pop() {
+        let bytes = program.canonical_bytes();
         if !seen.insert(bytes) {
             continue;
         }
         if rows.len() >= 262_144 {
             return Err(Error::Quantity);
         }
-        let program = portable_program::inspect(bytes)?;
         for index in 0..program.node_count as usize {
             let node = program.node(index).ok_or(Error::Format)?;
             if node.kind == 11 {
-                pending.push(node.data);
+                pending.push(program.nested(node.data).ok_or(Error::Format)?);
             }
         }
         rows.push(Row {

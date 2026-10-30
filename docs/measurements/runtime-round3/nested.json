@@ -1,0 +1,412 @@
+{
+  "baseline": "53976ab0391f12e099d6e0659bfd54f65e687f7f",
+  "scope": "Nested block chain: inventory closure and synchronous C emission; five samples. Construction excluded; all input validation and output hashing included.",
+  "summary": [
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "before_ns": 247959,
+      "after_ns": 231458,
+      "speedup": 1.0712915518150161
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "before_ns": 10353959,
+      "after_ns": 9491500,
+      "speedup": 1.0908664594637307
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "before_ns": 40571166,
+      "after_ns": 37652000,
+      "speedup": 1.0775301710400509
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "before_ns": 39458,
+      "after_ns": 37875,
+      "speedup": 1.0417953795379538
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "before_ns": 1813333,
+      "after_ns": 1593917,
+      "speedup": 1.1376583598769572
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "before_ns": 7094750,
+      "after_ns": 6335541,
+      "speedup": 1.1198333338857724
+    }
+  ],
+  "before": [
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 0,
+      "ns": 75084
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 0,
+      "ns": 353125
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 1,
+      "ns": 40916
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 1,
+      "ns": 255334
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 2,
+      "ns": 39458
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 2,
+      "ns": 247959
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 3,
+      "ns": 39250
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 3,
+      "ns": 246917
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 4,
+      "ns": 39333
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 4,
+      "ns": 245625
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 0,
+      "ns": 1834750
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 0,
+      "ns": 10353959
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 1,
+      "ns": 1813333
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 1,
+      "ns": 10260459
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 2,
+      "ns": 1812500
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 2,
+      "ns": 10332625
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 3,
+      "ns": 1794541
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 3,
+      "ns": 10492250
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 4,
+      "ns": 1834417
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 4,
+      "ns": 10419292
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 0,
+      "ns": 7028917
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 0,
+      "ns": 40551167
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 1,
+      "ns": 7053750
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 1,
+      "ns": 40516250
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 2,
+      "ns": 7190708
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 2,
+      "ns": 41046167
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 3,
+      "ns": 7094750
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 3,
+      "ns": 40779958
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 4,
+      "ns": 7219541
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 4,
+      "ns": 40571166
+    }
+  ],
+  "after": [
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 0,
+      "ns": 41958
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 0,
+      "ns": 320458
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 1,
+      "ns": 38042
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 1,
+      "ns": 240416
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 2,
+      "ns": 36459
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 2,
+      "ns": 231083
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 3,
+      "ns": 36334
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 3,
+      "ns": 231458
+    },
+    {
+      "operation": "inventory",
+      "n": 8,
+      "sample": 4,
+      "ns": 37875
+    },
+    {
+      "operation": "emit_nested",
+      "n": 8,
+      "sample": 4,
+      "ns": 229000
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 0,
+      "ns": 1624667
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 0,
+      "ns": 9628208
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 1,
+      "ns": 1632166
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 1,
+      "ns": 9520417
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 2,
+      "ns": 1593917
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 2,
+      "ns": 9419666
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 3,
+      "ns": 1591833
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 3,
+      "ns": 9491500
+    },
+    {
+      "operation": "inventory",
+      "n": 64,
+      "sample": 4,
+      "ns": 1592042
+    },
+    {
+      "operation": "emit_nested",
+      "n": 64,
+      "sample": 4,
+      "ns": 9467750
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 0,
+      "ns": 6306584
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 0,
+      "ns": 38408917
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 1,
+      "ns": 6446417
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 1,
+      "ns": 37822750
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 2,
+      "ns": 6335541
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 2,
+      "ns": 37172875
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 3,
+      "ns": 6347000
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 3,
+      "ns": 37614750
+    },
+    {
+      "operation": "inventory",
+      "n": 128,
+      "sample": 4,
+      "ns": 6312417
+    },
+    {
+      "operation": "emit_nested",
+      "n": 128,
+      "sample": 4,
+      "ns": 37652000
+    }
+  ]
+}

@@ -4,10 +4,10 @@ use birnam_artifact::stackless_selection::{
     self as selection, Disposition, ImplementationKind, RootKind, SelectionSpec,
 };
 use birnam_codegen::{resumable as ir, resumable_descriptor};
-impl Emitter {
+impl<'a> Emitter<'a> {
     pub(super) fn resumable_function(
         &mut self,
-        bytes: &[u8],
+        p: portable_program::Program<'a>,
         source: &[u8],
         filename: &[u8],
         depth: usize,
@@ -15,11 +15,11 @@ impl Emitter {
         if depth > 256 {
             return Err(Error::DepthLimit);
         }
-        let program = ir::lower_portable_block(bytes).map_err(|_| Error::InvalidProgram)?;
+        let program = ir::lower_portable_view(p.clone()).map_err(|_| Error::InvalidProgram)?;
         let layout = ir::color_slots(&program).map_err(|_| Error::InvalidProgram)?;
         let index = self.functions.len();
         self.functions.push(String::new());
-        self.programs.push(bytes.to_vec());
+        self.programs.push(p.clone());
         self.descriptors.push(None);
         let revision = self.source_revision;
         let path = [index as u32];
@@ -80,7 +80,7 @@ impl Emitter {
                         program, captures, ..
                     } => {
                         let child =
-                            self.selected_function(program, source, filename, depth + 1, false)?;
+                            self.selected_function(p.nested(program).ok_or(Error::InvalidProgram)?, source, filename, depth + 1, false)?;
                         let v = operation.result.0;
                         writeln!(
                             out,
