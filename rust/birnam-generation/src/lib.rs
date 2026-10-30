@@ -523,91 +523,91 @@ literals![
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 25,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"watchCandidateRetirement:"),
         entry: Some(operation_0),
     },
     MethodSpec {
-        name: 26,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"removeCandidateFiles:"),
         entry: Some(operation_1),
     },
     MethodSpec {
-        name: 27,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"validateImageGeneration"),
         entry: Some(operation_2),
     },
     MethodSpec {
-        name: 28,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"prepareImageSnapshot"),
         entry: Some(operation_3),
     },
     MethodSpec {
-        name: 29,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"releaseCandidate:"),
         entry: Some(operation_4),
     },
     MethodSpec {
-        name: 30,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retainedGenerationCount"),
         entry: Some(operation_5),
     },
     MethodSpec {
-        name: 31,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retainedGenerationBytes"),
         entry: Some(operation_6),
     },
     MethodSpec {
-        name: 32,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"mapCandidate:"),
         entry: Some(operation_7),
     },
     MethodSpec {
-        name: 33,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"candidateUnits"),
         entry: Some(operation_8),
     },
     MethodSpec {
-        name: 34,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"candidateDataFor:"),
         entry: Some(operation_9),
     },
     MethodSpec {
-        name: 35,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"candidatePolicyCellFor:"),
         entry: Some(operation_10),
     },
     MethodSpec {
-        name: 36,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"adoptInitialGeneration:"),
         entry: Some(operation_11),
     },
     MethodSpec {
-        name: 37,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"releaseCertification"),
         entry: Some(operation_12),
     },
     MethodSpec {
-        name: 38,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"reconcileCandidate:"),
         entry: Some(operation_13),
     },
     MethodSpec {
-        name: 39,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"beginImageApplication"),
         entry: Some(operation_14),
     },
     MethodSpec {
-        name: 40,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"finishImageApplication"),
         entry: Some(operation_15),
     },
     MethodSpec {
-        name: 41,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compileCandidate:named:output:"),
         entry: Some(operation_16),
     },
     MethodSpec {
-        name: 42,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"compileCandidate:named:output:selection:"),
         entry: Some(operation_17),
     },
     MethodSpec {
-        name: 43,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"inspectCandidate:into:"),
         entry: Some(operation_18),
     },
     MethodSpec {
-        name: 44,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"candidateMapped:"),
         entry: Some(operation_19),
     },
     MethodSpec {
-        name: 45,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"candidateContentPath:"),
         entry: Some(operation_20),
     },
     MethodSpec {
-        name: 46,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
 

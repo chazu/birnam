@@ -1513,119 +1513,119 @@ literals![
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 99,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"start:selector:image:"),
         entry: Some(op_start),
     },
     MethodSpec {
-        name: 100,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"startService:image:"),
         entry: Some(op_startservice),
     },
     MethodSpec {
-        name: 101,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"idleFor:"),
         entry: Some(op_sleep),
     },
     MethodSpec {
-        name: 102,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"_isolateSleep:"),
         entry: Some(op_sleep),
     },
     MethodSpec {
-        name: 103,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"_isolateCrash:"),
         entry: Some(op_crash),
     },
     MethodSpec {
-        name: 104,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"pollServiceControl"),
         entry: Some(op_pollcontrol),
     },
     MethodSpec {
-        name: 105,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"checkpoint"),
         entry: Some(op_drain),
     },
     MethodSpec {
-        name: 106,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"shutdown"),
         entry: Some(op_shutdown),
     },
     MethodSpec {
-        name: 107,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"encode:"),
         entry: Some(op_encode),
     },
     MethodSpec {
-        name: 108,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"decode:"),
         entry: Some(op_decode),
     },
     MethodSpec {
-        name: 109,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"runWorker:receiver:selector:"),
         entry: Some(op_worker),
     },
     MethodSpec {
-        name: 110,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"workerBootError:kind:message:"),
         entry: Some(op_booterror),
     },
     MethodSpec {
-        name: 111,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"request:"),
         entry: Some(op_request),
     },
     MethodSpec {
-        name: 112,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"request:timeout:"),
         entry: Some(op_request),
     },
     MethodSpec {
-        name: 113,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"submit:timeout:"),
         entry: Some(op_submit),
     },
     MethodSpec {
-        name: 114,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"pollRequest:"),
         entry: Some(op_poll),
     },
     MethodSpec {
-        name: 115,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"cancelRequest:"),
         entry: Some(op_cancel),
     },
     MethodSpec {
-        name: 116,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"stop"),
         entry: Some(op_stop),
     },
     MethodSpec {
-        name: 117,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"terminate"),
         entry: Some(op_terminate),
     },
     MethodSpec {
-        name: 118,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"state"),
         entry: Some(op_state),
     },
     MethodSpec {
-        name: 74,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"isError"),
         entry: Some(op_iserror),
     },
     MethodSpec {
-        name: 119,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"class"),
         entry: Some(op_class),
     },
     MethodSpec {
-        name: 75,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"kind"),
         entry: Some(op_kind),
     },
     MethodSpec {
-        name: 76,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"message"),
         entry: Some(op_message),
     },
     MethodSpec {
-        name: 120,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"exitStatus"),
         entry: Some(op_exitstatus),
     },
     MethodSpec {
-        name: 121,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"requestId"),
         entry: Some(op_requestid),
     },
     MethodSpec {
-        name: 122,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
     MethodSpec {
-        name: 123,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"referencesOf:do:"),
         entry: Some(references),
     },
     MethodSpec {
-        name: 124,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retire:"),
         entry: Some(retire),
     },
 

@@ -955,123 +955,123 @@ literals![
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 76,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"libraryDir:"),
         entry: Some(library_dir),
     },
     MethodSpec {
-        name: 77,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"dlopen:"),
         entry: Some(open),
     },
     MethodSpec {
-        name: 78,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"dlclose:"),
         entry: Some(close),
     },
     MethodSpec {
-        name: 79,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"wrap:signature:as:on:"),
         entry: Some(wrap),
     },
     MethodSpec {
-        name: 80,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bind:signature:as:on:"),
         entry: Some(wrap),
     },
     MethodSpec {
-        name: 81,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"bind:signature:as:on:code:"),
         entry: Some(install_binding),
     },
     MethodSpec {
-        name: 82,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"provideLibrary:named:"),
         entry: Some(provide_library),
     },
     MethodSpec {
-        name: 83,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"provideLibraryPath:named:"),
         entry: Some(provide_library_path),
     },
     MethodSpec {
-        name: 84,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"installRecipe:"),
         entry: Some(install_recipe),
     },
     MethodSpec {
-        name: 85,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"callback:signature:"),
         entry: Some(callback),
     },
     MethodSpec {
-        name: 86,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"releaseCallback:"),
         entry: Some(release_callback),
     },
     MethodSpec {
-        name: 87,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"alloc:"),
         entry: Some(alloc),
     },
     MethodSpec {
-        name: 88,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"addressOf:"),
         entry: Some(address_of),
     },
     MethodSpec {
-        name: 89,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"fromAddress:"),
         entry: Some(from_address),
     },
     MethodSpec {
-        name: 90,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"checkThread"),
         entry: Some(check_thread),
     },
     MethodSpec {
-        name: 91,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
     MethodSpec {
-        name: 92,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"retire:"),
         entry: Some(retire),
     },
     MethodSpec {
-        name: 93,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"free"),
         entry: Some(free_address),
     },
     MethodSpec {
-        name: 94,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"isNull"),
         entry: Some(is_null),
     },
     MethodSpec {
-        name: 95,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"="),
         entry: Some(equal),
     },
     MethodSpec {
-        name: 96,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"printString"),
         entry: Some(print),
     },
     MethodSpec {
-        name: 97,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"peekIntAt:"),
         entry: Some(peek_int),
     },
     MethodSpec {
-        name: 98,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"peekByteAt:"),
         entry: Some(peek_byte),
     },
     MethodSpec {
-        name: 99,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"peekPtrAt:"),
         entry: Some(peek_ptr),
     },
     MethodSpec {
-        name: 100,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"peekDoubleAt:"),
         entry: Some(peek_double),
     },
     MethodSpec {
-        name: 101,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"peekStringAt:"),
         entry: Some(peek_string),
     },
     MethodSpec {
-        name: 102,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"pokeInt:at:"),
         entry: Some(poke_int),
     },
     MethodSpec {
-        name: 103,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"pokeByte:at:"),
         entry: Some(poke_byte),
     },
     MethodSpec {
-        name: 104,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"pokePtr:at:"),
         entry: Some(poke_ptr),
     },
     MethodSpec {
-        name: 105,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"pokeDouble:at:"),
         entry: Some(poke_double),
     },
 

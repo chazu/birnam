@@ -337,19 +337,19 @@ literals![
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 0,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadNative:"),
         entry: Some(load_native),
     },
     MethodSpec {
-        name: 1,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"release:"),
         entry: Some(release_result),
     },
     MethodSpec {
-        name: 2,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadResultAt:arguments:"),
         entry: Some(load_result),
     },
     MethodSpec {
-        name: 3,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rootsDo:"),
         entry: Some(roots),
     },
 

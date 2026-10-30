@@ -2281,83 +2281,83 @@ literals![
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
-        name: 154,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"ImageSaveReportVt"),
         entry: Some(op_save),
     },
     MethodSpec {
-        name: 155,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"at:put:"),
         entry: Some(op_start),
     },
     MethodSpec {
-        name: 156,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"release:"),
         entry: Some(op_startmapped),
     },
     MethodSpec {
-        name: 157,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"saveImage:"),
         entry: Some(op_startbytes),
     },
     MethodSpec {
-        name: 158,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"startImage:rebuild:"),
         entry: Some(op_load),
     },
     MethodSpec {
-        name: 159,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"startImageMapped:"),
         entry: Some(op_rebuild),
     },
     MethodSpec {
-        name: 160,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"startImageBytes:rebuild:"),
         entry: Some(op_loadmapped),
     },
     MethodSpec {
-        name: 161,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadImage:"),
         entry: Some(op_loadbytes),
     },
     MethodSpec {
-        name: 162,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadImage:rebuild:"),
         entry: Some(op_report),
     },
     MethodSpec {
-        name: 163,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadImageMapped:"),
         entry: Some(op_identity),
     },
     MethodSpec {
-        name: 164,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"loadImageBytes:rebuild:"),
         entry: Some(op_status),
     },
     MethodSpec {
-        name: 165,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"imageSaveReport"),
         entry: Some(op_detail),
     },
     MethodSpec {
-        name: 166,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"imageCompositionIdentity"),
         entry: Some(op_saved),
     },
     MethodSpec {
-        name: 167,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"status"),
         entry: Some(op_zero),
     },
     MethodSpec {
-        name: 168,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"detail"),
         entry: Some(op_zero),
     },
     MethodSpec {
-        name: 169,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"savedFacts"),
         entry: Some(op_zero),
     },
     MethodSpec {
-        name: 170,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"recoveredFacts"),
         entry: Some(op_zero),
     },
     MethodSpec {
-        name: 171,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rejectedFacts"),
         entry: Some(op_code),
     },
     MethodSpec {
-        name: 172,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"recoveredSlots"),
         entry: Some(enumerate_roots),
     },
     MethodSpec {
-        name: 173,
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"rejectedSlots"),
         entry: Some(collect_fact),
     },
 
