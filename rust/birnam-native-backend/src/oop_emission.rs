@@ -177,7 +177,7 @@ impl Emitter {
                     let name = self.name(name)?;
                     let globals = self.name(b"Globals")?;
                     let put = self.name(b"at:put:")?;
-                    writeln!(out,"O publish{binding}[]={{symbols[{name}],b{binding}}};O globals{binding}=named(&c,{globals});call(&c,globals{binding},{put},publish{binding},2);if(c.error)return finish(&c,0);").unwrap();
+                    writeln!(out,"O publish{binding}[]={{symbols[{name}],b{binding}}};O globals{binding}=named(&c,{globals});raw(&c,globals{binding},{put},publish{binding},2);if(c.error)return finish(&c,0);").unwrap();
                 }
             }
             answer = Some(statement.root_node);

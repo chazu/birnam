@@ -1,0 +1,192 @@
+{
+  "baseline": "9328a00312dd529325353569315e60252b1e4132",
+  "scope": "Release invariant_costs calls: compiled Blocks with 10/100 ordinary sends; seven samples, 100 executions each. Setup/compilation/explicit GC outside timing; result validation included. Immediate/discarded results no longer create root tokens and small token storage stays on the native stack.",
+  "summary": [
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "before_ns": 46604.16,
+      "after_ns": 49823.75,
+      "speedup": 0.9353804159662812
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "before_ns": 424577.08,
+      "after_ns": 421251.25,
+      "speedup": 1.007895121972932
+    }
+  ],
+  "before": [
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 0,
+      "ns": 52153.75
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 1,
+      "ns": 47022.08
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 2,
+      "ns": 46472.08
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 3,
+      "ns": 46604.16
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 4,
+      "ns": 45435
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 5,
+      "ns": 47060
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 6,
+      "ns": 45475.42
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 0,
+      "ns": 427399.59
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 1,
+      "ns": 419737.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 2,
+      "ns": 411514.58
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 3,
+      "ns": 416010
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 4,
+      "ns": 442352.5
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 5,
+      "ns": 429691.67
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 6,
+      "ns": 424577.08
+    }
+  ],
+  "after": [
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 0,
+      "ns": 51557.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 1,
+      "ns": 47291.25
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 2,
+      "ns": 46956.25
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 3,
+      "ns": 49941.25
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 4,
+      "ns": 50680.41
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 5,
+      "ns": 49562.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 10,
+      "sample": 6,
+      "ns": 49823.75
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 0,
+      "ns": 438041.25
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 1,
+      "ns": 420611.67
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 2,
+      "ns": 441246.67
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 3,
+      "ns": 420057.5
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 4,
+      "ns": 423387.92
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 5,
+      "ns": 421251.25
+    },
+    {
+      "operation": "compiled_calls",
+      "n": 100,
+      "sample": 6,
+      "ns": 413812.09
+    }
+  ]
+}
