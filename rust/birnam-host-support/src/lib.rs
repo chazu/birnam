@@ -7,5 +7,6 @@ mod roots;
 pub use runtime::{Context, HostError, Scope, native_error, object, size};
 pub mod native;
 pub mod project;
+pub mod project_values;
 mod source;
 pub use source::{MAX_SCRIPT_BYTES, read_source_file};

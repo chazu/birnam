@@ -71,10 +71,10 @@ fn dispatch(context: &Context, operation: &str, args: &[Oop]) -> Result<Oop, Hos
                 return native::encode(
                     &q,
                     &(
-                        path.as_os_str().as_bytes(),
+                        path.as_os_str().as_bytes().to_vec(),
                         files
                             .iter()
-                            .map(|p| p.as_os_str().as_bytes())
+                            .map(|p| p.as_os_str().as_bytes().to_vec())
                             .collect::<Vec<_>>(),
                     ),
                 );

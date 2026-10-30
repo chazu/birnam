@@ -222,16 +222,11 @@ pub fn argv(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<Vec<OsString>, Host
         .map(|j| Ok(OsString::from_vec(q.string_bytes(q.vector_at(a, j)?)?)))
         .collect()
 }
-pub fn encode<T: serde::Serialize>(q: &Scope<'_>, value: &T) -> Result<Oop, HostError> {
-    let bytes = serde_json::to_vec(value).map_err(|e| HostError(e.to_string()))?;
-    Ok(q.string(&bytes)?)
+pub fn encode<T: crate::project_values::CommandValue>(q: &Scope<'_>, value: &T) -> Result<Oop, HostError> {
+    value.to_object(q)
 }
-pub fn decode<T: serde::de::DeserializeOwned>(
-    q: &Scope<'_>,
-    args: &[Oop],
-    i: usize,
-) -> Result<T, HostError> {
-    serde_json::from_slice(&bytes(q, args, i)?).map_err(|e| HostError(e.to_string()))
+pub fn decode<T: crate::project_values::CommandValue>(q: &Scope<'_>, args: &[Oop], i: usize) -> Result<T, HostError> {
+    T::from_object(q, argument(q, args, i)?)
 }
 pub mod path_bytes {
     use super::*;

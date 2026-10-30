@@ -32,14 +32,14 @@ impl Project<'_> {
         };
         self.host.context.owner_call(q, owner, name, args)
     }
-    fn decode<T: serde::de::DeserializeOwned>(
+    fn decode<T: birnam_host_support::project_values::CommandValue>(
         &self,
         q: &Scope<'_>,
         name: &[u8],
         args: &[Oop],
     ) -> Result<T, HostError> {
         let value = self.call(q, name, args)?;
-        serde_json::from_slice(&q.string_bytes(value)?).map_err(|e| HostError(e.to_string()))
+        T::from_object(q, value)
     }
     pub fn check_project(&self, path: &Path) -> Result<ProjectCheckResult, HostError> {
         let q = self.host.scope();
@@ -154,7 +154,7 @@ impl Project<'_> {
         let q = self.host.scope();
         let path = q.string(path.as_os_str().as_bytes())?;
         let root = q.string(root.as_bytes())?;
-        let composition = native::encode(&q, &composition)?;
+        let composition = native::encode(&q, &composition.to_vec())?;
         self.decode(
             &q,
             b"observe:root:composition:",

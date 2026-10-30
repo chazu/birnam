@@ -2,7 +2,7 @@
 #[allow(dead_code)]
 #[path = "../tests/support/oop.rs"]
 mod oop;
-use birnam_host_support::{native, project::ProjectResolutionObservation};
+use birnam_host_support::project::ProjectResolutionObservation;
 use birnam_project_support::ProjectSnapshot;
 use std::{os::unix::ffi::OsStrExt, time::Instant};
 fn main() {
@@ -72,7 +72,7 @@ fn main() {
             for _ in 0..calls {
                 let scope = h.scope();
                 let argument = match &snapshot {
-                    Some(v) => native::encode(&scope, v).unwrap(),
+                    Some(v) => scope.string(&serde_json::to_vec(v).unwrap()).unwrap(),
                     None => input,
                 };
                 let result = h

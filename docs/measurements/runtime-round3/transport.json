@@ -1,0 +1,144 @@
+{
+  "baseline": "ce37e2186740bd85defd6b4b5c204f0f43e2257e",
+  "scope": "Native command record projection and decoding through object messages, including a source byte buffer. Five samples; setup and explicit GC excluded. Baseline uses JSON text.",
+  "summary": [
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "before_ns": 226292,
+      "after_ns": 123208,
+      "speedup": 1.8366664502305046
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "before_ns": 7031333,
+      "after_ns": 975375,
+      "speedup": 7.208850954760989
+    }
+  ],
+  "before": [
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 0,
+      "ns": 1601292
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 1,
+      "ns": 251916
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 2,
+      "ns": 223125
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 3,
+      "ns": 220750
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 4,
+      "ns": 226292
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 0,
+      "ns": 7082875
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 1,
+      "ns": 7102458
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 2,
+      "ns": 7031333
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 3,
+      "ns": 6976750
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 4,
+      "ns": 6990542
+    }
+  ],
+  "after": [
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 0,
+      "ns": 1552750
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 1,
+      "ns": 139125
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 2,
+      "ns": 123208
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 3,
+      "ns": 122583
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 8192,
+      "sample": 4,
+      "ns": 123166
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 0,
+      "ns": 1002875
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 1,
+      "ns": 969833
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 2,
+      "ns": 1001291
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 3,
+      "ns": 972834
+    },
+    {
+      "operation": "host_record_roundtrip",
+      "n": 262144,
+      "sample": 4,
+      "ns": 975375
+    }
+  ]
+}
