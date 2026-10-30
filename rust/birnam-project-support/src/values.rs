@@ -52,27 +52,29 @@ impl<'a, 'h> Decoder<'a, 'h> {
         self.q.exact(v, b"MapVt")?;
         self.send(v, b"at:", &[self.q.string(k.as_bytes())?])
     }
-    fn string(&self, v: Oop, _field: &'static str) -> Result<String, DecodeError> {
+    fn string(&self, v: Oop) -> Result<String, DecodeError> {
         Ok(String::from_utf8_lossy(&self.q.string_bytes(v)?).into_owned())
     }
-    fn bytes(&self, v: Oop, _field: &'static str) -> Result<Vec<u8>, DecodeError> {
+    fn bytes(&self, v: Oop) -> Result<Vec<u8>, DecodeError> {
         Ok(self.q.string_bytes(v)?)
+    }
+    fn text_field(&self, record: Oop, key: &str) -> Result<String, DecodeError> {
+        self.string(self.at(record, key)?)
     }
     fn strings(
         &self,
         v: Oop,
-        field: &'static str,
         single: bool,
     ) -> Result<Vec<String>, DecodeError> {
         if v == self.nil {
             return Ok(vec![]);
         }
         if single && self.behavior(v)? == self.q.host.named(b"StringVt")? {
-            return Ok(vec![self.string(v, field)?]);
+            return Ok(vec![self.string(v)?]);
         }
         let mut result = Vec::new();
         for i in 0..self.q.vector_size(v)? {
-            result.push(self.string(self.q.vector_at(v, i)?, field)?)
+            result.push(self.string(self.q.vector_at(v, i)?)?)
         }
         Ok(result)
     }
@@ -96,7 +98,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         let repl = if repl_value == self.nil {
             "none".to_owned()
         } else {
-            self.string(repl_value, "run.repl")?
+            self.string(repl_value)?
         };
         if !matches!(repl.as_str(), "none" | "tty" | "socket") {
             return Err(ProjectManifestDecodeError::InvalidRunMode(repl));
@@ -105,7 +107,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         let socket_bind = if bind_value == self.nil {
             "127.0.0.1".to_owned()
         } else {
-            let bind = self.string(bind_value, "run.socket_bind")?;
+            let bind = self.string(bind_value)?;
             if bind.is_empty() {
                 return Err(ProjectManifestDecodeError::EmptyValue("run.socket_bind"));
             }
@@ -130,33 +132,39 @@ impl<'a, 'h> Decoder<'a, 'h> {
         })
     }
 
+    fn list_size(&self, value: Oop, field: &'static str) -> Result<i64, DecodeError> {
+        if value == self.nil || self.behavior(value)? != self.vector_vt {
+            return Err(DecodeError::InvalidList(field));
+        }
+        let size = self.send(value, b"size", &[])?;
+        if !self.is_integer(size)? { return Err(DecodeError::InvalidList(field)); }
+        let size = self.integer(size)?;
+        if size < 0 { return Err(DecodeError::InvalidList(field)); }
+        Ok(size)
+    }
+    fn item(&self, value: Oop, index: i64) -> Result<Oop, DecodeError> {
+        self.send(value, b"at:", &[self.number(index)?])
+    }
+
     fn modules(&self, value: Oop) -> Result<Vec<ProjectModulePlan>, ProjectManifestDecodeError> {
         if value == self.nil {
             return Ok(Vec::new());
         }
-        if self.behavior(value)? != self.vector_vt {
-            return Err(ProjectManifestDecodeError::InvalidList("module"));
-        }
-        let size_selector = b"size".as_slice();
-        let at_selector = b"at:".as_slice();
-        let size = self.send(value, size_selector, &[])?;
-        if !self.is_integer(size)? || self.integer(size)? < 0 {
-            return Err(ProjectManifestDecodeError::InvalidList("module"));
-        }
-        let mut result = Vec::with_capacity(self.integer(size)? as usize);
-        for index in 0..(self.integer(size)?) {
-            let item = self.send(value, at_selector, &[self.number(index)?])?;
+        let size = self.list_size(value, "module")?;
+        let mut result = Vec::with_capacity(size as usize);
+        for index in 0..size {
+            let item = self.item(value, index)?;
             if item == self.nil || self.behavior(item)? != self.map_vt {
                 return Err(ProjectManifestDecodeError::InvalidMap("module entry"));
             }
-            let entry = self.string(self.at(item, "entry")?, "module.entry")?;
+            let entry = self.text_field(item, "entry")?;
             if entry.is_empty()
                 || Path::new(&entry).is_absolute()
                 || Path::new(&entry).extension() != Some(OsStr::new("birnam"))
             {
                 return Err(ProjectManifestDecodeError::InvalidPath("module.entry"));
             }
-            let files = self.strings(self.at(item, "files")?, "module.files", false)?;
+            let files = self.strings(self.at(item, "files")?, false)?;
             let _ = project_composition_paths(Path::new("."), &entry, &files)
                 .map_err(|_| ProjectManifestDecodeError::InvalidPath("module.files"))?;
             result.push(ProjectModulePlan { entry, files });
@@ -171,22 +179,14 @@ impl<'a, 'h> Decoder<'a, 'h> {
         if value == self.nil {
             return Ok(Vec::new());
         }
-        if self.behavior(value)? != self.vector_vt {
-            return Err(ProjectManifestDecodeError::InvalidList("wrapped"));
-        }
-        let size_selector = b"size".as_slice();
-        let at_selector = b"at:".as_slice();
-        let size = self.send(value, size_selector, &[])?;
-        if !self.is_integer(size)? || self.integer(size)? < 0 {
-            return Err(ProjectManifestDecodeError::InvalidList("wrapped"));
-        }
-        let mut result = Vec::with_capacity(self.integer(size)? as usize);
-        for index in 0..(self.integer(size)?) {
-            let item = self.send(value, at_selector, &[self.number(index)?])?;
+        let size = self.list_size(value, "wrapped")?;
+        let mut result = Vec::with_capacity(size as usize);
+        for index in 0..size {
+            let item = self.item(value, index)?;
             if item == self.nil || self.behavior(item)? != self.map_vt {
                 return Err(ProjectManifestDecodeError::InvalidMap("wrapped entry"));
             }
-            let name = self.string(self.at(item, "name")?, "wrapped.name")?;
+            let name = self.text_field(item, "name")?;
             if name.is_empty() || name.contains('/') || Path::new(&name).is_absolute() {
                 return Err(ProjectManifestDecodeError::InvalidPath("wrapped.name"));
             }
@@ -203,7 +203,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
             if self.behavior(build_value)? != self.vector_vt {
                 return Err(ProjectManifestDecodeError::InvalidList("wrapped.build"));
             }
-            let command_count = self.send(build_value, size_selector, &[])?;
+            let command_count = self.send(build_value, b"size", &[])?;
             if !self.is_integer(command_count)? || self.integer(command_count)? <= 0 {
                 return Err(ProjectManifestDecodeError::EmptyValue("wrapped.build"));
             }
@@ -211,8 +211,8 @@ impl<'a, 'h> Decoder<'a, 'h> {
             let mut has_output = false;
             for command_index in 0..(self.integer(command_count)?) {
                 let command =
-                    self.send(build_value, at_selector, &[self.number(command_index)?])?;
-                let argv = self.strings(command, "wrapped.build command", false)?;
+                    self.item(build_value, command_index)?;
+                let argv = self.strings(command, false)?;
                 if argv.is_empty() {
                     return Err(ProjectManifestDecodeError::EmptyValue(
                         "wrapped.build command",
@@ -226,7 +226,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
             }
             let packaging_value = self.at(item, "packaging")?;
             let packaging = if packaging_value == self.nil { "adjacent".into() }
-                else { self.string(packaging_value, "wrapped.packaging")? };
+                else { self.string(packaging_value)? };
             if !matches!(packaging.as_str(), "adjacent" | "embedded") {
                 return Err(ProjectManifestDecodeError::InvalidPath("wrapped.packaging (adjacent or embedded)"));
             }
@@ -247,7 +247,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         let mut result = Vec::with_capacity(wrapped.len());
         for (index, artifact) in wrapped.into_iter().enumerate() {
             let item = self.send(value, at_selector, &[self.number(index as i64)?])?;
-            let project_root = self.string(self.at(item, "projectRoot")?, "wrapped.projectRoot")?;
+            let project_root = self.text_field(item, "projectRoot")?;
             result.push(ProjectWrappedArtifactObservation {
                 project_root,
                 name: artifact.name,
@@ -269,7 +269,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         if sources == self.nil {
             return Err(ProjectManifestDecodeError::MissingValue("test.sources"));
         }
-        let sources = self.strings(sources, "test.sources", false)?;
+        let sources = self.strings(sources, false)?;
         for source in &sources {
             let path = Path::new(source);
             if source.is_empty()
@@ -301,7 +301,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         }
         let keys_selector = b"keys".as_slice();
         let keys = self.send(value, keys_selector, &[])?;
-        let names = self.strings(keys, "dependency names", false)?;
+        let names = self.strings(keys, false)?;
         let mut result = Vec::with_capacity(names.len());
         for name in names {
             let spec = self
@@ -319,15 +319,15 @@ impl<'a, 'h> Decoder<'a, 'h> {
                 revision_value != self.nil,
             ) {
                 (true, false, false) => {
-                    let path = self.string(path_value, "dependency.path")?;
+                    let path = self.string(path_value)?;
                     if path.is_empty() || Path::new(&path).is_absolute() {
                         return Err(ProjectManifestDecodeError::InvalidPath("dependency.path"));
                     }
                     ProjectDependencySourceObservation::Path(path)
                 }
                 (false, true, true) => {
-                    let url = self.string(git_value, "dependency.git")?;
-                    let revision = self.string(revision_value, "dependency.rev")?;
+                    let url = self.string(git_value)?;
+                    let revision = self.string(revision_value)?;
                     if !valid_git_remote(&url) {
                         return Err(ProjectManifestDecodeError::InvalidDependency(name));
                     }
@@ -359,13 +359,13 @@ pub fn decode_manifest(
     let name = if name_value == decoder.nil {
         String::new()
     } else {
-        decoder.string(name_value, "name")?
+        decoder.string(name_value)?
     };
     let main_value = decoder.at(parsed, "main")?;
     let main = if main_value == decoder.nil {
         None
     } else {
-        let main = decoder.string(main_value, "main")?;
+        let main = decoder.string(main_value)?;
         if Path::new(&main).is_absolute() {
             return Err(ProjectManifestDecodeError::InvalidPath("main"));
         }
@@ -375,7 +375,7 @@ pub fn decode_manifest(
     let source_roots = if roots_value == decoder.nil {
         vec!["src".to_owned()]
     } else {
-        decoder.strings(roots_value, "source_roots", false)?
+        decoder.strings(roots_value, false)?
     };
     if source_roots.is_empty() {
         return Err(ProjectManifestDecodeError::EmptyValue("source_roots"));
@@ -386,7 +386,7 @@ pub fn decode_manifest(
     {
         return Err(ProjectManifestDecodeError::InvalidPath("source_roots"));
     }
-    let loads = decoder.strings(decoder.at(parsed, "load")?, "load", true)?;
+    let loads = decoder.strings(decoder.at(parsed, "load")?, true)?;
     let run = decoder.run(decoder.at(parsed, "run")?, "socket_bind", "socket_port")?;
     let modules = decoder.modules(decoder.at(parsed, "module")?)?;
     let dependencies = decoder.dependencies(decoder.at(parsed, "dependencies")?)?;
@@ -413,31 +413,23 @@ pub fn decode_resolution(
     if resolution == decoder.nil || decoder.behavior(resolution)? != decoder.map_vt {
         return Err(ProjectManifestDecodeError::NotMap);
     }
-    let project_root = decoder.string(decoder.at(resolution, "projectRoot")?, "projectRoot")?;
-    let manifest = decoder.string(decoder.at(resolution, "manifest")?, "manifest")?;
-    let project_name = decoder.string(decoder.at(resolution, "projectName")?, "projectName")?;
+    let project_root = decoder.text_field(resolution, "projectRoot")?;
+    let manifest = decoder.text_field(resolution, "manifest")?;
+    let project_name = decoder.text_field(resolution, "projectName")?;
     let main_value = decoder.at(resolution, "main")?;
     let main = if main_value == decoder.nil {
         None
     } else {
-        Some(decoder.string(main_value, "main")?)
+        Some(decoder.string(main_value)?)
     };
     let run = decoder.run(decoder.at(resolution, "run")?, "socketBind", "socketPort")?;
-    let load_roots = decoder.strings(decoder.at(resolution, "loadRoots")?, "loadRoots", false)?;
+    let load_roots = decoder.strings(decoder.at(resolution, "loadRoots")?, false)?;
     let wrapped = decoder.wrapped_artifacts(decoder.at(resolution, "wrapped")?)?;
     let modules_value = decoder.at(resolution, "modules")?;
-    if modules_value == decoder.nil || decoder.behavior(modules_value)? != decoder.vector_vt {
-        return Err(ProjectManifestDecodeError::InvalidList("modules"));
-    }
-    let size_selector = b"size".as_slice();
-    let at_selector = b"at:".as_slice();
-    let size = decoder.send(modules_value, size_selector, &[])?;
-    if !decoder.is_integer(size)? || decoder.integer(size)? < 0 {
-        return Err(ProjectManifestDecodeError::InvalidList("modules"));
-    }
-    let mut modules = Vec::with_capacity(decoder.integer(size)? as usize);
-    for index in 0..(decoder.integer(size)?) {
-        let item = decoder.send(modules_value, at_selector, &[decoder.number(index)?])?;
+    let size = decoder.list_size(modules_value, "modules")?;
+    let mut modules = Vec::with_capacity(size as usize);
+    for index in 0..size {
+        let item = decoder.item(modules_value, index)?;
         modules.push(decode_source(q, item)?);
     }
     // The source policy's dependency walk is allowed to encounter the same
@@ -464,17 +456,17 @@ pub fn decode_source(q: &Scope<'_>, item: Oop) -> Result<ProjectSourceObservatio
     if item == decoder.nil || decoder.behavior(item)? != decoder.map_vt {
         return Err(ProjectManifestDecodeError::InvalidMap("module"));
     }
-    let name = decoder.string(decoder.at(item, "name")?, "module.name")?;
-    let path = decoder.string(decoder.at(item, "path")?, "module.path")?;
-    let sources = decoder.strings(decoder.at(item, "sources")?, "module.sources", false)?;
+    let name = decoder.text_field(item, "name")?;
+    let path = decoder.text_field(item, "path")?;
+    let sources = decoder.strings(decoder.at(item, "sources")?, false)?;
     let project_root =
-        decoder.string(decoder.at(item, "projectRoot")?, "module.projectRoot")?;
-    let source = decoder.bytes(decoder.at(item, "source")?, "module.source")?;
-    let requires = decoder.strings(decoder.at(item, "requires")?, "module.requires", false)?;
+        decoder.text_field(item, "projectRoot")?;
+    let source = decoder.bytes(decoder.at(item, "source")?)?;
+    let requires = decoder.strings(decoder.at(item, "requires")?, false)?;
     let source_digest =
-        decoder.string(decoder.at(item, "sourceDigest")?, "module.sourceDigest")?;
+        decoder.text_field(item, "sourceDigest")?;
     let revision_digest =
-        decoder.string(decoder.at(item, "revisionDigest")?, "module.revisionDigest")?;
+        decoder.text_field(item, "revisionDigest")?;
     Ok(ProjectSourceObservation {
         name,
         path,
@@ -493,8 +485,8 @@ pub fn decode_dependencies(q: &Scope<'_>, value: Oop) -> Result<Vec<ProjectDepen
     for i in 0..q.vector_size(value)? {
         let item = q.vector_at(value, i)?;
         result.push(ProjectDependencyObservation {
-            name: d.string(d.at(item, "name")?, "dependency.name")?,
-            root: d.string(d.at(item, "root")?, "dependency.root")?,
+            name: d.text_field(item, "name")?,
+            root: d.text_field(item, "root")?,
         });
     }
     Ok(result)
@@ -502,13 +494,13 @@ pub fn decode_dependencies(q: &Scope<'_>, value: Oop) -> Result<Vec<ProjectDepen
 
 pub fn snapshot_test_sources(q: &Scope<'_>, snapshot: Oop) -> Result<Option<Vec<String>>, DecodeError> {
     let d = Decoder::new(q)?;
-    let root = d.string(d.at(snapshot, "root")?, "root")?;
+    let root = d.text_field(snapshot, "root")?;
     let projects = d.at(snapshot, "projects")?;
     for i in 0..q.vector_size(projects)? {
         let project = q.vector_at(projects, i)?;
-        if d.string(d.at(project, "root")?, "root")? == root {
+        if d.text_field(project, "root")? == root {
             let value = d.at(project, "testSources")?;
-            return if value == d.nil { Ok(None) } else { d.strings(value, "testSources", false).map(Some) };
+            return if value == d.nil { Ok(None) } else { d.strings(value, false).map(Some) };
         }
     }
     Ok(None)
@@ -519,41 +511,30 @@ pub fn decode_artifact_plan(q: &Scope<'_>, plan: Oop) -> Result<ProjectArtifactP
     if plan == decoder.nil || decoder.behavior(plan)? != decoder.map_vt {
         return Err(ProjectManifestDecodeError::NotMap);
     }
-    let publication = decoder.string(decoder.at(plan, "publication")?, "publication")?;
+    let publication = decoder.text_field(plan, "publication")?;
     let artifacts_value = decoder.at(plan, "artifacts")?;
-    if artifacts_value == decoder.nil || decoder.behavior(artifacts_value)? != decoder.vector_vt {
-        return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
-    }
-    let size_selector = b"size".as_slice();
-    let at_selector = b"at:".as_slice();
-    let size = decoder.send(artifacts_value, size_selector, &[])?;
-    if !decoder.is_integer(size)? || decoder.integer(size)? < 0 {
-        return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
-    }
-    let mut artifacts = Vec::with_capacity(decoder.integer(size)? as usize);
-    for index in 0..(decoder.integer(size)?) {
-        let item = decoder.send(artifacts_value, at_selector, &[decoder.number(index)?])?;
+    let size = decoder.list_size(artifacts_value, "artifacts")?;
+    let mut artifacts = Vec::with_capacity(size as usize);
+    for index in 0..size {
+        let item = decoder.item(artifacts_value, index)?;
         if item == decoder.nil || decoder.behavior(item)? != decoder.map_vt {
             return Err(ProjectManifestDecodeError::InvalidMap("artifact"));
         }
-        let name = decoder.string(decoder.at(item, "name")?, "artifact.name")?;
-        let path = decoder.string(decoder.at(item, "path")?, "artifact.path")?;
-        let action = decoder.string(decoder.at(item, "action")?, "artifact.action")?;
-        let source = decoder.string(decoder.at(item, "source")?, "artifact.source")?;
-        let sources = decoder.strings(decoder.at(item, "sources")?, "artifact.sources", false)?;
+        let name = decoder.text_field(item, "name")?;
+        let path = decoder.text_field(item, "path")?;
+        let action = decoder.text_field(item, "action")?;
+        let source = decoder.text_field(item, "source")?;
+        let sources = decoder.strings(decoder.at(item, "sources")?, false)?;
         let source_digest =
-            decoder.string(decoder.at(item, "sourceDigest")?, "artifact.sourceDigest")?;
-        let revision_digest = decoder.string(
-            decoder.at(item, "revisionDigest")?,
-            "artifact.revisionDigest",
-        )?;
+            decoder.text_field(item, "sourceDigest")?;
+        let revision_digest = decoder.text_field(item, "revisionDigest")?;
         let requires =
-            decoder.strings(decoder.at(item, "requires")?, "artifact.requires", false)?;
+            decoder.strings(decoder.at(item, "requires")?, false)?;
         let checksum_value = decoder.at(item, "checksum")?;
         let checksum = if checksum_value == decoder.nil {
             None
         } else {
-            Some(decoder.string(checksum_value, "artifact.checksum")?)
+            Some(decoder.string(checksum_value)?)
         };
         artifacts.push(ProjectArtifactPlanEntry {
             name,
@@ -577,14 +558,11 @@ pub struct Builder<'a, 'h> {
     pub q: &'a Scope<'h>,
 }
 impl Builder<'_, '_> {
-    fn new_vector(&self) -> Result<Oop, HostError> {
-        self.q.call(self.q.host.named(b"Vector")?, b"new", &[])
+    fn vector<T>(&self, values: &[T], convert: impl Fn(&T) -> Result<Oop, HostError>) -> Result<Oop, HostError> {
+        birnam_host_support::project_values::vector(self.q, values, |_, value| convert(value))
     }
     fn new_map(&self) -> Result<Oop, HostError> {
         self.q.call(self.q.host.named(b"Map")?, b"new", &[])
-    }
-    fn add(&self, v: Oop, item: Oop) -> Result<Oop, HostError> {
-        self.q.replace_kept(v, self.q.host.send(v, b"add:", &[item])?)
     }
     fn put(&self, v: Oop, k: &str, item: Oop) -> Result<Oop, HostError> {
         let key = self.q.string(k.as_bytes())?;
@@ -597,11 +575,7 @@ impl Builder<'_, '_> {
         self.q.string(v)
     }
     fn strings(&self, values: &[String]) -> Result<Oop, HostError> {
-        let mut vector = self.new_vector()?;
-        for value in values {
-            vector = self.add(vector, self.string(value)?)?;
-        }
-        Ok(vector)
+        self.vector(values, |value| self.string(value))
     }
 
     fn previous_artifact(
@@ -630,10 +604,7 @@ impl Builder<'_, '_> {
         result = self.put(result, "profile", self.string(&value.profile)?)?;
         result = self.put(result, "toolVersion", self.string(&value.tool_version)?)?;
         result = self.put(result, "artifactAbi", self.string(&value.artifact_abi)?)?;
-        let mut artifacts = self.new_vector()?;
-        for artifact in &value.artifacts {
-            artifacts = self.add(artifacts, self.previous_artifact(artifact)?)?;
-        }
+        let artifacts = self.vector(&value.artifacts, |artifact| self.previous_artifact(artifact))?;
         self.put(result, "artifacts", artifacts)
     }
 
@@ -652,22 +623,13 @@ impl Builder<'_, '_> {
         request: &ProjectArtifactPlanRequest<'_>,
     ) -> Result<Oop, HostError> {
         let mut snapshot = self.new_map()?;
-        snapshot = {
-            self.put(
-                snapshot,
-                "projectRoot",
-                self.string(&request.resolution.project_root)?,
-            )?
-        };
+        snapshot = self.put(snapshot, "projectRoot", self.string(&request.resolution.project_root)?)?;
         snapshot = self.put(snapshot, "target", self.string(request.target)?)?;
         snapshot = self.put(snapshot, "profile", self.string(request.profile)?)?;
         snapshot = self.put(snapshot, "toolVersion", self.string(request.tool_version)?)?;
         let artifact_abi = String::from_utf8_lossy(birnam_artifact::ABI);
         snapshot = self.put(snapshot, "artifactAbi", self.string(&artifact_abi)?)?;
-        let mut modules = self.new_vector()?;
-        for module in &request.resolution.modules {
-            modules = self.add(modules, self.artifact_module(module)?)?;
-        }
+        let modules = self.vector(&request.resolution.modules, |module| self.artifact_module(module))?;
         snapshot = self.put(snapshot, "modules", modules)?;
         let previous = if let Some(previous) = request.previous {
             self.previous_publication(previous)?
@@ -678,30 +640,23 @@ impl Builder<'_, '_> {
     }
 
     fn wrapped(&self, values: &[ProjectWrappedObservation]) -> Result<Oop, HostError> {
-        let mut result = self.new_vector()?;
-        for value in values {
+        self.vector(values, |value| {
             let mut item = self.new_map()?;
             item = self.put(item, "name", self.string(&value.name)?)?;
             item = self.put(item, "packaging", self.string(&value.packaging)?)?;
-            let mut commands = self.new_vector()?;
-            for command in &value.build {
-                commands = self.add(commands, self.strings(command)?)?;
-            }
+            let commands = self.vector(&value.build, |command| self.strings(command))?;
             item = self.put(item, "build", commands)?;
-            result = self.add(result, item)?;
-        }
-        Ok(result)
+            Ok(item)
+        })
     }
 
     pub fn dependencies(&self, values: &[ProjectDependencyObservation]) -> Result<Oop, HostError> {
-        let mut result = self.new_vector()?;
-        for value in values {
+        self.vector(values, |value| {
             let mut item = self.new_map()?;
             item = self.put(item, "name", self.string(&value.name)?)?;
             item = self.put(item, "root", self.string(&value.root)?)?;
-            result = self.add(result, item)?;
-        }
-        Ok(result)
+            Ok(item)
+        })
     }
 
     pub fn source(&self, value: &ProjectSourceObservation) -> Result<Oop, HostError> {
@@ -722,56 +677,27 @@ impl Builder<'_, '_> {
         item = self.put(item, "root", self.string(&value.root)?)?;
         item = self.put(item, "manifest", self.string(&value.manifest)?)?;
         item = self.put(item, "name", self.string(&value.name)?)?;
-        item = {
-            self.put(
-                item,
-                "main",
-                value
-                    .main
-                    .as_deref()
-                    .map(|main| self.string(main))
-                    .transpose()?
-                    .unwrap_or(self.q.host.named(b"nil")?),
-            )?
-        };
+        let main = value.main.as_deref().map(|main| self.string(main)).transpose()?
+            .unwrap_or(self.q.host.named(b"nil")?);
+        item = self.put(item, "main", main)?;
         item = self.put(item, "loads", self.strings(&value.loads)?)?;
         let test_sources = match &value.test_sources { Some(v) => self.strings(v)?, None => self.q.host.named(b"nil")? };
         item = self.put(item, "testSources", test_sources)?;
         let mut run = self.new_map()?;
         run = self.put(run, "repl", self.string(&value.run.repl)?)?;
         run = self.put(run, "socketBind", self.string(&value.run.socket_bind)?)?;
-        run = {
-            self.put(
-                run,
-                "socketPort",
-                self.q.call(
-                    self.q.host.named(b"Integer")?,
-                    b"fromWord:",
-                    &[birnam_host_support::size(value.run.socket_port as usize)?],
-                )?,
-            )?
-        };
+        let port = self.q.call(self.q.host.named(b"Integer")?, b"fromWord:",
+            &[birnam_host_support::size(value.run.socket_port as usize)?])?;
+        run = self.put(run, "socketPort", port)?;
         item = self.put(item, "run", run)?;
         item = self.put(item, "wrapped", self.wrapped(&value.wrapped)?)?;
-        item = {
-            self.put(
-                item,
-                "dependencies",
-                self.dependencies(&value.dependencies)?,
-            )?
-        };
-        let mut sources = self.new_vector()?;
-        for source in &value.sources {
-            sources = self.add(sources, self.source(source)?)?;
-        }
+        item = self.put(item, "dependencies", self.dependencies(&value.dependencies)?)?;
+        let sources = self.vector(&value.sources, |source| self.source(source))?;
         self.put(item, "sources", sources)
     }
 
     pub fn snapshot(&self, value: &ProjectSnapshot) -> Result<Oop, HostError> {
-        let mut projects = self.new_vector()?;
-        for project in &value.projects {
-            projects = self.add(projects, self.project(project)?)?;
-        }
+        let projects = self.vector(&value.projects, |project| self.project(project))?;
         let mut snapshot = self.new_map()?;
         snapshot = self.put(snapshot, "root", self.string(&value.root)?)?;
         self.put(snapshot, "projects", projects)

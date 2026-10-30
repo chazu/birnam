@@ -58,15 +58,21 @@ impl<T: CommandValue> CommandValue for Option<T> {
     fn to_object(&self, q: &Scope<'_>) -> Result<Oop, HostError> { match self { Some(v)=>v.to_object(q), None=>q.host.named(b"nil") } }
     fn from_object(q: &Scope<'_>, v: Oop) -> Result<Self, HostError> { if v == q.host.named(b"nil")? { Ok(None) } else { T::from_object(q,v).map(Some) } }
 }
+/// Build an ordered Vector while retaining the current result and current item.
+/// The conversion callback and all collection operations remain current sends.
+pub fn vector<T>(q: &Scope<'_>, values: &[T], convert: impl Fn(&Scope<'_>, &T) -> Result<Oop, HostError>) -> Result<Oop, HostError> {
+    let local = q.host.scope();
+    let mut result = local.call(q.host.named(b"Vector")?, b"new", &[])?;
+    for value in values {
+        let item = q.host.scope();
+        let value = convert(&item, value)?;
+        result = local.replace_kept(result, q.host.send(result, b"add:", &[value])?)?;
+    }
+    q.keep(result)
+}
 impl<T: CommandValue> CommandValue for Vec<T> {
     fn to_object(&self, q: &Scope<'_>) -> Result<Oop, HostError> {
-        let local=q.host.scope();
-        let mut result=local.call(q.host.named(b"Vector")?,b"new",&[])?;
-        for value in self {
-            let item=q.host.scope(); let value=value.to_object(&item)?;
-            result=local.replace_kept(result,q.host.send(result,b"add:",&[value])?)?;
-        }
-        q.keep(result)
+        vector(q, self, |q, value| value.to_object(q))
     }
     fn from_object(q: &Scope<'_>, v: Oop) -> Result<Self, HostError> {
         (0..q.vector_size(v)?).map(|i| { let item=q.host.scope(); T::from_object(&item,item.vector_at(v,i)?) }).collect()

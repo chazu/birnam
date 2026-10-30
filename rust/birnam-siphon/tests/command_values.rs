@@ -1,10 +1,29 @@
 #![allow(dead_code)]
 #[path="support/minimal.rs"] mod minimal;
+#[path="support/oop.rs"] mod oop;
 use birnam_host_support::{native,project::*};
 use std::{ffi::OsString,os::unix::ffi::OsStringExt,path::PathBuf};
 #[test] #[ignore="requires native module composition"]
 fn command_records_use_objects_and_preserve_raw_paths_buffers_and_options(){
  let h=minimal::native_floor();let q=h.scope();
+ // Both command and project builders must use live add: and retain values
+ // through collection inside that message; a failure must propagate.
+ let hooks=oop::hooks::Hooks::new(&h);let vt=h.named(b"VectorVt").unwrap();let add=h.intern(b"add:").unwrap();
+ let original=q.call(vt,b"lookup",&[add]).unwrap();
+ let collecting=hooks.context(&[original,h.named(b"GC").unwrap(),birnam_abi::size(0).unwrap()]);
+ q.call(vt,b"addMethod",&[add,hooks.method(b"collectEvery",collecting)]).unwrap();
+ let strings=vec!["first".to_owned(),"second".to_owned()];
+ let encoded=native::encode(&q,&strings).unwrap();
+ assert_eq!(native::decode::<Vec<String>>(&q,&[encoded],0).unwrap(),strings);
+ let dependencies=vec![birnam_project_support::ProjectDependencyObservation{name:"first".into(),root:"/tmp/first".into()}];
+ let encoded=birnam_project_support::values::Builder{q:&q}.dependencies(&dependencies).unwrap();
+ assert_eq!(birnam_project_support::values::decode_dependencies(&q,encoded).unwrap(),dependencies);
+ q.call(vt,b"addMethod",&[add,original]).unwrap();assert!(hooks.count(collecting,2)>0);
+ let denied=hooks.context(&[hooks.fault(71),birnam_abi::size(0).unwrap()]);
+ q.call(vt,b"addMethod",&[add,hooks.method(b"deny",denied)]).unwrap();
+ assert!(native::encode(&q,&strings).is_err());
+ assert!(birnam_project_support::values::Builder{q:&q}.dependencies(&dependencies).is_err());
+ q.call(vt,b"addMethod",&[add,original]).unwrap();
  let path=PathBuf::from(OsString::from_vec(b"/tmp/path-\xff".to_vec()));
  let options=RunOptions{directory:path.clone(),build:false,profile:"release".into(),repl:Some(ReplMode::Socket),socket_bind:Some("127.0.0.1".into()),socket_port:Some(0),arguments:vec![OsString::from_vec(b"arg-\xfe".to_vec()),OsString::new()]};
  let encoded=native::encode(&q,&options).unwrap();q.exact(encoded,b"MapVt").unwrap();q.call(h.named(b"GC").unwrap(),b"collectPrecisely",&[]).unwrap();
