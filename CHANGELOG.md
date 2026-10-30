@@ -8,6 +8,29 @@ loader ports are complete.
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-10-30
+
+- Replace byte-at-a-time whole-buffer transfers with bulk Bytes operations;
+  reduce copying in String, Vector, compiler and Host operations.
+- Index portable-program data and provider-owned Method associations, reuse
+  nested validation, and write generated C byte initializers directly.
+- Use a persistent FIFO executor queue, preserving snapshots and nil resets.
+  Support Queue image save/restore through explicit owner approval of Oop slots.
+- Pass project and Host command records as ordinary objects instead of JSON
+  transport text. Preserve raw path bytes and explicit CLI/file JSON formats.
+- Assemble TOML text, module sources and process output with builders instead
+  of repeated concatenation. Keep JSON/TOML conversion methods replaceable.
+- Consolidate the language invariants and archive superseded design material.
+  Remove duplicate native declarations, unused forwarding code and repeated
+  implementation helpers without extending Id.
+- Add focused performance measurements and regression coverage for live method
+  replacement, collection, image restoration, project commands and LSP behavior.
+
+Performance improvements vary by operation; the latest cleanup does not show a
+startup speedup. The shared escape scanner costs about 1.4–3.5% on dense-escape
+inputs; the plain-string path is unchanged. See the runtime-round3 and
+code-reduction measurement reports for scopes and raw samples.
+
 ## [0.19.0] — 2026-10-29
 
 - Complete the Oop-only Id integration across the language. Keep object payloads
