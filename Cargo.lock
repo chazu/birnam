@@ -302,8 +302,6 @@ dependencies = [
  "birnam-host-support",
  "birnam-project-support",
  "birnam-siphon",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -338,6 +336,7 @@ dependencies = [
  "birnam-artifact-codec",
  "birnam-host-support",
  "birnam-native-compiler",
+ "birnam-project-support",
  "serde_json",
 ]
 

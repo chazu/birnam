@@ -13,9 +13,10 @@ The CLI's Rust value adapter calls this owner directly; HostProject has no alias
 for these operations.
 
 Build requests query [HostProject](../birnam-host-project/README.md) through Id for
-owned snapshots, manifests, resolution, root paths and generated-source metadata.
-No Rust observation owner, mutable state borrow or private payload crosses that
-interface. ProjectPolicy continues to decide providers, ordering and
+ordinary snapshot, manifest, resolution and source records. A snapshot stays an
+Oop through policy resolution; native build code decodes the result once when
+it needs to operate on files. These internal queries do not encode/decode JSON
+or reconstruct the snapshot. No private payload crosses that interface. ProjectPolicy continues to decide providers, ordering and
 compile-versus-reuse actions. Codegen produces artifact bytes; HostEntry loads and
 executes published code; HostInteraction owns REPL/socket entry.
 

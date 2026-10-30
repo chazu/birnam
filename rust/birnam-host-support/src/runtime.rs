@@ -191,7 +191,7 @@ impl Scope<'_> {
     }
     pub fn string_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {
         self.exact(value, b"StringVt")?;
-        self.read_bytes(self.call(value, b"bytes", &[])?)
+        self.read_bytes(value)
     }
 }
 
@@ -200,6 +200,7 @@ pub struct Context {
     pub namespace: Oop,
     pub roots: Oop,
     constructor: Oop,
+    sequence: Oop,
     byte_reader: RefCell<Option<abi::byte_transfer::Reader>>,
     root_provider: RefCell<Option<crate::roots::Provider>>,
     retain: Oop,
@@ -273,8 +274,17 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
                 return Err(HostError("Host context used from another thread".into()));
             }
             let q = self.scope();
-            q.keep(receiver)?;
-            for &argument in args { q.keep(argument)?; }
+            if q.reported.is_some() {
+                q.keep(receiver)?;
+                for &argument in args { q.keep(argument)?; }
+            } else {
+                // Before the tracing callback exists, retain one argument group;
+                // never turn a bulk byte message into one retain send per byte.
+                let values: Vec<_> = std::iter::once(receiver).chain(args.iter().copied()).collect();
+                let snapshot = self.id.send(self.id.root, self.sequence, &values)
+                    .map_err(|e| native_error("snapshot Host arguments", e))?;
+                q.keep(snapshot)?;
+            }
             match self.intern(name).and_then(|name| self.id.send(receiver, name, args)) {
                 Ok(value) => q.finish(value),
                 Err(error) => {
@@ -379,11 +389,14 @@ impl Context {
                 id.send(roots, retain, &[release_many])
                     .map_err(|e| native_error("retain release selector", e))?,
             );
+            let sequence = intern(b"sequence").map_err(|e| native_error("sequence name", e))?;
+            permanent.push(id.send(roots, retain, &[sequence]).map_err(|e| native_error("retain sequence", e))?);
             Ok(Self {
                 id,
                 namespace,
                 roots,
                 constructor,
+                sequence,
                 byte_reader: RefCell::new(None),
                 root_provider: RefCell::new(None),
                 retain,

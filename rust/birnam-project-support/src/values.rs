@@ -1,4 +1,4 @@
-//! Scoped value projections for authored project policy. No Oop leaves Host.
+//! Ordinary project records shared through messages with authored policy and native build code.
 use super::data::*;
 use crate::data::ProjectSourceObservation;
 use birnam_abi::Oop;
@@ -438,30 +438,7 @@ pub fn decode_resolution(
     let mut modules = Vec::with_capacity(decoder.integer(size)? as usize);
     for index in 0..(decoder.integer(size)?) {
         let item = decoder.send(modules_value, at_selector, &[decoder.number(index)?])?;
-        if item == decoder.nil || decoder.behavior(item)? != decoder.map_vt {
-            return Err(ProjectManifestDecodeError::InvalidMap("module"));
-        }
-        let name = decoder.string(decoder.at(item, "name")?, "module.name")?;
-        let path = decoder.string(decoder.at(item, "path")?, "module.path")?;
-        let sources = decoder.strings(decoder.at(item, "sources")?, "module.sources", false)?;
-        let project_root =
-            decoder.string(decoder.at(item, "projectRoot")?, "module.projectRoot")?;
-        let source = decoder.bytes(decoder.at(item, "source")?, "module.source")?;
-        let requires = decoder.strings(decoder.at(item, "requires")?, "module.requires", false)?;
-        let source_digest =
-            decoder.string(decoder.at(item, "sourceDigest")?, "module.sourceDigest")?;
-        let revision_digest =
-            decoder.string(decoder.at(item, "revisionDigest")?, "module.revisionDigest")?;
-        modules.push(ProjectSourceObservation {
-            name,
-            path,
-            sources,
-            project_root,
-            source,
-            requires,
-            source_digest,
-            revision_digest,
-        });
+        modules.push(decode_source(q, item)?);
     }
     // The source policy's dependency walk is allowed to encounter the same
     // provider through several roots. Preserve its first dependency-first
@@ -479,6 +456,62 @@ pub fn decode_resolution(
         modules,
         wrapped,
     })
+}
+
+/// Decode only when native build code needs the source record's values.
+pub fn decode_source(q: &Scope<'_>, item: Oop) -> Result<ProjectSourceObservation, DecodeError> {
+    let decoder = Decoder::new(q)?;
+    if item == decoder.nil || decoder.behavior(item)? != decoder.map_vt {
+        return Err(ProjectManifestDecodeError::InvalidMap("module"));
+    }
+    let name = decoder.string(decoder.at(item, "name")?, "module.name")?;
+    let path = decoder.string(decoder.at(item, "path")?, "module.path")?;
+    let sources = decoder.strings(decoder.at(item, "sources")?, "module.sources", false)?;
+    let project_root =
+        decoder.string(decoder.at(item, "projectRoot")?, "module.projectRoot")?;
+    let source = decoder.bytes(decoder.at(item, "source")?, "module.source")?;
+    let requires = decoder.strings(decoder.at(item, "requires")?, "module.requires", false)?;
+    let source_digest =
+        decoder.string(decoder.at(item, "sourceDigest")?, "module.sourceDigest")?;
+    let revision_digest =
+        decoder.string(decoder.at(item, "revisionDigest")?, "module.revisionDigest")?;
+    Ok(ProjectSourceObservation {
+        name,
+        path,
+        sources,
+        project_root,
+        source,
+        requires,
+        source_digest,
+        revision_digest,
+    })
+}
+
+pub fn decode_dependencies(q: &Scope<'_>, value: Oop) -> Result<Vec<ProjectDependencyObservation>, DecodeError> {
+    let d = Decoder::new(q)?;
+    let mut result = Vec::new();
+    for i in 0..q.vector_size(value)? {
+        let item = q.vector_at(value, i)?;
+        result.push(ProjectDependencyObservation {
+            name: d.string(d.at(item, "name")?, "dependency.name")?,
+            root: d.string(d.at(item, "root")?, "dependency.root")?,
+        });
+    }
+    Ok(result)
+}
+
+pub fn snapshot_test_sources(q: &Scope<'_>, snapshot: Oop) -> Result<Option<Vec<String>>, DecodeError> {
+    let d = Decoder::new(q)?;
+    let root = d.string(d.at(snapshot, "root")?, "root")?;
+    let projects = d.at(snapshot, "projects")?;
+    for i in 0..q.vector_size(projects)? {
+        let project = q.vector_at(projects, i)?;
+        if d.string(d.at(project, "root")?, "root")? == root {
+            let value = d.at(project, "testSources")?;
+            return if value == d.nil { Ok(None) } else { d.strings(value, "testSources", false).map(Some) };
+        }
+    }
+    Ok(None)
 }
 
 pub fn decode_artifact_plan(q: &Scope<'_>, plan: Oop) -> Result<ProjectArtifactPlan, DecodeError> {
@@ -664,7 +697,7 @@ impl Builder<'_, '_> {
         Ok(result)
     }
 
-    fn dependencies(&self, values: &[ProjectDependencyObservation]) -> Result<Oop, HostError> {
+    pub fn dependencies(&self, values: &[ProjectDependencyObservation]) -> Result<Oop, HostError> {
         let mut result = self.new_vector()?;
         for value in values {
             let mut item = self.new_map()?;
@@ -675,7 +708,7 @@ impl Builder<'_, '_> {
         Ok(result)
     }
 
-    fn source(&self, value: &ProjectSourceObservation) -> Result<Oop, HostError> {
+    pub fn source(&self, value: &ProjectSourceObservation) -> Result<Oop, HostError> {
         let mut item = self.new_map()?;
         item = self.put(item, "name", self.string(&value.name)?)?;
         item = self.put(item, "path", self.string(&value.path)?)?;
@@ -706,6 +739,8 @@ impl Builder<'_, '_> {
             )?
         };
         item = self.put(item, "loads", self.strings(&value.loads)?)?;
+        let test_sources = match &value.test_sources { Some(v) => self.strings(v)?, None => self.q.host.named(b"nil")? };
+        item = self.put(item, "testSources", test_sources)?;
         let mut run = self.new_map()?;
         run = self.put(run, "repl", self.string(&value.run.repl)?)?;
         run = self.put(run, "socketBind", self.string(&value.run.socket_bind)?)?;

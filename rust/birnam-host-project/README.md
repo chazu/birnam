@@ -13,8 +13,11 @@ its receiver and method contexts have process lifetime.
 The ordinary query interface includes `root:`, `manifest:`, `snapshot:`,
 `resolveSnapshot:`, `dependencyPaths:dependencies:`, `index:`,
 `observe:root:composition:`, `observeBytes:path:root:`, `embeddedFiles:` and
-`testSources:`. Owned records use the existing JSON String value transport;
-filesystem paths retain raw bytes where that was already the contract. `support`
+`testSources:`. Snapshot, manifest, resolution, source and dependency observations
+used by ProjectBuild pass the existing project-policy Maps and Vectors. Snapshot
+identity is preserved through resolution; source bytes remain String values.
+Only the executable's command-result adapters still use JSON. Filesystem paths
+retain raw bytes where that was already the contract. `support`
 loads the existing authored TOML and ProjectPolicy modules when necessary.
 
 LSP calls `pathForUri:` and `snapshotForUri:` directly. These answer the existing

@@ -1,0 +1,219 @@
+{
+  "baseline": "ad55fc7f9a51204c3910f220cd35b1693759e116",
+  "benchmark": "rust/birnam-siphon/examples/project_transfer_costs.rs; baseline uses --legacy-json",
+  "scope": "Release compiled startup. Observe one project outside timing, then resolve it five times per sample. Includes baseline snapshot encoding, policy resolution and full native result decoding; new path retains the original Map. Setup/file parsing/explicit GC excluded; source byte equality checked. Seven samples, median.",
+  "summary": [
+    {
+      "bytes": 8192,
+      "before_ns": 2539925,
+      "after_ns": 1786933.4,
+      "speedup": 1.4213876129910605
+    },
+    {
+      "bytes": 262144,
+      "before_ns": 30220175,
+      "after_ns": 1905916.6,
+      "speedup": 15.855979742240557
+    }
+  ],
+  "before": [
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 5,
+      "ns_per_call": 2845283.4
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 5,
+      "ns_per_call": 2628291.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 5,
+      "ns_per_call": 2530666.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 5,
+      "ns_per_call": 2493125
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 5,
+      "ns_per_call": 2539925
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 5,
+      "ns_per_call": 2545691.8
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 5,
+      "ns_per_call": 2440550
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 0,
+      "calls": 5,
+      "ns_per_call": 29740258.2
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 1,
+      "calls": 5,
+      "ns_per_call": 30535491.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 2,
+      "calls": 5,
+      "ns_per_call": 30220175
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 3,
+      "calls": 5,
+      "ns_per_call": 30638516.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 4,
+      "calls": 5,
+      "ns_per_call": 31742883.4
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 5,
+      "calls": 5,
+      "ns_per_call": 30137975
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 6,
+      "calls": 5,
+      "ns_per_call": 30140850
+    }
+  ],
+  "after": [
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 0,
+      "calls": 5,
+      "ns_per_call": 1694216.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 1,
+      "calls": 5,
+      "ns_per_call": 1690041.8
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 2,
+      "calls": 5,
+      "ns_per_call": 1786933.4
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 3,
+      "calls": 5,
+      "ns_per_call": 1807941.8
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 4,
+      "calls": 5,
+      "ns_per_call": 1794525
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 5,
+      "calls": 5,
+      "ns_per_call": 1784741.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 8192,
+      "sample": 6,
+      "calls": 5,
+      "ns_per_call": 1811516.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 0,
+      "calls": 5,
+      "ns_per_call": 1992541.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 1,
+      "calls": 5,
+      "ns_per_call": 1986475
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 2,
+      "calls": 5,
+      "ns_per_call": 1975516.8
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 3,
+      "calls": 5,
+      "ns_per_call": 1839108.4
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 4,
+      "calls": 5,
+      "ns_per_call": 1840891.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 5,
+      "calls": 5,
+      "ns_per_call": 1905916.6
+    },
+    {
+      "operation": "project_resolution",
+      "bytes": 262144,
+      "sample": 6,
+      "calls": 5,
+      "ns_per_call": 1853075
+    }
+  ]
+}

@@ -13,8 +13,6 @@ birnam-abi = { path = "../birnam-abi" }
 birnam-host-support = { path = "../birnam-host-support" }
 birnam-project-support = { path = "../birnam-project-support" }
 birnam-artifact = { package = "birnam-artifact-codec", path = "../birnam-artifact-codec" }
-serde.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

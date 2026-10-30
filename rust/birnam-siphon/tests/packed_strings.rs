@@ -61,5 +61,13 @@ fn packed_strings_preserve_constructors_binary_data_and_gc() {
     let result = q.keep(result.unwrap()).unwrap();
     assert_eq!(q.read_bytes(result).unwrap(), b"binary\0\xff");
     assert_eq!(hooks.count(denial, 1), 0);
+    // Native String reads use its bulk operation, without constructing Bytes.
+    let bytes = hooks.symbol(b"bytes");
+    let saved_bytes = q.call(vt, b"lookup", &[bytes]).unwrap();
+    q.call(vt, b"addMethod", &[bytes, hooks.method(b"deny", denial)]).unwrap();
+    let read = q.string_bytes(input);
+    q.call(vt, b"addMethod", &[bytes, saved_bytes]).unwrap();
+    assert_eq!(read.unwrap(), b" binary\0\xff ");
+    assert_eq!(hooks.count(denial, 1), 0);
     assert_eq!(as_size(q.call(string, b"sizeWord", &[]).unwrap()), Some(0));
 }

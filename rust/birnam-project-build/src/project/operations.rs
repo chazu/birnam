@@ -76,8 +76,12 @@ impl Project<'_> {
         Ok(String::from_utf8_lossy(&sha256_hex(&bytes)).into_owned())
     }
     pub fn check_project(&self, start: &Path) -> Result<ProjectCheckResult, HostError> {
-        let snapshot = self.observe_project_snapshot(start)?;
-        let resolution = self.project_resolution(&snapshot)?;
+        let (resolution, test_sources) = {
+            let q = self.host.scope();
+            let snapshot = self.observe_project_snapshot(&q, start)?;
+            (self.project_resolution(&q, snapshot)?,
+             values::snapshot_test_sources(&q, snapshot).map_err(project_error)?)
+        };
         let manifest = read_source_file(Path::new(&resolution.manifest))?;
         let resolution_digest = project_build_resolution_digest(
             &resolution.project_root,
@@ -100,11 +104,7 @@ impl Project<'_> {
         }
         Ok(ProjectCheckResult {
             wrapped: resolution.wrapped.clone(),
-            test_sources: snapshot
-                .projects
-                .iter()
-                .find(|p| p.root == snapshot.root)
-                .and_then(|p| p.test_sources.clone()),
+            test_sources,
             resolution,
             resolution_digest,
             diagnostics,
@@ -232,8 +232,11 @@ impl Project<'_> {
         if request.target != "aarch64-macos" || !matches!(request.profile, "debug" | "release") {
             return Err(HostError("unsupported project target/profile".into()));
         }
-        let snapshot = self.observe_project_snapshot(request.start)?;
-        let resolution = self.project_resolution(&snapshot)?;
+        let resolution = {
+            let q = self.host.scope();
+            let snapshot = self.observe_project_snapshot(&q, request.start)?;
+            self.project_resolution(&q, snapshot)?
+        };
         let digest = project_build_resolution_digest(
             &resolution.project_root,
             &read_source_file(Path::new(&resolution.manifest))?,
@@ -735,9 +738,9 @@ mod tests {
             b"let neverPublished := 42; true",
         )
         .unwrap();
-        let snapshot = host.project().observe_project_snapshot(&temp.0).unwrap();
-        assert_eq!(snapshot.projects[0].sources[0].sources.len(), 2);
         let q = host.scope();
+        let snapshot = host.project().observe_project_snapshot(&q, &temp.0).unwrap();
+        q.exact(snapshot, b"MapVt").unwrap();
         let policy = host.global(&q, b"ProjectPolicy").unwrap();
         let behavior = q.call(host.id.root, b"behaviorOf:", &[policy]).unwrap();
         let fixture = temp.0.join("project-policy.dylib");
@@ -754,7 +757,7 @@ mod tests {
                 .success()
         );
         let module = host.load_native(&q, &fixture, &[]).unwrap();
-        let forward_name = q.keep(host.intern(b"collectingForward").unwrap()).unwrap();
+        let forward_name = q.keep(host.intern(b"captureForward").unwrap()).unwrap();
         let forward = q.call(module, b"methodAt:", &[forward_name]).unwrap();
         let mut hooks = Vec::new();
         for selector in [b"resolveSnapshot:".as_slice(), b"artifactPlan:"] {
@@ -768,6 +771,7 @@ mod tests {
                         original,
                         host.named(b"GC").unwrap(),
                         birnam_abi::size(0).unwrap(),
+                        host.named(b"nil").unwrap(),
                     ],
                 )
                 .unwrap();
@@ -775,8 +779,11 @@ mod tests {
             q.call(behavior, b"addMethod", &[key, method]).unwrap();
             hooks.push((key, original, context));
         }
-        let resolution = host.project().project_resolution(&snapshot).unwrap();
+        let resolution = host.project().project_resolution(&q, snapshot).unwrap();
+        assert_eq!(q.call(hooks[0].2, b"at:", &[birnam_abi::size(3).unwrap()]).unwrap(), snapshot,
+            "policy must receive the original snapshot object, not a serialized reconstruction");
         assert_eq!(resolution.modules[0].name, "example");
+        assert_eq!(resolution.modules[0].sources.len(), 2);
         assert_eq!(resolution.run.repl, "socket");
         assert_eq!(resolution.run.socket_bind, "localhost");
         assert_eq!(resolution.run.socket_port, 7777);
@@ -823,7 +830,7 @@ mod tests {
         let fail = q.call(fail, b"withContext:", &[failure]).unwrap();
         q.call(behavior, b"addMethod", &[hooks[0].0, fail]).unwrap();
         assert_eq!(
-            host.project().project_resolution(&snapshot).unwrap_err(),
+            host.project().project_resolution(&q, snapshot).unwrap_err(),
             native_error("resolveSnapshot:", failure)
         );
         q.call(behavior, b"addMethod", &[hooks[0].0, hooks[0].1])

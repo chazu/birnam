@@ -44,16 +44,15 @@ impl Project<'_> {
         &self,
         root: &Path,
     ) -> Result<ProjectManifestObservation, HostError> {
-        self.project_support()?;
         let q = self.host.scope();
+        values::decode_manifest(&q, self.project_manifest_value(&q, root)?).map_err(project_error)
+    }
+    pub(crate) fn project_manifest_value(&self, q: &Scope<'_>, root: &Path) -> Result<Oop, HostError> {
+        self.project_support()?;
         let source = q.string(&read_source_file(&root.join("birnam.toml"))?)?;
-        let parsed = q.call(
-            self.host.global(&q, b"Toml")?,
-            b"parse:",
-            &[source],
-        )?;
+        let parsed = q.call(self.host.global(q, b"Toml")?, b"parse:", &[source])?;
         q.check_result(parsed)?;
-        values::decode_manifest(&q, parsed).map_err(project_error)
+        Ok(parsed)
     }
     fn project_policy(&self, q: &Scope<'_>, name: &[u8], input: Oop) -> Result<Oop, HostError> {
         let result = q.call(
@@ -224,14 +223,8 @@ impl Project<'_> {
             projects,
         })
     }
-    pub(crate) fn project_resolution(
-        &self,
-        snapshot: &ProjectSnapshot,
-    ) -> Result<ProjectResolutionObservation, HostError> {
-        let q = self.host.scope();
-        let input = values::Builder { q: &q }.snapshot(snapshot)?;
-        let result = self.project_policy(&q, b"resolveSnapshot:", input)?;
-        values::decode_resolution(&q, result).map_err(project_error)
+    pub(crate) fn project_resolution(&self, q: &Scope<'_>, snapshot: Oop) -> Result<Oop, HostError> {
+        self.project_policy(q, b"resolveSnapshot:", snapshot)
     }
 }
 

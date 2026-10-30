@@ -39,41 +39,31 @@ fn dispatch(context: &Context, operation: &str, args: &[Oop]) -> Result<Oop, Hos
                 return Ok(q.string(path.as_os_str().as_bytes())?);
             }
             "manifest:" => {
-                return native::encode(&q, &project.project_manifest(&native::path(&q, args, 0)?)?);
+                let value = project.project_manifest_value(&q, &native::path(&q, args, 0)?)?;
+                birnam_project_support::values::decode_manifest(&q, value)
+                    .map_err(|e| HostError(format!("{e:?}")))?;
+                return Ok(value);
             }
             "snapshot:" => {
-                return native::encode(
-                    &q,
-                    &project.observe_project_snapshot(&native::path(&q, args, 0)?)?,
-                );
+                return birnam_project_support::values::Builder { q: &q }.snapshot(
+                    &project.observe_project_snapshot(&native::path(&q, args, 0)?)?);
             }
             "resolveSnapshot:" => {
-                return native::encode(
-                    &q,
-                    &project.project_resolution(&native::decode(&q, args, 0)?)?,
-                );
+                return project.project_resolution(&q, native::argument(&q, args, 0)?);
             }
             "observeBytes:path:root:" => {
-                return native::encode(
-                    &q,
-                    &project.project_source_bytes(
-                        native::bytes(&q, args, 0)?,
-                        &native::path(&q, args, 1)?,
-                        &native::text(&q, args, 2)?,
-                    )?,
-                );
+                let source = project.project_source_bytes(native::bytes(&q,args,0)?, &native::path(&q,args,1)?, &native::text(&q,args,2)?)?;
+                return match source {
+                    Some(source) => birnam_project_support::values::Builder { q: &q }.source(&source),
+                    None => context.named(b"nil"),
+                };
             }
             "dependencyPaths:dependencies:" => {
-                return native::encode(
-                    &q,
-                    &project::files::resolve_project_dependency_paths(
-                        &native::path(&q, args, 0)?,
-                        &native::decode::<Vec<project::data::ProjectDependencyObservation>>(
-                            &q, args, 1,
-                        )?,
-                    )
-                    .map_err(|e| HostError(format!("{e:?}")))?,
-                );
+                let deps = birnam_project_support::values::decode_dependencies(&q, native::argument(&q,args,1)?)
+                    .map_err(|e| HostError(format!("{e:?}")))?;
+                let result = project::files::resolve_project_dependency_paths(&native::path(&q,args,0)?, &deps)
+                    .map_err(|e| HostError(format!("{e:?}")))?;
+                return birnam_project_support::values::Builder { q: &q }.dependencies(&result);
             }
             "testSources:" => {
                 use std::os::unix::ffi::OsStrExt;
