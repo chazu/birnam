@@ -1,0 +1,79 @@
+{
+  "baseline": "02b08ab60feb8dcb266efc1b6d12a97f1056a25a",
+  "implementation": {
+    "git_clean": true,
+    "git_commit": "d23eceedfbf7b91f565d55ff31aba49e86ada23b"
+  },
+  "source_manifest_sha256": "74b3256a2c58a493237a8fe88f8ef09abf0e4ae30f9fa49422c4163d3d595740",
+  "prefix": "/tmp/birnam-reduction-final",
+  "profile": "release",
+  "net_physical_source_lines_removed_including_tests": {
+    "Rust": 938,
+    "Birnam": 32
+  },
+  "ordered_literal_tables": [
+    {
+      "file": "rust/birnam-tcc/src/lib.rs",
+      "entries": 60,
+      "same_order_and_bytes": true
+    },
+    {
+      "file": "rust/birnam-lang-seed/src/lib.rs",
+      "entries": 90,
+      "same_order_and_bytes": true
+    },
+    {
+      "file": "rust/birnam-portable-code/src/lib.rs",
+      "entries": 143,
+      "same_order_and_bytes": true
+    },
+    {
+      "file": "rust/birnam-native-backend/src/lib.rs",
+      "entries": 42,
+      "same_order_and_bytes": true
+    },
+    {
+      "file": "rust/birnam-codegen-runtime/src/lib.rs",
+      "entries": 195,
+      "same_order_and_bytes": true
+    },
+    {
+      "file": "rust/birnam-execution/src/synchronous.rs",
+      "entries": 258,
+      "same_order_and_bytes": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "cargo test --offline --locked --workspace --lib",
+      "result": "316 passed, 0 failed, 30 ignored as declared, 49 test binaries"
+    },
+    {
+      "command": "cargo check --offline --locked --workspace --all-targets",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test --offline --locked -p birnam-siphon --test system_output --test system_services --test system_gc --test text_error --test compiler_source --test native_boundaries --test direct_native_method --test command_values --test installed_scheduler --test memory --test tcc_context --test portable_code --test image_slot_values -- --include-ignored",
+      "environment": {
+        "BIRNAM_TEST_MODULE_DIRECTORY": "/tmp/birnam-reduction-final/lib"
+      },
+      "result": "13 passed, 0 failed"
+    },
+    {
+      "command": "Load modules/json-test.birnam and modules/project-policy-test.birnam on the fresh installation, then Test runAllSuitesWithRunner: ConsoleRunner; require allPassed",
+      "result": "135 assertions passed, 0 failed; no String-helper source override"
+    },
+    {
+      "command": "BIRNAM_BIN=/tmp/birnam-reduction-final/bin/birnam bash scripts/rust-project-check-smoke.sh",
+      "result": "passed: human/JSON check, build, run, install, test, path and pinned Git dependencies, relocation, missing-native rejection"
+    },
+    {
+      "command": "BIRNAM_BIN=/tmp/birnam-reduction-final/bin/birnam bash scripts/lsp-project-smoke.sh",
+      "result": "passed: workspace, shared diagnostics, UTF-16, versions and close"
+    },
+    {
+      "command": "python3 scripts/lsp-owner-test.py /tmp/birnam-reduction-final",
+      "result": "passed: instance state, retention and source-free image restoration"
+    }
+  ]
+}
