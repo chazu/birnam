@@ -23,6 +23,18 @@ pub fn object(value: Oop) -> Result<Oop, HostError> {
         Ok(value)
     }
 }
+// Fixed selector/name Symbols only. Receiver bindings and selected Methods are
+// always resolved live. Explicit intern requests still run the current interner.
+const HOST_NAMES: &[&[u8]] = &[
+    b"at:", b"at:put:", b"bytes", b"fromBytes:", b"sizeWord", b"fromByteValues",
+    b"appendByteValues", b"printString", b"new", b"add:", b"size", b"behaviorOf:",
+    b"wordOf:", b"fromWord:", b"low32", b"high32", b"fromUnsignedLow:high:",
+    b"isError", b"message", b"kind", b"addMethod", b"lookup", b"collectPrecisely",
+    b"Integer", b"Word", b"String", b"Bytes", b"Map", b"Vector", b"GC", b"nil",
+    b"true", b"false", b"Globals", b"Codegen", b"Roots", b"Module", b"TCC",
+    b"HostEntry", b"HostProject", b"ProjectBuild", b"HostInteraction",
+];
+
 // Native owners and the executable facade retain intermediates before any
 // subsequent send, then releases them on success and on every error path.
 pub struct Scope<'a> {
@@ -195,6 +207,7 @@ pub struct Context {
     pub namespace: Oop,
     pub roots: Oop,
     constructor: Oop,
+    selectors: std::collections::HashMap<&'static [u8], Oop>,
     sequence: Oop,
     byte_reader: RefCell<Option<abi::byte_transfer::Reader>>,
     root_provider: RefCell<Option<crate::roots::Provider>>,
@@ -263,6 +276,9 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
             self.id.send(name, self.id.intern, &[])
         }
     }
+    fn selector(&self, name: &[u8]) -> Result<Oop, Oop> {
+        match self.selectors.get(name) { Some(&symbol) => Ok(symbol), None => self.intern(name) }
+    }
     pub fn send(&self, receiver: Oop, name: &[u8], args: &[Oop]) -> Result<Oop, HostError> {
         unsafe {
             if self.thread != std::thread::current().id() {
@@ -280,7 +296,7 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
                     .map_err(|e| native_error("snapshot Host arguments", e))?;
                 q.keep(snapshot)?;
             }
-            match self.intern(name).and_then(|name| self.id.send(receiver, name, args)) {
+            match self.selector(name).and_then(|name| self.id.send(receiver, name, args)) {
                 Ok(value) => q.finish(value),
                 Err(error) => {
                     let _ = q.finish(error);
@@ -291,7 +307,7 @@ const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U n
     }
     pub fn named(&self, name: &[u8]) -> Result<Oop, HostError> {
         let symbol = self
-            .intern(name)
+            .selector(name)
             .map_err(|e| native_error("intern name", e))?;
         object(self.send(self.namespace, b"at:", &[symbol])?)
     }
@@ -386,11 +402,18 @@ impl Context {
             );
             let sequence = intern(b"sequence").map_err(|e| native_error("sequence name", e))?;
             permanent.push(id.send(roots, retain, &[sequence]).map_err(|e| native_error("retain sequence", e))?);
+            let mut selectors = std::collections::HashMap::new();
+            for &name in HOST_NAMES {
+                let symbol = intern(name).map_err(|e| native_error("Host selector", e))?;
+                permanent.push(id.send(roots, retain, &[symbol]).map_err(|e| native_error("retain Host selector", e))?);
+                selectors.insert(name, symbol);
+            }
             Ok(Self {
                 id,
                 namespace,
                 roots,
                 constructor,
+                selectors,
                 sequence,
                 byte_reader: RefCell::new(None),
                 root_provider: RefCell::new(None),

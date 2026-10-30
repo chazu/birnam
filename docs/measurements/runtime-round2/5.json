@@ -1,0 +1,192 @@
+{
+  "baseline": "13959ca45c3e6c6960f55e691d418284880bb3c1",
+  "scope": "Release invariant_costs roots: fixed printString sends, scope creation/cleanup included, 1/100 sends per sample operation. Seven samples. Setup and explicit GC excluded; Namespace bindings and method selection remain live.",
+  "summary": [
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "before_ns": 435.625,
+      "after_ns": 112.71,
+      "speedup": 3.8650075414781297
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "before_ns": 45430.83,
+      "after_ns": 9194.165,
+      "speedup": 4.9412676409440115
+    }
+  ],
+  "before": [
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 0,
+      "ns": 446.46
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 1,
+      "ns": 436.25
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 2,
+      "ns": 434.79
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 3,
+      "ns": 431.665
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 4,
+      "ns": 436.045
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 5,
+      "ns": 433.125
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 6,
+      "ns": 435.625
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 0,
+      "ns": 44058.33
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 1,
+      "ns": 45138.125
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 2,
+      "ns": 45436.25
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 3,
+      "ns": 45449.58
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 4,
+      "ns": 45280.625
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 5,
+      "ns": 45430.83
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 6,
+      "ns": 46178.75
+    }
+  ],
+  "after": [
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 0,
+      "ns": 107.085
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 1,
+      "ns": 113.54
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 2,
+      "ns": 112.5
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 3,
+      "ns": 112.71
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 4,
+      "ns": 113.54
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 5,
+      "ns": 113.75
+    },
+    {
+      "operation": "host_scope",
+      "n": 1,
+      "sample": 6,
+      "ns": 111.04
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 0,
+      "ns": 9087.71
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 1,
+      "ns": 9265.21
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 2,
+      "ns": 9195.625
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 3,
+      "ns": 9078.545
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 4,
+      "ns": 9194.165
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 5,
+      "ns": 9190.42
+    },
+    {
+      "operation": "host_scope",
+      "n": 100,
+      "sample": 6,
+      "ns": 9207.915
+    }
+  ]
+}
