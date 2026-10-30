@@ -11,6 +11,7 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicPtr, Ordering},
 };
+mod queue;
 struct State {
     id: Protocol,
     namespace: Oop,
@@ -19,6 +20,8 @@ struct State {
     behavior: Oop,
     node: Oop,
     prototype: Oop,
+    queue: Oop,
+    queue_behavior: Oop,
     values: HashMap<&'static [u8], Oop>,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
@@ -177,6 +180,8 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, count: usize) 
             s.behavior,
             s.node,
             s.prototype,
+            s.queue,
+            s.queue_behavior,
         ];
         values.extend(s.values.values().copied());
         values.extend(s.names.values().copied());
@@ -664,6 +669,15 @@ unsafe extern "C" fn at_word(_: Oop, c: Oop, r: Oop, a: *const Oop, count: usize
 }
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
+    b"Queue",
+    b"QueueVt",
+    b"takeFirst",
+    b"asVector",
+    b"queueNew",
+    b"queueAdd",
+    b"queueSize",
+    b"queueTake",
+    b"queueVector",
     b",",
     b"<",
     b"Bytes",
@@ -748,6 +762,11 @@ const fn index(n: &[u8]) -> usize {
     panic!("missing literal")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name: index(b"queueNew"), entry: Some(queue::new) },
+    MethodSpec { name: index(b"queueAdd"), entry: Some(queue::add) },
+    MethodSpec { name: index(b"queueSize"), entry: Some(queue::size) },
+    MethodSpec { name: index(b"queueTake"), entry: Some(queue::take) },
+    MethodSpec { name: index(b"queueVector"), entry: Some(queue::vector) },
     MethodSpec {
         name: index(b"sizeWord"),
         entry: Some(size_word),
@@ -882,6 +901,9 @@ unsafe extern "C" fn initialize(
                 b"setLayoutOf:to:rest:",
                 &[node, empty, abi::size(1).unwrap()],
             )?;
+            let queue_behavior = keep(send(parent, b"delegated", &[])?)?;
+            let queue_layout = keep(send(id.root,b"sequence",&[abi::size(1).unwrap();3])?)?;
+            send(model,b"setLayoutOf:to:rest:",&[queue_behavior,queue_layout,abi::size(0).unwrap()])?;
             let mut allocate = |behavior, bytes| -> Result<Oop, Oop> {
                 let value = keep(send(
                     model,
@@ -905,6 +927,8 @@ unsafe extern "C" fn initialize(
                 tail,
                 tail_len: 0,
             });
+            let queue = allocate(queue_behavior, size_of::<queue::Queue>())?;
+            queue.cast::<queue::Queue>().write(queue::Queue::empty(values[b"nil".as_slice()]));
             let s = Box::into_raw(Box::new(State {
                 id,
                 namespace: *namespace,
@@ -913,6 +937,8 @@ unsafe extern "C" fn initialize(
                 behavior,
                 node,
                 prototype,
+                queue,
+                queue_behavior,
                 values,
                 names: names.clone(),
                 scoped: RefCell::new(Vec::new()),
@@ -923,13 +949,20 @@ unsafe extern "C" fn initialize(
             for spec in METHODS {
                 let method = s.send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = s.send(method, b"withContext:", &[prototype])?;
-                s.send(behavior, b"addMethod", &[symbols[spec.name], method])?;
+                if let Some((_, public)) = queue::BINDINGS.iter().find(|(name,_)| *name == NAMES[spec.name]) {
+                    s.send(queue_behavior,b"addMethod",&[names[*public],method])?;
+                } else {
+                    s.send(behavior, b"addMethod", &[symbols[spec.name], method])?;
+                }
             }
             s.send(roots, b"register:", &[prototype])?;
             s.send(id.root, b"ownerOf:put:", &[behavior, prototype])?;
+            s.send(id.root, b"ownerOf:put:", &[queue_behavior, queue])?;
             for (name, v) in [
                 (b"Vector".as_slice(), prototype),
                 (b"VectorVt", behavior),
+                (b"Queue", queue),
+                (b"QueueVt", queue_behavior),
                 (b"VectorNode", node),
             ] {
                 s.send(*namespace, b"at:put:", &[names[name], v])?;

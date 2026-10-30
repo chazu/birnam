@@ -1,0 +1,212 @@
+{
+  "baseline": "2c004c7437c4479b855555407d9e890a2f4f1eba",
+  "scope": "round2_language queue on the same compiled prefix: enqueue setup excluded, drain 128/512/2048 no-op jobs, five samples. Includes dispatch, scheduler field updates and result checks. Before uses the original Vector queue, after loads the updated scheduler with persistent Queue data operations. Both use the improved Vector bulk builder.",
+  "summary": [
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "before_ns": 11894000,
+      "after_ns": 12202584,
+      "speedup": 0.9747115856772631
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "before_ns": 58763041,
+      "after_ns": 45136250,
+      "speedup": 1.301903481126589
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "before_ns": 910439250,
+      "after_ns": 518808542,
+      "speedup": 1.7548655742834705
+    }
+  ],
+  "before": [
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 0,
+      "ns": 11894000
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 1,
+      "ns": 11944291
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 2,
+      "ns": 11879958
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 3,
+      "ns": 11988209
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 4,
+      "ns": 11598208
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 0,
+      "ns": 58700916
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 1,
+      "ns": 58861083
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 2,
+      "ns": 58658834
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 3,
+      "ns": 58763041
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 4,
+      "ns": 58997250
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 0,
+      "ns": 910944084
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 1,
+      "ns": 950958417
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 2,
+      "ns": 903107583
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 3,
+      "ns": 910439250
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 4,
+      "ns": 909916208
+    }
+  ],
+  "after": [
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 0,
+      "ns": 12028375
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 1,
+      "ns": 12253750
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 2,
+      "ns": 12202584
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 3,
+      "ns": 11366125
+    },
+    {
+      "operation": "queue_drain",
+      "n": 128,
+      "sample": 4,
+      "ns": 12685500
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 0,
+      "ns": 45424917
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 1,
+      "ns": 44939458
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 2,
+      "ns": 45136250
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 3,
+      "ns": 44671959
+    },
+    {
+      "operation": "queue_drain",
+      "n": 512,
+      "sample": 4,
+      "ns": 45395792
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 0,
+      "ns": 501633125
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 1,
+      "ns": 516906208
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 2,
+      "ns": 518808542
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 3,
+      "ns": 521237083
+    },
+    {
+      "operation": "queue_drain",
+      "n": 2048,
+      "sample": 4,
+      "ns": 522174542
+    }
+  ],
+  "rejected_experiment": "An authored linked-list implementation passed correctness but took about 2.28 seconds to drain 2048 jobs, versus about 0.91 seconds for the Vector baseline. It was replaced with the small Queue data operations in the existing persistent-collection module; scheduling policy remains authored."
+}

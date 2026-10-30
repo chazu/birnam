@@ -401,6 +401,27 @@ let externalResultSlot := 21;
 [Reflect defineMethod: #imagePayload on: TaskControl as: [:self |
   [[ObjectModel slot: 0 in: self] ifTrue: [| false] ifFalse: [| self]]
 ]];
+// Queue's persistent data operations finish before a task is driven. Scheduling
+// and collection callbacks remain ordinary current messages.
+[Reflect defineMethod: #asQueue on: Collection as: [:self |
+  [self inject: [Queue new] into: [:queue :value | [queue add: value]]]]];
+[Reflect defineMethod: #asQueue on: Queue as: [:self | self]];
+[Reflect defineMethod: #asQueue on: nil as: [:self | self]];
+[Reflect defineMethod: #at: on: Queue as: [:self :index | [[self asVector] at: index]]];
+[Reflect defineMethod: #copyFrom:to: on: Queue as: [:self :first :last |
+  [[self asVector] copyFrom: first to: last]]];
+[Reflect defineMethod: #reversed on: Queue as: [:self | [[self asVector] reversed]]];
+[Reflect defineMethod: #, on: Queue as: [:self :other | [[self asVector] , [other asVector]]]];
+[Reflect defineMethod: #do: on: Queue as: [:self :body | [[self asVector] do: body]; self]];
+[Reflect defineMethod: #inject:into: on: Queue as: [:self :initial :body |
+  [[self asVector] inject: initial into: body]]];
+[Reflect defineMethod: #= on: Queue as: [:self :other | [[self asVector] = other]]];
+[Reflect defineMethod: #equalsVector: on: Queue as: [:self :other | [[self asVector] equalsVector: other]]];
+[Reflect defineMethod: #printString on: Queue as: [:self | [[self asVector] printString]]];
+// Explicit field writes may still supply a Vector or another ordered collection.
+[Reflect defineMethod: #takeFirst on: Collection as: [:self |
+  #[[self at: 0] [self copyFrom: 1 to: [self size]]]]];
+
 [[|
 let names := #[#queue #ingress #draining #current #quantum #serviceTask];
 let fieldView := TaskField;
@@ -421,7 +442,7 @@ let model := ObjectModel;
 let queueSlot := 0;
 [Reflect defineMethod: #queue on: prototype as: [:self | [model slot: queueSlot in: self]]];
 [Reflect defineMethod: #queue: on: prototype as: [:self :value |
-  [model slot: queueSlot in: self put: value]; self
+  [model slot: queueSlot in: self put: [value asQueue]]; self
 ]];
 let ingressSlot := 1;
 [Reflect defineMethod: #ingress on: prototype as: [:self | [model slot: ingressSlot in: self]]];
@@ -523,9 +544,9 @@ let serviceTaskSlot := 5;
 [Reflect defineMethod: #idle on: TaskExecutor as: [:self |
   [Isolate idleFor: 1]]];
 [Reflect defineMethod: #driveNext on: TaskExecutor as: [:self |
-  let queue := [self queue];
-  let job := [queue at: 0];
-  [self queue: [queue copyFrom: 1 to: [queue size]]];
+  let taken := [[self queue] takeFirst];
+  let job := [taken at: 0];
+  [self queue: [taken at: 1]];
   let task := [job at: 0];
   [self current: task];
   let progress := [task drive: job];

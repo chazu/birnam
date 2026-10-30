@@ -72,6 +72,23 @@ continuation must not replay completed work. See the
 [Execution implementation](../../rust/birnam-execution/README.md) and
 [concurrency guide](../guide/07-concurrency.md) for the supported operations.
 
+## Executor ready queue
+
+The default ready queue is a persistent `Queue` value. `add:` returns a new
+queue; `takeFirst` returns a Vector containing the oldest value and the remaining
+queue. Empty queues return `#[nil self]`. `size` is constant-time and `asVector`
+produces an ordered snapshot. Successive dequeues use two immutable lists, with
+one reversal when the front list is exhausted; old queue snapshots stay valid.
+
+The data operations are implemented with the other persistent collections.
+Queue's three slots contain only Oops. Its Sequence list nodes are accessed by
+messages; Id does not inspect Queue data. Scheduling policy remains authored.
+`TaskExecutor queue:` converts ordered collections through `asQueue`. Explicit
+`field: #queue` views remain ordinary slot views; a supplied Vector still works
+through the generic `takeFirst` operation. Iteration, comparison and slicing
+operate on ordered snapshots. Consumed jobs are not retained by the remaining
+queue unless another snapshot or program reference still needs them.
+
 ## Compiled artifacts and images
 
 An image's compatible compiled code is executable content, not a disposable cache

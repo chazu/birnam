@@ -1,0 +1,39 @@
+// Ordered values and snapshots survive successive enqueues and removals.
+[Globals at: #QueueCheckFailures put: [0 asCell]];
+let assertQueue := [:condition | [[condition = true] ifTrue: [| true] ifFalse: [| [QueueCheckFailures inc]; false]]];
+let empty := [Queue new];
+let first := [empty add: 1];
+let second := [first add: 2];
+[assertQueue value: [[second asVector] = #[1 2]]];
+let taken := [second takeFirst];
+let third := [[taken at: 1] add: 3];
+[assertQueue value: [[third asVector] = #[2 3]]];
+[assertQueue value: [[third copyFrom: 0 to: 1] = #[2]]];
+[assertQueue value: [[third reversed] = #[3 2]]];
+[assertQueue value: [[third , #[4]] = #[2 3 4]]];
+[assertQueue value: [[first asVector] = #[1]]];
+[assertQueue value: [[second asVector] = #[1 2]]];
+[assertQueue value: [[taken at: 0] = 1]];
+[assertQueue value: [empty = #[]]];
+[assertQueue value: [#[] = empty]];
+[assertQueue value: [[[#[1 2] asQueue] asVector] = #[1 2]]];
+[assertQueue value: [[[[[third takeFirst] at: 1] takeFirst] at: 0] = 3]];
+let log := [#[] asCell];
+let dummy := [Object clone];
+[Reflect defineMethod: #drive: on: dummy as: [:self :job |
+  [log set: [[log value] add: [job at: 1]]];
+  [[[job at: 1] = 1] ifTrue: [| [TaskExecutor enqueue: #[self 3]]]];
+  true]];
+let saved := [TaskExecutor queue];
+[TaskExecutor queue: #[]];
+[TaskExecutor enqueue: #[dummy 1]];
+[TaskExecutor enqueue: #[dummy 2]];
+[TaskExecutor driveNext]; [TaskExecutor driveNext]; [TaskExecutor driveNext];
+[assertQueue value: [[log value] = #[1 2 3]]];
+[assertQueue value: [[[TaskExecutor field: #queue] value] = #[]]];
+// Explicit field writes can still supply a Vector through the generic operation.
+[[TaskExecutor field: #queue] set: #[#[dummy 4]]];
+[TaskExecutor driveNext];
+[assertQueue value: [[log value] = #[1 2 3 4]]];
+[TaskExecutor queue: saved];
+true
