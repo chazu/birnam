@@ -53,6 +53,7 @@ struct State {
     admitted: RefCell<WordIndex<CodeShape>>,
     // Parsed signatures belong only to explicit native entry contexts. The
     // context's Sequence owns its executable, environment and declared Method.
+    signature_contexts: RefCell<WordIndex<usize>>,
     native_signatures: RefCell<WordIndex<std::sync::Arc<abi::native_signature::Signature>>>,
     engine: RefCell<ExecutionState>,
     resume: RefCell<resumable::Runtime>,
@@ -491,11 +492,14 @@ unsafe extern "C" fn retire(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> 
         let mut storage = s.storage.borrow_mut();
         let mut admitted = s.admitted.borrow_mut();
         let mut signatures = s.native_signatures.borrow_mut();
+        let mut contexts = s.signature_contexts.borrow_mut();
         for &v in values {
             storage.remove(v);
             admitted.remove(&v.addr());
             signatures.remove(&v.addr());
+            contexts.remove(&v.addr());
         }
+        contexts.retain(|_, context| signatures.contains_key(context));
         Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -1716,6 +1720,7 @@ unsafe extern "C" fn initialize(
             scoped: RefCell::new(Vec::new()),
             storage: RefCell::new(Objects::default()),
             admitted: RefCell::new(WordIndex::default()),
+            signature_contexts: RefCell::new(WordIndex::default()),
             native_signatures: RefCell::new(WordIndex::default()),
             engine: RefCell::new(ExecutionState::new(1)),
             resume: RefCell::new(resumable::Runtime::default()),

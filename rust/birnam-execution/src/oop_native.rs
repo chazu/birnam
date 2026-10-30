@@ -196,6 +196,7 @@ unsafe fn conversion(
         s.native_signatures
             .borrow_mut()
             .insert(context.addr(), signature);
+        s.signature_contexts.borrow_mut().insert(declared.addr(), context.addr());
         Ok(declared)
     }
 }
@@ -292,14 +293,32 @@ pub(super) unsafe fn method_from_block(
     }
 }
 
-// This index is the native executable's required signature state, not a
-// universal Method metadata table. Only construction and explicit reflection scan it.
+pub(super) fn note_capture(s: &State, original: Oop, captured: Oop) {
+    let mut contexts = s.signature_contexts.borrow_mut();
+    if let Some(context) = contexts.get(&original.addr()).copied() {
+        contexts.insert(captured.addr(), context);
+    }
+}
+// A weak provider-local association avoids scanning known Methods. The ordinary
+// Sequence remains mutable, so verify its current declared Method on every read.
 unsafe fn signature_for_method(
     s: &State,
     method: Oop,
     q: &Scope<'_>,
 ) -> Result<Option<(Oop, std::sync::Arc<Signature>)>, Oop> {
     unsafe {
+        let known = s.signature_contexts.borrow().get(&method.addr()).copied();
+        if let Some(key) = known {
+            let signature = s.native_signatures.borrow().get(&key).cloned();
+            if let Some(signature) = signature {
+                let context = q.keep(ptr::with_exposed_provenance_mut(key));
+                let declared = q.keep(context_value(s, context, 2)?);
+                if s.send(s.id.root, b"sameNativeMethod:as:", &[method, declared])? == abi::size(1).unwrap() {
+                    return Ok(Some((context, signature)));
+                }
+            }
+            s.signature_contexts.borrow_mut().remove(&method.addr());
+        }
         let entries: Vec<_> = s
             .native_signatures
             .borrow()
@@ -311,6 +330,7 @@ unsafe fn signature_for_method(
             if s.send(s.id.root, b"sameNativeMethod:as:", &[method, declared])?
                 == abi::size(1).unwrap()
             {
+                s.signature_contexts.borrow_mut().insert(method.addr(), context.addr());
                 return Ok(Some((context, signature)));
             }
         }

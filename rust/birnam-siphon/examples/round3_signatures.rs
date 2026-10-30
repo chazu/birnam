@@ -1,0 +1,5 @@
+#![allow(dead_code)]
+#[path="../tests/support/oop.rs"] mod oop;
+use std::time::Instant;
+fn main(){let h=oop::bootstrap();let q=h.scope();let body=q.call(h.named(b"Codegen").unwrap(),b"eval:",&[q.string(b"[:self :x | x]").unwrap()]).unwrap();q.check_result(body).unwrap();let signature=q.string(b"oO").unwrap();let exec=h.named(b"Execution").unwrap();let selector=h.intern(b"nativeSignatureOf:").unwrap();
+for n in [128usize,1024]{let mut method=body;for _ in 0..n{method=q.call(exec,b"method:withNativeSignature:",&[body,signature]).unwrap();}let captured=q.call(method,b"captured",&[]).unwrap();for sample in 0..5{for (operation,m) in [("signature",method),("captured_signature",captured)] {q.call(h.named(b"GC").unwrap(),b"collectPrecisely",&[]).unwrap();let start=Instant::now();for _ in 0..100{std::hint::black_box(unsafe{h.id.send(exec,selector,&[m])}.unwrap());}let ns=start.elapsed().as_nanos()/100;let result=q.call(exec,b"nativeSignatureOf:",&[m]).unwrap();assert_eq!(q.read_bytes(result).unwrap(),b"oO");println!("{{\"operation\":\"{operation}\",\"n\":{n},\"sample\":{sample},\"ns\":{ns}}}");}}}}

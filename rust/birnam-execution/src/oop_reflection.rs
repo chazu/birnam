@@ -119,6 +119,7 @@ pub(super) unsafe extern "C" fn captured(_: Oop, c: Oop, r: Oop, _: *const Oop, 
         let method = q.keep(s.invoke(s.capture_seed, r, &[])?);
         resumable::note_capture(s, r, method);
         native_code::note_capture(s, r, method);
+        native_adapters::note_capture(s, r, method);
         let admitted = s.admitted.borrow().get(&r.addr()).cloned();
         if let Some(admitted) = admitted {
             s.admitted.borrow_mut().insert(method.addr(), admitted);

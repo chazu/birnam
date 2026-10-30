@@ -1,0 +1,278 @@
+{
+  "baseline": "6cb7fb6b1d6966f055b991f4c7def7d616db450a",
+  "scope": "Provider signature reflection for directly constructed and captured Methods; five samples, 100 sends/sample; includes returned Bytes allocation, excludes setup and explicit collection.",
+  "summary": [
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "before_ns": 16080,
+      "after_ns": 2397,
+      "speedup": 6.708385481852315
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "before_ns": 40780,
+      "after_ns": 2382,
+      "speedup": 17.120067170445004
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "before_ns": 16154,
+      "after_ns": 2375,
+      "speedup": 6.801684210526316
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "before_ns": 40871,
+      "after_ns": 2416,
+      "speedup": 16.91680463576159
+    }
+  ],
+  "before": [
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 0,
+      "ns": 16277
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 0,
+      "ns": 16100
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 1,
+      "ns": 15915
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 1,
+      "ns": 15962
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 2,
+      "ns": 16154
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 2,
+      "ns": 15985
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 3,
+      "ns": 16475
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 3,
+      "ns": 16099
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 4,
+      "ns": 16106
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 4,
+      "ns": 16080
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 0,
+      "ns": 40490
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 0,
+      "ns": 40670
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 1,
+      "ns": 40560
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 1,
+      "ns": 40780
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 2,
+      "ns": 40871
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 2,
+      "ns": 41031
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 3,
+      "ns": 40980
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 3,
+      "ns": 40420
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 4,
+      "ns": 41283
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 4,
+      "ns": 40917
+    }
+  ],
+  "after": [
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 0,
+      "ns": 2522
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 0,
+      "ns": 2421
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 1,
+      "ns": 2375
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 1,
+      "ns": 2404
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 2,
+      "ns": 2363
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 2,
+      "ns": 2372
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 3,
+      "ns": 2363
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 3,
+      "ns": 2344
+    },
+    {
+      "operation": "signature",
+      "n": 128,
+      "sample": 4,
+      "ns": 2417
+    },
+    {
+      "operation": "captured_signature",
+      "n": 128,
+      "sample": 4,
+      "ns": 2397
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 0,
+      "ns": 2381
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 0,
+      "ns": 2380
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 1,
+      "ns": 2476
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 1,
+      "ns": 2439
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 2,
+      "ns": 2383
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 2,
+      "ns": 2382
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 3,
+      "ns": 2472
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 3,
+      "ns": 2412
+    },
+    {
+      "operation": "signature",
+      "n": 1024,
+      "sample": 4,
+      "ns": 2416
+    },
+    {
+      "operation": "captured_signature",
+      "n": 1024,
+      "sample": 4,
+      "ns": 2367
+    }
+  ]
+}
