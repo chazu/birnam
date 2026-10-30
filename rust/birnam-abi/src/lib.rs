@@ -4,6 +4,7 @@ use core::{ffi::c_void, mem::align_of};
 pub type Oop = *mut c_void;
 pub mod id_protocol;
 pub mod native_module;
+pub mod native_helpers;
 pub fn size(value: usize) -> Option<Oop> {
     (value <= usize::MAX >> 1).then(|| core::ptr::without_provenance_mut((value << 1) | 1))
 }

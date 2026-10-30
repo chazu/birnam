@@ -23,12 +23,6 @@ struct State {
 static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 static API: AtomicPtr<Protocol> = AtomicPtr::new(ptr::null_mut());
 static BUSY: AtomicBool = AtomicBool::new(false);
-struct Constructing;
-impl Drop for Constructing {
-    fn drop(&mut self) {
-        BUSY.store(false, Ordering::Release);
-    }
-}
 fn invalid() -> Oop {
     let p = API.load(Ordering::Acquire);
     if p.is_null() {
@@ -47,15 +41,6 @@ unsafe fn state<'a>(c: Oop) -> Result<&'a State, Oop> {
     let s = unsafe { &*p };
     if c == s.ns { Ok(s) } else { Err(invalid()) }
 }
-struct Scope<'a> {
-    s: &'a State,
-    start: usize,
-}
-impl Drop for Scope<'_> {
-    fn drop(&mut self) {
-        self.s.scoped.borrow_mut().truncate(self.start);
-    }
-}
 impl State {
     unsafe fn send(&self, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Oop> {
         unsafe { self.id.send(r, self.names[n], a) }
@@ -65,14 +50,7 @@ impl State {
         values: &[Oop],
         f: impl FnOnce() -> Result<T, Oop>,
     ) -> Result<T, Oop> {
-        let scope = Scope {
-            s: self,
-            start: self.scoped.borrow().len(),
-        };
-        self.scoped.borrow_mut().extend_from_slice(values);
-        let result = f();
-        drop(scope);
-        result
+        abi::native_helpers::with_roots(&self.scoped, values, f)
     }
     unsafe fn make_string(&self, bytes: &[u8]) -> Result<Oop, Oop> {
         unsafe { self.rooted(&[], || {
@@ -232,10 +210,9 @@ unsafe extern "C" fn initialize(
             id.invalid
         };
     }
-    if BUSY.swap(true, Ordering::AcqRel) {
+    let Some(_constructing) = abi::native_helpers::Initializing::enter(&BUSY) else {
         return id.invalid;
-    }
-    let _constructing = Constructing;
+    };
     (|| unsafe {
         let names: HashMap<_, _> = NAMES.iter().copied().zip(symbols.iter().copied()).collect();
         let send = |r, n: &[u8], a: &[Oop]| id.send(r, names[n], a);
@@ -258,17 +235,9 @@ unsafe extern "C" fn initialize(
         }));
         INSTANCE.store(s, Ordering::Release);
         let s = &*s;
-        let owner_type = send(id.root, b"behaviorOf:", &[owner])?;
-        let private = send(owner_type, b"delegated", &[])?;
-        send(id.root, b"reassociateBehaviorOf:with:", &[owner, private])?;
-        let method = send(image, b"methodAt:", &[names[b"rootsDo:".as_slice()]])?;
-        let method = send(method, b"withContext:", &[*ns])?;
-        send(
-            private,
-            b"addMethod",
-            &[names[b"rootsDo:".as_slice()], method],
+        abi::native_helpers::register_roots(
+            id.root, image, *ns, roots, owner, names[b"rootsDo:".as_slice()], send,
         )?;
-        send(roots, b"register:", &[owner])?;
         for name in [b"readLine".as_slice()] {
             let method = send(image, b"methodAt:", &[names[name]])?;
             let method = send(method, b"withContext:", &[*ns])?;
