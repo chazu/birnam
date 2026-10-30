@@ -143,6 +143,30 @@ impl State {
         unsafe { p.add(index).write(value) };
         Ok(value)
     }
+    // These are the bootstrap data owners, not generic allocation or dispatch.
+    pub(super) unsafe fn copy_byte_values(&self, action: Action, value: Oop, from: usize, count: usize, sink: Oop) -> Result<Oop, Oop> {
+        let invalid = self.invalid();
+        let end = from.checked_add(count).ok_or(invalid)?;
+        let bytes = match action {
+            Action::NameBytes => {
+                let (p,n) = self.name_data(value)?;
+                if end > n { return Err(invalid); }
+                unsafe { core::slice::from_raw_parts(p.add(from),count) }.to_vec()
+            }
+            Action::SymbolBytes => self.symbols.borrow().bytes_of(value)
+                .and_then(|b| b.get(from..end)).ok_or(invalid)?.to_vec(),
+            Action::SequenceBytes => {
+                let (p,n) = self.sequence_storage(value)?;
+                if end > n { return Err(invalid); }
+                unsafe { core::slice::from_raw_parts(p.add(from),count) }.iter()
+                    .map(|&v| abi::as_size(v).and_then(|v| u8::try_from(v).ok()).ok_or(invalid))
+                    .collect::<Result<Vec<_>,_>>()?
+            }
+            _ => return Err(invalid),
+        };
+        unsafe { abi::byte_transfer::deliver(&self.protocol, sink, self.selector(b"appendByteValues"), &bytes) }?;
+        Ok(core::ptr::null_mut())
+    }
     pub(super) fn name_data(&self, o: Oop) -> Result<(*const u8, usize), Oop> {
         self.payload(o).map(|(p, n)| (p.cast_const(), n))
     }

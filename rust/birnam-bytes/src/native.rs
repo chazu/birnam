@@ -13,6 +13,7 @@ pub(crate) struct Buffer {
     pub(crate) bytes: Vec<u8>,
 }
 pub(crate) struct Bytes {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     pub(crate) id: Protocol,
     pub(crate) namespace: Oop,
     roots: Oop,
@@ -102,11 +103,7 @@ impl Bytes {
     }
     pub(crate) unsafe fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
         unsafe {
-            self.id.read_bytes(
-                value,
-                self.selector(b"sizeWord")?,
-                self.selector(b"atWord:")?,
-            )
+            self.byte_reader.read(value)
         }
     }
     pub(crate) unsafe fn input_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
@@ -207,6 +204,33 @@ impl Bytes {
             Ok(r)
         }
     }
+}
+unsafe extern "C" fn matches_values(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    done((|| unsafe {
+        let t=state(c)?;
+        let values=borrowed_slice(a,n).ok_or_else(invalid)?;
+        if values.iter().any(|&v|abi::as_size(v).is_none_or(|v|v>255)) { return Err(invalid()); }
+        let buffers=t.buffers.borrow();
+        let bytes=&buffers.get(&r.addr()).ok_or_else(invalid)?.bytes;
+        Ok(abi::size(usize::from(bytes.len()==n && bytes.iter().zip(values)
+            .all(|(&b,&v)|abi::as_size(v)==Some(b as usize)))).unwrap())
+    })())
+}
+unsafe extern "C" fn copy_byte_values(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    done((|| unsafe {
+        let t = state(c)?;
+        let [from, count, sink] = borrowed_slice(a,n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let from = abi::as_size(*from).ok_or_else(invalid)?;
+        let count = abi::as_size(*count).ok_or_else(invalid)?;
+        let end = from.checked_add(count).ok_or_else(invalid)?;
+        let bytes = {
+            let buffers = t.buffers.borrow();
+            let buffer = buffers.get(&r.addr()).ok_or_else(invalid)?;
+            buffer.bytes.get(from..end).ok_or_else(invalid)?.to_vec()
+        };
+        abi::byte_transfer::deliver(&t.id, *sink, t.selector(b"appendByteValues")?, &bytes)?;
+        Ok(ptr::null_mut())
+    })())
 }
 unsafe extern "C" fn roots(_id: Oop, c: Oop, _r: Oop, a: *const Oop, n: usize) -> Oop {
     done((|| unsafe {
@@ -362,6 +386,7 @@ primitive!(append_values, 9);
 
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
+    b"copyByteValuesFrom:count:to:",
     b"allocationSizeOf:",
     b"behaviorOf:",
     b"Bytes",
@@ -476,7 +501,11 @@ literals![
     b"withSymbolName:",
     b"withoutLocatorData:",
     b"wordOf:",
-    b"wyhash64"
+    b"wyhash64",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"matchesByteValues",
+    b"receiveByteValues",
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -495,6 +524,7 @@ const fn index(name: &[u8]) -> usize {
     panic!("missing literal")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name: index(b"copyByteValuesFrom:count:to:"), entry: Some(copy_byte_values) },
     MethodSpec {
         name: index(b"bytes:fromBytes:"),
         entry: Some(from_bytes),
@@ -667,8 +697,13 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"finalize:"),
         entry: Some(finalize),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
+    MethodSpec { name: index(b"matchesByteValues"), entry: Some(matches_values) },
 ];
 const BINDINGS: &[(bool, &[u8], &[u8])] = &[
+    (false, b"matchesByteValues", b"matchesByteValues"),
+    (false, b"copyByteValuesFrom:count:to:", b"copyByteValuesFrom:count:to:"),
     (false, b"sizeWord", b"bytes:length"),
     (false, b"atWord:", b"bytes:byteAtWord:"),
     (false, b"fromBytes:", b"bytes:fromBytes:"),
@@ -805,6 +840,7 @@ unsafe extern "C" fn initialize(
             let view_behavior = keep(send(parent, b"delegated", &[])?)?;
             let prototype = keep(send(behavior, b"allocate", &[abi::size(0).unwrap()])?)?;
             let t = Box::into_raw(Box::new(Bytes {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 namespace: *namespace,
                 roots,

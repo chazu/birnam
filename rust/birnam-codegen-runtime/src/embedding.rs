@@ -107,16 +107,7 @@ impl State {
                         return self
                             .embed_error(scope, b"embedFile: file exceeds the 16 MiB limit");
                     }
-                    let mut bytes = Vec::with_capacity(count);
-                    for i in 0..count {
-                        let byte =
-                            self.send(buffer, b"atWord:", &[abi::size(i).ok_or_else(invalid)?])?;
-                        bytes.push(
-                            abi::as_size(byte)
-                                .and_then(|b| u8::try_from(b).ok())
-                                .ok_or_else(invalid)?,
-                        );
-                    }
+                    let bytes = self.byte_reader.read_count(buffer, count)?;
                     *expr = Expr::Send {
                         receiver: Box::new(Expr::StringOwned(bytes)),
                         selector: Cow::Borrowed(b"asBytes"),

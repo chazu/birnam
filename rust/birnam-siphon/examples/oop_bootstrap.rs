@@ -103,6 +103,7 @@ fn main() {
             return;
         }
         let ns = loaded.expect("Bootstrap initialization");
+        let byte_context = birnam_host_support::Context::from_namespace(id, ns, Default::default(), sel(b"nameWithBytes")).unwrap();
         assert_eq!(id.send(id.literal(0).unwrap(), id.load, &[args]), Ok(ns));
         let named = |n: &[u8]| send(ns, b"at:", &[sel(n)]);
         let roots = named(b"Roots");
@@ -126,7 +127,7 @@ fn main() {
                 let bytes = keep(send(message, b"bytes", &[]));
                 panic!(
                     "{s}: {:?}",
-                    id.read_bytes(bytes, sel(b"sizeWord"), sel(b"atWord:"))
+                    byte_context.scope().read_bytes(bytes)
                         .map(|b| String::from_utf8_lossy(&b).into_owned())
                 );
             }
@@ -168,7 +169,7 @@ fn main() {
             let generated = keep(send(generated, b"bytes", &[]));
             std::fs::write(
                 directory.join("alien-generated.c"),
-                id.read_bytes(generated, sel(b"sizeWord"), sel(b"atWord:"))
+                byte_context.scope().read_bytes(generated)
                     .unwrap(),
             )
             .unwrap();
@@ -375,7 +376,7 @@ fn main() {
                 let actual = keep(send(named(b"CodeObject"), b"canonicalBytesOf:", &[value]));
                 let actual = keep(send(actual, b"bytes", &[]));
                 assert_eq!(
-                    id.read_bytes(actual, sel(b"sizeWord"), sel(b"atWord:"))
+                    byte_context.scope().read_bytes(actual)
                         .unwrap(),
                     bytes
                 );

@@ -293,8 +293,7 @@ fn compile_mode(
     let source_query = e.name(b"codeObject")?;
     let canonical = e.name(b"canonicalBytesOf:")?;
     let sha = e.name(b"sha256")?;
-    let size_word = e.name(b"sizeWord")?;
-    let at_word = e.name(b"atWord:")?;
+    let matches_bytes = e.name(b"matchesByteValues")?;
     e.name(b"false")?;
     let nil_name = e.name(b"nil")?;
     let method_names = (0..e.functions.len())
@@ -334,7 +333,7 @@ fn compile_mode(
         for (label, test) in [("bound", format!("n+1!={argc}")), ("dnu", format!("n+1<{argc}"))] {
             writeln!(out,"static O {label}_{i}(O root,O context,O receiver,const O*args,size_t n){{Call c={{0}};if({argc}==0||{test})return finish(&c,named(&c,{nil_name}));O block=call(&c,context,{environment},0,0);if(c.error)return finish(&c,0);O values[{}];values[0]=receiver;for(size_t k=1;k<{argc};k++)values[k]=args[k-1];O result=function_{i}(root,context,block,values,{argc});if(failed(result))c.error=result;return finish(&c,result);}}",argc.max(1)).unwrap();
         }
-        writeln!(out,"static O factory_{i}(O root,O unused,O receiver,const O*args,size_t n){{(void)root;(void)unused;(void)receiver;if(n!=2)return id.invalid;Call c={{0}};O context=args[0];O source=call(&c,context,{source_query},0,0);O bytes=call(&c,named(&c,{code_object}),{canonical},&source,1);O digest=call(&c,bytes,{sha},0,0);static const unsigned char expected[]={{{digest}}};if(call(&c,digest,{size_word},0,0)!=size_oop(32)){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}for(size_t k=0;k<32;k++){{O index=size_oop(k);if(call(&c,digest,{at_word},&index,1)!=size_oop(expected[k])){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}}}if(call(&c,context,{parameters},0,0)!=size_oop({argc})||call(&c,context,{captures},0,0)!=size_oop({capc})){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}size_t index;if(args[1]==size_oop(0))index={i};else if(args[1]==size_oop(1)&&{argc}!=0)index={bound_index};else if(args[1]==size_oop(2)&&{argc}!=0)index={dnu_index};else{{c.error=id.invalid;return finish(&c,0);}}O at=size_oop(index),result;if(native_provider){{O m=call(&c,code_provider,{native_declared},&at,1);result=call(&c,m,{with_context},&context,1);}}else{{O a[]={{at,context}};result=call(&c,code_provider,{bind_context},a,2);}}return finish(&c,result);}}").unwrap();
+        writeln!(out,"static O factory_{i}(O root,O unused,O receiver,const O*args,size_t n){{(void)root;(void)unused;(void)receiver;if(n!=2)return id.invalid;Call c={{0}};O context=args[0];O source=call(&c,context,{source_query},0,0);O bytes=call(&c,named(&c,{code_object}),{canonical},&source,1);O digest=call(&c,bytes,{sha},0,0);static const unsigned char expected[]={{{digest}}};O expected_values[32];for(size_t k=0;k<32;k++)expected_values[k]=size_oop(expected[k]);if(call(&c,digest,{matches_bytes},expected_values,32)!=size_oop(1)){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}if(call(&c,context,{parameters},0,0)!=size_oop({argc})||call(&c,context,{captures},0,0)!=size_oop({capc})){{if(!c.error)c.error=id.invalid;return finish(&c,0);}}size_t index;if(args[1]==size_oop(0))index={i};else if(args[1]==size_oop(1)&&{argc}!=0)index={bound_index};else if(args[1]==size_oop(2)&&{argc}!=0)index={dnu_index};else{{c.error=id.invalid;return finish(&c,0);}}O at=size_oop(index),result;if(native_provider){{O m=call(&c,code_provider,{native_declared},&at,1);result=call(&c,m,{with_context},&context,1);}}else{{O a[]={{at,context}};result=call(&c,code_provider,{bind_context},a,2);}}return finish(&c,result);}}").unwrap();
     }
     for (i, descriptor) in e.descriptors.iter().enumerate() {
         if let Some(metadata) = descriptor {

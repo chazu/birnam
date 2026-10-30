@@ -157,7 +157,7 @@ unsafe fn run() {
             b"fromUnsignedLow:high:", b"low32", b"high32", b"fromBits:", b"bits", b"wrappingAdd:", b"wrappingSubtract:",
             b"shiftLeft:", b"unsignedDivide:", b"tryPrimitiveExpression:", b"tryPrimitiveExpressionAtEpoch:",
             b"imageSlotAt:in:", b"imageSlotKindAt:in:", b"restoreImageSlotAt:in:put:", b"atWord:",
-            b"fromByteValues", b"appendByteValues", b"appendBytes:", b"sizeWord", b"bytes", b"length", b"byteAtWord:",
+            b"copyByteValuesFrom:count:to:", b"fromByteValues", b"appendByteValues", b"appendBytes:", b"sizeWord", b"bytes", b"length", b"byteAtWord:",
             b"sliceFromWord:toWord:", b"sha256", b"readU64At:", b"readTaggedTableWithSchema:limit:", b"withSymbolName:",
             b"fromWord:", b"numberIdentity", b"externalCharge",
             b"activate", b"automaticCollection:", b"budget:", b"allocationBytes",
@@ -855,6 +855,8 @@ unsafe fn run() {
         let custom_program=send(program_type,b"delegated",&[]).unwrap();
         send(custom_program,b"addMethod",&[sel(b"atWord:"),replacement]).unwrap();
         send(id.root,b"reassociateBehaviorOf:with:",&[program,custom_program]).unwrap();
+        assert!(!send(word,b"tryPrimitiveExpression:",&[program,max,one]).unwrap().is_null(), "whole byte reads must not invoke the scalar accessor");
+        send(custom_program,b"addMethod",&[sel(b"copyByteValuesFrom:count:to:"),replacement]).unwrap();
         assert!(send(word,b"tryPrimitiveExpression:",&[program,max,one]).is_err());
         send(id.root,b"reassociateBehaviorOf:with:",&[program,program_type]).unwrap();
         send(model,b"restoreImageSlotAt:in:put:",&[abi::size(1).unwrap(),record,max]).unwrap();
@@ -988,11 +990,11 @@ unsafe fn run() {
         let name=send(id.root,b"nameWithBytes",&[abi::size(97).unwrap()]).unwrap();
         let name_token=send(roots,b"retain:",&[name]).unwrap();
         let name_type=send(id.root,b"behaviorOf:",&[name]).unwrap();
-        let original_at=send(name_type,b"lookup",&[sel(b"atWord:")]).unwrap();
+        let original_at=send(name_type,b"lookup",&[sel(b"copyByteValuesFrom:count:to:")]).unwrap();
         let at_token=send(roots,b"retain:",&[original_at]).unwrap();
-        send(name_type,b"addMethod",&[sel(b"atWord:"),identity_number]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"copyByteValuesFrom:count:to:"),identity_number]).unwrap();
         assert_eq!(text_bytes(send(string,b"fromBytes:",&[name]).unwrap()),b"\0");
-        send(name_type,b"addMethod",&[sel(b"atWord:"),original_at]).unwrap();
+        send(name_type,b"addMethod",&[sel(b"copyByteValuesFrom:count:to:"),original_at]).unwrap();
         let factory=send(string_type,b"lookup",&[sel(b"fromBytes:")]).unwrap();
         let factory_token=send(roots,b"retain:",&[factory]).unwrap();
         send(string_type,b"addMethod",&[sel(b"fromBytes:"),replacement]).unwrap();

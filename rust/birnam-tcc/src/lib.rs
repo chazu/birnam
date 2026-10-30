@@ -38,6 +38,7 @@ struct Entry {
     method: Oop,
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     continuing: ContinuationProtocol,
     ns: Oop,
@@ -139,11 +140,7 @@ impl State {
         unsafe {
             let scope = self.scope(&[o]);
             let bytes = scope.keep(self.send(o, b"bytes", &[])?);
-            self.id.read_bytes(
-                bytes,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )
+            self.byte_reader.read(bytes)
         }
     }
     unsafe fn make_bytes(&self, bytes: &[u8], factory: &[u8]) -> Result<Oop, Oop> {
@@ -723,6 +720,12 @@ const NAMES: &[&[u8]] = &[
     b"declaredMethodAt:context:",
     b"contextOfMethod:",
     b"sameNativeMethod:as:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"allocate",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Bytes"),
@@ -778,6 +781,12 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"declaredMethodAt:context:"),
     Literal::new(b"contextOfMethod:"),
     Literal::new(b"sameNativeMethod:as:"),
+    Literal::new(b"copyByteValuesFrom:count:to:"),
+    Literal::new(b"appendByteValues"),
+    Literal::new(b"objectBehavior"),
+    Literal::new(b"allocate"),
+    Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -876,6 +885,8 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(context_of_method),
         convention: 0,
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -934,6 +945,7 @@ unsafe extern "C" fn initialize(
         let receiver = pin(send(model, b"allocate:bytes:", &[vt, number(0)?])?)?;
         let template = send(image, b"methodAt:", &[names[b"generatedEntry".as_slice()]])?;
         let s = Box::into_raw(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             continuing,
             ns: *ns,

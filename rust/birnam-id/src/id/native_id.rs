@@ -134,6 +134,9 @@ pub(crate) enum Action {
     SymbolHash,
     SymbolSize,
     SymbolAt,
+    SymbolBytes,
+    NameBytes,
+    SequenceBytes,
     CoreName,
     ModuleBehavior,
     NewNativeMethod,
@@ -224,6 +227,9 @@ core_primitives![
     (b"nameHash", SymbolHash),
     (b"sizeWord", SymbolSize),
     (b"atWord:", SymbolAt),
+    (b"copyByteValuesFrom:count:to:", SymbolBytes),
+    (b"copyByteValuesFrom:count:to:", NameBytes),
+    (b"copyByteValuesFrom:count:to:", SequenceBytes),
     (b"nameBehavior", CoreName),
     (b"moduleBehavior", ModuleBehavior),
     (b"newMethodAt:", NewNativeMethod),
@@ -409,11 +415,11 @@ impl State {
                 | Action::Allocate
                 | Action::Delegated
                 | Action::Bindings => self.meta,
-                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::ExistingSymbol => self.name,
+                Action::Intern | Action::Load | Action::LoadNative | Action::NameSize | Action::NameAt | Action::NameBytes | Action::ExistingSymbol => self.name,
                 Action::At | Action::Put | Action::SequenceSize
-                | Action::LoadArguments => self.sequence,
+                | Action::LoadArguments | Action::SequenceBytes => self.sequence,
                 Action::MethodAt | Action::LiteralAt | Action::NewNativeMethod => self.module,
-                Action::SymbolHash | Action::SymbolSize | Action::SymbolAt => self.symbol,
+                Action::SymbolHash | Action::SymbolSize | Action::SymbolAt | Action::SymbolBytes => self.symbol,
                 Action::WithContext | Action::CapturedMethod | Action::Invoke => self.method,
                 Action::FaultKind | Action::FaultDetail => self.fault,
                 _ => self.object,
@@ -690,6 +696,10 @@ impl State {
                 self.new_method_index(abi::as_size(one()?).ok_or(invalid)?, nil, r)
             },
             Action::NewName => self.name_from_values(a),
+            Action::SymbolBytes | Action::NameBytes | Action::SequenceBytes => {
+                let [from, count, sink] = a else { return Err(invalid); };
+                unsafe { self.copy_byte_values(action, r, abi::as_size(*from).ok_or(invalid)?, abi::as_size(*count).ok_or(invalid)?, *sink) }
+            }
             Action::SymbolSize => {
                 if !a.is_empty(){return Err(invalid);}
                 abi::size(self.symbols.borrow().bytes_of(r).ok_or(invalid)?.len()).ok_or(invalid)

@@ -40,3 +40,5 @@ pub unsafe fn borrowed_slice<'a, T>(p: *const T, n: usize) -> Option<&'a [T]> {
 
 // Descriptive foreign/native signature bytes; these do not add Id value carriers.
 pub mod native_signature;
+
+pub mod byte_transfer;

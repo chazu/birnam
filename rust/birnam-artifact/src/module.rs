@@ -34,6 +34,7 @@ const NATIVE_REQUIRES_COUNT: usize = 11;
 const CAPABILITIES_COUNT: usize = 12;
 
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     ns: Oop,
     roots: Oop,
@@ -139,11 +140,7 @@ impl State {
     unsafe fn bytes(&self, r: Oop) -> Result<Vec<u8>, Oop> {
         unsafe {
             let buffer = self.send(r, b"bytes", &[])?;
-            self.id.read_bytes(
-                buffer,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )
+            self.byte_reader.read(buffer)
         }
     }
     unsafe fn symbol(&self, b: &[u8]) -> Result<Oop, Oop> {
@@ -573,7 +570,12 @@ literals![
     b"target",
     b"visit:",
     b"withContext:",
-    b"wordOf:"
+    b"wordOf:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -685,6 +687,8 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"capabilityAt:"),
         entry: Some(capability_at),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 const DESCRIPTOR_METHODS: &[&[u8]] = &[
     b"kind",
@@ -770,6 +774,7 @@ unsafe extern "C" fn initialize(
                 &[descriptor_vt, layout, abi::size(0).unwrap()],
             )?;
             let s = Box::into_raw(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 ns: *ns,
                 roots,
@@ -789,7 +794,7 @@ unsafe extern "C" fn initialize(
             }));
             INSTANCE.store(s, Ordering::Release);
             let s = &*s;
-            for spec in METHODS {
+            for spec in &METHODS[..METHODS.len()-1] {
                 let name = NAMES[spec.name];
                 let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = send(method, b"withContext:", &[artifact])?;

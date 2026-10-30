@@ -144,20 +144,8 @@ pub(super) unsafe fn bytes(s: &State, value: Oop, limit: usize) -> Result<Vec<u8
         let q = s.scope(&[value]);
         let buffer = q.keep(s.send(value, b"bytes", &[])?);
         let count = index(s, s.send(buffer, b"sizeWord", &[])?)?;
-        if count > limit {
-            return Err(invalid());
-        }
-        let mut bytes = Vec::new();
-        bytes.try_reserve_exact(count).map_err(|_| invalid())?;
-        for i in 0..count {
-            let value = s.send(buffer, b"atWord:", &[abi::size(i).unwrap()])?;
-            bytes.push(
-                abi::as_size(value)
-                    .and_then(|v| u8::try_from(v).ok())
-                    .ok_or_else(invalid)?,
-            );
-        }
-        Ok(bytes)
+        if count > limit { return Err(invalid()); }
+        s.byte_reader.read_count(buffer, count)
     }
 }
 unsafe fn key(s: &State, method: Oop) -> Result<EntryKey, Oop> {

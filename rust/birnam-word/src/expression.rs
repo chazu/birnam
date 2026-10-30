@@ -65,11 +65,7 @@ unsafe fn inner(
         if inputs.len() > 32 || inputs.iter().any(|o| o.is_null()) {
             return Err(s.invalid());
         }
-        let bytes = s.id.read_bytes(
-            *program,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )?;
+        let bytes = s.byte_reader.read(*program)?;
         if bytes.len() < 4 {
             return Err(s.invalid());
         }

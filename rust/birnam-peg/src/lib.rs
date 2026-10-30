@@ -66,6 +66,7 @@ impl Value {
 }
 
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     ns: Oop,
     gc: Oop,
@@ -108,11 +109,7 @@ impl State {
     }
     unsafe fn read_bytes(&self, v: Oop) -> Result<Vec<u8>, Oop> {
         unsafe {
-            self.id.read_bytes(
-                v,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )
+            self.byte_reader.read(v)
         }
     }
     unsafe fn bytes(&self, v: Oop) -> Result<Vec<u8>, Oop> {
@@ -654,7 +651,13 @@ literals![
     b"undefinedRule",
     b"visit:",
     b"withContext:",
-    b"wordOf:"
+    b"wordOf:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"allocate",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -830,6 +833,8 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"retire:"),
         entry: Some(retire),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 const BINDINGS: &[(usize, &[u8])] = &[
     (3, b"literal:"),
@@ -928,6 +933,7 @@ unsafe extern "C" fn initialize(
                 &[vt, abi::size(0).unwrap()],
             )?)?;
             let s = Box::into_raw(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 ns: *ns,
                 gc,
@@ -951,7 +957,7 @@ unsafe extern "C" fn initialize(
             }));
             INSTANCE.store(s, Ordering::Release);
             let s = &*s;
-            for spec in METHODS {
+            for spec in &METHODS[..METHODS.len()-1] {
                 let name = NAMES[spec.name];
                 let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = send(method, b"withContext:", &[receiver])?;

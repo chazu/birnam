@@ -239,7 +239,9 @@ static Oop convert_index(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  return id_size(0);
 }
 static Oop number_identity(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
- (void)root_;(void)c;(void)r;return n==1?a[0]:id.invalid;
+ (void)root_;(void)c;(void)r;
+ if(n==3&&a[0]==id_size(0)&&a[1]==id_size(1)){Oop byte=id_size(0);return one(a[2],APPENDVALUES,byte);}
+ return n==1?a[0]:id.invalid;
 }
 static Oop external_charge(Oop root_,Oop c,Oop r,const Oop*a,size_t n){
  (void)root_;(void)r;if(n!=1)return id.invalid;

@@ -37,6 +37,7 @@ unsafe fn state(c: Oop) -> Result<&'static State, Oop> {
     }
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
@@ -132,11 +133,7 @@ impl<'a> Scope<'a> {
     unsafe fn buffer(&self, o: Oop) -> Result<Vec<u8>, Oop> {
         unsafe {
             let v = self.call(o, b"bytes", &[])?;
-            Ok(self.s.id.read_bytes(
-                v,
-                self.s.names[b"sizeWord".as_slice()],
-                self.s.names[b"atWord:".as_slice()],
-            )?)
+            Ok(self.s.byte_reader.read(v)?)
         }
     }
     unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Oop> {
@@ -155,11 +152,7 @@ impl<'a> Scope<'a> {
         unsafe {
             let behavior = self.obj(self.s.id.root, b"behaviorOf:", &[o])?;
             if behavior == self.named(b"SymbolVt")? {
-                return Ok(Some(self.s.id.read_bytes(
-                    o,
-                    self.s.names[b"sizeWord".as_slice()],
-                    self.s.names[b"atWord:".as_slice()],
-                )?));
+                return Ok(Some(self.s.byte_reader.read(o)?));
             }
             if behavior == self.named(b"StringVt")? {
                 self.bytes(o).map(Some)
@@ -1299,6 +1292,7 @@ unsafe extern "C" fn initialize(
         let fv = keep(send(named(b"ErrorVt")?, b"delegated", &[])?)?;
         let receiver = keep(send(vt, b"allocate", &[abi::size(0).unwrap()])?)?;
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             names,
             ns: *ns,
@@ -1510,6 +1504,12 @@ literals![
     b"fromBits:",
     b"Map",
     b"includesKey:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"methodAt:",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1628,6 +1628,8 @@ static METHODS: &[MethodSpec] = &[
         name: 124,
         entry: Some(retire),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {

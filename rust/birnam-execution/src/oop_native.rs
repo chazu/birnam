@@ -14,11 +14,7 @@ unsafe fn copied_bytes(s: &State, q: &Scope<'_>, value: Oop) -> Result<Oop, Oop>
 unsafe fn byte_snapshot(s: &State, q: &Scope<'_>, value: Oop) -> Result<Vec<u8>, Oop> {
     unsafe {
         let buffer = q.keep(s.send(value, b"bytes", &[])?);
-        s.id.read_bytes(
-            buffer,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )
+        s.byte_reader.read(buffer)
     }
 }
 unsafe fn new_bytes(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> {
@@ -34,11 +30,7 @@ unsafe fn new_bytes(s: &State, q: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Oop> 
 unsafe fn signature(s: &State, q: &Scope<'_>, value: Oop) -> Result<Signature, Oop> {
     unsafe {
         let bytes = q.keep(s.send(value, b"bytes", &[])?);
-        let bytes = s.id.read_bytes(
-            bytes,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )?;
+        let bytes = s.byte_reader.read(bytes)?;
         Signature::parse(&bytes).ok_or_else(invalid)
     }
 }

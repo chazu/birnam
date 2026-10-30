@@ -248,15 +248,7 @@ unsafe fn admit(s: &State, q: &Scope<'_>, path: Oop) -> Result<Option<(Oop, Oop,
         let view = q.keep(s.send(contents, b"bytes", &[])?);
         let snapshot = q.keep(s.send(view, b"clone", &[])?);
         let length = abi::as_size(s.send(snapshot, b"sizeWord", &[])?).ok_or_else(invalid)?;
-        let mut magic = Vec::new();
-        for i in 0..length.min(4) {
-            let byte = s.send(snapshot, b"atWord:", &[abi::size(i).unwrap()])?;
-            magic.push(
-                abi::as_size(byte)
-                    .and_then(|n| u8::try_from(n).ok())
-                    .ok_or_else(invalid)?,
-            );
-        }
+        let magic = s.byte_reader.read_count(snapshot, length.min(4))?;
         if magic != b"\x7fELF" {
             reject!(b"RustCodegen artifact is not an Id native object");
         }

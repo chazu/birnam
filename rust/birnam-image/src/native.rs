@@ -70,6 +70,7 @@ struct Report {
     code: usize,
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
@@ -126,22 +127,14 @@ impl State {
         unsafe {
             let q = Scope::new(self);
             let v = q.keep(self.send(o, b"bytes", &[])?)?;
-            Ok(self.id.read_bytes(
-                v,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )?)
+            Ok(self.byte_reader.read(v)?)
         }
     }
     unsafe fn symbol(&self, o: Oop) -> Result<Vec<u8>, Failure> {
         unsafe {
             let q = Scope::new(self);
             q.keep(o)?;
-            Ok(self.id.read_bytes(
-                o,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )?)
+            Ok(self.byte_reader.read(o)?)
         }
     }
     unsafe fn byte_value(&self, b: &[u8]) -> Result<Oop, Failure> {
@@ -2038,6 +2031,7 @@ unsafe extern "C" fn initialize(
             let system = named(b"System")?;
             let system_vt = send(id.root, b"behaviorOf:", &[system])?;
             let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 names,
                 scoped: RefCell::new(Vec::new()),
@@ -2292,6 +2286,11 @@ literals![
     b"appendByteValues",
     b"clone",
     b"sliceFromWord:toWord:",
+    b"copyByteValuesFrom:count:to:",
+    b"objectBehavior",
+    b"methodAt:",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -2374,6 +2373,8 @@ static METHODS: &[MethodSpec] = &[
         name: 173,
         entry: Some(collect_fact),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {

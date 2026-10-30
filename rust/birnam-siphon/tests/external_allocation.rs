@@ -59,7 +59,7 @@ fn bytes_charge_capacity_and_survive_replaced_accounting() {
     hooks.put(state, 6, method(b"collectingCharge"));
     for (selector, implementation) in [
         (b"sizeWord".as_slice(), b"largeSize".as_slice()),
-        (b"atWord:", b"largeByte"),
+        (b"copyByteValuesFrom:count:to:", b"largeByte"),
         (b"run", b"run"),
     ] {
         call(vt, b"addMethod", &[key(selector), method(implementation)]);

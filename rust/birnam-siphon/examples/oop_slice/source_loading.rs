@@ -8,6 +8,7 @@ pub(super) unsafe fn check(
 ) {
     unsafe {
         let [ns, roots, gc, string, integer] = objects;
+        let byte_context = birnam_host_support::Context::from_namespace(*id, ns, Default::default(), sel(b"nameWithBytes")).unwrap();
         let tokens = std::cell::RefCell::new(Vec::new());
         let keep = |v| {
             tokens
@@ -35,7 +36,7 @@ pub(super) unsafe fn check(
         let named = |name: &[u8]| call(ns, b"at:", &[sel(name)]);
         let bytes = |v| {
             let v = call(v, b"bytes", &[]);
-            id.read_bytes(v, sel(b"sizeWord"), sel(b"atWord:")).unwrap()
+            byte_context.scope().read_bytes(v).unwrap()
         };
         let codegen = named(b"Codegen");
         let system = named(b"System");

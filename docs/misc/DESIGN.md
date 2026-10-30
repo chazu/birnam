@@ -77,6 +77,33 @@ and test them. The [necessity audit](../design/minimal-id-stackless-machinery.md
 separates these responsibilities from replaceable machinery. It is not an
 implemented replacement or permission to let incidental regressions define policy.
 
+### Whole-buffer byte operations
+
+Whole-buffer consumers use the provider's current `sizeWord` and
+`copyByteValuesFrom:count:to:` operations. Indexed access (`atWord:`) is for
+actual indexed access, not an implicit whole-buffer conversion protocol.
+The user explicitly selected bulk reads on 2026-10-29. Replacing an indexed
+accessor does not redefine a bulk copy; custom providers implement the bulk
+operation to define their logical bytes. Missing bulk support fails rather than
+silently issuing one send per byte.
+
+A bulk provider snapshots the requested range before callbacks and delivers
+bounded Oop argument batches to the destination's current `appendByteValues`
+operation. The consumer owns its output storage, validates byte values and the
+exact promised length, and rejects callbacks after the read ends. Nested reads,
+GC, provider failure and ignored destination failure must not publish partial or
+misdirected output. No mutable owner borrow spans a callback.
+
+The bootstrap Name, Symbol and Sequence owners support this data operation, as
+do Bytes and String. This does not extend generic Id dispatch or introduce
+foreign payload access. Native consumers do not need a shared buffer layout or
+raw pointer handoff. Prepared read receivers belong to their native consumer.
+Native owners prepare them at module load; the executable facade declares its
+callback once through TCC. Bulk delivery and ordinary Method construction install
+no bindings. `Bytes matchesByteValues` compares an entire byte-value argument
+list and returns immediate 0 or 1; generated native factories use this instead of
+reading each checksum byte in a separate send.
+
 ### Optimization preserves liveness and malleability
 
 Optimizer and deoptimization support are retained requirements, confirmed by the

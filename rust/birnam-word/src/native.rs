@@ -12,6 +12,7 @@ use std::{
     sync::atomic::{AtomicPtr, Ordering},
 };
 pub(crate) struct Number {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     pub(crate) id: Protocol,
     namespace: Oop,
     roots: Oop,
@@ -327,7 +328,9 @@ macro_rules! operations{($(($name:literal,$entry:ident,$op:expr)),*$(,)?)=>{
     static METHODS:&[MethodSpec]=&[$(MethodSpec{name:index($name),entry:Some($entry)}),*,
         MethodSpec{name:index(b"rootsDo:"),entry:Some(roots)},MethodSpec{name:index(b"referencesOf:do:"),entry:Some(references)},
         MethodSpec{name:index(b"tryPrimitiveExpression:"),entry:Some(crate::expression::evaluate)},
-        MethodSpec{name:index(b"tryPrimitiveExpressionAtEpoch:"),entry:Some(crate::expression::evaluate_at_epoch)}];
+        MethodSpec{name:index(b"tryPrimitiveExpressionAtEpoch:"),entry:Some(crate::expression::evaluate_at_epoch)},
+
+        MethodSpec{name:NAMES.len()-1,entry:Some(abi::byte_transfer::receive_entry)}];
 };}
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
@@ -395,7 +398,13 @@ literals![
     b"low32",
     b"high32",
     b"sizeWord",
-    b"atWord:"
+    b"atWord:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"allocate",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 const fn index(name: &[u8]) -> usize {
     let mut i = 0;
@@ -498,6 +507,7 @@ unsafe extern "C" fn initialize(
                 &[behavior, abi::size(8).unwrap()],
             )?)?;
             let s = Box::into_raw(Box::new(Number {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 namespace: *namespace,
                 roots,
@@ -516,7 +526,7 @@ unsafe extern "C" fn initialize(
             }));
             INSTANCE.store(s, Ordering::Release);
             let s = &*s;
-            for spec in METHODS {
+            for spec in &METHODS[..METHODS.len()-1] {
                 let name = NAMES[spec.name];
                 let method = s.send(image, b"methodAt:", &[symbols[spec.name]])?;
                 let method = s.send(method, b"withContext:", &[prototype])?;

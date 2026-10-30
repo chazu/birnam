@@ -314,20 +314,7 @@ unsafe fn operation(s: &State, q: &Scope<'_>, op: Op, args: &[Oop]) -> Result<Oo
                     let mut failure = None;
                     let ranges = plan
                         .decode_ranges(length, |range| {
-                            let result = (|| -> Result<Vec<u8>, Oop> {
-                                range
-                                    .map(|i| {
-                                        let v = s.send(
-                                            bytes,
-                                            b"atWord:",
-                                            &[abi::size(i).ok_or_else(invalid)?],
-                                        )?;
-                                        abi::as_size(v)
-                                            .and_then(|n| u8::try_from(n).ok())
-                                            .ok_or_else(invalid)
-                                    })
-                                    .collect()
-                            })();
+                            let result = s.byte_reader.read_range(bytes, range.start, range.len());
                             match result {
                                 Ok(v) => Some(v),
                                 Err(e) => {

@@ -89,6 +89,7 @@ impl Value {
     }
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     names: HashMap<&'static [u8], Oop>,
     ns: Oop,
@@ -262,11 +263,7 @@ impl Scope<'_> {
     fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, Oop> {
         let value = self.call(value, b"bytes", &[])?;
         unsafe {
-            self.state.id.read_bytes(
-                value,
-                self.state.names[b"sizeWord".as_slice()],
-                self.state.names[b"atWord:".as_slice()],
-            )
+            self.state.byte_reader.read(value)
         }
     }
     fn bytes(&self, value: Oop, symbol: bool) -> Result<Option<Vec<u8>>, Oop> {
@@ -276,11 +273,7 @@ impl Scope<'_> {
         }
         if symbol {
             unsafe {
-                s.id.read_bytes(
-                    value,
-                    s.names[b"sizeWord".as_slice()],
-                    s.names[b"atWord:".as_slice()],
-                )
+                s.byte_reader.read(value)
                 .map(Some)
             }
         } else {
@@ -1641,6 +1634,10 @@ const NAMES: &[&[u8]] = &[
     b"referencesOf:do:",
     b"finalize:",
     b"newMethodAt:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"releaseTokensProtecting"),
@@ -1781,6 +1778,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"referencesOf:do:"),
     Literal::new(b"finalize:"),
     Literal::new(b"newMethodAt:"),
+    Literal::new(b"copyByteValuesFrom:count:to:"),
+    Literal::new(b"appendByteValues"),
+    Literal::new(b"objectBehavior"),
+    Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -2087,6 +2088,8 @@ static METHODS: &[MethodSpec] = &[
         name: 112,
         entry: Some(clone_4),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -2136,6 +2139,7 @@ unsafe extern "C" fn initialize(
             *f = (vt, keep(send(vt, b"allocate", &[abi::size(0).unwrap()])?)?);
         }
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             names,
             ns: *ns,

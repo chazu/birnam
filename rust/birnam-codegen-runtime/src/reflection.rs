@@ -207,11 +207,7 @@ pub(super) unsafe extern "C" fn name_of(_: Oop, c: Oop, _: Oop, a: *const Oop, n
             let message = q.keep(s.text(b"nameOf: expects a symbol")?);
             return s.send(s.named(b"Error")?, b"kind:message:", &[kind, message]);
         }
-        s.text(&s.id.read_bytes(
-            *symbol,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )?)
+        s.text(&s.byte_reader.read(*symbol)?)
     })()
     .unwrap_or_else(abi::fault_reference)
 }

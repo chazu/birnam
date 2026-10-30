@@ -48,6 +48,7 @@ fn done(v: Result<Oop, Failure>) -> Oop {
     }
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     ns: Oop,
     names: HashMap<&'static [u8], Oop>,
@@ -125,11 +126,7 @@ impl State {
             let q = Scope::new(self);
             q.keep(o)?;
             let buffer = q.keep(self.send(o, b"bytes", &[])?)?;
-            Ok(self.id.read_bytes(
-                buffer,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )?)
+            Ok(self.byte_reader.read(buffer)?)
         }
     }
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Failure> {
@@ -299,6 +296,7 @@ unsafe extern "C" fn initialize(
         let receiver = send(vt, b"allocate", &[word(0)?])?;
         let rt = send(roots, b"retain:", &[receiver])?;
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             ns: *ns,
             names,
@@ -517,6 +515,11 @@ literals![
     b"sourceRegistryV1",
     b"bindingsDo:",
     b"sequence",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -607,6 +610,8 @@ static METHODS: &[MethodSpec] = &[
         name: 46,
         entry: Some(roots),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {

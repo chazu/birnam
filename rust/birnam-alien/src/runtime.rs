@@ -67,6 +67,7 @@ impl Drop for Address {
     }
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
@@ -165,11 +166,7 @@ impl<'a> Scope<'a> {
     unsafe fn buffer(&self, o: Oop) -> Result<Vec<u8>, Failure> {
         unsafe {
             let v = self.call(o, b"bytes", &[])?;
-            Ok(self.s.id.read_bytes(
-                v,
-                self.s.names[b"sizeWord".as_slice()],
-                self.s.names[b"atWord:".as_slice()],
-            )?)
+            Ok(self.s.byte_reader.read(v)?)
         }
     }
     unsafe fn bytes(&self, o: Oop) -> Result<Option<Vec<u8>>, Failure> {
@@ -305,16 +302,7 @@ unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer
                 if count > 256 * 1024 * 1024 {
                     return scope.error(b"invalidEmbeddedLibrary", b"library exceeds 256 MiB");
                 }
-                let mut bytes = Vec::new();
-                bytes.try_reserve_exact(count).map_err(|_| invalid())?;
-                for index in 0..count {
-                    let byte = s.send(buffer, b"atWord:", &[abi::size(index).unwrap()])?;
-                    bytes.push(
-                        abi::as_size(byte)
-                            .and_then(|v| u8::try_from(v).ok())
-                            .ok_or_else(invalid)?,
-                    );
-                }
+                let bytes = s.byte_reader.read_count(buffer, count)?;
                 let result = s.libraries.borrow_mut().provide(&name, &bytes);
                 match result {
                     Ok(()) => Ok(r),
@@ -761,6 +749,7 @@ unsafe extern "C" fn initialize(
         let receiver = keep(send(vt, b"allocate", &[abi::size(0).unwrap()])?)?;
         let prototype = keep(send(av, b"allocate", &[abi::size(0).unwrap()])?)?;
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             names,
             ns: *ns,
@@ -957,6 +946,12 @@ literals![
     b"pokeByte:at:",
     b"pokePtr:at:",
     b"pokeDouble:at:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"methodAt:",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1079,6 +1074,8 @@ static METHODS: &[MethodSpec] = &[
         name: 105,
         entry: Some(poke_double),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v2: Module = Module {

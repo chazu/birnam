@@ -6,8 +6,9 @@ pub(super) unsafe fn check(
     sel: &impl Fn(&[u8]) -> Oop,
     objects: [Oop; 5],
 ) {
-    unsafe {
+    {
         let [ns, roots, gc, string, integer] = objects;
+        let byte_context = birnam_host_support::Context::from_namespace(*id, ns, Default::default(), sel(b"nameWithBytes")).unwrap();
         let retain = |v| send(roots, b"retain:", &[v]).unwrap();
         let release = |v| {
             send(roots, b"release:", &[v]).unwrap();
@@ -24,7 +25,7 @@ pub(super) unsafe fn check(
             let vt = retain(v);
             let v = send(v, b"bytes", &[]).unwrap();
             let bt = retain(v);
-            let result = id.read_bytes(v, sel(b"sizeWord"), sel(b"atWord:")).unwrap();
+            let result = byte_context.scope().read_bytes(v).unwrap();
             release(bt);
             release(vt);
             result

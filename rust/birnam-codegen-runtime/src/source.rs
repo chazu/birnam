@@ -73,11 +73,7 @@ impl State {
             if !self.exact(q, value, b"SymbolVt")? {
                 return Ok(None);
             }
-            Ok(Some(self.id.read_bytes(
-                value,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )?))
+            Ok(Some(self.byte_reader.read(value)?))
         }
     }
     pub(super) unsafe fn source_bytes(

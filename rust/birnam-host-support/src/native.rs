@@ -77,7 +77,7 @@ pub unsafe fn initialize(
         let invalid = id.invalid;
         let result = (|| -> Result<Oop, HostError> {
             let symbols = borrowed_slice(l, n)
-                .filter(|s| s.len() == methods.len() + 2)
+                .filter(|s| s.len() == methods.len() + 2 + abi::byte_transfer::NAMES.len())
                 .ok_or_else(|| HostError("invalid Host literals".into()))?;
             let [ns, prefix, lib, workspace, guides, id_path] = borrowed_slice(a, count)
                 .ok_or_else(|| HostError("invalid Host initialization".into()))?
@@ -101,7 +101,8 @@ pub unsafe fn initialize(
             {
                 return Err(HostError("Host runtime mismatch".into()));
             }
-            let mut h = Context::from_namespace(id, *ns, Resources::default(), symbols[0])?;
+            let mut h = Context::from_namespace_unprepared(id, *ns, Resources::default(), symbols[0])?;
+            h.install_byte_reader(image)?;
             let q = h.scope();
             for value in [prefix, lib, workspace, guides, id_path] {
                 q.keep(*value)?;
@@ -166,13 +167,16 @@ macro_rules! host_owner {
   $(unsafe extern "C" fn $entry(root:birnam_abi::Oop,c:birnam_abi::Oop,r:birnam_abi::Oop,a:*const birnam_abi::Oop,n:usize)->birnam_abi::Oop{
    unsafe{$crate::native::invoke(&INSTANCE,root,c,r,a,n,$selector,$dispatch)}
   })+
-  static LITERALS:&[birnam_abi::id_protocol::Literal]=&[
-   birnam_abi::id_protocol::Literal::new(b"nameWithBytes"),birnam_abi::id_protocol::Literal::new($name),$(birnam_abi::id_protocol::Literal::new($selector.as_bytes())),+
-  ];
+  static LITERALS:&[birnam_abi::id_protocol::Literal]=&{
+   const OWN:&[&[u8]]=&[b"nameWithBytes",$name,$($selector.as_bytes()),+];
+   let mut a=[const {birnam_abi::id_protocol::Literal::new(b"")};OWN.len()+birnam_abi::byte_transfer::NAMES.len()];
+   let mut i=0;while i<OWN.len(){a[i]=birnam_abi::id_protocol::Literal::new(OWN[i]);i+=1;}
+   let mut j=0;while j<birnam_abi::byte_transfer::NAMES.len(){a[i+j]=birnam_abi::id_protocol::Literal::new(birnam_abi::byte_transfer::NAMES[j]);j+=1;}a
+  };
   static METHODS:&[birnam_abi::id_protocol::MethodSpec]=&{
    const ENTRIES:&[birnam_abi::id_protocol::Method]=&[$($entry as birnam_abi::id_protocol::Method),+];
-   let mut specs=[const {birnam_abi::id_protocol::MethodSpec{name:0,entry:None}};ENTRIES.len()];
-   let mut i=0;while i<ENTRIES.len(){specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(ENTRIES[i])};i+=1;}specs
+   let mut specs=[const {birnam_abi::id_protocol::MethodSpec{name:0,entry:None}};ENTRIES.len()+1];
+   let mut i=0;while i<ENTRIES.len(){specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(ENTRIES[i])};i+=1;}specs[i]=birnam_abi::id_protocol::MethodSpec{name:i+2,entry:Some(birnam_abi::byte_transfer::receive_entry)};specs
   };
   unsafe extern "C" fn initialize(p:*const birnam_abi::id_protocol::Protocol,image:birnam_abi::Oop,l:*const birnam_abi::Oop,n:usize,a:*const birnam_abi::Oop,count:usize)->birnam_abi::Oop{
    unsafe{$crate::native::initialize(p,image,l,n,a,count,&INSTANCE,&BUSY,&[$($selector),+])}

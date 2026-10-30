@@ -31,6 +31,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     control: Control,
     reflect: Oop,
@@ -125,11 +126,7 @@ impl State {
         unsafe {
             let q = self.scope(&[v]);
             let buffer = q.keep(self.send(v, b"bytes", &[])?);
-            self.id.read_bytes(
-                buffer,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )
+            self.byte_reader.read(buffer)
         }
     }
     unsafe fn text(&self, bytes: &[u8]) -> Result<Oop, Oop> {
@@ -445,11 +442,7 @@ unsafe extern "C" fn define_method(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usi
             return Err(invalid());
         };
         let q = s.scope(&[r, *selector, *target, *implementation]);
-        let bytes = s.id.read_bytes(
-            *selector,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )?;
+        let bytes = s.byte_reader.read(*selector)?;
         let first = *bytes.first().ok_or_else(invalid)?;
         let colons = bytes.iter().filter(|&&b| b == b':').count();
         let arity = if colons > 0 {
@@ -695,6 +688,10 @@ const NAMES: &[&[u8]] = &[
     b"nativeSignatureOf:",
     b"sameNativeMethod:as:",
     b"codeObject",
+    b"copyByteValuesFrom:count:to:",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -888,6 +885,10 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"nativeSignatureOf:"),
     Literal::new(b"sameNativeMethod:as:"),
     Literal::new(b"codeObject"),
+    Literal::new(b"copyByteValuesFrom:count:to:"),
+    Literal::new(b"objectBehavior"),
+    Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -1215,6 +1216,8 @@ static METHODS: &[MethodSpec] = &[
         entry: Some(reflection::parent),
         convention: 0,
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1266,6 +1269,7 @@ unsafe extern "C" fn initialize(
         let reflect = send(reflect_vt, b"allocate", &[abi::size(0).unwrap()])?;
         let reflect_token = send(roots, b"retain:", &[reflect])?;
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             control,
             reflect,
@@ -1281,7 +1285,7 @@ unsafe extern "C" fn initialize(
             thread: std::thread::current().id(),
         }));
         INSTANCE.store(s, Ordering::Release);
-        for spec in METHODS {
+        for spec in &METHODS[..METHODS.len()-1] {
             let name = NAMES[spec.name];
             let target = if matches!(
                 name,

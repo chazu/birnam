@@ -12,6 +12,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     ns: Oop,
     nil: Oop,
@@ -83,12 +84,7 @@ impl State {
             if bytes.is_null() {
                 return Ok(None);
             }
-            self.id
-                .read_bytes(
-                    bytes,
-                    self.names[b"sizeWord".as_slice()],
-                    self.names[b"atWord:".as_slice()],
-                )
+            self.byte_reader.read(bytes)
                 .map(Some)
         }
     }
@@ -211,7 +207,13 @@ literals![
     b"sequence",
     b"sizeWord",
     b"visit:",
-    b"withContext:"
+    b"withContext:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"allocate",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -247,6 +249,8 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"rootsDo:"),
         entry: Some(roots_do),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -296,6 +300,7 @@ unsafe extern "C" fn initialize(
         )?;
         let token = send(roots, b"retain:", &[owner])?;
         let s = Box::into_raw(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             ns: *ns,
             nil,

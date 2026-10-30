@@ -46,11 +46,7 @@ impl State {
                 return Ok(None);
             }
             scope.keep(value)?;
-            Ok(Some(self.id.read_bytes(
-                value,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )?))
+            Ok(Some(self.byte_reader.read(value)?))
         }
     }
     pub(super) unsafe fn text(&self, scope: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Failure> {

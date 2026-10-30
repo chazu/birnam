@@ -1,7 +1,7 @@
 /* External Bytes capacity and collecting policy calls, with Oop byte providers. */
 #include "../oop-id-v2/id.h"
 #include <stdio.h>
-static IdProtocol id;static Oop names[16];static size_t calls,total;
+static IdProtocol id;static Oop names[16],append_values;static size_t calls,total;
 enum{AT,FROM,APPEND,BYTES,SIZE,INDEX,COLLECT,PREPARE,CHARGED,CHARGE,AUTO,RETAIN,RELEASE,IDENTITY,ADD,ORIGINAL};
 #define CHECK(v) do{Oop checked=(v);if(id_fault(checked)){fprintf(stderr,"external allocation send failed at %d\n",__LINE__);return checked;}}while(0)
 #define EXPECT(v) do{if(!(v)){fprintf(stderr,"external allocation assertion failed at %d\n",__LINE__);return id.invalid;}}while(0)
@@ -13,7 +13,12 @@ static Oop collecting_charge(Oop root,Oop c,Oop r,const Oop*a,size_t n){
  (void)root;if(n!=1||!((uintptr_t)a[0]&1))return id.invalid;calls++;total+=id_unbox(a[0]);CHECK(send(get(c,0),COLLECT,0,0));return send(r,ORIGINAL,a,n);
 }
 static Oop large_size(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(void)r;(void)a;return n?id.invalid:id_size(16u<<20);}
-static Oop large_byte(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;(void)c;(void)r;return n==1&&((uintptr_t)a[0]&1)&&id_unbox(a[0])<(16u<<20)?id_size(7):id.invalid;}
+static Oop large_byte(Oop root,Oop c,Oop r,const Oop*a,size_t n){
+ (void)root;(void)c;(void)r;if(n!=3)return id.invalid;
+ size_t from=id_unbox(a[0]),count=id_unbox(a[1]);if(from>(16u<<20)||count>(16u<<20)-from)return id.invalid;
+ Oop values[8192];for(size_t i=0;i<8192;i++)values[i]=id_size(7);
+ while(count){size_t take=count<8192?count:8192;CHECK(id.message(id.root,a[2],append_values,values,take));count-=take;}return 0;
+}
 static Oop run(Oop root,Oop c,Oop r,const Oop*a,size_t n){
  (void)root;(void)r;(void)a;if(n)return id.invalid;Oop gc=get(c,0),roots=get(c,1),factory=get(c,2);
  for(size_t i=0;i<2;i++){
@@ -32,8 +37,8 @@ static Oop run(Oop root,Oop c,Oop r,const Oop*a,size_t n){
  CHECK(send(roots,RELEASE,&view_pin,1));CHECK(send(roots,RELEASE,&pin,1));CHECK(send(gc,COLLECT,0,0));return one;
 }
 static Oop initialize(const IdProtocol*p,Oop image,const Oop*s,size_t count,const Oop*a,size_t n){
- (void)a;if(count!=20||n)return p->invalid;id=*p;for(size_t i=0;i<16;i++)names[i]=s[i];return image;
+ (void)a;if(count!=21||n)return p->invalid;id=*p;for(size_t i=0;i<16;i++)names[i]=s[i];append_values=s[20];return image;
 }
-static const IdLiteral literals[]={LIT("at:"),LIT("fromBytes:"),LIT("appendBytes:"),LIT("bytes"),LIT("sizeWord"),LIT("atWord:"),LIT("collectPrecisely"),LIT("prepareAllocation"),LIT("allocationBytes"),LIT("chargeExternalAllocation:"),LIT("automaticCollection:"),LIT("retain:"),LIT("release:"),LIT("identityOf:"),LIT("addMethod"),LIT("externalOriginalCharge:"),LIT("collectingCharge"),LIT("largeSize"),LIT("largeByte"),LIT("run")};
+static const IdLiteral literals[]={LIT("at:"),LIT("fromBytes:"),LIT("appendBytes:"),LIT("bytes"),LIT("sizeWord"),LIT("atWord:"),LIT("collectPrecisely"),LIT("prepareAllocation"),LIT("allocationBytes"),LIT("chargeExternalAllocation:"),LIT("automaticCollection:"),LIT("retain:"),LIT("release:"),LIT("identityOf:"),LIT("addMethod"),LIT("externalOriginalCharge:"),LIT("collectingCharge"),LIT("largeSize"),LIT("largeByte"),LIT("run"),LIT("appendByteValues")};
 static const IdMethodSpec methods[]={{16,collecting_charge},{17,large_size},{18,large_byte},{19,run}};
-const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,20,methods,4,initialize};
+const IdModule birnam_native_module_v2={2,sizeof(IdModule),literals,21,methods,4,initialize};

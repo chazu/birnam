@@ -45,6 +45,7 @@ struct Collector {
     failed: bool,
 }
 struct State {
+    byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     namespace: Oop,
     roots: Oop,
@@ -166,10 +167,7 @@ impl<'a> Scope<'a> {
     }
     unsafe fn bytes(&self, value: Oop) -> Result<Vec<u8>> {
         unsafe {
-            Ok(self
-                .s
-                .id
-                .read_bytes(value, self.name(b"sizeWord"), self.name(b"atWord:"))?)
+            Ok(self.s.byte_reader.read(value)?)
         }
     }
     unsafe fn text(&self, bytes: &[u8]) -> Result<Oop> {
@@ -1014,6 +1012,11 @@ const NAMES: &[&[u8]] = &[
     b"atWord:",
     b"methodAt:",
     b"withContext:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 
 const LOGIC_METHODS: &[(&[u8], Method)] = &[
@@ -1055,7 +1058,7 @@ const LITERALS: [Literal; NAMES.len()] = {
     a
 };
 const METHOD_COUNT: usize =
-    STORE_METHODS.len() + LOGIC_METHODS.len() + FACTORY_METHODS.len() + COLLECTOR_METHODS.len();
+    STORE_METHODS.len() + LOGIC_METHODS.len() + FACTORY_METHODS.len() + COLLECTOR_METHODS.len() + 1;
 const METHODS: [MethodSpec; METHOD_COUNT] = {
     let mut a = [const {
         MethodSpec {
@@ -1084,6 +1087,7 @@ const METHODS: [MethodSpec; METHOD_COUNT] = {
         }
         t += 1;
     }
+    a[i] = MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) };
     a
 };
 unsafe extern "C" fn initialize(
@@ -1153,6 +1157,7 @@ unsafe extern "C" fn initialize(
             let entity_vt = vt()?;
             let collector_vt = vt()?;
             let state = Box::into_raw(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 namespace: *ns,
                 roots,

@@ -77,11 +77,8 @@ impl Scope<'_> {
     }
     pub fn read_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {
         self.keep(value)?;
-        unsafe {
-            self.host
-                .id
-                .read_bytes(value, self.host.size_word, self.host.at_word)
-        }
+        self.host.ensure_byte_reader()?;
+        unsafe { self.host.byte_reader.borrow().as_ref().unwrap().read(value) }
         .map_err(|e| native_error("read Host bytes", e))
     }
     pub fn text(&self, o: Oop) -> Result<String, HostError> {
@@ -194,8 +191,7 @@ pub struct Context {
     pub roots: Oop,
     constructor: Oop,
     sequence: Oop,
-    size_word: Oop,
-    at_word: Oop,
+    byte_reader: RefCell<Option<abi::byte_transfer::Reader>>,
     retain: Oop,
     release_many: Oop,
     permanent: Vec<Oop>,
@@ -207,6 +203,37 @@ pub struct Context {
     _owner_thread: PhantomData<Rc<()>>,
 }
 impl Context {
+    pub(crate) fn install_byte_reader(&self, image: Oop) -> Result<(), HostError> {
+        let keys = abi::byte_transfer::NAMES.iter().map(|&n| self.intern(n)
+            .map(|v|(n,v)).map_err(|e|native_error("byte transfer selector",e)))
+            .collect::<Result<std::collections::HashMap<_,_>,_>>()?;
+        let reader = unsafe { abi::byte_transfer::Reader::new(self.id,image,self.roots,|n|keys[n]) }
+            .map_err(|e|native_error("byte reader",e))?;
+        *self.byte_reader.borrow_mut()=Some(reader); Ok(())
+    }
+    fn ensure_byte_reader(&self) -> Result<(), HostError> {
+        if self.byte_reader.borrow().is_some() { return Ok(()); }
+        // The executable has no native Module descriptor. Declare its callback
+        // through the existing TCC owner; the Unit retains the forwarding code.
+        let literals=abi::byte_transfer::NAMES.iter().map(|n|format!("{{\"{}\",{}}}",String::from_utf8_lossy(n),n.len())).collect::<Vec<_>>().join(",");
+        let source=format!(r#"typedef void *O; typedef unsigned long U;
+struct L{{const unsigned char *p;U n;}}; struct M{{U name;O(*entry)(O,O,O,const O*,U);}};
+static O receive(O root,O c,O r,const O*a,U n){{return ((O(*)(O,O,O,const O*,U))0x{:x})(root,c,r,a,n);}}
+static O init(const void*p,O image,const O*l,U n,const O*a,U count){{return image;}}
+static const struct L literals[]={{{}}}; static const struct M methods[]={{{{0,receive}}}};
+const struct {{unsigned version,bytes;const struct L*l;U nl;const struct M*m;U nm;O(*init)(const void*,O,const O*,U,const O*,U);}} birnam_native_module_v2={{2,sizeof(birnam_native_module_v2),literals,{},methods,1,init}};
+"#,abi::byte_transfer::receive_entry as *const () as usize,literals,abi::byte_transfer::NAMES.len());
+        let q=self.scope(); let source=q.string(source.as_bytes())?;
+        let unit=q.call(self.named(b"TCC")?,b"compile:",&[source])?;
+        q.call(unit,b"initialize",&[])?;
+        let receive=q.call(unit,b"declaredMethodAt:",&[size(0)?])?;
+        let keys=abi::byte_transfer::NAMES.iter().map(|&n|self.intern(n)
+            .map(|v|(n,v)).map_err(|e|native_error("byte transfer selector",e)))
+            .collect::<Result<std::collections::HashMap<_,_>,_>>()?;
+        let reader=unsafe { abi::byte_transfer::Reader::from_method(self.id,receive,self.roots,|n|keys[n]) }
+            .map_err(|e|native_error("byte reader",e))?;
+        *self.byte_reader.borrow_mut()=Some(reader); Ok(())
+    }
     pub fn intern(&self, name: &[u8]) -> Result<Oop, Oop> {
         unsafe {
             let values: Vec<_> = name
@@ -297,6 +324,19 @@ impl Context {
         resources: Resources,
         constructor: Oop,
     ) -> Result<Self, HostError> {
+        let host=Self::from_namespace_unprepared(id,namespace,resources,constructor)?;
+        let tcc=host.intern(b"TCC").map_err(|e|native_error("TCC selector",e))?;
+        if !unsafe { id.send(namespace,id.at,&[tcc]) }.map_err(|e|native_error("TCC",e))?.is_null() {
+            host.ensure_byte_reader()?;
+        }
+        Ok(host)
+    }
+    pub(crate) fn from_namespace_unprepared(
+        id: Protocol,
+        namespace: Oop,
+        resources: Resources,
+        constructor: Oop,
+    ) -> Result<Self, HostError> {
         unsafe {
             let intern = |name: &[u8]| -> Result<Oop, Oop> {
                 let values: Vec<_> = name
@@ -332,24 +372,13 @@ impl Context {
                 id.send(roots, retain, &[sequence])
                     .map_err(|e| native_error("retain sequence", e))?,
             );
-            let size_word = intern(b"sizeWord").map_err(|e| native_error("size selector", e))?;
-            permanent.push(
-                id.send(roots, retain, &[size_word])
-                    .map_err(|e| native_error("retain size selector", e))?,
-            );
-            let at_word = intern(b"atWord:").map_err(|e| native_error("index selector", e))?;
-            permanent.push(
-                id.send(roots, retain, &[at_word])
-                    .map_err(|e| native_error("retain index selector", e))?,
-            );
             Ok(Self {
                 id,
                 namespace,
                 roots,
                 constructor,
                 sequence,
-                size_word,
-                at_word,
+                byte_reader: RefCell::new(None),
                 retain,
                 release_many,
                 permanent,

@@ -14,6 +14,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     ns: Oop,
     receiver: Oop,
@@ -83,11 +84,7 @@ impl State {
         unsafe {
             let q = self.scope(&[v]);
             let buffer = q.keep(self.send(v, b"bytes", &[])?);
-            self.id.read_bytes(
-                buffer,
-                self.names[b"sizeWord".as_slice()],
-                self.names[b"atWord:".as_slice()],
-            )
+            self.byte_reader.read(buffer)
         }
     }
     unsafe fn text(&self, bytes: &[u8]) -> Result<Oop, Oop> {
@@ -273,6 +270,11 @@ const NAMES: &[&[u8]] = &[
     b"size",
     b"wordOf:",
     b"fromWord:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Error"),
@@ -310,6 +312,11 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"size"),
     Literal::new(b"wordOf:"),
     Literal::new(b"fromWord:"),
+    Literal::new(b"copyByteValuesFrom:count:to:"),
+    Literal::new(b"appendByteValues"),
+    Literal::new(b"objectBehavior"),
+    Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -336,6 +343,8 @@ static METHODS: &[MethodSpec] = &[
         name: 30,
         entry: Some(block_factory),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -379,6 +388,7 @@ unsafe extern "C" fn initialize(
         let receiver = send(vt, b"allocate", &[abi::size(0).unwrap()])?;
         let receiver_token = send(roots, b"retain:", &[receiver])?;
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             ns: *ns,
             receiver,
@@ -388,7 +398,7 @@ unsafe extern "C" fn initialize(
             thread: std::thread::current().id(),
         }));
         INSTANCE.store(s, Ordering::Release);
-        for spec in METHODS {
+        for spec in &METHODS[..METHODS.len()-1] {
             let method = send(image, b"methodAt:", &[symbols[spec.name]])?;
             let method = send(method, b"withContext:", &[*ns])?;
             send(vt, b"addMethod", &[symbols[spec.name], method])?;

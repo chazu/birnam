@@ -85,11 +85,7 @@ impl Capture<'_, '_> {
                 return Ok(Value::String(b));
             }
             if vt == q.named(b"SymbolVt")? {
-                let b = q.s.id.read_bytes(
-                    o,
-                    q.s.names[b"sizeWord".as_slice()],
-                    q.s.names[b"atWord:".as_slice()],
-                )?;
+                let b = q.s.byte_reader.read(o)?;
                 self.reserve(4 + b.len())?;
                 return Ok(Value::Symbol(b));
             }

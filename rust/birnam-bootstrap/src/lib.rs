@@ -16,6 +16,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicPtr, Ordering},
 };
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     ns: Oop,
     roots: Oop,
@@ -213,11 +214,7 @@ unsafe extern "C" fn load_native(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize
         let [path, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let path = s.id.read_bytes(
-            *path,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )?;
+        let path = s.byte_reader.read(*path)?;
         s.load_path(&path, args)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -252,11 +249,7 @@ unsafe extern "C" fn load_result(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize
             return Err(invalid());
         };
         let q = s.scope(&[*path, *arguments]);
-        let bytes = s.id.read_bytes(
-            *path,
-            s.names[b"sizeWord".as_slice()],
-            s.names[b"atWord:".as_slice()],
-        )?;
+        let bytes = s.byte_reader.read(*path)?;
         let integer = q.keep(s.named(b"Integer")?);
         let size = q.keep(s.send(*arguments, b"size", &[])?);
         let count = abi::as_size(s.send(integer, b"wordOf:", &[size])?).ok_or_else(invalid)?;
@@ -337,7 +330,11 @@ literals![
     b"add:",
     b"faultKind",
     b"mappingFailed",
-    b"incompatibleModule"
+    b"incompatibleModule",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec {
@@ -356,6 +353,8 @@ static METHODS: &[MethodSpec] = &[
         name: 3,
         entry: Some(roots),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 unsafe extern "C" fn initialize(
     p: *const Protocol,
@@ -379,15 +378,12 @@ unsafe extern "C" fn initialize(
             .copied()
             .zip(literals.iter().copied())
             .collect();
-        let directory = id.read_bytes(
-            *directory,
-            names[b"sizeWord".as_slice()],
-            names[b"atWord:".as_slice()],
-        )?;
         let prior = INSTANCE.load(Ordering::Acquire);
         if !prior.is_null() {
             let s = &*prior;
-            return if s.ready.get() && s.directory == directory && s.id.root == id.root {
+            if !s.ready.get() || s.id.root != id.root { return Err(invalid()); }
+            let directory = s.byte_reader.read(*directory)?;
+            return if s.directory == directory {
                 Ok(s.ns)
             } else {
                 Err(invalid())
@@ -397,6 +393,8 @@ unsafe extern "C" fn initialize(
             return Err(invalid());
         }
         let _busy = Constructing;
+        let mut byte_reader = abi::byte_transfer::Reader::new(id, image, ptr::null_mut(), |n| names[n])?;
+        let directory = byte_reader.read(*directory)?;
         let send = |r, name: &[u8], a: &[Oop]| id.send(r, names[name], a);
         let load = |name: &str, args: &[Oop]| -> Result<Oop, Oop> {
             let bytes = module_path(&directory, name);
@@ -409,6 +407,7 @@ unsafe extern "C" fn initialize(
             id.send(path, id.load, &[args])
         };
         let roots = load("root_registry", &[])?;
+        byte_reader.attach_roots(roots)?;
         let ns = load("namespace", &[roots])?;
         let base = send(id.root, b"objectBehavior", &[])?;
         let vt = send(base, b"delegated", &[])?;
@@ -416,6 +415,7 @@ unsafe extern "C" fn initialize(
         let receiver = send(vt, b"allocate", &[abi::size(0).unwrap()])?;
         let receiver_token = send(roots, b"retain:", &[receiver])?;
         let s = Box::leak(Box::new(State {
+            byte_reader,
             id,
             ns,
             roots,
@@ -428,7 +428,7 @@ unsafe extern "C" fn initialize(
             thread: std::thread::current().id(),
         }));
         INSTANCE.store(s, Ordering::Release);
-        for spec in METHODS {
+        for spec in &METHODS[..METHODS.len()-1] {
             let method = s.send(image, b"methodAt:", &[literals[spec.name]])?;
             let method = s.send(method, b"withContext:", &[ns])?;
             s.send(vt, b"addMethod", &[literals[spec.name], method])?;

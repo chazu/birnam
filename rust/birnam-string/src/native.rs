@@ -21,6 +21,7 @@ struct Buffer {
     kind: Kind,
 }
 struct Text {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     namespace: Oop,
     roots: Oop,
@@ -186,11 +187,7 @@ impl Text {
     }
     unsafe fn from_provider(&self, provider: Oop) -> Result<Oop, Oop> {
         unsafe {
-            let bytes = self.id.read_bytes(
-                provider,
-                self.selector(b"sizeWord")?,
-                self.selector(b"atWord:")?,
-            )?;
+            let bytes = self.byte_reader.read(provider)?;
             self.make(bytes, Kind::String)
         }
     }
@@ -458,6 +455,7 @@ mod split;
 
 macro_rules! literals{($($n:literal),*$(,)?)=>{const NAMES:&[&[u8]]=&[$($n),*];static LITERALS:&[Literal]=&[$(Literal::new($n)),*];};}
 literals![
+    b"copyByteValuesFrom:count:to:",
     b",",
     b"=",
     b"Bytes",
@@ -561,6 +559,9 @@ literals![
     b"visit:",
     b"withContext:",
     b"wordOf:",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 const fn index(n: &[u8]) -> usize {
     let mut i = 0;
@@ -580,6 +581,7 @@ const fn index(n: &[u8]) -> usize {
     panic!("missing literal")
 }
 static METHODS: &[MethodSpec] = &[
+    MethodSpec { name: index(b"copyByteValuesFrom:count:to:"), entry: Some(copy_byte_values) },
     MethodSpec {
         name: index(b"byte_value"),
         entry: Some(byte_value),
@@ -708,8 +710,11 @@ static METHODS: &[MethodSpec] = &[
         name: index(b"split::split"),
         entry: Some(split::split),
     },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry) },
 ];
 const BINDINGS: &[(bool, &[u8], &[u8])] = &[
+    (false, b"copyByteValuesFrom:count:to:", b"copyByteValuesFrom:count:to:"),
     (false, b"sizeWord", b"length"),
     (false, b"atWord:", b"byte_value"),
     (false, b"installNumbers:", b"numeric::install"),
@@ -738,6 +743,22 @@ const BINDINGS: &[(bool, &[u8], &[u8])] = &[
     (true, b"printString", b"as_string"),
 ];
 
+unsafe extern "C" fn copy_byte_values(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    done((|| unsafe {
+        let t = state(c)?;
+        let [from, count, sink] = borrowed_slice(a,n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let from = abi::as_size(*from).ok_or_else(invalid)?;
+        let count = abi::as_size(*count).ok_or_else(invalid)?;
+        let end = from.checked_add(count).ok_or_else(invalid)?;
+        let bytes = {
+            let buffers = t.buffers.borrow();
+            let buffer = buffers.get(&r.addr()).filter(|b| b.kind == Kind::String).ok_or_else(invalid)?;
+            buffer.bytes.get(from..end).ok_or_else(invalid)?.to_vec()
+        };
+        abi::byte_transfer::deliver(&t.id, *sink, t.selector(b"appendByteValues")?, &bytes)?;
+        Ok(ptr::null_mut())
+    })())
+}
 unsafe extern "C" fn initialize(
     p: *const Protocol,
     image: Oop,
@@ -791,6 +812,7 @@ unsafe extern "C" fn initialize(
                 return Err(invalid());
             }
             let t = Box::into_raw(Box::new(Text {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
                 id,
                 namespace: *namespace,
                 roots,

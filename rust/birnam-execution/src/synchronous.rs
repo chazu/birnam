@@ -31,6 +31,7 @@ struct CodeShape {
     captures: usize,
 }
 struct State {
+    pub(crate) byte_reader: abi::byte_transfer::Reader,
     id: Protocol,
     control: Control,
     native_value: Oop,
@@ -779,6 +780,11 @@ const NAMES: &[&[u8]] = &[
     b"resumableDnuEntry",
     b"methodClone",
     b"bodyOfMethod:",
+    b"copyByteValuesFrom:count:to:",
+    b"appendByteValues",
+    b"objectBehavior",
+    b"releaseTokensProtecting",
+    b"receiveByteValues",
 ];
 static LITERALS: &[Literal] = &[
     Literal::new(b"Block"),
@@ -1033,6 +1039,11 @@ static LITERALS: &[Literal] = &[
     Literal::new(b"resumableDnuEntry"),
     Literal::new(b"methodClone"),
     Literal::new(b"bodyOfMethod:"),
+    Literal::new(b"copyByteValuesFrom:count:to:"),
+    Literal::new(b"appendByteValues"),
+    Literal::new(b"objectBehavior"),
+    Literal::new(b"releaseTokensProtecting"),
+    Literal::new(b"receiveByteValues"),
 ];
 static METHODS: &[MethodSpec] = &[
     MethodSpec { name: 251, entry: Some(reflection::method_body), convention: 0 },
@@ -1611,6 +1622,8 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec { name: 248, entry:Some(native_code::field::<3>), convention:0 },
     MethodSpec { name: 249, entry:Some(resumable::dnu_entry), convention:1 },
     MethodSpec { name: 250, entry:Some(method_identity), convention:0 },
+
+    MethodSpec { name: NAMES.len()-1, entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
 ];
 unsafe extern "C" fn initialize(
     p: *const ContinuationProtocol,
@@ -1666,6 +1679,7 @@ unsafe extern "C" fn initialize(
         let block_value = keep(send(image, b"methodAt:", &[names[b"value".as_slice()]])?)?;
         let block_value_seed = keep(send(block_value, b"withContext:", &[*ns])?)?;
         let s = Box::leak(Box::new(State {
+                byte_reader: abi::byte_transfer::Reader::new(id, image, roots, |n| names[n])?,
             id,
             control,
             native_value: keep(send(
@@ -1711,7 +1725,7 @@ unsafe extern "C" fn initialize(
             thread: std::thread::current().id(),
         }));
         INSTANCE.store(s, Ordering::Release);
-        for spec in METHODS {
+        for spec in &METHODS[..METHODS.len()-1] {
             let name = NAMES[spec.name];
             if matches!(
                 name,
