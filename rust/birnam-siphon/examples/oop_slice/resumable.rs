@@ -630,7 +630,9 @@ pub(super) unsafe fn check(
             .unwrap(),
         );
         let machine_vt = send(ns, b"at:", &[sel(b"MachineVt")]).unwrap();
-        let original_site = keep(send(machine_vt, b"lookup", &[sel(b"callSite:")]).unwrap());
+        // Intercept the operation generated code offers, without assuming it
+        // forwards through the separate one-argument callSite: operation.
+        let original_prepare = keep(send(machine_vt, b"lookup", &[sel(b"prepareCall:selector:")]).unwrap());
         let read_bytes = |object| {
             let bytes = send(object, b"bytes", &[]).unwrap();
             let n = abi::as_size(send(bytes, b"sizeWord", &[]).unwrap()).unwrap();
@@ -702,7 +704,7 @@ pub(super) unsafe fn check(
                 .unwrap();
             let site = descriptor.call_site(site_index).unwrap();
             let context = sequence(&[
-                original_site,
+                original_prepare,
                 sel(if capture {
                     b"captureAt:continueAt:"
                 } else {
@@ -740,7 +742,7 @@ pub(super) unsafe fn check(
                 } else {
                     block
                 };
-                send(machine_vt, b"addMethod", &[sel(b"callSite:"), overridden]).unwrap();
+                send(machine_vt, b"addMethod", &[sel(b"prepareCall:selector:"), overridden]).unwrap();
                 let result = if mode == "callback" {
                     send(machine, b"runBlock:", &[parent])
                 } else {
@@ -755,7 +757,7 @@ pub(super) unsafe fn check(
                 send(
                     machine_vt,
                     b"addMethod",
-                    &[sel(b"callSite:"), original_site],
+                    &[sel(b"prepareCall:selector:"), original_prepare],
                 )
                 .unwrap();
                 if mode == "callback" {
@@ -773,13 +775,13 @@ pub(super) unsafe fn check(
                 println!("COMPILED_CONTROL_BARRIER_OK capture={capture} mode={mode}");
                 continue;
             }
-            send(machine_vt, b"addMethod", &[sel(b"callSite:"), overridden]).unwrap();
+            send(machine_vt, b"addMethod", &[sel(b"prepareCall:selector:"), overridden]).unwrap();
             let stopped = send(machine, b"runBlock:", &[block]).unwrap();
             let stopped_token = token(stopped);
             send(
                 machine_vt,
                 b"addMethod",
-                &[sel(b"callSite:"), original_site],
+                &[sel(b"prepareCall:selector:"), original_prepare],
             )
             .unwrap();
             release(override_token);
@@ -936,12 +938,13 @@ pub(super) unsafe fn check(
                 send(blocks, b"fromMethod:captureOperands:", &[parent]).unwrap(),
                 &mut retained,
             );
-            // One host runBlock Call precedes the parent's source Call.
+            // Generated source calls use bulk preparation. The host runBlock
+            // call uses a different operation and is not part of this hook.
             let boundary_context = hold(
                 send(
                     id.root,
                     b"sequence",
-                    &[original_site, abi::size(1).unwrap(), abi::size(0).unwrap()],
+                    &[original_prepare, abi::size(0).unwrap(), abi::size(0).unwrap(), integer],
                 )
                 .unwrap(),
                 &mut retained,
@@ -976,7 +979,7 @@ pub(super) unsafe fn check(
                 send(template(b"exitReturn"), b"withContext:", &[exit_context]).unwrap(),
                 &mut retained,
             );
-            send(machine_vt, b"addMethod", &[sel(b"callSite:"), boundary]).unwrap();
+            send(machine_vt, b"addMethod", &[sel(b"prepareCall:selector:"), boundary]).unwrap();
             send(machine_vt, b"addMethod", &[sel(b"returnAt:"), exit]).unwrap();
             let result = if mode == "budget" || mode == "ingress" {
                 let mut value = send(machine, b"runBlock:budget:", &[block, zero]).unwrap();
@@ -1032,7 +1035,7 @@ pub(super) unsafe fn check(
             send(
                 machine_vt,
                 b"addMethod",
-                &[sel(b"callSite:"), original_site],
+                &[sel(b"prepareCall:selector:"), original_prepare],
             )
             .unwrap();
             send(

@@ -3,8 +3,8 @@
 static IdContinuationProtocol api;
 static IdProtocol id;
 enum {SEND,ENTRY,ANSWER,DRIVE,PAUSE,SEQ,AT,PUT,COLLECT,WITH,REMOVE,ADD,LOOKUP,IDENTITY,
- ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,AFTER,HELPER,DATA,ACTIVE,STATS,RESUME,SYNC,SAVE,CONTROL,INVOKE,CAPTURE,CAPREG,CONTROL_SITE,WORDOF,LOW32,BOUNDARY_SITE,EXIT_RETURN,BOUNDARY_CALL,BOUNDARY_EXIT,READ_SLOT,DELIVERY,ACK,SYNC_GC,NAMES};
-static const IdLiteral literals[]={LIT("prepareSend"),LIT("prepareEntry"),LIT("answerTo:with:"),LIT("drive:budget:"),LIT("pause:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("withContext:"),LIT("removeMethod:"),LIT("addMethod"),LIT("lookup"),LIT("identityOf:"),LIT("echo"),LIT("record"),LIT("wait"),LIT("tail"),LIT("forward"),LIT("localLookup"),LIT("selected"),LIT("after"),LIT("helper"),LIT("data"),LIT("active"),LIT("stats"),LIT("resumeLookup"),LIT("syncLeaf"),LIT("saveEcho"),LIT("testControl"),LIT("invokeOn:arguments:"),LIT("captureFactory"),LIT("captureRegistration"),LIT("controlSite"),LIT("wordOf:"),LIT("low32"),LIT("boundarySite"),LIT("exitReturn"),LIT("boundaryCallSite:"),LIT("exitBoundaryAt:"),LIT("oopAt:"),LIT("boundaryDeliveryPending"),LIT("acknowledgeBoundaryDelivery"),LIT("syncCollect")};
+ ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,AFTER,HELPER,DATA,ACTIVE,STATS,RESUME,SYNC,SAVE,CONTROL,INVOKE,CAPTURE,CAPREG,CONTROL_SITE,WORDOF,LOW32,BOUNDARY_SITE,EXIT_RETURN,BOUNDARY_CALL,BOUNDARY_EXIT,READ_SLOT,DELIVERY,ACK,SYNC_GC,CALL_PLAN,WRITE_SLOT,NAMES};
+static const IdLiteral literals[]={LIT("prepareSend"),LIT("prepareEntry"),LIT("answerTo:with:"),LIT("drive:budget:"),LIT("pause:"),LIT("sequence"),LIT("at:"),LIT("at:put:"),LIT("collectPrecisely"),LIT("withContext:"),LIT("removeMethod:"),LIT("addMethod"),LIT("lookup"),LIT("identityOf:"),LIT("echo"),LIT("record"),LIT("wait"),LIT("tail"),LIT("forward"),LIT("localLookup"),LIT("selected"),LIT("after"),LIT("helper"),LIT("data"),LIT("active"),LIT("stats"),LIT("resumeLookup"),LIT("syncLeaf"),LIT("saveEcho"),LIT("testControl"),LIT("invokeOn:arguments:"),LIT("captureFactory"),LIT("captureRegistration"),LIT("controlSite"),LIT("wordOf:"),LIT("low32"),LIT("boundarySite"),LIT("exitReturn"),LIT("boundaryCallSite:"),LIT("exitBoundaryAt:"),LIT("oopAt:"),LIT("boundaryDeliveryPending"),LIT("acknowledgeBoundaryDelivery"),LIT("syncCollect"),LIT("callPlan:field:"),LIT("oopAt:put:")};
 static Oop names[NAMES];
 static size_t ticks,lookup_calls;
 static uintptr_t stack_low=UINTPTR_MAX,stack_high;
@@ -75,9 +75,9 @@ static Oop capture_factory(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root
 static Oop capture_registration(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=4&&n!=5&&n!=6)return id.invalid;
  CHECK(put(get(c,1),0,a[1]));CHECK(put(get(c,1),1,a[2]));
  Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
-/* context = [original callSite, mode selector, site index, result slot, pc,
+/* context = [original call preparation, mode selector, site index, result slot, pc,
               attempts, refusals, Integer]. First matching call only. */
-static Oop control_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=1)return id.invalid;
+static Oop control_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=1&&n!=2)return id.invalid;
  Oop word=a[0];if(!((uintptr_t)word&1)){word=send(get(c,7),WORDOF,a,1);CHECK(word);if(!((uintptr_t)word&1)){word=send(word,LOW32,0,0);CHECK(word);}}
  Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};
  Oop original=send(get(c,0),INVOKE,invoke,2);CHECK(original);
@@ -89,10 +89,36 @@ static Oop control_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if
  Oop action=id.message(id.root,r,get(c,1),operands,2);
  if(id_fault(action)){CHECK(put(c,6,id_size(id_unbox(get(c,6))+1)));return original;}
  return action;}
-/* context = [original callSite, calls to skip, boundary count]. */
-static Oop boundary_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=1)return id.invalid;
+/* The test controller prepares a boundary call through the public plan and
+   slot operations. It cannot publish an ordinary Call first: that already
+   transitions the frame to its continuation, so a second Call is invalid. */
+static Oop plan_index(Oop c,Oop machine,Oop site,size_t field){
+ Oop args[]={site,id_size(field)},value=send(machine,CALL_PLAN,args,2);CHECK(value);
+ Oop word=send(get(c,3),WORDOF,&value,1);CHECK(word);
+ if(!((uintptr_t)word&1)){word=send(word,LOW32,0,0);CHECK(word);}
+ return word;}
+static Oop copy_slot(Oop machine,Oop source,Oop destination){
+ Oop value=send(machine,READ_SLOT,&source,1);CHECK(value);
+ Oop args[]={destination,value};return send(machine,WRITE_SLOT,args,2);}
+/* context = [original call preparation, calls to skip, boundary count, Integer]. */
+static Oop boundary_site(Oop root,Oop c,Oop r,const Oop*a,size_t n){(void)root;if(n!=1&&n!=2)return id.invalid;
  Oop skip=get(c,1);
- if(skip==id_size(0)&&get(c,2)==id_size(0)){CHECK(put(c,2,id_size(1)));return send(r,BOUNDARY_CALL,a,n);}
+ if(skip==id_size(0)&&get(c,2)==id_size(0)){
+  CHECK(put(c,2,id_size(1)));
+  if(n==2){
+   Oop count=plan_index(c,r,a[0],3);CHECK(count);Oop copies=plan_index(c,r,a[0],5);CHECK(copies);
+   size_t argc=id_unbox(count),base=7+argc;
+   for(size_t i=0;i<id_unbox(copies);i++){
+    Oop source=plan_index(c,r,a[0],base+i*2);CHECK(source);Oop destination=plan_index(c,r,a[0],base+i*2+1);CHECK(destination);
+    CHECK(copy_slot(r,source,destination));}
+   Oop source=plan_index(c,r,a[0],6);CHECK(source);Oop destination=plan_index(c,r,a[0],0);CHECK(destination);
+   CHECK(copy_slot(r,source,destination));
+   Oop start=plan_index(c,r,a[0],2);CHECK(start);
+   for(size_t i=0;i<argc;i++){source=plan_index(c,r,a[0],7+i);CHECK(source);CHECK(copy_slot(r,source,id_size(id_unbox(start)+i)));}
+   destination=plan_index(c,r,a[0],1);CHECK(destination);Oop selector[]={destination,a[1]};CHECK(send(r,WRITE_SLOT,selector,2));
+  }
+  return send(r,BOUNDARY_CALL,a,1);
+ }
  if(skip!=id_size(0))CHECK(put(c,1,id_size(id_unbox(skip)-1)));
  Oop arguments=send(id.root,SEQ,a,n);CHECK(arguments);Oop invoke[]={r,arguments};return send(get(c,0),INVOKE,invoke,2);}
 /* context = [original returnAt, Integer, expected word, attempts, refusals,

@@ -166,6 +166,7 @@ unsafe fn run() {
             b"true", b"false", b"not", b"==", b"&", b"|", b"ifTrue:", b"ifFalse:",
             b"ifTrue:ifFalse:", b"and:", b"or:", b"value", b"valueProbe", b"echoName",
             b"isNil", b"notNil", b"installPrinting:", b"printString", b"fromBytes:", b"size",
+            b"prepareCall:selector:",
         ];
         let mut seeds: Vec<&[u8]> = paths.iter().map(|p| p.as_os_str().as_bytes()).collect();
         seeds.extend(words.iter().copied());
