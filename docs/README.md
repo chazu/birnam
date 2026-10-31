@@ -5,6 +5,9 @@ Start with [INVARIANTS.md](../INVARIANTS.md) for language requirements and
 Use the [glossary](../glossary.md) for terminology. Neither Rust terminology nor
 historical implementation arrangements add language requirements.
 
+For development, the [implementation guide](implementation-guide.md) provides
+worked examples and bounded task/review guidance under those requirements.
+
 ## Current behavior and operation
 
 - [Language](guide/01-language.md) and [idioms](guide/02-idioms.md).

@@ -1,82 +1,84 @@
 # Native backend
 
-NativeBackend emits code for the integrated Oop-only compiler and Execution
-runtime. See the [architecture](../../ARCHITECTURE.md) and
-[runtime reference](../../docs/contracts/runtime.md). Older milestone reports
-record the checks performed at their revisions, not current unfinished work.
+NativeBackend emits C for the current Oop-only compiler and Execution runtime.
+The [architecture](../../ARCHITECTURE.md) maps the implementation; the
+[runtime contract](../../docs/contracts/runtime.md) describes continuing behavior.
 
-`libbirnam_native_backend.dylib` initializes with one completed Namespace Object,
-returns NativeBackend and publishes NativeBackend/NativeBackendVt. Reinitializing
-with the same Id, Namespace and creating thread preserves the receiver and methods.
-It owns emission algorithms; source interpretation/metadata stay with Codegen,
-TCC owns compilation and mappings, and Execution owns callable/frame lifetime.
+`libbirnam_native_backend.dylib` initializes with one Namespace argument, returns
+NativeBackend, and publishes that receiver under `NativeBackend`. Reinitialization
+returns the existing ready receiver when the Id root and Namespace match.
+Method entry checks the creating thread and Namespace context.
 
-| NativeBackend message | Inputs and result |
+Codegen handles source interpretation and metadata. NativeBackend implements
+emission algorithms; TCC compiles and maps the result; Execution keeps callable
+code and frames usable. These are current implementation responsibilities, not
+requirements to preserve this crate arrangement.
+
+## Messages
+
+The installed entries are declared in [src/lib.rs](src/lib.rs). Program, source,
+and filename inputs are read through their `bytes` operation and the bulk byte
+protocol. Generated C is returned as a String.
+
+| Message | Current behavior |
 | --- | --- |
-| `emit:source:filename:persistent:synchronous:` | Canonical portable-program String bytes, provenance source String, filename String, two Booleans. Returns generated C String or `nativeEmissionRejected` Error. Persistent synchronous roots are refused. |
-| `factory:source:dispositions:` | Canonical factory program String bytes, source String, Vector of Booleans in implementation preorder. Returns generated C or Error. |
-| `named:synchronous:` | Integer arity and Boolean mode. Returns named-adapter C or Error. |
-| `descriptorFor:` | Selector String bytes. Returns the exact named-adapter descriptor bytes in a String or Error. |
+| `emitSynchronous:` | Emit a canonical portable program using the synchronous entry path, empty provenance source, and `<compiler>` filename. |
+| `emitResumable:source:` | Emit a canonical portable program with source provenance, persistent top-level bindings, and `<compiler>` filename through the resumable path. |
+| `emit:source:filename:persistent:synchronous:` | Emit a canonical portable program with the supplied provenance, filename, and canonical Boolean flags. This operation rejects the combination of persistent and synchronous flags. |
+| `moduleFactory:source:dispositions:` | Emit a factory with persistent top-level bindings and per-implementation Boolean dispositions. The root must be resumable. |
+| `factory:source:dispositions:` | Emit a factory without persistent top-level bindings, with per-implementation Boolean dispositions. |
+| `rootsDo:` | Supply references currently retained by this native receiver to a visitor through `visit:`. Used by root tracking. |
 
-Wrong arity/types, foreign thread use and dependency message failures use typed
-Id outcomes. Semantic emission failures use `Error kind: #nativeEmissionRejected`
-with the retained emitter diagnostic. Inputs and intermediate projections are
-rooted across collecting sends; byte borrows are copied before another send.
-Descriptor symbols and native contexts remain mapped for process lifetime.
+For factories, dispositions are read through `size` and `at:`; current callers
+supply a Vector. True selects synchronous emission and false selects resumable
+emission in implementation preorder. The list must match the implementation
+count, contain at least one entry, and contain no more than 65,536 entries.
+These limits describe current admission, not a new language-wide size rule.
 
-Backend IR, slot coloring and descriptor construction are implementation details.
-The backend currently uses existing pure compiler helpers for portable lowering;
-no Rust Program/CST/IR or Codegen state crosses its native interface. Native
-emission and its C prelude are private to this crate. Frontend plans contain
-canonical request data, so candidate/image inspection performs no emission.
+Wrong arity, invalid flags, foreign-thread entry, or an invalid native context
+return the native invalid failure. Dependency message failures propagate.
+Emission rejection becomes `Error kind: #compileError message: ...`, with a
+synchronous, resumable, source, or factory emission diagnostic. The exact checks
+and emission choices are in [oop_emission.rs](src/oop_emission.rs).
 
-Source compilation, source artifacts, named adapters, portable materialization,
-candidate factories, image rebuild and generation descriptor hashing all call
-this owner through current Id lookup. Compiled/mapped artifact and image loading
-continue to consume saved metadata and objects without invoking it.
+The module also declares a `receiveByteValues` callback for the shared native
+byte reader. Initialization installs it on the reader's receiving behavior rather
+than as another NativeBackend operation. Inputs and intermediate values are kept
+alive across collecting sends; native buffers are obtained through bulk messages.
 
-Current Oop resumable emission sends one ordinary `prepareCall:selector:` operation
-with admitted call plans. Plans are regenerated from portable IR and admitted
-atomically by Execution when constructing the Method. Execution preserves current
-frame reads/writes and call-site publication; an entered failure is not replayed.
-The historical option controls below describe earlier experiments (prepared calls
-used bit 128 and the default mask was 253).
+## Compilation and call preparation
 
-Legacy resumable call-window optimization uses explicit option bit 32;
-mask 125 retains the previous emission. Bit 64 additionally folds up to 32 trailing local copies
-into the call batch; mask 61 disables that extension. Mask 29 keeps the earlier synchronous passes without this
-optimization. The backend emits bounded source-slot metadata and retains the
-complete original call-preparation sequence after a refused attempt. Execution
-owns admission and frame mutation through
-`tryPrepareCall:slots:selector:in:tail:`; the backend never inspects frame storage.
-See [Execution's contract](../birnam-execution/README.md#guarded-generated-call-preparation).
+Portable-program decoding, slot coloring, descriptors, and generated C helpers
+are private implementation work. No Rust Program/CST/IR or Codegen state crosses
+this object's message interface. Calling a shared pure compiler algorithm does
+not add a second object protocol.
+
+Source compilation, artifact construction, portable materialization, factories,
+and image rebuilding use this backend through current Id messages. Mapping
+compatible saved code remains distinct from invoking the emitter.
+
+Generated resumable calls send `Machine prepareCall:selector:` with an admitted
+call plan. The default operation performs the ordered frame transfer and publishes
+the call action without sending individual slot-access or call-site messages.
+Replacing the preparation operation still changes compiled calls. The behavioral
+reference is [Execution and optimization](../../docs/contracts/runtime.md#execution-and-optimization);
+the implementations are [oop_resumable.rs](src/oop_resumable.rs) and
+[Execution call preparation](../birnam-execution/src/oop_call_preparation.rs).
+
+Old experimental call-window option masks and the removed named-method forwarding
+operations are not current APIs. Their former descriptions are preserved in the
+[2026-10-30 reference snapshot](../../docs/archive/2026-10-runtime-refactors/native-backend-reference-20261030.md).
+
+## Generated helper and selector storage
 
 Private prelude helpers are `static inline`. The retained TinyCC compiler emits
-these bodies only when referenced, following transitive calls and address-taken
-references to a fixed point. Generated entrypoints, initializers and unit-local
-state keep their existing definitions. Every
-retained helper body and Id send is unchanged; the C compiler does not remove
-Birnam methods merely because an application has not called them. Guard refusal
-and recovery branches still reference—and therefore retain—their helpers.
+referenced helper bodies, following transitive calls and address-taken references.
+This removes unused generated C helpers, not Birnam methods based on an assumption
+that an application will never call them. Existing mapped images keep their saved
+code; recompilation is needed to change emitted helper bodies.
 
-This is private code-emission elimination, not a new speculative dispatch path.
-Fresh source artifacts and images are required to obtain the size savings;
-existing mapped images keep their saved code. Tests inspect real TinyCC ELF
-symbols, require transitive helpers, and call a helper through a stored function
-pointer. See `docs/startup-analysis.md` for paired rebuilt-prefix measurements.
-
-
-Selector tables now choose a compile-time capacity from the emitted C's distinct
-string-literal spellings: twice the estimate, rounded up to a power of two and
-clamped to 64..512. Comments and character literals are skipped; escaped quotes
-stay inside their string. Non-name strings and unused helpers can overestimate
-demand. Malformed lexical input uses 512. This estimate is a storage policy,
-not an admission proof: unknown demand and full tables keep the existing interning
-fallback. The standalone prelude defaults to 512 when no capacity is supplied.
-
-Hashing, spelling comparisons, canonical Symbol ownership and current Id dispatch
-retain their existing contracts. Rooting failures clear the unpublished cache
-entry. No method entry, lookup verdict or factory result is cached. Internal
-interning frequency is not preserved, as documented in
-[fixed names](../../docs/archive/2026-10-runtime-refactors/fixed-names-and-local-protection.md). Capacity
-selection introduces no runtime resizing, new native service or GC-budget change.
+The emitter collects distinct literal names and declares `SYMBOL_COUNT` from
+that actual list. The [prelude](src/oop_prelude.c) stores the supplied Symbols in
+a fixed array; generated initialization checks the supplied count before copying
+them. This stores names, not Method selections or lookup verdicts. The old
+64–512 estimated-capacity description belongs to the archived implementation.

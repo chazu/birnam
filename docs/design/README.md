@@ -40,6 +40,16 @@ and outstanding work. [A Birnam implementation](81-toward-a-birnam-implementatio
 is the longer-term objective, subject to independent source bootstrap.
 These documents do not authorize unrelated runtime machinery.
 
+The [implementation guide](../implementation-guide.md) gives current worked
+examples for assigned changes; it does not prescribe an extraction sequence.
+
+- [Runtime simplification assessment](runtime-simplification-assessment.md)
+  evaluates Rust implementation choices, migration opportunities, and conflicting
+  agent guidance at the recorded revision.
+- [Prioritized simplification plan](runtime-simplification-plan.md) proposes a
+  bounded work order and agent scope/completion rules. It is not authorization to
+  execute the whole plan or a source of additional language requirements.
+
 ## Implementation notes and evidence
 
 Other notes in this directory describe specific facilities, algorithms or dated

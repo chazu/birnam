@@ -17,6 +17,14 @@ The original text is preserved apart from this archive notice and relative-link
 repairs. Measurements retain their original scope; measurement data files were
 not rewritten. The table records the former paths so old references are traceable.
 
+Additional snapshots preserve active documents before the subsequent 2026-10-30
+documentation repair. Their original paths now contain rewritten current guidance:
+
+- [Birnam implementation roadmap](birnam-implementation-roadmap-20261030.md),
+  including the old extraction instructions and dated progress narrative.
+- [NativeBackend reference](native-backend-reference-20261030.md), including
+  removed API descriptions and obsolete implementation details.
+
 | Former path | Archived document |
 | --- | --- |
 | `docs/design/45-compiled-units.md` | [Compiled Units Are Primary ](45-compiled-units.md) |

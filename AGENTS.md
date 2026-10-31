@@ -5,6 +5,9 @@ Read [INVARIANTS.md](INVARIANTS.md) before architectural work and consult
 maps the current implementation; [docs/README.md](docs/README.md) distinguishes
 current references, proposals and history.
 
+[Implementation guide](docs/implementation-guide.md) gives worked examples and
+links to the bounded task brief and scope rules. Apply it within the assigned task.
+
 Birnam objects interact through messages. Native implementation helpers are
 ordinary algorithm code, not permission to bypass another object's behavior or
 introduce a private object system. Do not import Rust ownership, borrowing or
