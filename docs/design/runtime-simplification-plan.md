@@ -103,8 +103,8 @@ the previously recorded image validation failure. These are bounded improvements
 not completion of the migration or overall simplification goal.
 
 Return the performance focus to [arithmetic and generated control work](../measurements/arithmetic-layers-20261031/README.md):
-full Integer addition still costs about 30 microseconds and 49 managed allocations
-after the generated-root change below. Earlier [conservative reuse of Id's query-binding proof](../measurements/query-bindings-20261031/README.md)
+full Integer addition still costs about 28 microseconds and 40 managed allocations
+after the generated-root and synchronous-return changes below. Earlier [conservative reuse of Id's query-binding proof](../measurements/query-bindings-20261031/README.md)
 improved full addition about 6%, Word addition about 43%, and existing
 metadata analysis about 19–21%; the authored inventory barely changes. Structurally
 equivalent mutable Methods still receive live checks, with a dedicated regression.
@@ -118,6 +118,10 @@ buffers reported by their TCC code Unit, preserving explicit Roots operations an
 the standalone native-provider token path. A full-source comparison reduces addition
 from 39.86 to 29.82 microseconds without changing its 49 managed allocations. The
 inventory improves only about 5%; this does not qualify the port.
+[Direct private synchronous returns](../measurements/synchronous-return-20261031/README.md)
+remove nine further managed allocations from addition (49 → 40), with a roughly 4%
+CPU-time reduction in the final comparison. Explicit reply preparation and user
+continuations remain deferred; this does not resolve the pending drive-policy question.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate

@@ -1,0 +1,272 @@
+{
+  "date": "2026-10-31",
+  "baseline_commit": "27c12968",
+  "status": "private synchronous return simplification validated; overall goal incomplete",
+  "measurements": {
+    "commands": [
+      {
+        "label": "final-arithmetic-baseline-1",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-arithmetic-baseline-1.json"
+        ],
+        "environment": {}
+      },
+      {
+        "label": "final-arithmetic-candidate-2",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-arithmetic-candidate-2.json"
+        ],
+        "environment": {
+          "ARITHMETIC_REVERSE": "1"
+        }
+      },
+      {
+        "label": "final-arithmetic-candidate-3",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-arithmetic-candidate-3.json"
+        ],
+        "environment": {}
+      },
+      {
+        "label": "final-arithmetic-baseline-4",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-arithmetic-baseline-4.json"
+        ],
+        "environment": {
+          "ARITHMETIC_REVERSE": "1"
+        }
+      },
+      {
+        "label": "final-inventory-baseline-1",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-inventory-baseline-1.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "label": "final-inventory-candidate-2",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-inventory-candidate-2.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "label": "final-inventory-candidate-3",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-inventory-candidate-3.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "label": "final-inventory-baseline-4",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/final-inventory-baseline-4.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      }
+    ],
+    "results": [
+      {
+        "variant": "baseline",
+        "case": "Integer addition",
+        "automatic_gc": true,
+        "median_us": 29.5299375,
+        "allocations": [
+          49.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer addition",
+        "automatic_gc": false,
+        "median_us": 29.679229,
+        "allocations": [
+          49.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": true,
+        "median_us": 7.5806245,
+        "allocations": [
+          14.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": false,
+        "median_us": 7.623125,
+        "allocations": [
+          14.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Block return nil",
+        "automatic_gc": true,
+        "median_us": 0.6987085,
+        "allocations": [
+          3.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Block return nil",
+        "automatic_gc": false,
+        "median_us": 0.7058960000000001,
+        "allocations": [
+          3.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "inventory dense",
+        "median_ms": 340.8644375
+      },
+      {
+        "variant": "baseline",
+        "case": "inventory registry_module",
+        "median_ms": 788.8977705000001
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer addition",
+        "automatic_gc": true,
+        "median_us": 28.27175,
+        "allocations": [
+          40.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer addition",
+        "automatic_gc": false,
+        "median_us": 29.0586665,
+        "allocations": [
+          40.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": true,
+        "median_us": 7.278292,
+        "allocations": [
+          12.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": false,
+        "median_us": 7.290979,
+        "allocations": [
+          12.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Block return nil",
+        "automatic_gc": true,
+        "median_us": 0.5720624999999999,
+        "allocations": [
+          2.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Block return nil",
+        "automatic_gc": false,
+        "median_us": 0.5751455,
+        "allocations": [
+          2.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "inventory dense",
+        "median_ms": 336.176604
+      },
+      {
+        "variant": "candidate",
+        "case": "inventory registry_module",
+        "median_ms": 782.4558959999999
+      }
+    ]
+  },
+  "validation": {
+    "baseline_cost_probe": "fails at three allocations",
+    "changed_cost_probe": "passes at two allocations",
+    "continuation": "user replies and explicit preparation deferred; Method-as-data, native failures, GC, barriers, late replies and interleaving pass",
+    "workspace_check": "all targets/all features passed with existing unused_unsafe warning",
+    "library_tests": 323,
+    "integration_targets": 18,
+    "full_image": "passed roundtrip, resave epochs, slot/refusal/snapshot targets",
+    "native_provider": "passed Root lifetime and failure cases"
+  },
+  "source_sha256": {
+    "rust/birnam-id/src/id/continuation.rs": "ad22574a7cfd465389819d2c068c3e0c73806d3b9dee251bec11de437386902e",
+    "tests/fixtures/oop-continuation/caller.c": "075f37435ca8610a486e5fddfc0bdd2ce1d550c5d9782f92be81b2dd40635baa",
+    "tests/fixtures/oop-continuation/module.c": "bea06a4a9aaa2106351aa56e23bb1142d0149f18fa1d99154f53b5ccb2389113",
+    "scripts/id-continuation-test.py": "8ef286e6ea4ce795c6dccfe1989ecf43fb8a1d0983b2a742e713afcca8351f2b"
+  },
+  "library_sha256": {
+    "baseline_id": "d04c738b2b5de35c02c3277f7628faf36d3724d85c3e122ae511457f01e87244",
+    "candidate_id": "19b53a3162b372f998c5734cb6f24554f6923a6f48d201e976fb31ae8fc75a9d"
+  },
+  "raw_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031",
+  "raw_sha256": {
+    "red.log": "0a20e38baba2e7fb2ce2bdf3e63af1fd5bd2feb75c15ef752c3052824733dd43",
+    "final-continuation.log": "88d33cd064dc4fe1b1627d8af67955c4c1325a91e30d5dcb7e03e443d29063bd",
+    "integration.log": "f8ad7e19e4ec7dc334425b2dcbc8c99260f06f17879eab205f0793921c370aea",
+    "native-provider.log": "b08ecbc96b42a79931dd973f7ac63424f6187e08fdab5f95208d06e47a855d08",
+    "workspace-check.log": "d6d6b51ac2c91581246db81ec521681a90a842489a45b3cd9b549694e436b4b5",
+    "workspace-unit.log": "c49b0de4f96a140c37a266cf58a0d570ae6ba8abe36b8352ab88e76b21cfb29c",
+    "summary.json": "110567bddbc7bd94e4e6884b52b54b8bf473fcaf4f786232fef8355a15b3b03c",
+    "final-arithmetic-baseline-1.json": "f3db1009240e4c916e31dd5420a6e681b86142f3380f8c88364507c64e58d4cc",
+    "final-arithmetic-baseline-4.json": "b2b84d062352eca2a69e4a9f5ced2cc63c079c4ecc58df524e99be881acd20f8",
+    "final-arithmetic-candidate-2.json": "71e274bea9182f374df957189df6f61118608443eafc104ff955980b764c0f2c",
+    "final-arithmetic-candidate-3.json": "e2f9749ec2b39c5c93b9aeeae3d66076a166e3f00f0520a5f7ea26c2f050c370",
+    "final-inventory-baseline-1.json": "a5a0ddb43f0caaf666e885058f9d0b85f66dd2908d7f49764eb888e2a6e3249f",
+    "final-inventory-baseline-4.json": "0c4ededf1992d88f95aef067bcd6f05265005f57547ba9ec6e04eff4ee5ec79b",
+    "final-inventory-candidate-2.json": "9be31a8a948df298a8a67c2f97ff9a29d2dd5ea76725d554dff6a391a76282af",
+    "final-inventory-candidate-3.json": "c8a0acaab528b7aabd88294f59745d508d13e761702bbc5f29946120b5edd6f8"
+  },
+  "measurement_script_sha256": "8b82cee6f0a45564c5be57427079c69c3c479177c53beeb282c478d2231bad58",
+  "limits": [
+    "Only Id rebuilt over prior source-built prefix",
+    "No release qualification, user installation or push",
+    "Inventory cutover remains unqualified",
+    "Independent-root-drive policy remains pending"
+  ]
+}

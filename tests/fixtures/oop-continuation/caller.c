@@ -5,8 +5,8 @@
 #include <string.h>
 #include <dlfcn.h>
 static IdProtocol id;static Oop roots,gc,image,controller;
-static const char*words[]={"sequence","nameWithBytes","objectBehavior","allocate","delegated","behaviorOf:","reassociateBehaviorOf:with:","methodAt:","withContext:","addMethod","removeMethod:","lookup","at:","at:put:","retain:","release:","activate","automaticCollection:","collectPrecisely","prepareSend","prepareEntry","answerTo:with:","drive:budget:","echo","record","wait","tail","forward","localLookup","selected","data","active","stats","callback","allocationCount","identityOf:","invokeOn:arguments:","faultKind","rejectLookup","after","helper","resumeLookup","syncLeaf","saveEcho","testControl","budget:","prepareAllocation","allocationBytesTotal"};
-enum{SEQ,NAME,BASE,ALLOC,DELEGATE,BEHAVIOR,REASSOC,METHOD,CONTEXT,ADD,REMOVE,LOOKUP,AT,PUT,RETAIN,RELEASE,ACTIVATE,AUTO,GC,SEND,ENTRY,ANSWER,DRIVE,ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,DATA,ACTIVE,STATS,CALLBACK,COUNT,IDENTITY,INVOKE,FAULTK,REJECT,AFTER,HELPER,RESUME,SYNC,SAVE,CONTROL,BUDGET,PREPARE,TOTAL,NAMES};
+static const char*words[]={"sequence","nameWithBytes","objectBehavior","allocate","delegated","behaviorOf:","reassociateBehaviorOf:with:","methodAt:","withContext:","addMethod","removeMethod:","lookup","at:","at:put:","retain:","release:","activate","automaticCollection:","collectPrecisely","prepareSend","prepareEntry","answerTo:with:","drive:budget:","echo","record","wait","tail","forward","localLookup","selected","data","active","stats","callback","allocationCount","identityOf:","invokeOn:arguments:","faultKind","rejectLookup","after","helper","resumeLookup","syncLeaf","saveEcho","testControl","budget:","prepareAllocation","allocationBytesTotal","syncCollect"};
+enum{SEQ,NAME,BASE,ALLOC,DELEGATE,BEHAVIOR,REASSOC,METHOD,CONTEXT,ADD,REMOVE,LOOKUP,AT,PUT,RETAIN,RELEASE,ACTIVATE,AUTO,GC,SEND,ENTRY,ANSWER,DRIVE,ECHO,RECORD,WAIT,TAIL,FORWARD,LOCAL,SELECTED,DATA,ACTIVE,STATS,CALLBACK,COUNT,IDENTITY,INVOKE,FAULTK,REJECT,AFTER,HELPER,RESUME,SYNC,SAVE,CONTROL,BUDGET,PREPARE,TOTAL,SYNC_GC,NAMES};
 static Oop names[NAMES];
 static Oop raw(Oop r,size_t s,const Oop*a,size_t n){return id.message(id.root,r,names[s],a,n);}
 static Oop check(Oop v){if(id_fault(v)){fprintf(stderr,"unexpected failure %p\n",v);abort();}return v;}
@@ -54,6 +54,28 @@ int main(int argc,char**argv){assert(argc==8);void*h=dlopen(argv[1],RTLD_NOW|RTL
  assert(entry_allocations<=2);printf("DIRECT_SYNCHRONOUS_ENTRY_SETUP_OK\n");
  bind(vt,SYNC,method(SYNC,0));size_t sync_before=id_unbox(send(id.root,COUNT,0,0));
  assert(send(r,SYNC,&value,1)==value);assert(id_unbox(send(id.root,COUNT,0,0))==sync_before);printf("MIXED_NATIVE_CONVENTIONS_OK\n");
+ /* A synchronous body reached through prepared entry can fill the current
+    private return slot without another deferred reply allocation. */
+ Oop sync_method=keep(method(SYNC,0));bind(vt,FORWARD,method(FORWARD,sync_method));
+ size_t return_before=id_unbox(send(id.root,COUNT,0,0));
+ assert(send(r,FORWARD,&value,1)==value);
+ size_t return_allocations=id_unbox(send(id.root,COUNT,0,0))-return_before;
+ fprintf(stderr,"synchronous return allocations=%zu\n",return_allocations);
+ assert(return_allocations<=2);
+ assert(send(r,FORWARD,&k,1)==k); /* A returned Method remains data. */
+ Oop failure=id.invalid;assert(raw(r,FORWARD,&failure,1)==failure);
+ /* User replies and explicit answer preparation remain deferred, even when
+    the completed body has the ordinary native calling convention. */
+ clear_result(state);Oop native_entry[]={sync_method,r,k,value};
+ Oop native_reply=check(step(prepare(ENTRY,native_entry,4),1));
+ assert(native_reply&&get(state,0)==id_size(0));
+ drain(native_reply);assert(get(state,1)==value);
+ clear_result(state);Oop explicit_reply[]={k,value};
+ native_reply=prepare(ANSWER,explicit_reply,2);assert(get(state,0)==id_size(0));
+ drain(native_reply);assert(get(state,1)==value);
+ Oop collecting=keep(method(SYNC_GC,gc));bind(vt,FORWARD,method(FORWARD,collecting));
+ assert(send(r,FORWARD,&value,1)==value);
+ printf("DIRECT_SYNCHRONOUS_RETURN_OK\n");
  /* Continuation Oop returned as data is not executed or classified. */
  clear_result(state);bind(vt,DATA,method(DATA,0));Oop data_req[]={r,names[DATA],k};drain(prepare(SEND,data_req,3));assert(get(state,1)==k);
  printf("CONTINUATION_AS_DATA_OK\n");

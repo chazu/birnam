@@ -9,7 +9,9 @@ use crate::abi::{self, Oop, id_protocol::Method};
 use core::ptr;
 
 pub(super) struct Drive {
-    synchronous: bool,
+    // A non-null answer identifies the private return slot of a synchronous
+    // drive. Its enclosing entry scope keeps the Method alive.
+    answer: Oop,
     native_depth: usize,
     pub paused: Option<Oop>,
 }
@@ -90,7 +92,7 @@ impl State {
             return Err(self.invalid());
         };
         // No native caller may remain waiting across suspension.
-        if drive.synchronous || drive.native_depth != 0 {
+        if !drive.answer.is_null() || drive.native_depth != 0 {
             drop(drives);
             return Err(self.control_failure(b"continuationBarrier"));
         }
@@ -100,17 +102,17 @@ impl State {
         drive.paused = Some(work);
         Ok(ptr::null_mut())
     }
-    fn begin_drive(&self, synchronous: bool) -> Result<DriveScope<'_>, Oop> {
+    fn begin_drive(&self, answer: Oop) -> Result<DriveScope<'_>, Oop> {
         self.check()?;
         let index = {
             let mut drives = self.drives.borrow_mut();
-            if !synchronous && !drives.is_empty() {
+            if answer.is_null() && !drives.is_empty() {
                 drop(drives);
                 return Err(self.control_failure(b"driveActive"));
             }
             let index = drives.len();
             drives.push(Drive {
-                synchronous,
+                answer,
                 native_depth: 0,
                 paused: None,
             });
@@ -122,9 +124,8 @@ impl State {
         &self,
         work: Oop,
         budget: usize,
-        synchronous: bool,
     ) -> Result<Oop, Oop> {
-        let drive = self.begin_drive(synchronous)?;
+        let drive = self.begin_drive(ptr::null_mut())?;
         unsafe { self.drive_pending(work, budget, drive.index) }
     }
     unsafe fn drive_pending(
@@ -207,6 +208,14 @@ impl State {
                     .unwrap_or_else(abi::fault_reference);
                 if abi::is_fault(value) && k.is_null() {
                     Err(abi::object_reference(value))
+                } else if !k.is_null()
+                    && s.drives.borrow().last().is_some_and(|drive| drive.answer == *k)
+                {
+                    // This body has finished. Recording the current drive's
+                    // own answer cannot call or collect, so no work object is
+                    // needed to deliver it on the next internal loop turn.
+                    s.record_answer(*k, value)?;
+                    Ok(ptr::null_mut())
                 } else {
                     s.prepare_answer(*k, value)
                 }
@@ -237,7 +246,7 @@ impl State {
             for &value in &values {
                 self.behavior(value)?;
             }
-            let drive = self.begin_drive(true)?;
+            let drive = self.begin_drive(answer)?;
             let next = self.enter_values(&values)?;
             self.drive_pending(next, usize::MAX, drive.index)
         })();
@@ -289,6 +298,16 @@ impl State {
         let mut next = vec![*receiver, self.dnu, *k, *selector];
         next.extend_from_slice(args);
         self.prepare_send(&next)
+    }
+    fn record_answer(&self, context: Oop, value: Oop) -> Result<(), Oop> {
+        if abi::as_size(self.work_at(context, 0)?) != Some(1)
+            || abi::as_size(self.work_at(context, 1)?) != Some(0)
+        {
+            return Err(self.control_failure(b"continuationConsumed"));
+        }
+        self.work_put(context, 2, value)?;
+        self.work_put(context, 1, abi::size(1).unwrap())?;
+        Ok(())
     }
 }
 
@@ -374,13 +393,7 @@ unsafe extern "C" fn result(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) 
         let [_, value] = arguments(s, a, n)? else {
             return Err(s.invalid());
         };
-        if abi::as_size(s.work_at(c, 0)?) != Some(1)
-            || abi::as_size(s.work_at(c, 1)?) != Some(0)
-        {
-            return Err(s.control_failure(b"continuationConsumed"));
-        }
-        s.work_put(c, 2, *value)?;
-        s.work_put(c, 1, abi::size(1).unwrap())?;
+        s.record_answer(c, *value)?;
         Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -407,7 +420,7 @@ pub(super) unsafe extern "C" fn control(root: Oop, operation: Oop, a: *const Oop
             let [work, budget] = args else {
                 return Err(s.invalid());
             };
-            s.drive_work(*work, abi::as_size(*budget).ok_or(s.invalid())?, false)
+            s.drive_work(*work, abi::as_size(*budget).ok_or(s.invalid())?)
         } else if operation == s.selector(b"pause:") {
             let [work] = args else {
                 return Err(s.invalid());
