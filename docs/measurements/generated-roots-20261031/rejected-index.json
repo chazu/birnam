@@ -1,0 +1,184 @@
+{
+  "status": "rejected; production Roots storage restored unchanged",
+  "reason": "No meaningful addition improvement; randomized release becomes substantially slower.",
+  "results": [
+    {
+      "variant": "baseline",
+      "roots": 16,
+      "release_order": "reverse",
+      "retain_ns": 39.0625,
+      "release_ns": 37.78125
+    },
+    {
+      "variant": "baseline",
+      "roots": 16,
+      "release_order": "forward",
+      "retain_ns": 36.4375,
+      "release_ns": 37.78125
+    },
+    {
+      "variant": "baseline",
+      "roots": 16,
+      "release_order": "random",
+      "retain_ns": 35.15625,
+      "release_ns": 40.375
+    },
+    {
+      "variant": "baseline",
+      "roots": 1024,
+      "release_order": "reverse",
+      "retain_ns": 33.26416015625,
+      "release_ns": 33.60986328125
+    },
+    {
+      "variant": "baseline",
+      "roots": 1024,
+      "release_order": "forward",
+      "retain_ns": 36.6826171875,
+      "release_ns": 39.9169921875
+    },
+    {
+      "variant": "baseline",
+      "roots": 1024,
+      "release_order": "random",
+      "retain_ns": 36.41796875,
+      "release_ns": 41.52490234375
+    },
+    {
+      "variant": "baseline",
+      "roots": 16384,
+      "release_order": "reverse",
+      "retain_ns": 35.0010986328125,
+      "release_ns": 36.6058349609375
+    },
+    {
+      "variant": "baseline",
+      "roots": 16384,
+      "release_order": "forward",
+      "retain_ns": 32.314300537109375,
+      "release_ns": 38.562774658203125
+    },
+    {
+      "variant": "baseline",
+      "roots": 16384,
+      "release_order": "random",
+      "retain_ns": 33.208221435546875,
+      "release_ns": 44.441192626953125
+    },
+    {
+      "variant": "baseline",
+      "roots": 65536,
+      "release_order": "reverse",
+      "retain_ns": 36.09562683105469,
+      "release_ns": 37.490203857421875
+    },
+    {
+      "variant": "baseline",
+      "roots": 65536,
+      "release_order": "forward",
+      "retain_ns": 35.248443603515625,
+      "release_ns": 42.45884704589844
+    },
+    {
+      "variant": "baseline",
+      "roots": 65536,
+      "release_order": "random",
+      "retain_ns": 40.52893829345703,
+      "release_ns": 47.492340087890625
+    },
+    {
+      "variant": "baseline",
+      "addition_us": 39.848895999999996
+    },
+    {
+      "variant": "candidate",
+      "roots": 16,
+      "release_order": "reverse",
+      "retain_ns": 31.25,
+      "release_ns": 31.25
+    },
+    {
+      "variant": "candidate",
+      "roots": 16,
+      "release_order": "forward",
+      "retain_ns": 31.25,
+      "release_ns": 41.6875
+    },
+    {
+      "variant": "candidate",
+      "roots": 16,
+      "release_order": "random",
+      "retain_ns": 29.96875,
+      "release_ns": 52.0625
+    },
+    {
+      "variant": "candidate",
+      "roots": 1024,
+      "release_order": "reverse",
+      "retain_ns": 27.64892578125,
+      "release_ns": 30.21240234375
+    },
+    {
+      "variant": "candidate",
+      "roots": 1024,
+      "release_order": "forward",
+      "retain_ns": 27.7509765625,
+      "release_ns": 51.12744140625
+    },
+    {
+      "variant": "candidate",
+      "roots": 1024,
+      "release_order": "random",
+      "retain_ns": 27.87255859375,
+      "release_ns": 61.5439453125
+    },
+    {
+      "variant": "candidate",
+      "roots": 16384,
+      "release_order": "reverse",
+      "retain_ns": 28.28472900390625,
+      "release_ns": 31.032562255859375
+    },
+    {
+      "variant": "candidate",
+      "roots": 16384,
+      "release_order": "forward",
+      "retain_ns": 27.97442626953125,
+      "release_ns": 63.524871826171875
+    },
+    {
+      "variant": "candidate",
+      "roots": 16384,
+      "release_order": "random",
+      "retain_ns": 27.501434326171875,
+      "release_ns": 90.198486328125
+    },
+    {
+      "variant": "candidate",
+      "roots": 65536,
+      "release_order": "reverse",
+      "retain_ns": 28.801284790039062,
+      "release_ns": 31.694412231445312
+    },
+    {
+      "variant": "candidate",
+      "roots": 65536,
+      "release_order": "forward",
+      "retain_ns": 27.835853576660156,
+      "release_ns": 68.73576354980469
+    },
+    {
+      "variant": "candidate",
+      "roots": 65536,
+      "release_order": "random",
+      "retain_ns": 27.70550537109375,
+      "release_ns": 112.626708984375
+    },
+    {
+      "variant": "candidate",
+      "addition_us": 39.855979
+    }
+  ],
+  "raw_directory": ".cargo-target/measurements/root-token-index-20261031",
+  "patch_sha256": "7da0a0fe292eb8c9c88a50a87d46d2ee4f14cd9f3c94e46ac5a90c1c8876dd0e"
+}

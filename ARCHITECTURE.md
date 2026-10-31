@@ -30,6 +30,11 @@ The compiler produces executable Methods; installing a Method in a dictionary is
 a separate action. Captured Methods and running or suspended computations keep
 their code and objects usable even when bindings change.
 
+Generated TCC code keeps temporary references in native call buffers reported by
+the code Unit's GC owner. Explicit Roots operations and the standalone native-provider
+token path remain available. This is implementation lifetime bookkeeping, not a
+root-management rule for Birnam programs.
+
 Task scheduling policy is substantially written in Birnam. Tasks within a domain
 share objects and interleave; current parallel workers use separate processes.
 See the [concurrency guide](docs/guide/07-concurrency.md) for the actual interface

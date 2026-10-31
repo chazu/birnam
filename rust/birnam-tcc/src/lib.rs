@@ -29,6 +29,7 @@ struct Compiled {
     implementation: Option<Oop>,
     methods: Vec<Oop>,
     declarations: Vec<(native::Method, bool)>,
+    reference_entry: Option<native::Method>,
 }
 #[derive(Clone, Copy)]
 struct Entry {
@@ -184,6 +185,7 @@ impl State {
                     implementation: None,
                     methods: Vec::new(),
                     declarations: Vec::new(),
+                    reference_entry: None,
                 },
             );
             Ok(unit)
@@ -540,21 +542,44 @@ unsafe extern "C" fn references(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize)
         let [value, visitor] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let refs = if let Some(unit) = s.units.borrow().get(&value.addr()) {
-            unit.refs.clone()
+        let (refs, report) = if let Some(unit) = s.units.borrow().get(&value.addr()) {
+            (unit.refs.clone(), unit.reference_entry)
         } else {
-            s.entries
+            (s.entries
                 .borrow()
                 .get(&value.addr())
                 .map(|e| vec![e.unit, e.context, e.method])
-                .unwrap_or_default()
+                .unwrap_or_default(), None)
         };
+        // The registered entry implements this Unit's own native reference
+        // storage. Keep its mapping resident through visitor reentry/retirement.
+        s.depth.set(s.depth.get() + 1);
+        let _entered = Entered(s);
+        if let Some(report) = report {
+            let result = report(s.id.root, *value, *value, visitor, 1);
+            if abi::is_fault(result) { return Err(abi::object_reference(result)); }
+        }
         for value in refs {
             s.send(*visitor, b"visit:", &[value])?;
         }
         Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)
+}
+unsafe extern "C" fn trace_entry(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+    (|| unsafe {
+        let s = state(c)?;
+        let [index] = borrowed_slice(a, n).ok_or_else(invalid)? else { return Err(invalid()); };
+        let mut units = s.units.borrow_mut();
+        let unit = units.get_mut(&r.addr()).filter(|unit| {
+            unit.result.is_some()
+                || (unit.initializing && unit.methods.len() == unit.declarations.len())
+        }).ok_or_else(invalid)?;
+        let &(entry, continuing) = unit.declarations.get(size(*index)?).ok_or_else(invalid)?;
+        if continuing { return Err(invalid()); }
+        unit.reference_entry = Some(entry);
+        Ok(r)
+    })().unwrap_or_else(abi::fault_reference)
 }
 unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> Oop {
     (|| unsafe {
@@ -705,6 +730,7 @@ const NAMES: &[&[u8]] = &[
     b"registerRetirement:",
     b"release:",
     b"retain:",
+    b"traceRootsWithEntry:",
     b"retire:",
     b"retirementReady",
     b"rootsDo:",
@@ -790,6 +816,11 @@ static METHODS: &[MethodSpec] = &[
     MethodSpec {
         name: birnam_abi::id_protocol::literal_index(NAMES, b"retain:"),
         entry: Some(keep),
+        convention: 0,
+    },
+    MethodSpec {
+        name: birnam_abi::id_protocol::literal_index(NAMES, b"traceRootsWithEntry:"),
+        entry: Some(trace_entry),
         convention: 0,
     },
     MethodSpec {
@@ -928,6 +959,7 @@ unsafe extern "C" fn initialize(
                 b"initialize"
                 | b"initializeWith:"
                 | b"retain:"
+                | b"traceRootsWithEntry:"
                 | b"declaredMethodAt:"
                 | b"declaredMethodAt:context:" => unit_vt,
                 #[cfg(feature = "resource-metrics")]

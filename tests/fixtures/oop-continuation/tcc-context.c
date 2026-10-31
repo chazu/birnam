@@ -11,7 +11,14 @@ typedef struct { Size name; Entry entry; U32 convention; } Method;
 typedef Oop (*Initialize)(const Protocol*,Oop,const Oop*,Size,const Oop*,Size);
 typedef struct { U32 version,bytes; const Literal*literals; Size literal_count; const Method*methods; Size method_count; Initialize initialize; } Module;
 static Protocol api;
-static Oop symbols[10], gc;
+static Oop symbols[14], gc, held;
+static int fail_report;
+static Oop hold(Oop root,Oop c,Oop r,const Oop*a,Size n){(void)root;(void)c;(void)r;if(n!=1)return api.common.invalid;held=a[0];return 0;}
+static Oop report(Oop root,Oop c,Oop r,const Oop*a,Size n){
+ (void)root;(void)c;(void)r;if(n!=1||fail_report)return api.common.invalid;
+ return held?api.common.message(api.common.root,a[0],symbols[13],&held,1):0;
+}
+static Oop fail(Oop root,Oop c,Oop r,const Oop*a,Size n){(void)root;(void)c;(void)r;if(n!=1)return api.common.invalid;fail_report=((Size)a[0]>>1)!=0;return 0;}
 static Oop context(Oop root,Oop c,Oop r,const Oop*a,Size n) {
  (void)root;(void)r;(void)a;return n?api.common.invalid:c;
 }
@@ -33,13 +40,13 @@ static Oop allocation(Oop root,Oop c,Oop r,const Oop*a,Size n) {
  return (Oop)0;
 }
 static Oop initialize(const Protocol*p,Oop unit,const Oop*s,Size n,const Oop*a,Size count) {
- if(n!=10||count!=1)return p->common.invalid;
+ if(n!=14||count!=1)return p->common.invalid;
  api=*p;for(Size i=0;i<n;i++)symbols[i]=s[i];
  gc=api.common.message(api.common.root,a[0],api.common.at,&symbols[6],1);
  if(((Size)gc&3)==2)return gc;
  return unit;
 }
 #define L(s) {(const unsigned char*)(s),sizeof(s)-1}
-static const Literal literals[]={L("context"),L("triple:"),L("continuing"),L("sequence"),L("answerTo:with:"),L("collectPrecisely"),L("GC"),L("allocation:bytes:identity:"),L("at:put:"),L("at:")};
-static const Method methods[]={{0,context,0},{1,triple,0},{2,continuing,1},{7,allocation,0}};
-const Module birnam_native_module_v3={3,sizeof(Module),literals,10,methods,4,initialize};
+static const Literal literals[]={L("context"),L("triple:"),L("continuing"),L("sequence"),L("answerTo:with:"),L("collectPrecisely"),L("GC"),L("allocation:bytes:identity:"),L("at:put:"),L("at:"),L("hold:"),L("report:"),L("fail:"),L("visit:")};
+static const Method methods[]={{0,context,0},{1,triple,0},{2,continuing,1},{7,allocation,0},{10,hold,0},{11,report,0},{12,fail,0}};
+const Module birnam_native_module_v3={3,sizeof(Module),literals,14,methods,7,initialize};

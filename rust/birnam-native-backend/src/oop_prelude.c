@@ -13,18 +13,24 @@ typedef O (*Initializer)(const CP*,O,const O*,size_t,const O*,size_t);
 typedef struct {uint32_t version,byte_size;const Literal*literals;size_t literal_count;const MethodSpec*methods;size_t method_count;Initializer initialize;} Module;
 static P id;static Control control;static O ns,owner,roots;
 static O symbols[SYMBOL_COUNT],methods[METHOD_COUNT];
+static int native_provider;
 static inline O size_oop(size_t n){return (O)((n<<1)|1);}
 static inline int failed(O v){return ((uintptr_t)v&3)==2;}
 static inline O error_object(O v){return (O)((uintptr_t)v&~(uintptr_t)2);}
-typedef struct {O error;O*tokens;size_t count,capacity;} Call;
+typedef struct Call {O error;O*tokens;size_t count,capacity;struct Call*previous;int token_mode;} Call;
+static Call*active_calls;
 static inline O raw(Call*c,O receiver,size_t selector,const O*a,size_t n){if(c->error)return 0;O result=id.message(id.root,receiver,symbols[selector],a,n);if(failed(result)){c->error=result;return 0;}return result;}
 static inline O keep(Call*c,O result){
  if(c->error)return 0;
  if(!result||((uintptr_t)result&1))return result;
  if(c->count+1>=c->capacity){size_t cap=c->capacity?c->capacity*2:32;if(cap<=c->capacity||cap>SIZE_MAX/sizeof(O)){c->error=id.invalid;return 0;}O*p=realloc(c->tokens,cap*sizeof(O));if(!p){c->error=id.invalid;return 0;}c->tokens=p;c->capacity=cap;}
- O token=raw(c,roots,S_RETAIN,&result,1);if(c->error)return 0;
- if(!((uintptr_t)token&1)||token==size_oop(0)){c->error=id.invalid;return 0;}
- c->tokens[++c->count]=token;return result;
+ if(!c->count){c->token_mode=native_provider;if(!c->token_mode){c->previous=active_calls;active_calls=c;}}
+ if(c->token_mode){
+  O token=raw(c,roots,S_RETAIN,&result,1);if(c->error)return 0;
+  if(!((uintptr_t)token&1)||token==size_oop(0)){c->error=id.invalid;return 0;}
+  c->tokens[++c->count]=token;
+ }else c->tokens[c->count++]=result;
+ return result;
 }
 static inline O call(Call*c,O receiver,size_t selector,const O*a,size_t n){O result=raw(c,receiver,selector,a,n);return c->error?0:keep(c,result);}
 static inline O named(Call*c,size_t name){O key=symbols[name];return call(c,ns,S_AT,&key,1);}
@@ -35,8 +41,21 @@ static inline int is_error(Call*c,O value){
 }
 static inline O finish(Call*c,O result){
  O failure=c->error;
- if(c->count){c->tokens[0]=failure?error_object(failure):result;O cleanup=id.message(id.root,roots,symbols[S_CLEANUP],c->tokens,c->count+1);if(!failure&&failed(cleanup))failure=cleanup;}
+ if(c->count){
+  if(c->token_mode){c->tokens[0]=failure?error_object(failure):result;O cleanup=id.message(id.root,roots,symbols[S_CLEANUP],c->tokens,c->count+1);if(!failure&&failed(cleanup))failure=cleanup;}
+  else {if(active_calls!=c)abort();active_calls=c->previous;}
+ }
  free(c->tokens);return failure?failure:result;
+}
+/* This Unit owns these native activation buffers. Callers remain paused while
+   their roots are reported; visitor reentry creates and closes separate Calls. */
+static O active_references(O root,O context,O receiver,const O*a,size_t n){
+ (void)root;(void)context;(void)receiver;if(n!=1)return id.invalid;
+ for(Call*c=active_calls;c;c=c->previous)for(size_t i=0;i<c->count;i++){
+  O value=c->tokens[i],answer=id.message(id.root,a[0],symbols[S_VISIT],&value,1);
+  if(failed(answer))return answer;
+ }
+ return 0;
 }
 static inline O full_word(Call*c,uint64_t bits){O factory=named(c,S_WORD);O a[2]={size_oop((uint32_t)bits),size_oop((uint32_t)(bits>>32))};return call(c,factory,S_FROM_PARTS,a,2);}
 static inline O integer(Call*c,uint64_t bits){O word=full_word(c,bits);O factory=named(c,S_INTEGER);return call(c,factory,S_FROM_WORD,&word,1);}

@@ -6,12 +6,24 @@ Compilation and relocation are private libtcc operations. Mapping executable cod
 creating Methods and installing them are distinct actions; see the
 [runtime reference](../../docs/contracts/runtime.md#methods-and-definitions).
 
-Compiled code exports the v2 immutable Module descriptor. Unit `initialize` and
+Compiled code exports a v2 or v3 Module descriptor. Unit `initialize` and
 `initializeWith:` validate it before entry, construct its literal Symbols and
 Methods, and pass Namespace plus the optional implementation as Oop arguments.
 Unit `declaredMethodAt:` returns a declared Method by immediate index. Its native
 implementation enters generated code directly, using a TCC-owned context that
 keeps the Unit reachable. No Method application protocol is added.
+
+A Unit can register a synchronous native reference entry by declaration index
+using `traceRootsWithEntry:`. The declarations must be ready; invalid indexes and
+continuation entries are rejected. Registration updates the existing Unit record,
+without constructing a new behavior or changing binding epochs. GC invokes the
+entry as implementation code for that Unit's native storage, with the visitor as
+its argument. The entry reports Oops through `visit:`; native failures propagate.
+The existing entry-depth guard keeps code mapped through visitor reentry.
+
+Generated code uses this entry to report active call buffers. TCC does not interpret
+their C representation, and the collector continues to obtain references through
+the Unit owner's ordinary `referencesOf:do:` operation.
 
 Existing compile/object-load, retained references, weak mapping identities,
 repeated-initialization checks and checkpoint operations remain. Scoped references

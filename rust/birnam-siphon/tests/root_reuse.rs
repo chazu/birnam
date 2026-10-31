@@ -1,10 +1,13 @@
-//! Generated-call roots preserve locals/captures and reject failed acquisitions.
+//! Generated locals survive GC; explicit Roots calls and native-provider
+//! token acquisition preserve their failures. Temporary rooting is not a
+//! language requirement to call Roots for every generated intermediate.
 #[path = "support/oop.rs"]
 mod oop;
 use birnam_abi::{Oop, as_size, size};
 #[test]
 #[ignore = "requires rebuilt Oop synchronous compiler and production owners"]
 fn local_and_capture_aliases_keep_live_call_protection() {
+    let native_provider = std::env::var_os("BIRNAM_ROOT_TEST_NATIVE_PROVIDER").is_some();
     let host = oop::bootstrap();
     let q = host.scope();
     let key = |n: &[u8]| q.keep(host.intern(n).unwrap()).unwrap();
@@ -75,6 +78,7 @@ fn local_and_capture_aliases_keep_live_call_protection() {
         "let hook := [Globals at: #ReuseHook]; let marker := [Globals at: #ReuseMarker]; let probe := [Object clone];\n",
     );
     source.push_str("[Reflect defineMethod: #run on: probe as: [Execution block: [:self | let a := [hook fresh]; [hook echo: a]; [hook echo: a]; [hook echo: marker]; [hook echo: marker]; [hook checkpoint]; #done] withNativeSignature: \"o\"]];\n");
+    source.push_str("[Reflect defineMethod: #explicit on: probe as: [Execution block: [:self | let a := [hook fresh]; [Roots retain: a]; [hook checkpoint]; #done] withNativeSignature: \"o\"]];\n");
     source.push_str("[Reflect defineMethod: #evict on: probe as: [Execution block: [:self |\n");
     for i in 0..40 {
         source.push_str(&format!("let a{i} := [hook fresh];\n"));
@@ -82,14 +86,45 @@ fn local_and_capture_aliases_keep_live_call_protection() {
     source.push_str("[hook echo: a0]; [hook echo: a39]; [hook checkpoint]; #done] withNativeSignature: \"o\"]]; [Globals at: #ReuseProbe put: probe]; true");
     let text = q.string(source.as_bytes()).unwrap();
     let output = q.string(path.as_os_str().as_encoded_bytes()).unwrap();
-    q.check_result(call(
-        named(b"Codegen"),
-        b"compile:output:from:synchronousBodies:",
-        &[text, output, output, named(b"true")],
-    ))
-    .unwrap();
-    q.check_result(call(named(b"Codegen"), b"load:", &[output]))
+    if native_provider {
+        let method = call(named(b"Codegen"), b"compileSynchronous:", &[text]);
+        q.check_result(method).unwrap();
+        let code = call(method, b"codeObject", &[]);
+        let canonical = call(named(b"CodeObject"), b"canonicalBytesOf:", &[code]);
+        let emitted = call(named(b"NativeBackend"), b"emitSynchronous:", &[canonical]);
+        q.check_result(emitted).unwrap();
+        let c_path = path.with_extension("c");
+        std::fs::write(&c_path, q.string_bytes(emitted).unwrap()).unwrap();
+        assert!(
+            std::process::Command::new("clang")
+                .args(["-std=c11", "-dynamiclib"])
+                .arg(&c_path)
+                .arg("-o")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        std::fs::remove_file(c_path).unwrap();
+        let initializer = host
+            .load_native(&q, &path, &[host.namespace, roots])
+            .unwrap();
+        let block = call(
+            named(b"Block"),
+            b"fromMethod:captureOperands:",
+            &[initializer],
+        );
+        q.check_result(call(block, b"value", &[])).unwrap();
+    } else {
+        q.check_result(call(
+            named(b"Codegen"),
+            b"compile:output:from:synchronousBodies:",
+            &[text, output, output, named(b"true")],
+        ))
         .unwrap();
+        q.check_result(call(named(b"Codegen"), b"load:", &[output]))
+            .unwrap();
+    }
     let probe = host.global(&q, b"ReuseProbe").unwrap();
     call(globals, b"at:put:", &[key(b"ReuseMarker"), named(b"nil")]);
     drop(temporary);
@@ -100,6 +135,7 @@ fn local_and_capture_aliases_keep_live_call_protection() {
     call(rv, b"addMethod", &[key(b"reuseOriginalRetain:"), original]);
     let replacement = method(b"retain");
     let run = key(b"run");
+    let explicit = key(b"explicit");
     let many = key(b"evict");
     let reset = key(b"reset:");
     let counts = key(b"counts");
@@ -133,10 +169,11 @@ fn local_and_capture_aliases_keep_live_call_protection() {
             "private roots drain at call exit"
         );
     }
-    for mode in [1, 2, 3] {
+    let modes: &[usize] = if native_provider { &[1, 2, 3] } else { &[1] };
+    for &mode in modes {
         raw(hook, reset, &[size(mode).unwrap()]).unwrap();
         raw(rv, add, &[retain, replacement]).unwrap();
-        let result = raw(probe, run, &[]);
+        let result = raw(probe, if native_provider { run } else { explicit }, &[]);
         raw(rv, add, &[retain, original]).unwrap();
         assert_eq!(
             result,

@@ -106,7 +106,7 @@ fn declared_code_binds_contexts_purely_and_keeps_their_lifetimes_separate() {
     }
     let before = epoch();
     assert!(
-        h.send(unit, b"declaredMethodAt:context:", &[size(4).unwrap(), one])
+        h.send(unit, b"declaredMethodAt:context:", &[size(7).unwrap(), one])
             .is_err()
     );
     assert!(

@@ -103,9 +103,9 @@ the previously recorded image validation failure. These are bounded improvements
 not completion of the migration or overall simplification goal.
 
 Return the performance focus to [arithmetic and generated control work](../measurements/arithmetic-layers-20261031/README.md):
-full Integer addition still measures about 40.5 microseconds and 49 managed allocations
-following [conservative reuse of Id's query-binding proof](../measurements/query-bindings-20261031/README.md).
-That change improves full addition about 6%, Word addition about 43%, and existing
+full Integer addition still costs about 30 microseconds and 49 managed allocations
+after the generated-root change below. Earlier [conservative reuse of Id's query-binding proof](../measurements/query-bindings-20261031/README.md)
+improved full addition about 6%, Word addition about 43%, and existing
 metadata analysis about 19–21%; the authored inventory barely changes. Structurally
 equivalent mutable Methods still receive live checks, with a dedicated regression.
 A [Word expression audit](../measurements/word-expression-current-20261031/README.md)
@@ -113,6 +113,11 @@ also removes stale epoch-cached primitive meanings and rechecks allocation permi
 after callbacks. Those expression entrypoints are slower with correct live checks;
 their old timings must not justify restoring the invalid assumptions. Method matching
 avoids a duplicate read only within one callback-free comparison.
+[Generated call roots](../measurements/generated-roots-20261031/README.md) now use
+buffers reported by their TCC code Unit, preserving explicit Roots operations and
+the standalone native-provider token path. A full-source comparison reduces addition
+from 39.86 to 29.82 microseconds without changing its 49 managed allocations. The
+inventory improves only about 5%; this does not qualify the port.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate

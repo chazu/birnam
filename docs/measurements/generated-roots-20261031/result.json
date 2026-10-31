@@ -1,0 +1,367 @@
+{
+  "date": "2026-10-31",
+  "baseline_commit": "adbe9b05",
+  "status": "implemented and qualified for this bounded rooting change; overall simplification/migration incomplete",
+  "mechanism": "TCC code Units report native activation buffers. Explicit Roots operations and standalone native-provider tokens remain supported.",
+  "measurements": {
+    "commands": [
+      {
+        "label": "final-arithmetic-baseline-1",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/baseline-source-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-arithmetic-baseline-1.json"
+        ],
+        "environment": {}
+      },
+      {
+        "label": "final-arithmetic-candidate-2",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-arithmetic-candidate-2.json"
+        ],
+        "environment": {
+          "ARITHMETIC_REVERSE": "1"
+        }
+      },
+      {
+        "label": "final-arithmetic-candidate-3",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-arithmetic-candidate-3.json"
+        ],
+        "environment": {}
+      },
+      {
+        "label": "final-arithmetic-baseline-4",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/baseline-source-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-arithmetic-baseline-4.json"
+        ],
+        "environment": {
+          "ARITHMETIC_REVERSE": "1"
+        }
+      },
+      {
+        "label": "final-inventory-baseline-1",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/baseline-source-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-inventory-baseline-1.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "label": "final-inventory-candidate-2",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-inventory-candidate-2.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "label": "final-inventory-candidate-3",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-inventory-candidate-3.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "label": "final-inventory-baseline-4",
+        "command": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/baseline-source-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/final-inventory-baseline-4.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      }
+    ],
+    "results": [
+      {
+        "variant": "baseline",
+        "case": "Integer addition",
+        "automatic_gc": true,
+        "median_us": 39.855979000000005,
+        "allocations": [
+          49.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer addition",
+        "automatic_gc": false,
+        "median_us": 40.3249165,
+        "allocations": [
+          49.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": true,
+        "median_us": 10.0562505,
+        "allocations": [
+          14.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": false,
+        "median_us": 9.805583500000001,
+        "allocations": [
+          14.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer exact Error check",
+        "automatic_gc": true,
+        "median_us": 8.258938,
+        "allocations": [
+          6.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer exact Error check",
+        "automatic_gc": false,
+        "median_us": 7.795396,
+        "allocations": [
+          6.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Block return nil",
+        "automatic_gc": true,
+        "median_us": 0.851979,
+        "allocations": [
+          3.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Block return nil",
+        "automatic_gc": false,
+        "median_us": 0.8243125,
+        "allocations": [
+          3.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "inventory dense",
+        "median_ms": 356.109604,
+        "native_metadata_ms": 8.4115415
+      },
+      {
+        "variant": "baseline",
+        "case": "inventory registry_module",
+        "median_ms": 830.311542,
+        "native_metadata_ms": 24.630145499999998
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer addition",
+        "automatic_gc": true,
+        "median_us": 29.818896000000002,
+        "allocations": [
+          49.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer addition",
+        "automatic_gc": false,
+        "median_us": 29.960521,
+        "allocations": [
+          49.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": true,
+        "median_us": 7.730375,
+        "allocations": [
+          14.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": false,
+        "median_us": 7.7229790000000005,
+        "allocations": [
+          14.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer exact Error check",
+        "automatic_gc": true,
+        "median_us": 5.6576249999999995,
+        "allocations": [
+          6.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer exact Error check",
+        "automatic_gc": false,
+        "median_us": 5.6274795,
+        "allocations": [
+          6.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Block return nil",
+        "automatic_gc": true,
+        "median_us": 0.708021,
+        "allocations": [
+          3.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Block return nil",
+        "automatic_gc": false,
+        "median_us": 0.7060204999999999,
+        "allocations": [
+          3.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "inventory dense",
+        "median_ms": 336.9152085,
+        "native_metadata_ms": 8.327958500000001
+      },
+      {
+        "variant": "candidate",
+        "case": "inventory registry_module",
+        "median_ms": 790.2021040000001,
+        "native_metadata_ms": 24.4515
+      }
+    ]
+  },
+  "source_builds": {
+    "baseline": {
+      "path": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/baseline-source-prefix/share/birnam/rust-install.json",
+      "sha256": "fedd59d3c8d6dd0b373f20c8e36a30d15809618e1f576ab175239e174be0feca",
+      "mode": "development-cache",
+      "source_identity": {
+        "git_clean": true,
+        "git_commit": "adbe9b05c71c9e9744ff315b8b3fe99ed6830ba7"
+      },
+      "native_libraries": {
+        "id": "d04c738b2b5de35c02c3277f7628faf36d3724d85c3e122ae511457f01e87244",
+        "root_registry": "3e01b88df7e619746c6eeaf81ce8bda64a50e87114144224025f6377357f91ce",
+        "tcc": "448af074b491eab71851b1bf7ea6d5ebf2875fc33db1738dac6a83cb562f601a",
+        "native_backend": "0c2cd93da006d9fca93850866e812b48f214081bbb8cb9af4fdc1e4a4167bcc4",
+        "execution": "dcf9b5420666274eddf86859220d0c163d66df26702d4caa9729d381916946ed",
+        "word": "995a415111aa862a3e19f298a15e895bdafbb53eabd46267c3b31bbde741dcb3",
+        "integer": "dd5a5a1e0eba2fc3d249430a5990a439a14a29a262435c6aa5d707851db2eab6"
+      }
+    },
+    "candidate": {
+      "path": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031/source-prefix/share/birnam/rust-install.json",
+      "sha256": "844c468bcb399fd8a63e63ed8af751b8c5d9db030e6b001951bbe68a693a2755",
+      "mode": "development-cache",
+      "source_identity": {
+        "git_clean": false,
+        "git_commit": "adbe9b05c71c9e9744ff315b8b3fe99ed6830ba7"
+      },
+      "native_libraries": {
+        "id": "d04c738b2b5de35c02c3277f7628faf36d3724d85c3e122ae511457f01e87244",
+        "root_registry": "3e01b88df7e619746c6eeaf81ce8bda64a50e87114144224025f6377357f91ce",
+        "tcc": "d03be1fbe7b8d26e252c31c731b6cae4550507b12eb78c1ecb3a774cf7ebdad1",
+        "native_backend": "c0691202f94146de0c52382d22618c5ff565624c20f13551a42a2abc38575546",
+        "execution": "dcf9b5420666274eddf86859220d0c163d66df26702d4caa9729d381916946ed",
+        "word": "995a415111aa862a3e19f298a15e895bdafbb53eabd46267c3b31bbde741dcb3",
+        "integer": "c733ea2af46975d77e6fa962f6d5bc37a35ec6894a18581b6a3afed260848c99"
+      }
+    }
+  },
+  "source_sha256": {
+    "rust/birnam-native-backend/src/oop_emission.rs": "7788b7bb7564049cd2e0932a171c6b3884cd05047d9234bb2f03b5ab58d63ca2",
+    "rust/birnam-native-backend/src/oop_prelude.c": "edd4d8c161d3dd3520b96cb4cc44386ead8d726a4bb38d850513b46eb9d0aeb7",
+    "rust/birnam-tcc/src/lib.rs": "abe0486f24a8be0a6110e041c1b37d300949ed011a49a16f684b8b8940195aba",
+    "rust/birnam-siphon/tests/root_reuse.rs": "ffcb845661444bf449dd22cebd4a81f12b1281e6d7c1e4951dd7cfa18bf54c64",
+    "rust/birnam-siphon/tests/tcc_context.rs": "482490d4336dbbd485f0aa618d198eea1c94730009b3ef900114469e5868c81a",
+    "rust/birnam-siphon/tests/tcc_references.rs": "a05edf2d14204d8f739dd70a55de2c6a258dbe6762dcd52e6da5ba23fb31a470",
+    "tests/fixtures/oop-continuation/tcc-context.c": "dce065cf7ae9848de101c1f2ce387bb683170087c8f2f182750f69a25666e2b6"
+  },
+  "validation": {
+    "source-integration.log": {
+      "targets": 15,
+      "status": "passed"
+    },
+    "execution.log": {
+      "targets": 5,
+      "status": "passed"
+    },
+    "source-native-roots.log": {
+      "targets": 1,
+      "status": "passed"
+    },
+    "references-final.log": {
+      "targets": 2,
+      "status": "passed"
+    }
+  },
+  "library_unit_tests": 323,
+  "workspace_check": "all targets and all features passed; existing unused_unsafe warning remains",
+  "full_image": "roundtrip, 20 resave epochs, slot/refusal/snapshot checks passed against the full rebuilt candidate",
+  "negative_control": "Disabling Unit reference reporting fails the live-local GC test.",
+  "raw_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/generated-roots-20261031",
+  "raw_sha256": {
+    "source-build.log": "b9820ae5fdf4c8febfa282810e441e270d38e882bc775750120a28cdea5a7023",
+    "baseline-source-build.log": "db5b69ee67e9a32d92c4025cf4732a755a36fcfc17e82a2c26d9940457973af9",
+    "source-integration.log": "a06b3afb4fbdd6374193bbbecd5b7ba6a7b78e8e497ea5195e5f22180e7f4735",
+    "execution.log": "4dcfcdaee7dfe505d86dcc037cf57673e3a8ca923aa16c31e1fa3120251b2c3f",
+    "source-native-roots.log": "d4dc3be725019ab0952a32eca96cc434c255515275e86cd725099c58f12af7ca",
+    "references-final.log": "22b4d124b98e2da5964dfce592c5a51858ebae32436a68ef653de1cd7de39cd9",
+    "negative-gc.log": "54aa3998ae493dc70938fc1f7c4ba43157d99db94c8e0bc9aeb7f3d6bab5d79a",
+    "workspace-check.log": "4e336567447f9f2b0c1a5a3f24bef98a53323d4a9c6e6d7f1919ae55be0fc1f1",
+    "workspace-unit.log": "a8ccf23ca3b70e78823089af6e2e6323a8a244f69028e9331bf7eaeac7558ab3",
+    "cli-help.log": "fc862f36d20cfcf287a76063d88afcff4e9bbd0b5ff989bc293fc4dd1eaf30f5",
+    "cli-version.log": "8da6a2ee5c36bb2770de645cbcd689209f5935b380d68729e107d0250a633b53",
+    "final-summary.json": "8c0700c89ed4f34f8212066e42c3b18225d27b8368d0b2561d6550059be4523b",
+    "final-arithmetic-baseline-1.json": "448e2df80c378ae2a5193ae7e43b0ca2095cf92aee73eb7cd565f1d12d2b9228",
+    "final-arithmetic-baseline-4.json": "f039fc9427dccd2b6e9c9a0125e5ef267613f7189666f38843c7ddbf6a77f826",
+    "final-arithmetic-candidate-2.json": "5937403b15e6c06ba146275876473dd4273b0db5939e3066dc0fea6516388d4a",
+    "final-arithmetic-candidate-3.json": "c86a196d9204c56fe6400cb8607002653c579137d9f9259493d6c58634ea568e",
+    "final-inventory-baseline-1.json": "cc7d7bd6028e2038126af71bd82229fe2064656c9f14b8cb38b3631571c7b324",
+    "final-inventory-baseline-4.json": "d8b4970a08ae514f3001a6874e885fe150b4a1e5a5063be2c011a02f5f0ef88a",
+    "final-inventory-candidate-2.json": "9657870fdd1dd7216f6dd4ae734453da355b790cac011a168950bc1042bbe4f9",
+    "final-inventory-candidate-3.json": "0755dcd5f708e326e9a0becbb2bf84467352e9a048cba715f0b46a6769c92914"
+  },
+  "measurement_script_sha256": "b76483297c1f8f02911699930de7379b19ede0cfb9219b1a3c754367d2d9e1d3",
+  "limits": [
+    "Fresh development-cache source builds, not full release qualification",
+    "No user-prefix installation or push",
+    "Addition still allocates 49 managed objects per measured call",
+    "Authored inventory remains too slow for cutover"
+  ]
+}

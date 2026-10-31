@@ -260,6 +260,7 @@ fn compile_mode(
         ("IS_ERROR", b"isError"),
         ("ERROR", b"Error"),
         ("TRUE", b"true"),
+        ("VISIT", b"visit:"),
     ] {
         writeln!(definitions, "#define S_{key} {}", e.name(name)?).unwrap();
     }
@@ -296,11 +297,14 @@ fn compile_mode(
     let factory_names = native_bodies.iter().map(|i| e.name(format!("compiledFactory{i}").as_bytes())).collect::<Result<Vec<_>,_>>()?;
     let bound_names = native_bodies.iter().map(|i| e.name(format!("compiledMethod{i}").as_bytes())).collect::<Result<Vec<_>,_>>()?;
     let dnu_names = native_bodies.iter().map(|i| e.name(format!("compiledDnu{i}").as_bytes())).collect::<Result<Vec<_>,_>>()?;
+    let reference_name = e.name(b"compiledActiveReferences")?;
+    let trace_entry = e.name(b"traceRootsWithEntry:")?;
+    let reference_index = e.functions.len() + 3 * native_bodies.len();
     writeln!(
         definitions,
         "#define SYMBOL_COUNT {}\n#define METHOD_COUNT {}",
         e.names.len(),
-        e.functions.len() + 3 * native_bodies.len()
+        reference_index + 1
     )
     .unwrap();
     let mut out = definitions + include_str!("oop_prelude.c");
@@ -315,7 +319,7 @@ fn compile_mode(
             out.push_str(f);
         }
     }
-    out.push_str("static O code_provider;static int native_provider;\n");
+    out.push_str("static O code_provider;\n");
     for (ordinal, &i) in native_bodies.iter().enumerate() {
         let p = &e.programs[i];
         let argc = p.parameter_count as usize;
@@ -380,10 +384,12 @@ fn compile_mode(
     for (ordinal, &i) in native_bodies.iter().enumerate() {
         writeln!(out,"{{{},factory_{i},0}},{{{},bound_{i},0}},{{{},dnu_{i},0}},",factory_names[ordinal],bound_names[ordinal],dnu_names[ordinal]).unwrap();
     }
+    writeln!(out,"{{{reference_name},active_references,0}},").unwrap();
     out.push_str("};\n");
     // TCC supplies its Unit owner. Standalone callers supply their own retention
     // owner; the native image still supplies declared Methods through Id messages.
     writeln!(out,"static O initialize(const CP*p,O unit,const O*names,size_t count,const O*args,size_t n){{if(!p||p->common.version!=3||p->common.byte_size!=sizeof(CP))return 0;if(n<1||n>2||count!=SYMBOL_COUNT)return p->common.invalid;id=p->common;control=p->control;ns=args[0];owner=n==2?args[1]:unit;code_provider=unit;native_provider=n==2;for(size_t i=0;i<count;i++)symbols[i]=names[i];O key=symbols[{roots}];roots=id.message(id.root,ns,symbols[S_AT],&key,1);if(failed(roots)||!roots)return id.invalid;Call c={{0}};").unwrap();
+    writeln!(out,"if(!native_provider){{O at=size_oop({reference_index});O registered=id.message(id.root,unit,symbols[{trace_entry}],&at,1);if(registered!=unit)return failed(registered)?registered:id.invalid;}}\n").unwrap();
     for i in 0..e.functions.len() {
         writeln!(
             out,

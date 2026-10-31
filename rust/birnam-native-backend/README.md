@@ -71,6 +71,24 @@ operations are not current APIs. Their former descriptions are preserved in the
 
 ## Generated helper and selector storage
 
+TCC-generated code keeps temporary Oop references in a native buffer for each
+active call. The Unit reports those buffers through its registered native reference
+entry when GC traces the Unit. Completing a call unlinks and frees its buffer;
+there is no per-value Roots token acquisition or release on this path. Entered
+Methods keep their Unit reachable, and the Unit keeps its executable mapping valid
+through reference-reporting callbacks.
+
+This changes compiler bookkeeping, not authored sends to Roots. Explicit Roots
+operations retain their normal replacement and error behavior. Independently loaded
+native modules using the explicit native-provider initializer still use protected
+Root tokens, including validation of failed acquisitions and ordered cleanup.
+
+New TCC initializers register `compiledActiveReferences` with the Unit's
+`traceRootsWithEntry:` operation before constructing callable bodies. Registration
+does not install dictionary bindings. Existing compiled artifacts keep their earlier
+rooting implementation; recompilation is needed to use the new path. A TCC runtime
+without the registration operation cannot initialize the new output successfully.
+
 Private prelude helpers are `static inline`. The retained TinyCC compiler emits
 referenced helper bodies, following transitive calls and address-taken references.
 This removes unused generated C helpers, not Birnam methods based on an assumption
