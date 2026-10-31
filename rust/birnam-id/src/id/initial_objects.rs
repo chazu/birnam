@@ -72,6 +72,7 @@ pub(crate) fn construct() -> Box<State> {
             dnu, registry, prototype,
         ]),
         default_lookup: Cell::new(nil),
+        query_methods: std::array::from_fn(|_| Cell::new(nil)),
         invalid_fault: Cell::new(nil),
         unbound_fault: Cell::new(nil),
         owner: std::thread::current().id(),

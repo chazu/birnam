@@ -103,7 +103,11 @@ the previously recorded image validation failure. These are bounded improvements
 not completion of the migration or overall simplification goal.
 
 Return the performance focus to [arithmetic and generated control work](../measurements/arithmetic-layers-20261031/README.md):
-full Integer addition still measures about 44 microseconds and 49 managed allocations.
+full Integer addition still measures about 40.5 microseconds and 49 managed allocations
+following [conservative reuse of Id's query-binding proof](../measurements/query-bindings-20261031/README.md).
+That change improves full addition about 6%, Word addition about 43%, and existing
+metadata analysis about 19–21%; the authored inventory barely changes. Structurally
+equivalent mutable Methods still receive live checks, with a dedicated regression.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate

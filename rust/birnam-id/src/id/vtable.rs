@@ -76,6 +76,9 @@ pub(crate) struct Vtables {
     // registry context; they retain no objects. Every existing-graph mutation
     // clears this fact, including mutations after epoch counters saturate.
     default_lookup: [Cell<Option<(usize, usize, usize, bool)>>; 2],
+    // Positive proof about the original bootstrap query Methods, never object
+    // payloads or allocation facts. All existing-graph mutations invalidate it.
+    pub(super) representation_queries_canonical: Cell<bool>,
 }
 
 impl Vtables {
@@ -87,6 +90,7 @@ impl Vtables {
             binding_epoch: 0,
             slot_hints: std::array::from_fn(|_| Cell::new(None)),
             default_lookup: std::array::from_fn(|_| Cell::new(None)),
+            representation_queries_canonical: Cell::new(false),
         }
     }
     pub(crate) fn mutation_epoch(&self) -> u64 {
@@ -95,6 +99,7 @@ impl Vtables {
 
     pub(crate) fn note_mutation(&mut self) {
         for fact in &self.default_lookup { fact.set(None); }
+        self.representation_queries_canonical.set(false);
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         self.binding_epoch = self.binding_epoch.saturating_add(1);
     }
@@ -251,6 +256,7 @@ impl Vtables {
             .retain(|vtable| self.by_address.contains_key(&vtable.addr()));
         if !dead.is_empty() {
             for fact in &self.default_lookup { fact.set(None); }
+            self.representation_queries_canonical.set(false);
             self.mutation_epoch = self.mutation_epoch.saturating_add(1);
         }
     }
@@ -307,7 +313,9 @@ mod core_tests {
         tables.remove_method(meta, key);
         assert!(tables.default_lookup_fact(meta, key, expected).is_some());
         // Positive facts must not survive registry retirement/address reuse.
+        tables.representation_queries_canonical.set(true);
         tables.remove_objects(&[meta]);
+        assert!(!tables.representation_queries_canonical.get());
         tables.register(meta, core::ptr::null_mut());
         assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
@@ -315,7 +323,9 @@ mod core_tests {
         // Invalidation is explicit, not an equality check on a saturated epoch.
         tables.mutation_epoch = u64::MAX;
         tables.binding_epoch = u64::MAX;
+        tables.representation_queries_canonical.set(true);
         tables.remove_method(meta, key);
+        assert!(!tables.representation_queries_canonical.get());
         assert!(!tables.default_lookup_fact(meta, key, expected).is_some());
         tables.add_method(meta, key, expected);
         assert!(tables.default_lookup_fact(meta, key, expected).is_some());

@@ -46,6 +46,9 @@ pub(crate) struct State {
     pub(super) drives: RefCell<Vec<super::continuation::Drive>>,
     pub permanent: RefCell<Vec<Oop>>,
     pub default_lookup: Cell<Oop>,
+    // Exact, privately immutable bootstrap witnesses. Copies may have mutable
+    // backing storage and must retain the ordinary per-query checks.
+    pub(super) query_methods: [Cell<Oop>; 4],
     pub invalid_fault: Cell<Oop>,
     pub unbound_fault: Cell<Oop>,
     pub owner: std::thread::ThreadId,
@@ -428,6 +431,10 @@ impl State {
                 self.tables.borrow_mut().add_method(vt, sel, m);
             } else {
                 unsafe { self.send(vt, b"addMethod", &[sel, m]) }.unwrap();
+            }
+            if let Some(slot) = super::bootstrap_values::QUERY_BINDINGS.iter().position(|(_, expected)| *expected == action) {
+                self.query_methods[slot].set(m);
+                self.permanent.borrow_mut().push(m);
             }
             if matches!(action, Action::Lookup) {
                 self.default_lookup.set(m);

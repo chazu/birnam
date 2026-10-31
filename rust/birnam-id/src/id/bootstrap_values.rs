@@ -2,6 +2,12 @@
 //! interpret their own formats; allocation and generic dispatch do not.
 use super::native_id::{Action, OPERATIONS, Scope, State};
 use crate::abi::{self, Oop, id_protocol::Method};
+pub(super) const QUERY_BINDINGS: &[(&[u8], Action)] = &[
+    (b"tryRepresentationIdentityOf:behavior:bytes:", Action::Representation),
+    (b"behaviorOf:", Action::Behavior),
+    (b"allocationSizeOf:", Action::Extent),
+    (b"identityOf:", Action::Identity),
+];
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct NativeMethod {
@@ -41,12 +47,24 @@ impl State {
         })
     }
     pub(super) fn representation_queries_current(&self, receiver: Oop) -> bool {
-        if receiver != self.root || self.uses_default_lookup(receiver) != Ok(true) { return false; }
-        let Ok(behavior)=self.behavior(receiver) else { return false; };
-        [(b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(),Action::Representation),
-            (b"behaviorOf:",Action::Behavior),(b"allocationSizeOf:",Action::Extent),(b"identityOf:",Action::Identity)]
-            .into_iter().all(|(name,action)|self.tables.borrow().lookup(behavior,self.selector(name))
-                .is_some_and(|m|self.method_is_builtin(m,action)))
+        if receiver != self.root { return false; }
+        if self.tables.borrow().representation_queries_canonical.get() { return true; }
+        if self.uses_default_lookup(receiver) != Ok(true) { return false; }
+        let Ok(behavior) = self.behavior(receiver) else { return false; };
+        let mut canonical = true;
+        for (index, &(name, action)) in QUERY_BINDINGS.iter().enumerate() {
+            let Some(method) = self.tables.borrow().lookup(behavior, self.selector(name)) else { return false; };
+            if method != self.query_methods[index].get() {
+                canonical = false;
+                // Structurally equivalent Methods may have mutable backing
+                // storage. Read those Methods anew, without retaining a proof.
+                if !self.method_is_builtin(method, action) { return false; }
+            }
+        }
+        // Only the original private bootstrap Methods are immutable witnesses.
+        // No callbacks occur between these reads and recording their result.
+        self.tables.borrow().representation_queries_canonical.set(canonical);
+        true
     }
     pub(super) fn method_data(&self, o: Oop) -> Result<MethodData, Oop> {
         let data = self.native_method_fields(o)?;
@@ -387,6 +405,51 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn representation_queries_follow_live_bindings_graph_and_allocation_records() {
+        let s = super::super::initial_objects::construct();
+        let left = s.allocate(s.object, 8).unwrap();
+        let right = s.allocate(s.object, 8).unwrap();
+        let query = || unsafe {
+            s.send(s.root, b"representationsMatch", &[s.object, abi::size(8).unwrap(), left, right]).unwrap()
+        };
+        let yes = abi::size(1).unwrap();
+        assert_eq!(query(), yes);
+        assert_eq!(query(), yes);
+        for name in [b"tryRepresentationIdentityOf:behavior:bytes:".as_slice(),
+            b"behaviorOf:", b"allocationSizeOf:", b"identityOf:"]
+        {
+            let key = s.selector(name);
+            let original = s.tables.borrow().lookup(s.object, key).unwrap();
+            let wrong_context = s.clone_method(original, left).unwrap();
+            s.tables.borrow_mut().add_method(s.object, key, wrong_context);
+            assert!(query().is_null(), "replaced {name:?} must decline");
+            s.tables.borrow_mut().add_method(s.object, key, original);
+            assert_eq!(query(), yes, "restored {name:?} must work again");
+            s.tables.borrow_mut().remove_method(s.object, key);
+            assert!(query().is_null(), "removed {name:?} must decline");
+            s.tables.borrow_mut().add_method(s.object, key, original);
+            assert_eq!(query(), yes);
+        }
+        let key = s.selector(b"identityOf:");
+        let original = s.tables.borrow().lookup(s.object, key).unwrap();
+        let parent = s.tables.borrow_mut().create(&mut s.heap.borrow_mut(), s.object, s.meta);
+        let wrong_context = s.clone_method(original, left).unwrap();
+        s.tables.borrow_mut().add_method(parent, key, wrong_context);
+        assert_eq!(query(), yes, "an unrelated dictionary does not change the answer");
+        unsafe { s.send(s.root, b"parentOf:put:", &[s.root_behavior, parent]) }.unwrap();
+        assert!(query().is_null(), "new inherited query must be observed");
+        unsafe { s.send(s.root, b"parentOf:put:", &[s.root_behavior, s.object]) }.unwrap();
+        assert_eq!(query(), yes);
+        unsafe { s.send(s.root, b"reassociateBehaviorOf:with:", &[s.root, parent]) }.unwrap();
+        assert!(query().is_null(), "Id's current vtable must be observed");
+        unsafe { s.send(s.root, b"reassociateBehaviorOf:with:", &[s.root, s.root_behavior]) }.unwrap();
+        assert_eq!(query(), yes);
+        // A binding proof must not remember an object's allocation facts.
+        let storage = s.heap.borrow_mut().detach(right.addr()).unwrap();
+        assert_eq!(query(), abi::size(0).unwrap());
+        drop(storage);
+    }
     #[test]
     fn control_context_references_are_inline_and_shared_by_captured_methods() {
         let s = super::super::initial_objects::construct();

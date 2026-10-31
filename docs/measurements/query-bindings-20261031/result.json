@@ -1,0 +1,261 @@
+{
+  "date": "2026-10-31",
+  "baseline_commit": "8d6771f0",
+  "status": "corrected canonical-witness implementation validated; overall simplification and migration incomplete",
+  "mechanism": "One positive binding fact for four original private bootstrap Methods. Other Method data is checked on every query. Object allocation facts are always read live.",
+  "scope": {
+    "arithmetic": "ABBA, 2 processes per variant, 5 samples of 1000 calls per case and GC mode",
+    "inventory": "ABBA, 2 processes per variant, 6 fixtures, 2 warmups and 7 samples, compile: resumable mode",
+    "prefix": "copied prior prefix with only Id replaced; not a fresh install or release qualification"
+  },
+  "summary": {
+    "baseline:Integer addition:gc=True": {
+      "median_us": 43.242104,
+      "allocations": [
+        49.0
+      ]
+    },
+    "baseline:Integer addition:gc=False": {
+      "median_us": 43.3856875,
+      "allocations": [
+        49.0
+      ]
+    },
+    "baseline:Integer equality:gc=True": {
+      "median_us": 0.436604,
+      "allocations": [
+        0.0
+      ]
+    },
+    "baseline:Integer equality:gc=False": {
+      "median_us": 0.4315625,
+      "allocations": [
+        0.0
+      ]
+    },
+    "baseline:Word wrappingAdd:gc=True": {
+      "median_us": 0.989167,
+      "allocations": [
+        1.0
+      ]
+    },
+    "baseline:Word wrappingAdd:gc=False": {
+      "median_us": 0.9995210000000001,
+      "allocations": [
+        1.0
+      ]
+    },
+    "baseline:Integer add bits and overflow:gc=True": {
+      "median_us": 12.1383125,
+      "allocations": [
+        14.0
+      ]
+    },
+    "baseline:Integer add bits and overflow:gc=False": {
+      "median_us": 12.214542,
+      "allocations": [
+        14.0
+      ]
+    },
+    "baseline:inventory:dense": {
+      "median_ms": 354.82325,
+      "native_metadata_median_ms": 10.142291499999999
+    },
+    "baseline:inventory:registry_module": {
+      "median_ms": 838.5028544999999,
+      "native_metadata_median_ms": 30.086646000000002
+    },
+    "candidate:Integer addition:gc=True": {
+      "median_us": 40.4987085,
+      "allocations": [
+        49.0
+      ]
+    },
+    "candidate:Integer addition:gc=False": {
+      "median_us": 40.6306875,
+      "allocations": [
+        49.0
+      ]
+    },
+    "candidate:Integer equality:gc=True": {
+      "median_us": 0.159729,
+      "allocations": [
+        0.0
+      ]
+    },
+    "candidate:Integer equality:gc=False": {
+      "median_us": 0.1593125,
+      "allocations": [
+        0.0
+      ]
+    },
+    "candidate:Word wrappingAdd:gc=True": {
+      "median_us": 0.562521,
+      "allocations": [
+        1.0
+      ]
+    },
+    "candidate:Word wrappingAdd:gc=False": {
+      "median_us": 0.5644795,
+      "allocations": [
+        1.0
+      ]
+    },
+    "candidate:Integer add bits and overflow:gc=True": {
+      "median_us": 9.965062,
+      "allocations": [
+        14.0
+      ]
+    },
+    "candidate:Integer add bits and overflow:gc=False": {
+      "median_us": 9.8284585,
+      "allocations": [
+        14.0
+      ]
+    },
+    "candidate:inventory:dense": {
+      "median_ms": 356.0575415,
+      "native_metadata_median_ms": 8.217021
+    },
+    "candidate:inventory:registry_module": {
+      "median_ms": 829.2853545,
+      "native_metadata_median_ms": 23.777271
+    }
+  },
+  "commands": [
+    {
+      "label": "final-arithmetic-baseline-1",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-arithmetic-baseline-1.json"
+      ],
+      "environment": {}
+    },
+    {
+      "label": "final-arithmetic-candidate-2",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-arithmetic-candidate-2.json"
+      ],
+      "environment": {
+        "ARITHMETIC_REVERSE": "1"
+      }
+    },
+    {
+      "label": "final-arithmetic-candidate-3",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-arithmetic-candidate-3.json"
+      ],
+      "environment": {}
+    },
+    {
+      "label": "final-arithmetic-baseline-4",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-arithmetic-baseline-4.json"
+      ],
+      "environment": {
+        "ARITHMETIC_REVERSE": "1"
+      }
+    },
+    {
+      "label": "final-inventory-baseline-1",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-inventory-baseline-1.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    },
+    {
+      "label": "final-inventory-candidate-2",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-inventory-candidate-2.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    },
+    {
+      "label": "final-inventory-candidate-3",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-inventory-candidate-3.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    },
+    {
+      "label": "final-inventory-baseline-4",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/final-inventory-baseline-4.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    }
+  ],
+  "validation": {
+    "id_continuation": "passed unit/C/export checks",
+    "workspace_check": "passed all targets/all features; existing unused_unsafe warning remains",
+    "workspace_library_tests": 322,
+    "integration_targets": 16,
+    "full_image": "passed roundtrip, resave epochs, slot/refusal/snapshot tests",
+    "mutable_method": "baseline passes; unrestricted cache fails; corrected implementation passes including context restoration"
+  },
+  "rejected_unrestricted_cache": {
+    "reason": "Mutable Method fields can change without dictionary edits; unrestricted cached answers become stale.",
+    "id_sha256": "c15d33e693195f97c0277118f511268f9102dfdbe1d2671d461274a45601e9e6"
+  },
+  "source_sha256": {
+    "rust/birnam-id/src/id/bootstrap_values.rs": "d6ff368a79deeeb84a41ae18cbf4ae836d717ccc33083766564019bf2da10b31",
+    "rust/birnam-id/src/id/vtable.rs": "c00c7138d2d69ea9c1b8dc8c0172c0be681563203e970ace4f0512ee68dcf46a",
+    "rust/birnam-id/src/id/native_id.rs": "e79a80c7809a5f80de8ea2cdaa4dff42149e13dec356fc155901983b61ea259a",
+    "rust/birnam-id/src/id/initial_objects.rs": "dd05cc6b4248cfd1fcbc717808bf819e64721862b7c2cde01791ecb1c240ee49",
+    "rust/birnam-siphon/tests/query_binding_mutation.rs": "fa05bb904b09d56c2548bc0f5231d710a2ac778850b712358377c66881f0200e"
+  },
+  "library_sha256": {
+    "baseline_id": "314e0eb259a9bae003b3d00e5cb804993e5f2b23d3fecde76c8df9d01ef02251",
+    "candidate_id": "ac40bf851c2a367e3876cb50bd7a421c72bacf7513e56e1943fe7d96b52520fd"
+  },
+  "other_libraries": "Identical to baseline; library manifest retained in ../arithmetic-layers-20261031/result.json",
+  "raw_directory": ".cargo-target/measurements/query-bindings-20261031",
+  "raw_sha256": {
+    "final-continuation.log": "34b3a37cb853f812fb4a045adab0123dc54cc07af38f03e69e823d50cc74b5a7",
+    "final-workspace-check.log": "0874eb849002400124df10447c3d31419a4049a22d57c11147838891f0983d58",
+    "final-workspace-unit.log": "505bf48c830f2b94b158b291f95f70e4f29e2ede07615b6ac6ed1447a8d336c6",
+    "final-integration.log": "7354e1ca0fb995012ff66b2b47fc0b8a621320a7033a687b85e4fe11fea88304",
+    "mutable-baseline.log": "882709cdc1a47d22fda2f17709b0207014b3a0e2af9eceb1022f7845c39cf016",
+    "mutable-candidate.log": "ab6fade84fd64acc230111823e7eaea56d951ab658e40b1c02f40e82eb25253f",
+    "mutable-fixed.log": "10d8b1134b84e40029f7ab90ace4038c799c6adc581267c45bdf2dbe23c54524",
+    "missing-invalidation.log": "a90b85fd781b897247e20a92aca60dd9fce49de635263ae36a0411edeaf99ade",
+    "final-measure.log": "e02603d908b0a611041a6555647f460daa256e1e7b695c773f0c089dc8ac9ffd",
+    "measurement-summary.json": "a7f1aedb1cff41d6cf514bbe41585e955d5815f15e5d1029e8ba6c69df4e3833",
+    "final-arithmetic-baseline-1.json": "2dcbb796dfb10c89b47e86b2275fa35da73954311fff06b98bd35246cd4724d6",
+    "final-arithmetic-baseline-4.json": "ee6c6cd931519c43454ad543a3ca7eebb0d78579e80f2c0f9f65d51e0a95b2f5",
+    "final-arithmetic-candidate-2.json": "c981844dcdbde19970e59813c2ab6c1932c650176962b5dcb54da5ea0bf77507",
+    "final-arithmetic-candidate-3.json": "e226dc2378357108b5d24d031cdd96493d2ae9ad6a35a092ec255f0542e08c54",
+    "final-inventory-baseline-1.json": "06a1b40eef33130bff4e4f7c46cb7188a5afd533fe020f6ba866bd7956e77ef1",
+    "final-inventory-baseline-4.json": "18294b21de01151ffa252d557946d61406f526203138414458cfa329a67d21b0",
+    "final-inventory-candidate-2.json": "1291168730b177c1dba2c98e601dd997c32e3452fc5c635ac9749449b583bbbe",
+    "final-inventory-candidate-3.json": "2bb114893749481dc36bf6f8f016ee5ecd44e552387b5d7694532f688c39b332"
+  },
+  "measurement_script_sha256": "60dce3e60c2ab98b7cb2e7d6188924f1c0302744b723df0b178be3b271849cf9"
+}
