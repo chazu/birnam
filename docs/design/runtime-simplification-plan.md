@@ -104,6 +104,13 @@ from 87 allocations to 50, with a further measured 7% time reduction in the norm
 collection comparison. This preserves the existing message/control interface;
 it does not make the arithmetic path fast enough or complete the migration.
 
+The [native-result investigation](../measurements/native-result-20261031/README.md)
+removes redundant native argument buffers while preserving the current calling
+convention. A separate ordinary-return proposal is unapplied pending the user's
+decision about a native conversion callback's independent-root-drive refusal.
+Do not infer that decision from timing improvements or apply the saved patch
+without resolving the recorded behavior difference.
+
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
 are candidates, not preselected requirements. Prefer behavior expressible through

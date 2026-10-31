@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "date": "2026-10-31",
+  "baseline": "0745e1bf",
+  "implemented": "avoid copied receiver prefix and empty byte-snapshot bookkeeping; pre-size normalized arguments",
+  "ordinary_result_proposal": "unapplied, pending user decision about root conversion callback driveActive refusal",
+  "results": {
+    "addition_automatic_gc_True": {
+      "baseline": {
+        "median_us": 47.777917,
+        "min_us": 45.899042,
+        "max_us": 49.5875,
+        "managed_allocations_per_call": 50.0
+      },
+      "candidate": {
+        "median_us": 46.572041999999996,
+        "min_us": 45.691125,
+        "max_us": 47.72004199999999,
+        "managed_allocations_per_call": 50.0
+      },
+      "median_reduction_percent": 2.5239170640277253
+    },
+    "addition_automatic_gc_False": {
+      "baseline": {
+        "median_us": 45.111062000000004,
+        "min_us": 44.543542,
+        "max_us": 48.01758300000001,
+        "managed_allocations_per_call": 50.0
+      },
+      "candidate": {
+        "median_us": 44.924,
+        "min_us": 44.169917,
+        "max_us": 46.989792,
+        "managed_allocations_per_call": 50.0
+      },
+      "median_reduction_percent": 0.4146699095667561
+    }
+  },
+  "raw_files": {
+    ".cargo-target/measurements/native-result-20261031/buffers-baseline-1/samples.json": "d953fe2f201d60326c22c06c38b3d58018a7094a9ce213767a77c2a96fced3ce",
+    ".cargo-target/measurements/native-result-20261031/buffers-baseline-2/samples.json": "3091b6df47e917352b622738a9496e3eedaf5a5c09bd32e0488eabfdba7b156d",
+    ".cargo-target/measurements/native-result-20261031/buffers-candidate-1/samples.json": "9c2cc92bea7b85188b6731a10e02b3fdfdcd7eb0ad58aaa00d37482dacb3304a",
+    ".cargo-target/measurements/native-result-20261031/buffers-candidate-2/samples.json": "b44722906f99fbad117be563a0eae37eb28798f9f24c9965ae09d85d854d001e",
+    ".cargo-target/measurements/native-result-20261031/buffers-final.log": "ee6d444dbe65382d790b513e1328f43df0c6a6bb05ee44e1d85f04837e084f6f",
+    ".cargo-target/measurements/native-result-20261031/buffers-reentry.log": "c261f25c40942f75f22f87c743919af6b1b4d6f0ca2b0789ba1b59aa6e06f663",
+    ".cargo-target/measurements/native-result-20261031/reentry-baseline.log": "00528dca80a0b2a86bf18c28189700f7a81dc3163190523f946fe3540e3a6a0a",
+    ".cargo-target/measurements/native-result-20261031/reentry-candidate.log": "ec586713f4d520a68a91a93a8ec53f00d5fc5a68986e6d3af9547f03e6cbbe22",
+    ".cargo-target/measurements/native-result-20261031/result-entry.log": "1f8299a9c6a168f92069ad09de685b1cbc53fc2361c5484d9219bc74abc23bd3",
+    ".cargo-target/measurements/native-result-20261031/red.log": "d0ef9ba19f5329eee752642ef7f3bf36768e578f04609aa912d0f3f6d7f08e33",
+    ".cargo-target/measurements/native-result-20261031/focused.log": "981c3d03027d34ff653d45583b5fa65ce824a0137c89572cff18bab1701ab16c"
+  },
+  "validation": {
+    "passed_targets": [
+      "continuation_transparency",
+      "execution_methods",
+      "fixed_abi",
+      "integer_operation_objects",
+      "integer_values",
+      "native_boundaries",
+      "native_incoming",
+      "root_batches",
+      "root_reuse"
+    ],
+    "reentry": "baseline and buffer cleanup refuse independent root drive during native conversion; ordinary-result proposal allows it; all variants reject an actual overlapping drive",
+    "image": "mapped/rebuilt image cases inside native_boundaries pass; pre-existing full-image failure remains outside this qualification"
+  },
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "b2328ddd78992159fd275c4d9826e2114c8eabc4db9dcf1e81a3c503bd63ed2d",
+    "rust/birnam-siphon/tests/native_incoming.rs": "3fb7760a9c89cec2681e01c62bc3c192babf7500491a5fd6a79832e6fa674296"
+  },
+  "library_sha256": {
+    "baseline": "bc98ab1455e25467ce1ad51babfb8c7204f756aca3f0d9689f4ad71010847f01",
+    "buffer_cleanup": "50c99894a2e32e329cd2db598a4ccfbb27922f64f0073eaa80a3db249cc7f94f",
+    "unapplied_proposal": "b41621338f6ce466ee1de22761ff4719cca5828c77d69b086d274d9d4cd6521a"
+  },
+  "proposal_sha256": "6b7cfdc5a706bf7ae6d59b5971a1531f12a4814bef8dff7e7ed74fbcf3ec87bf"
+}

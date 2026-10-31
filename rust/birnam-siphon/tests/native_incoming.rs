@@ -186,4 +186,19 @@ fn incoming_signatures_preserve_values_and_early_bootstrap() {
         q.read_bytes(call(code, b"nativeSignature", &[])).unwrap(),
         b"ww"
     );
+
+    // Unbound native Blocks carry their logical receiver as the first input;
+    // bound Methods receive it separately. Both retain the same arity and null
+    // normalization rules when the implementation avoids copying that prefix.
+    let source = q.string(br#"[Execution block: [:self :value | value] withNativeSignature: "oO"]"#).unwrap();
+    let echo = call(named(b"Codegen"), b"eval:", &[source]);
+    q.check_result(echo).unwrap();
+    assert_eq!(call(echo, b"value:value:", &[probe, first]), first);
+    assert!(h.send(echo, b"value", &[]).is_err());
+    assert!(h.send(echo, b"value:", &[probe]).is_err());
+    assert!(h.send(echo, b"value:value:", &[probe, std::ptr::null_mut()]).is_err());
+    let source = q.string(br#"[Execution block: [:self :value | value] withNativeSignature: "oo"]"#).unwrap();
+    let nullable = call(named(b"Codegen"), b"eval:", &[source]);
+    q.check_result(nullable).unwrap();
+    assert_eq!(call(nullable, b"value:value:", &[probe, std::ptr::null_mut()]), named(b"nil"));
 }

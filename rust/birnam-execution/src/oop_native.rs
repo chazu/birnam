@@ -409,19 +409,18 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
         let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
             return Err(invalid());
         };
-        let bound_arguments;
-        let args = if bound {
-            bound_arguments = std::iter::once(r)
-                .chain(args.iter().copied())
-                .collect::<Vec<_>>();
-            bound_arguments.as_slice()
+        // Keep the logical receiver separate from the borrowed argument area;
+        // a bound call does not need a copied receiver-plus-arguments buffer.
+        let (receiver, args) = if bound {
+            (Some(r), args)
+        } else if let Some((&receiver, args)) = args.split_first() {
+            (Some(receiver), args)
         } else {
-            args
+            (None, args)
         };
         let q = s.scope(&[c, r, *k]);
-        for &a in args {
-            q.keep(a);
-        }
+        if let Some(receiver) = receiver { q.keep(receiver); }
+        for &a in args { q.keep(a); }
         let method = q.keep(context_value(s, c, 0)?);
         let environment = if bound {
             q.keep(context_value(s, c, 1)?)
@@ -434,16 +433,17 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
             .get(&c.addr())
             .cloned()
             .ok_or_else(invalid)?;
-        if args.len() != sig.arguments().len() + 1 {
+        if receiver.is_none() || args.len() != sig.arguments().len() {
             if sig.observes_failure() {
-                if let Some(&receiver) = args.first() {
+                if let Some(receiver) = receiver {
                     notify(s, &q, receiver, invalid());
                 }
             }
             return Err(invalid());
         }
+        let receiver = receiver.ok_or_else(invalid)?;
         let answer = (|| {
-            if args[1..]
+            if args
                 .iter()
                 .zip(sig.arguments())
                 .any(|(&value, &kind)| kind == b'O' && value.is_null())
@@ -452,19 +452,17 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
             }
             // Read all byte views before Word/Bytes factory callbacks can
             // mutate another input. Payload interpretation stays with its owner.
-            let copied = args[1..]
-                .iter()
-                .zip(sig.arguments())
-                .map(|(&value, &kind)| {
-                    if kind == b'b' {
-                        byte_snapshot(s, &q, value).map(Some)
-                    } else {
-                        Ok(None)
-                    }
-                })
-                .collect::<Result<Vec<_>, Oop>>()?;
-            let mut values = vec![args[0]];
-            for ((&value, &kind), copied) in args[1..].iter().zip(sig.arguments()).zip(&copied) {
+            let copied = if sig.arguments().contains(&b'b') {
+                args.iter().zip(sig.arguments()).map(|(&value, &kind)| {
+                    if kind == b'b' { byte_snapshot(s, &q, value).map(Some) }
+                    else { Ok(None) }
+                }).collect::<Result<Vec<_>, Oop>>()?
+            } else {
+                Vec::new()
+            };
+            let mut values = Vec::with_capacity(args.len() + 1);
+            values.push(receiver);
+            for (index, (&value, &kind)) in args.iter().zip(sig.arguments()).enumerate() {
                 let value = match kind {
                     b'O' | b'o' => {
                         if value.is_null() {
@@ -474,7 +472,7 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
                         }
                     }
                     b'w' => s.send(s.named(b"Word")?, b"fromBits:", &[value])?,
-                    b'b' => new_bytes(s, &q, copied.as_deref().ok_or_else(invalid)?)?,
+                    b'b' => new_bytes(s, &q, copied[index].as_deref().ok_or_else(invalid)?)?,
                     _ => return Err(invalid()),
                 };
                 values.push(q.keep(value));
@@ -494,13 +492,13 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
         })();
         if let Err(error) = answer {
             if sig.observes_failure() {
-                notify(s, &q, args[0], error);
+                notify(s, &q, receiver, error);
             }
         }
         let value = q.keep(answer?);
         if sig.result() == b'v' {
             let destination = if sig.observes_failure() {
-                let context = q.keep(s.send(s.id.root, b"sequence", &[*k, args[0]])?);
+                let context = q.keep(s.send(s.id.root, b"sequence", &[*k, receiver])?);
                 let answer = q.keep(s.send(s.native_answer, b"withContext:", &[context])?);
                 answer
             } else {
