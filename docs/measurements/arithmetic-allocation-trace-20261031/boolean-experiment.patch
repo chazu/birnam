@@ -1,0 +1,38 @@
+--- a/docs/measurements/arithmetic-layers-20261031/probe.rs
++++ b/docs/measurements/arithmetic-layers-20261031/probe.rs
+@@ -76,6 +76,35 @@
+         .unwrap();
+     let probe = q.call(block, b"value", &[]).unwrap();
+     q.check_result(probe).unwrap();
++    // Diagnostic only: these replacements omit the native adapter's contracts.
++    if std::env::var_os("BIRNAM_DIRECT_BOOLEAN_EXPERIMENT").is_some() {
++        let source = q.string(br#"
++let boolWord := Word; let boolTrue := true; let boolFalse := false; let boolNil := nil;
++[Reflect defineMethod: #& on: Boolean as: [:self :other |
++  let otherwise := [boolWord selectIfSameObject: self with: boolFalse ifEqual: self ifDifferent: boolNil];
++  [boolWord selectIfSameObject: self with: boolTrue ifEqual: other ifDifferent: otherwise]
++]];
++[Reflect defineMethod: #selectIfTrue:ifFalse:otherwise: on: Boolean as: [:self :yes :no :otherwise |
++  let choice := [boolWord selectIfSameObject: self with: boolFalse ifEqual: no ifDifferent: otherwise];
++  [boolWord selectIfSameObject: self with: boolTrue ifEqual: yes ifDifferent: choice]
++]];
++nil"#).unwrap();
++        let method = q.call(codegen, b"compileSynchronous:", &[source]).unwrap();
++        q.check_result(method).unwrap();
++        let block = q.call(h.named(b"Block").unwrap(), b"fromMethod:captures:", &[method, captures]).unwrap();
++        q.call(block, b"value", &[]).unwrap();
++    }
++    if std::env::var_os("BIRNAM_BOOLEAN_NULL_CHECK").is_some() {
++        let truth = h.named(b"true").unwrap();
++        let selector = h.intern(b"&").unwrap();
++        let answer = unsafe { h.id.send(truth, selector, &[std::ptr::null_mut()]) };
++        println!("raw_null_argument_rejected={}", answer.is_err());
++        let missing = unsafe { h.id.send(truth, selector, &[]) };
++        let extra = unsafe { h.id.send(truth, selector, &[truth, truth]) };
++        println!("missing_argument_rejected={}", missing.is_err());
++        println!("extra_argument_rejected={}", extra.is_err());
++        return;
++    }
+     // Each result kind is checked outside timing. Inputs remain rooted for all samples.
+     let mut cases = vec![
+         (

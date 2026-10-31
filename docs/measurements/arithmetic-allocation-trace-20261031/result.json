@@ -1,0 +1,219 @@
+{
+  "baseline_commit": "8b6ea74b",
+  "status": "investigation; plain Boolean replacement rejected for changed arity behavior",
+  "allocation_counts": {
+    "private_synchronous_answers": 14,
+    "body_entry_work": 5,
+    "adapter_reply_work": 5,
+    "block_entry_work": 4,
+    "argument_sequences": 5,
+    "numeric_storage": 7
+  },
+  "allocation_paths": [
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> integerBitsOf: -> optionalWordResultOf:selector:argument:resultFactory: -> fromBits: -> allocate:bytes: -> allocate -> allocate:bytes:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> selectIfTrue:ifFalse:otherwise:",
+    "ALLOCATION bytes=40 path=+ -> integerBinary:operation: -> selectIfTrue:ifFalse:otherwise: -> sequence -> rawSequence",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments:",
+    "ALLOCATION bytes=80 path=+ -> integerBinary:operation: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments: -> prepareEntry",
+    "ALLOCATION bytes=56 path=+ -> integerBinary:operation: -> selectIfTrue:ifFalse:otherwise: -> answerTo:with:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value:",
+    "ALLOCATION bytes=88 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> prepareEntry",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> integerExactError: -> &",
+    "ALLOCATION bytes=24 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> integerExactError: -> & -> sequence -> rawSequence",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> integerExactError: -> & -> invokeOn:arguments:",
+    "ALLOCATION bytes=64 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> integerExactError: -> & -> invokeOn:arguments: -> prepareEntry",
+    "ALLOCATION bytes=56 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> integerExactError: -> & -> answerTo:with:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise:",
+    "ALLOCATION bytes=40 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> sequence -> rawSequence",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments:",
+    "ALLOCATION bytes=80 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments: -> prepareEntry",
+    "ALLOCATION bytes=56 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> answerTo:with:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value:",
+    "ALLOCATION bytes=88 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> prepareEntry",
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> integerBitsOf: -> optionalWordResultOf:selector:argument:resultFactory: -> fromBits: -> allocate:bytes: -> allocate -> allocate:bytes:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise:",
+    "ALLOCATION bytes=40 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> sequence -> rawSequence",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments:",
+    "ALLOCATION bytes=80 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments: -> prepareEntry",
+    "ALLOCATION bytes=56 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> selectIfTrue:ifFalse:otherwise: -> answerTo:with:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value:",
+    "ALLOCATION bytes=88 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> prepareEntry",
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> wrappingAdd: -> allocate:bytes: -> allocate -> allocate:bytes:",
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> bitXor: -> allocate:bytes: -> allocate -> allocate:bytes:",
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> bitXor: -> allocate:bytes: -> allocate -> allocate:bytes:",
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> bitAnd: -> allocate:bytes: -> allocate -> allocate:bytes:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> selectIfTrue:ifFalse:otherwise:",
+    "ALLOCATION bytes=40 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> selectIfTrue:ifFalse:otherwise: -> sequence -> rawSequence",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments:",
+    "ALLOCATION bytes=80 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> selectIfTrue:ifFalse:otherwise: -> invokeOn:arguments: -> prepareEntry",
+    "ALLOCATION bytes=56 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> selectIfTrue:ifFalse:otherwise: -> answerTo:with:",
+    "ALLOCATION bytes=48 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> value:value:",
+    "ALLOCATION bytes=64 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> value:value: -> prepareEntry",
+    "ALLOCATION bytes=8 path=+ -> integerBinary:operation: -> value:value:value:value:value: -> value:value:value:value:value: -> value:value:value:value:value: -> applyInteger:with: -> integerAddBits:with: -> value:value: -> integerFromBits: -> objectResultOf:selector:wordArgument: -> fromWord: -> allocate:bytes: -> allocate -> allocate:bytes:"
+  ],
+  "comparison": [
+    {
+      "variant": "baseline",
+      "automatic_gc": true,
+      "case": "Integer addition",
+      "samples": 10,
+      "median_us": 28.1729585,
+      "allocations": [
+        40.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "automatic_gc": true,
+      "case": "Integer exact Error check",
+      "samples": 10,
+      "median_us": 5.398499999999999,
+      "allocations": [
+        5.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "automatic_gc": true,
+      "case": "Integer add bits and overflow",
+      "samples": 10,
+      "median_us": 7.400375,
+      "allocations": [
+        12.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "automatic_gc": false,
+      "case": "Integer addition",
+      "samples": 10,
+      "median_us": 28.474417,
+      "allocations": [
+        40.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "automatic_gc": false,
+      "case": "Integer exact Error check",
+      "samples": 10,
+      "median_us": 5.389521,
+      "allocations": [
+        5.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "automatic_gc": false,
+      "case": "Integer add bits and overflow",
+      "samples": 10,
+      "median_us": 7.3017915,
+      "allocations": [
+        12.0
+      ]
+    },
+    {
+      "variant": "direct",
+      "automatic_gc": true,
+      "case": "Integer addition",
+      "samples": 10,
+      "median_us": 20.5460835,
+      "allocations": [
+        15.0
+      ]
+    },
+    {
+      "variant": "direct",
+      "automatic_gc": true,
+      "case": "Integer exact Error check",
+      "samples": 10,
+      "median_us": 4.0264375,
+      "allocations": [
+        0.0
+      ]
+    },
+    {
+      "variant": "direct",
+      "automatic_gc": true,
+      "case": "Integer add bits and overflow",
+      "samples": 10,
+      "median_us": 5.698104000000001,
+      "allocations": [
+        7.0
+      ]
+    },
+    {
+      "variant": "direct",
+      "automatic_gc": false,
+      "case": "Integer addition",
+      "samples": 10,
+      "median_us": 20.598375,
+      "allocations": [
+        15.0
+      ]
+    },
+    {
+      "variant": "direct",
+      "automatic_gc": false,
+      "case": "Integer exact Error check",
+      "samples": 10,
+      "median_us": 4.029438,
+      "allocations": [
+        0.0
+      ]
+    },
+    {
+      "variant": "direct",
+      "automatic_gc": false,
+      "case": "Integer add bits and overflow",
+      "samples": 10,
+      "median_us": 5.837417,
+      "allocations": [
+        7.0
+      ]
+    }
+  ],
+  "arity_probe": {
+    "baseline": [
+      "raw_null_argument_rejected=true",
+      "missing_argument_rejected=true",
+      "extra_argument_rejected=true"
+    ],
+    "direct": [
+      "raw_null_argument_rejected=true",
+      "missing_argument_rejected=false",
+      "extra_argument_rejected=false"
+    ]
+  },
+  "raw_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-allocation-trace-20261031",
+  "raw_sha256": {
+    "trace.log": "5f6be168d8da0f7b391fc9a24eb64807d093c4f781684faa912ee27b28a5feb2",
+    "paths.log": "e09f561ee98b38675dc7f5b9c613cfec92e72cf743d6551d7607d5eac9d6f9d5",
+    "null-baseline.log": "35567bcf1f7c175797361b8d817ca57e420fb37465a054454817a266b8ee3cff",
+    "null-direct.log": "3c00cf16a4efb8cf6d5653b529f05151df15282da7af1712b22d0b1a9091f5ea",
+    "experiment.rs": "5f0bf5a330fb5c4cc49be64e7c553a19be0d234da0cc8bed7adfd51d13773e26",
+    "global-experiment.rs": "83c51956ade788612fb60e028e2a07b3c211b19637ef7f0549384098fdbbc7c2",
+    "experiment-1-baseline.json": "d4d990cc1ea8bee96db3474a455e7bfa224d044fd111dcc79203104fb4da4ba0",
+    "experiment-2-direct.json": "26bdfef483b6a377ba3fa90aa76da01b0a00ed84e1786faf246c413cf3ad2fc1",
+    "experiment-3-direct.json": "b50e015ef9ab95d82299894d188354984793e1918bad33968dfb3f255bf7f5b8",
+    "experiment-4-baseline.json": "490a6654418169ccea320f2174bdaff09a8b968e554365a259491d658f5d7d63"
+  },
+  "diagnostic_sha256": {
+    "boolean-experiment.patch": "88a86a3bb04476d7cb34230da472a99eeb17d1a255f40afb4f2269552a3efb6b",
+    "one-addition.patch": "0d7fd7f48d9acf5a65ce1162c522b924d3f50c660c2b2558c61aa0e2afd3c7cd",
+    "path-trace.patch": "f6db3f794cb2b479927a409907f7b528f2873e740659e78c4c8a066c037631df",
+    "trace.patch": "f1e850f10588f243659000e310f43795c8d85276ac1ed41821714d7b82b689cc"
+  },
+  "runtime_source_sha256": {
+    "rust/birnam-id/src/id/native_id.rs": "e79a80c7809a5f80de8ea2cdaa4dff42149e13dec356fc155901983b61ea259a",
+    "rust/birnam-id/src/id/object_memory.rs": "c50262ea32c6e96c7aafa09688ca5082e6f047ce9b5a78b519ac91b16ccb29ae",
+    "modules/boolean.birnam": "f2ea6a13260168e8feccd70d77c16035230055939aa8a1c12ea1555e493c8760"
+  },
+  "measurement_id_sha256": "19b53a3162b372f998c5734cb6f24554f6923a6f48d201e976fb31ae8fc75a9d",
+  "limits": [
+    "Single small-operand allocation trace with automatic GC disabled",
+    "Exploratory Boolean replacements are not behavior equivalent",
+    "No production changes, migration, installation or push",
+    "No application speedup established"
+  ]
+}

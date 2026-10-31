@@ -1,0 +1,186 @@
+--- a/docs/measurements/arithmetic-layers-20261031/probe.rs
++++ b/docs/measurements/arithmetic-layers-20261031/probe.rs
+@@ -76,175 +76,12 @@
+         .unwrap();
+     let probe = q.call(block, b"value", &[]).unwrap();
+     q.check_result(probe).unwrap();
+-    // Each result kind is checked outside timing. Inputs remain rooted for all samples.
+-    let mut cases = vec![
+-        (
+-            "return argument",
+-            probe,
+-            b"return:with:".as_slice(),
+-            vec![a, b],
+-            "integer",
+-            4,
+-        ),
+-        ("Integer equality", a, b"=", vec![b], "false", 0),
+-        ("Word wrappingAdd", wa, b"wrappingAdd:", vec![wb], "word", 7),
+-        (
+-            "Integer bits conversion",
+-            integer,
+-            b"integerBitsOf:",
+-            vec![a],
+-            "word",
+-            4,
+-        ),
+-        (
+-            "Integer result construction",
+-            integer,
+-            b"integerFromBits:",
+-            vec![wa],
+-            "integer",
+-            4,
+-        ),
+-        (
+-            "Integer add bits and overflow",
+-            integer,
+-            b"integerAddBits:with:",
+-            vec![wa, wb],
+-            "integer",
+-            7,
+-        ),
+-        (
+-            "Integer operation dispatch",
+-            add,
+-            b"applyInteger:with:",
+-            vec![wa, wb],
+-            "integer",
+-            7,
+-        ),
+-        (
+-            "Integer exact Error check",
+-            integer,
+-            b"integerExactError:",
+-            vec![b],
+-            "false",
+-            0,
+-        ),
+-        ("Word notNil", wa, b"notNil", vec![], "true", 0),
+-        ("Word isNil", wa, b"isNil", vec![], "false", 0),
+-        (
+-            "Block return nil",
+-            h.global(&q, b"intNil5").unwrap(),
+-            b"value:value:value:value:value:",
+-            vec![a, b, add, wa, wb],
+-            "nil",
+-            0,
+-        ),
+-        (
+-            "Block apply Integer",
+-            h.global(&q, b"intApplyInteger").unwrap(),
+-            b"value:value:value:value:value:",
+-            vec![a, b, add, wa, wb],
+-            "integer",
+-            7,
+-        ),
+-        (
+-            "Block try Integer",
+-            h.global(&q, b"intTryInteger").unwrap(),
+-            b"value:value:value:value:value:",
+-            vec![a, b, add, wa, wb],
+-            "integer",
+-            7,
+-        ),
+-        (
+-            "Block validate other",
+-            h.global(&q, b"intValidateOther").unwrap(),
+-            b"value:value:value:value:value:",
+-            vec![a, b, add, wa, wb],
+-            "integer",
+-            7,
+-        ),
+-        (
+-            "Integer binary dispatch",
+-            a,
+-            b"integerBinary:operation:",
+-            vec![b, add],
+-            "integer",
+-            7,
+-        ),
+-        ("Integer addition", a, b"+", vec![b], "integer", 7),
+-        (
+-            "wrapped Integer addition",
+-            probe,
+-            b"add:with:",
+-            vec![a, b],
+-            "integer",
+-            7,
+-        ),
+-    ];
+-    if std::env::var_os("ARITHMETIC_REVERSE").is_some() {
+-        cases.reverse();
+-    }
+-    let epoch = q.keep(h.intern(b"allocationEpoch").unwrap()).unwrap();
+-    let bytes = q.keep(h.intern(b"allocationBytesTotal").unwrap()).unwrap();
+-    let count = |key| unsafe { abi::as_size(h.id.send(h.id.root, key, &[]).unwrap()).unwrap() };
+-    let n = 1000;
+-    let mut results = vec![];
+-    for automatic in [true, false] {
+-        q.call(
+-            gc,
+-            b"automaticCollection:",
+-            &[abi::size(usize::from(automatic)).unwrap()],
+-        )
+-        .unwrap();
+-        for (label, receiver, name, arguments, kind, expected) in &cases {
+-            let selector = q.keep(h.intern(name).unwrap()).unwrap();
+-            let check = || {
+-                let local = h.scope();
+-                let v = local
+-                    .keep(unsafe { h.id.send(*receiver, selector, arguments).unwrap() })
+-                    .unwrap();
+-                local.check_result(v).unwrap();
+-                match *kind {
+-                    "word" => assert_eq!(local.word_bits(v).unwrap(), *expected),
+-                    "integer" => assert_eq!(
+-                        local
+-                            .word_bits(local.call(integer, b"wordOf:", &[v]).unwrap())
+-                            .unwrap(),
+-                        *expected
+-                    ),
+-                    _ => assert_eq!(v, h.named(kind.as_bytes()).unwrap()),
+-                }
+-            };
+-            check();
+-            for _ in 0..100 {
+-                let local = h.scope();
+-                black_box(
+-                    local
+-                        .keep(unsafe { h.id.send(*receiver, selector, arguments).unwrap() })
+-                        .unwrap(),
+-                );
+-            }
+-            let mut samples = vec![];
+-            for _ in 0..5 {
+-                q.call(gc, b"collectPrecisely", &[]).unwrap();
+-                let before = count(epoch);
+-                let charged = count(bytes);
+-                let start = Instant::now();
+-                for _ in 0..n {
+-                    let local = h.scope();
+-                    black_box(
+-                        local
+-                            .keep(unsafe { h.id.send(*receiver, selector, arguments).unwrap() })
+-                            .unwrap(),
+-                    );
+-                }
+-                let elapsed = start.elapsed();
+-                samples.push(serde_json::json!({"us":elapsed.as_secs_f64()*1e6/n as f64,"allocations":(count(epoch)-before) as f64/n as f64,"id_bytes":(count(bytes)-charged) as f64/n as f64}));
+-            }
+-            check();
+-            let result = serde_json::json!({"case":label,"automatic_gc":automatic,"repetitions":n,"samples":samples});
+-            println!("{result}");
+-            results.push(result);
+-        }
+-    }
+-    std::fs::write(&args[2], serde_json::to_vec_pretty(&results).unwrap()).unwrap();
++    q.call(gc, b"automaticCollection:", &[abi::size(0).unwrap()]).unwrap();
++    let plus = h.intern(b"+").unwrap();
++    unsafe { std::env::set_var("BIRNAM_TRACE_ONE_ALLOCATION", "1"); }
++    let value = unsafe { h.id.send(a, plus, &[b]).unwrap() };
++    unsafe { std::env::remove_var("BIRNAM_TRACE_ONE_ALLOCATION"); }
++    let value = q.keep(value).unwrap();
++    assert_eq!(q.word_bits(q.call(integer, b"wordOf:", &[value]).unwrap()).unwrap(), 7);
++    eprintln!("TRACE_RESULT_OK");
+ }

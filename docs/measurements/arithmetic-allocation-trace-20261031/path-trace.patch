@@ -1,0 +1,16 @@
+diff --git a/rust/birnam-id/src/id/native_id.rs b/rust/birnam-id/src/id/native_id.rs
+index 68131f39..541a034a 100644
+--- a/rust/birnam-id/src/id/native_id.rs
++++ b/rust/birnam-id/src/id/native_id.rs
+@@ -297,6 +297,11 @@ impl State {
+         {
+             return Err(self.invalid());
+         }
++        if std::env::var_os("BIRNAM_TRACE_ONE_ALLOCATION").is_some() {
++            let symbols = self.symbols.borrow();
++            let path: Vec<_> = self.active.borrow().iter().filter_map(|f| symbols.bytes_of(f.selector).map(|b| String::from_utf8_lossy(b).into_owned())).collect();
++            eprintln!("ALLOCATION bytes={size} path={}", path.join(" -> "));
++        }
+         Ok(self.heap.borrow_mut().allocate(size, behavior))
+     }
+     // Allocation facts only. Payload interpretation belongs to the selected
