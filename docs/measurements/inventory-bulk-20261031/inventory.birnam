@@ -1,0 +1,73 @@
+// Counters are private bounded traversal state represented as unsigned Words.
+let inventoryZero := [Execution wordResultOf: 0 selector: #word];
+let inventoryOne := [Execution wordResultOf: 1 selector: #word];
+let inventoryLimit := [Execution wordResultOf: 4096 selector: #word];
+// Early compiler policy: no Module declaration, globals, or standard library.
+[Reflect defineMethod: #inventoryUnwrap:remaining: on: Codegen as: [:self :node :remaining |
+  [[remaining = 0] ifTrue: [| nil] ifFalse: [|
+    [[node isNil] ifTrue: [| nil] ifFalse: [|
+      let rule := [node ruleName];
+      let wrapper := [[[rule = "expr"] | [rule = "primary"]] | [rule = "message"]];
+      [[wrapper & [[node childCount] = 1]]
+        ifTrue: [| [self inventoryUnwrap: [node childAt: 0] remaining: [remaining - 1]]]
+        ifFalse: [| node]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #inventoryText:source: on: Codegen as: [:self :node :source |
+  [source copyFrom: [node start] to: [node end]]
+]];
+[Reflect defineMethod: #inventorySelector:source:index:count: on: Codegen as: [:self :node :source :index :count |
+  [[index = count] ifTrue: [| ""] ifFalse: [|
+    let part := [self inventoryText: [node childAt: index] source: source];
+    [[part isNil] ifTrue: [| nil] ifFalse: [|
+      let rest := [self inventorySelector: node source: source index: [index + 2] count: count];
+      [[rest isNil] ifTrue: [| nil] ifFalse: [| [part , rest]]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #inventoryDeclaration:source: on: Codegen as: [:self :node :source |
+  [[[node ruleName] = "send"] ifTrue: [|
+    let receiver := [self inventoryUnwrap: [node childAt: 0] remaining: 4096];
+    [[receiver isNil] ifTrue: [| nil] ifFalse: [|
+      [[[[receiver ruleName] = "ident"] & [[self inventoryText: receiver source: source] = "Reflect"]]
+        ifTrue: [|
+          let message := [self inventoryUnwrap: [node childAt: 1] remaining: 4096];
+          [[message isNil] ifTrue: [| nil] ifFalse: [|
+            let count := [message childCount];
+            [[[[message ruleName] = "keywordMsg"] & [[count = 6] | [count = 8]]]
+              ifTrue: [|
+                let selector := [self inventorySelector: message source: source index: 0 count: count];
+                [[[[count = 6] & [selector = "defineMethod:on:as:"]] | [[count = 8] & [selector = "defineMethod:on:as:doc:"]]]
+                  ifTrue: [|
+                    let name := [self inventoryUnwrap: [message childAt: 1] remaining: 4096];
+                    [[name isNil] ifTrue: [| nil] ifFalse: [|
+                      let text := [self inventoryText: name source: source];
+                      [[text isNil] ifTrue: [| nil] ifFalse: [|
+                        [[[[text size] > 1] & [[text copyFrom: 0 to: 1] = "#"]]
+                          ifTrue: [| [self inventoryText: node source: source]] ifFalse: [| nil]]
+                      ]]
+                    ]]
+                  ] ifFalse: [| nil]]
+              ] ifFalse: [| nil]]
+          ]]
+        ] ifFalse: [| nil]]
+    ]]
+  ] ifFalse: [| nil]]
+]];
+[Reflect defineMethod: #inventoryCollect:source:depth:into: on: Codegen as: [:self :node :source :depth :result |
+  [[depth unsignedLessThan: inventoryLimit] ifTrue: [|
+    let text := [self inventoryDeclaration: node source: source];
+    let next := [[text isNil] ifTrue: [| result] ifFalse: [| [result add: text]]];
+    let childDepth := [depth wrappingAdd: inventoryOne];
+    [[node children] inject: next into: [:items :child |
+      [[child isNil] ifTrue: [| items] ifFalse: [|
+        [self inventoryCollect: child source: source depth: childDepth into: items]
+      ]]
+    ]]
+  ] ifFalse: [| result]]
+]];
+[Reflect defineMethod: #methodSourceTextsIn:source: on: Codegen as: [:self :tree :source |
+  [self inventoryCollect: tree source: source depth: inventoryZero into: #[]]
+]];
+Codegen

@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-31",
+  "runtime_revision": "7966f051",
+  "profile": {
+    "command": "sample PID 3 1 -file profile.txt",
+    "automatic_gc": false,
+    "samples": 2290,
+    "highest_leaf_counts": {
+      "State::behavior": 370,
+      "id_dispatch::selection": 228,
+      "State::enter_method": 181,
+      "State::payload": 138,
+      "id_dispatch::send": 101
+    },
+    "limitations": "Short sample of repeated addition with GC disabled; not an application profile. Generated code lacks symbolic names."
+  },
+  "experiments": [
+    {
+      "experiment": "shared checked entry",
+      "automatic_gc": true,
+      "medians_us": {
+        "baseline": 44.380207999999996,
+        "candidate": 47.289479
+      },
+      "candidate_change_percent": 6.555334305778837
+    },
+    {
+      "experiment": "shared checked entry",
+      "automatic_gc": false,
+      "medians_us": {
+        "baseline": 43.577167,
+        "candidate": 46.899229500000004
+      },
+      "candidate_change_percent": 7.623401723200596
+    },
+    {
+      "experiment": "shared checked entry with inline helper",
+      "automatic_gc": true,
+      "medians_us": {
+        "baseline": 43.975541500000006,
+        "candidate": 44.385979500000005
+      },
+      "candidate_change_percent": 0.9333324525406805
+    },
+    {
+      "experiment": "shared checked entry with inline helper",
+      "automatic_gc": false,
+      "medians_us": {
+        "baseline": 44.2301455,
+        "candidate": 43.967791500000004
+      },
+      "candidate_change_percent": -0.5931565384518
+    }
+  ],
+  "disposition": "Both source variants discarded; production source restored unchanged.",
+  "validation": "Initial variant passed id-continuation-test.py. Both variants passed arithmetic layer value checks. No full runtime qualification claimed for discarded variants.",
+  "raw_directory": ".cargo-target/measurements/arithmetic-profile-20261031",
+  "raw_sha256": {
+    "baseline-1.json": "237159954f352a731f2583e8756c4b06275b1bd406cc572ad7240fdea83eb242",
+    "baseline-4.json": "faab698fefd2f411dd16592091af8cc6b6e9a76fb38d1cfbcaae0cd82b1ada8b",
+    "candidate-2.json": "9297262ec2eb76bcc6400b03f5a024280d1c9ad987f2d4263e45656200b16f4c",
+    "candidate-3.json": "3c9df1f470eb45ca82431563f72b58a5c377cf2c61665e6c0456366970988512",
+    "inline-baseline-1.json": "99abdd9754899b2ce0fe0f51bfa65788b9bb09e517e8e54b465e1cc3efd3e43b",
+    "inline-baseline-4.json": "9df85eca2aac6f2809e6baa80cb6eb80822f65822a51fab6cc473f72136dead9",
+    "inline-candidate-2.json": "8b9c82136fc35081c212d0aae1b8de9a4c2ad95ca204e1d011f203058c4232e6",
+    "inline-candidate-3.json": "ecfa447d76c04f155c06908ec550b9132fd22de26339c25b797d631ba8255038",
+    "profile.txt": "e157ddeafeaf5299a8f6c0732a3399bd55890f8acca6bd0367c107554655b3f7",
+    "rejected-entry-refactor.patch": "0995e1ff62fe14a8fb827ac12d26e9c843479c1d5a0620d48ac42b61b82aadaf"
+  },
+  "profile_source_sha256": "5a8384400e6a487c287c5a0dc239d012cba7f84904d643470c8547a86d80dc6e",
+  "libraries_sha256": {
+    "baseline_id": "314e0eb259a9bae003b3d00e5cb804993e5f2b23d3fecde76c8df9d01ef02251",
+    "candidate_id": "049cb2e06e0fff432119f2364802b17c9f9f187f3d4a4b04357c429a334302e7",
+    "inline_candidate_id": "0434cffb131cbf3586dcd3898bd146cbfed327dc73e12defca4eb15252cb3364"
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "runtime_revision": "7966f051",
+  "date": "2026-10-31",
+  "status": "prototype only; production metadata unchanged",
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "mode": "compileSynchronous:",
+  "prefix": ".cargo-target/measurements/image-refusal-20261031/final-prefix",
+  "library_receipt": "../arithmetic-layers-20261031/result.json",
+  "summary": [
+    {
+      "variant": "baseline",
+      "case": "empty",
+      "nodes": 6,
+      "declarations": 0,
+      "samples": 14,
+      "authored_median_ms": 0.8756245000000001,
+      "native_metadata_median_ms": 0.1180205
+    },
+    {
+      "variant": "baseline",
+      "case": "cases",
+      "nodes": 175,
+      "declarations": 4,
+      "samples": 14,
+      "authored_median_ms": 32.373478999999996,
+      "native_metadata_median_ms": 1.8912909999999998
+    },
+    {
+      "variant": "baseline",
+      "case": "sparse",
+      "nodes": 302,
+      "declarations": 0,
+      "samples": 14,
+      "authored_median_ms": 48.252770999999996,
+      "native_metadata_median_ms": 3.2715
+    },
+    {
+      "variant": "baseline",
+      "case": "dense",
+      "nodes": 930,
+      "declarations": 32,
+      "samples": 14,
+      "authored_median_ms": 372.55841599999997,
+      "native_metadata_median_ms": 10.256167000000001
+    },
+    {
+      "variant": "baseline",
+      "case": "nested",
+      "nodes": 159,
+      "declarations": 1,
+      "samples": 14,
+      "authored_median_ms": 26.381375,
+      "native_metadata_median_ms": 1.7826455
+    },
+    {
+      "variant": "baseline",
+      "case": "registry_module",
+      "nodes": 2719,
+      "declarations": 20,
+      "samples": 14,
+      "authored_median_ms": 918.918875,
+      "native_metadata_median_ms": 29.5070835
+    },
+    {
+      "variant": "candidate",
+      "case": "empty",
+      "nodes": 6,
+      "declarations": 0,
+      "samples": 14,
+      "authored_median_ms": 0.22983350000000002,
+      "native_metadata_median_ms": 0.1155625
+    },
+    {
+      "variant": "candidate",
+      "case": "cases",
+      "nodes": 175,
+      "declarations": 4,
+      "samples": 14,
+      "authored_median_ms": 12.85375,
+      "native_metadata_median_ms": 1.96625
+    },
+    {
+      "variant": "candidate",
+      "case": "sparse",
+      "nodes": 302,
+      "declarations": 0,
+      "samples": 14,
+      "authored_median_ms": 12.5185625,
+      "native_metadata_median_ms": 3.425687
+    },
+    {
+      "variant": "candidate",
+      "case": "dense",
+      "nodes": 930,
+      "declarations": 32,
+      "samples": 14,
+      "authored_median_ms": 71.6090415,
+      "native_metadata_median_ms": 10.230688
+    },
+    {
+      "variant": "candidate",
+      "case": "nested",
+      "nodes": 159,
+      "declarations": 1,
+      "samples": 14,
+      "authored_median_ms": 7.591895500000001,
+      "native_metadata_median_ms": 1.7856039999999997
+    },
+    {
+      "variant": "candidate",
+      "case": "registry_module",
+      "nodes": 2719,
+      "declarations": 20,
+      "samples": 14,
+      "authored_median_ms": 374.690875,
+      "native_metadata_median_ms": 29.94425
+    }
+  ],
+  "validation": "All six fixtures matched native method_sources in every final process. Extreme-depth, replaced-CST and cold-bootstrap acceptance remain unqualified for this revision.",
+  "candidate_sha256": "76ffefc5aa643c0f1486144fa41a612c20dd17e353c7ef5ebef0955370628af9",
+  "baseline_sha256": "eaaf5204257ef2dfa8e013591dd35418b423874eac4b552f08f76c1edd65bc77",
+  "probe_sha256": "24c94ecb820e622b55568abe76cb9c07420f8957d9d429805cd2bd0c88183d1b",
+  "probe_binary_sha256": "421dc699190e8521e4159532534439b3168bc12f96ea3d16bff155b602ef4642",
+  "raw_directory": ".cargo-target/measurements/arithmetic-profile-20261031",
+  "raw_sha256": {
+    "inventory-bulk-word.json": "91e49125af6a606e428a16795920dadef272351a62fd82492cc04dc0b9a5a937",
+    "inventory-bulk.json": "95f059b2aca758a8f42d19ee4d5f3cf1e7671ed7686e5cb86880fd13a3955ed9",
+    "inventory-final-baseline-1.json": "f9b428f8ccc09a7c4cfe30ccce8e33c9e6594ceafbe4dccc0bb614263cbaf786",
+    "inventory-final-baseline-4.json": "6ce1c5dbe268953803deef3199fe5bd329e47dbc65d68f46abde8d6cba7130eb",
+    "inventory-final-candidate-2.json": "d4c0af88bbe8ee1b008660326ece5ca7ab64751b8f56bd43a4da4aa3b31e1471",
+    "inventory-final-candidate-3.json": "31e07907c668cd60c2dcb740ebe43349c730916cfd5ec0aaea43ca64fef8ec76"
+  }
+}

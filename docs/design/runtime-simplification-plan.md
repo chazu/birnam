@@ -128,6 +128,15 @@ the authored operand-handling path, with full arithmetic and inventory measureme
 as acceptance evidence. The earlier 50 versus current 49 count reflects moving
 selector interning outside the probe's timer, not a new runtime change.
 
+A [bulk traversal revision](../measurements/inventory-bulk-20261031/README.md) removes
+the prototype's child-index recursion and uses a Word for its private depth counter.
+On identical current libraries it reduces dense inventory from 373 to 72 ms and
+the real-module case from 919 to 375 ms, with six fixtures matching in four runs.
+This is still much slower than complete native metadata analysis. Cold bootstrap,
+extreme-depth and substitute-CST acceptance are not qualified for this revision;
+the production collector remains unchanged. The accompanying CPU investigation
+rejected a checked-Method-data refactor after it failed to improve performance.
+
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
 are candidates, not preselected requirements. Prefer behavior expressible through

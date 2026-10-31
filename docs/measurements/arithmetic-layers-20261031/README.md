@@ -88,3 +88,26 @@ Judge a candidate on full addition and the affected inventory workload, includin
 replacement and collection checks. Reducing allocation counts alone is insufficient.
 The pending independent-root-drive decision remains separate; these measurements
 neither answer it nor authorize applying that proposal.
+
+## CPU profile and rejected entry refactor
+
+A subsequent three-second macOS `sample` run observed 2290 stacks during repeated
+addition with automatic GC disabled. The largest leaf counts were Id's `behavior`
+(370), method selection (228), Method entry (181), `payload` (138), and send (101).
+Those five helpers account for about 44% of samples. This short profile points at
+the cost of many small sends and repeated allocation-record checks; it is not an
+application-wide CPU breakdown. Generated code did not have symbolic names.
+
+An experiment shared already checked Method data within a single entry to remove
+duplicate reads in the continuation path. It passed the independent continuation
+checks but regressed addition from 44.38 to 47.29 microseconds in an ABBA comparison.
+Forcing the new helper inline removed most of that regression, but a second ABBA
+comparison measured 43.98 versus 44.39 microseconds. Allocation counts did not change.
+Both variants were discarded; production source was restored unchanged. Fewer
+source-level reads did not establish a faster or sufficiently simpler runtime path.
+
+[profile-followup.json](profile-followup.json) records the results and local evidence
+hashes. The saved rejected patch is experimental evidence, not a recommended change.
+The investigation then returned to the stalled migration's algorithm: the
+[bulk inventory experiment](../inventory-bulk-20261031/README.md) removes child-index
+arithmetic and uses a bounded Word counter for traversal depth.
