@@ -118,6 +118,16 @@ and library unit tests pass. Earlier experiment receipts retain their original
 failure outcomes. This closes that validation gap, not the remaining performance
 or migration work.
 
+The [arithmetic cost breakdown](../measurements/arithmetic-layers-20261031/README.md)
+measures full Integer addition at about 44 microseconds and 49 managed allocations,
+against about 1 microsecond and one allocation for Word wrapping addition. The
+signed overflow helper takes about 12 microseconds; an exact Error check alone
+takes about 8.5. These different operations are not interchangeable or a promised
+speedup. They place the next investigation on repeated control construction and
+the authored operand-handling path, with full arithmetic and inventory measurements
+as acceptance evidence. The earlier 50 versus current 49 count reflects moving
+selector interning outside the probe's timer, not a new runtime change.
+
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
 are candidates, not preselected requirements. Prefer behavior expressible through

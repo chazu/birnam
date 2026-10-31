@@ -1,0 +1,530 @@
+{
+  "source_revision": "83ae600c44a6cb57192128318360de3cfe4ae5b7",
+  "prefix": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+  "commands": [
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/forward.json"
+      ],
+      "reverse": false
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/image-refusal-20261031/final-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/reverse.json"
+      ],
+      "reverse": true
+    }
+  ],
+  "summary": [
+    {
+      "case": "return argument",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 0.285,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "return argument",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 0.28281199999999995,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Integer equality",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 0.4786255,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Integer equality",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 0.46233349999999995,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Word wrappingAdd",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 1.0077085,
+      "allocations_per_call": [
+        1.0
+      ],
+      "id_bytes_per_call": [
+        16.0
+      ]
+    },
+    {
+      "case": "Word wrappingAdd",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 0.998896,
+      "allocations_per_call": [
+        1.0
+      ],
+      "id_bytes_per_call": [
+        16.0
+      ]
+    },
+    {
+      "case": "Integer bits conversion",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 2.5443540000000002,
+      "allocations_per_call": [
+        1.0
+      ],
+      "id_bytes_per_call": [
+        16.0
+      ]
+    },
+    {
+      "case": "Integer bits conversion",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 2.528333,
+      "allocations_per_call": [
+        1.0
+      ],
+      "id_bytes_per_call": [
+        16.0
+      ]
+    },
+    {
+      "case": "Integer result construction",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 2.120688,
+      "allocations_per_call": [
+        1.0
+      ],
+      "id_bytes_per_call": [
+        16.0
+      ]
+    },
+    {
+      "case": "Integer result construction",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 2.065646,
+      "allocations_per_call": [
+        1.0
+      ],
+      "id_bytes_per_call": [
+        16.0
+      ]
+    },
+    {
+      "case": "Integer add bits and overflow",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 12.3723125,
+      "allocations_per_call": [
+        14.0
+      ],
+      "id_bytes_per_call": [
+        648.0
+      ]
+    },
+    {
+      "case": "Integer add bits and overflow",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 12.287666999999999,
+      "allocations_per_call": [
+        14.0
+      ],
+      "id_bytes_per_call": [
+        648.0
+      ]
+    },
+    {
+      "case": "Integer operation dispatch",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 13.258,
+      "allocations_per_call": [
+        14.0
+      ],
+      "id_bytes_per_call": [
+        648.0
+      ]
+    },
+    {
+      "case": "Integer operation dispatch",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 13.067938000000002,
+      "allocations_per_call": [
+        14.0
+      ],
+      "id_bytes_per_call": [
+        648.0
+      ]
+    },
+    {
+      "case": "Integer exact Error check",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 8.4976875,
+      "allocations_per_call": [
+        6.0
+      ],
+      "id_bytes_per_call": [
+        344.0
+      ]
+    },
+    {
+      "case": "Integer exact Error check",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 8.3020835,
+      "allocations_per_call": [
+        6.0
+      ],
+      "id_bytes_per_call": [
+        344.0
+      ]
+    },
+    {
+      "case": "Word notNil",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 0.0465415,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Word notNil",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 0.0477915,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Word isNil",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 0.046,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Word isNil",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 0.0471665,
+      "allocations_per_call": [
+        0.0
+      ],
+      "id_bytes_per_call": [
+        0.0
+      ]
+    },
+    {
+      "case": "Block return nil",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 0.8440835,
+      "allocations_per_call": [
+        3.0
+      ],
+      "id_bytes_per_call": [
+        216.0
+      ]
+    },
+    {
+      "case": "Block return nil",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 0.846437,
+      "allocations_per_call": [
+        3.0
+      ],
+      "id_bytes_per_call": [
+        216.0
+      ]
+    },
+    {
+      "case": "Block apply Integer",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 14.167021,
+      "allocations_per_call": [
+        17.0
+      ],
+      "id_bytes_per_call": [
+        864.0
+      ]
+    },
+    {
+      "case": "Block apply Integer",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 14.063438000000001,
+      "allocations_per_call": [
+        17.0
+      ],
+      "id_bytes_per_call": [
+        864.0
+      ]
+    },
+    {
+      "case": "Block try Integer",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 22.273458499999997,
+      "allocations_per_call": [
+        27.0
+      ],
+      "id_bytes_per_call": [
+        1472.0
+      ]
+    },
+    {
+      "case": "Block try Integer",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 21.961020499999997,
+      "allocations_per_call": [
+        27.0
+      ],
+      "id_bytes_per_call": [
+        1472.0
+      ]
+    },
+    {
+      "case": "Block validate other",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 36.6185,
+      "allocations_per_call": [
+        42.0
+      ],
+      "id_bytes_per_call": [
+        2408.0
+      ]
+    },
+    {
+      "case": "Block validate other",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 35.994833,
+      "allocations_per_call": [
+        42.0
+      ],
+      "id_bytes_per_call": [
+        2408.0
+      ]
+    },
+    {
+      "case": "Integer binary dispatch",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 43.8761255,
+      "allocations_per_call": [
+        49.0
+      ],
+      "id_bytes_per_call": [
+        2800.0
+      ]
+    },
+    {
+      "case": "Integer binary dispatch",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 43.383229,
+      "allocations_per_call": [
+        49.0
+      ],
+      "id_bytes_per_call": [
+        2800.0
+      ]
+    },
+    {
+      "case": "Integer addition",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 44.2122295,
+      "allocations_per_call": [
+        49.0
+      ],
+      "id_bytes_per_call": [
+        2800.0
+      ]
+    },
+    {
+      "case": "Integer addition",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 44.1844995,
+      "allocations_per_call": [
+        49.0
+      ],
+      "id_bytes_per_call": [
+        2800.0
+      ]
+    },
+    {
+      "case": "wrapped Integer addition",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 45.350604,
+      "allocations_per_call": [
+        49.0
+      ],
+      "id_bytes_per_call": [
+        2800.0
+      ]
+    },
+    {
+      "case": "wrapped Integer addition",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 45.293396,
+      "allocations_per_call": [
+        49.0
+      ],
+      "id_bytes_per_call": [
+        2800.0
+      ]
+    }
+  ],
+  "probe_sha256": "19c2dda8614e3847445d46f5d91fc5ef9f90bc3adf4dc8df724df679efae4b5f",
+  "runner_sha256": "7d743f0eb4c521580f2efdf8dc2b9affa6c3ca166c19d81b54844122b98adde1",
+  "binary_sha256": "6cf8f610058f9eaaf5ddf57b7a79d68a3e13bda6b901724c408ab5ff528b5024",
+  "lock_sha256": "57d6e6f78d346073cc0939a5a67c938452f0b78f2c32c3558f8bf97ba6c271bb",
+  "libraries_sha256": {
+    "birnam-bootstrap.image": "9c15a6bcbe006a611bb723ae98c4cfa352d08786db1b8847ce586ec36a0a04ed",
+    "birnam-tools.image": "ae1a5bf3361057790367f507a1d3985771fe8a713e1635b1a06b6c6d20fa3068",
+    "libbirnam_alien.dylib": "d75653387219a64f34d2d1b94a8f5169b508aabf17fd679b3cc7bbde0ae1a827",
+    "libbirnam_alienCompiler.dylib": "252c6a4c24980e795e27a7c75d1566de72bb945ba1134da2b90a478e110f14e8",
+    "libbirnam_alienRecipes.dylib": "d11af583f421344625eb5313c0b64a9392f123fca63901419f978735218f3da0",
+    "libbirnam_artifact.dylib": "eb0a7b13b862a8e289b535b9488d309aed370e2c6b4c01bf6b5a762af2781a64",
+    "libbirnam_blockLoop.dylib": "1258e38c67164b50e78d181fa94bed369a1db438f5140cb9546501f0d39e0dec",
+    "libbirnam_blockLoopControl.dylib": "9081f064647462fe37665da370d0561b0b5965f2e6c9fd77df6ab3be80ac70bf",
+    "libbirnam_boolean.dylib": "7e01acd2446d261ad4601c7b3e0229d10e3da20879d945de9c7f2e156beb121b",
+    "libbirnam_booleanValues.dylib": "d4dd0c3a6b671cc987695b324250d5689a73765339c141564533df0758a3d397",
+    "libbirnam_bootstrap.dylib": "7cc0b56f99be77bf459334a03d7f495c147b016e9effb1c1031ed60798c4f0a3",
+    "libbirnam_bytes.dylib": "6c7dea788e90ee0cc55684b4d725049f4ce5781f6ac403ff7c2c92cc8514fb0c",
+    "libbirnam_candidatePolicy.dylib": "b81661b5227bf888379c83373c270720afc40a468e312f9de5bf0af092c8fdb9",
+    "libbirnam_cell.dylib": "ea2e4497d1c093392f73ad0e6b244b3355c00726bf4222637c048459110f02b6",
+    "libbirnam_cli.dylib": "b452b5d193610b52cc655dfd0749f2d3385be0f8a85da56704483d38e7a2c75d",
+    "libbirnam_codegen_runtime.dylib": "e911a2e5ea8c8d570e876a1188cade297146380ce910b9d083a27497bbc5f62f",
+    "libbirnam_collect.dylib": "753a6cef3926fad2eaf69d7b9cba2197db55f6c79653cc8c39f0f89efe7e6379",
+    "libbirnam_compiledUnit.dylib": "a4798ae764085360c100c873072aee495bdf6aad8259632fbdcf1dc4e55a4258",
+    "libbirnam_compiledUnitDocs.dylib": "ce63b1e52bb082cbf7c2d734f5e8a108e7ab805a83505dacdf0a96cc1bbdeac1",
+    "libbirnam_concurrencyDocs.dylib": "9e2173b6ba5e74fd12a2d8b0da8eeb8496ad4638438903440f659b1733b4648f",
+    "libbirnam_config.dylib": "1ff6d944bffd57a9b516389337258c888bb8652989c7cf5b1aaf2ceb27e13b81",
+    "libbirnam_doc.dylib": "179729598a057aea6ea9394c5c936abf6cb669a29cbbeae16c9443a70e32e0b5",
+    "libbirnam_environment.dylib": "fae6ac61ee438330581ee907972e9039d5bd3e1c476e85dfe9b06e076d430011",
+    "libbirnam_error.dylib": "6dae39e5dc2224f084193842cdacd429fd06bca634a23c403562fdcfab8bf65d",
+    "libbirnam_execution.dylib": "50c99894a2e32e329cd2db598a4ccfbb27922f64f0073eaa80a3db249cc7f94f",
+    "libbirnam_file.dylib": "d4c0535d7d7be4dd1392b2095dcec8efb49fd56d5458d859afefbbdd1090dc95",
+    "libbirnam_file_io.dylib": "dca67fd5cc6c631a0cb75acdd248323732d0a5c9cd1540dce22695d23e78cadb",
+    "libbirnam_float.dylib": "ea9194a0cb84e29606247bca67d48ff4e72fe2c5c95302ba8c6ed688e7c2fd21",
+    "libbirnam_generation.dylib": "f6e025a2e6594b946a26ae2a0aead84a8acd98372f8ed6baf4ab0ac5126a26b5",
+    "libbirnam_globals.dylib": "7231d9dba8b3a1194e4bd83fe0bdf1f8818da7aafb47f6d75274d94044235aa4",
+    "libbirnam_globalsOwner.dylib": "1dd9c802f0c73b041a8f37892be66f21046107a41312f37549e5ea3c6f46639a",
+    "libbirnam_host_entry.dylib": "5c1b036d32b146a6c4b7d575acbfb6333c4a1237a678992fd53110884caedb51",
+    "libbirnam_host_interaction.dylib": "cbb304f6be7b713e68d628de95dc690a9e589f4dabce3ec98d3fb9a17aee615c",
+    "libbirnam_host_project.dylib": "6c382107d83a010b3a02e8db276c896ae56b82e3dbf361840c6facc15b51e7f8",
+    "libbirnam_html.dylib": "85679863da5218435cd42352edec6e504a5cf2c958c5597c05d6d9ee741515a5",
+    "libbirnam_http.dylib": "9abd5a75c82deca31dbb5d8c597c0088adc2f040dea3fca3ae830300e8a7e1b8",
+    "libbirnam_id.dylib": "314e0eb259a9bae003b3d00e5cb804993e5f2b23d3fecde76c8df9d01ef02251",
+    "libbirnam_image.dylib": "443400ef4b92d50aab57f45fc72407bbd7b9e3370ac08d938f458110f204b34a",
+    "libbirnam_imageFormat.dylib": "fb5ff14f9ea58364ec96d3fff0a91be4fc2fe35c4e46c692a1180956e64105e8",
+    "libbirnam_integer.dylib": "caf96a86816860b74e8223569d8f81dd10cdb5a00cf86025e504fb9fdd8941de",
+    "libbirnam_integerValues.dylib": "926cecbf1626dc01bd22e1143b0fb8f7d229c77a2bdb7fa0bd0bcc1dde2c5603",
+    "libbirnam_isolate.dylib": "30c74a62ab4bd9c437f57a820445f5570c506d47e73eafc589ddbbe08f4d7892",
+    "libbirnam_json.dylib": "6b3dabe9a47bca72df4b1fb2eb138d2f7b33c0acd8055bfcf54b239885ceaf00",
+    "libbirnam_lang.dylib": "84e693271065bdfc7eecf3322df21aed989b6a4bfd44c4bbfa4756e7ee1d6948",
+    "libbirnam_log.dylib": "e62a8c1e705f687362afcf6696a93db9cadabe6ef49cb52cb8a20861a2c51b38",
+    "libbirnam_lsp.dylib": "3f41a068aeaa0a7d12fb89b08bbac91dd4bb5c28f37d6a08c95040a90341dda0",
+    "libbirnam_map.dylib": "45e440418290ac599696d8fd457b22f305dd05a82b0228a911b715bd443cf60c",
+    "libbirnam_markdown.dylib": "0751dea876b39ff66666429f1f1ac224e8fb2102a232665f919a90d23768e3d5",
+    "libbirnam_modules.dylib": "a8d0d6a1113f0ef52437118f418477868fee43afd6c06cd01f27d13482ee0c48",
+    "libbirnam_namespace.dylib": "5a7ac1b170f03e39dcce2682c96869282d5872d56befc8477741631524f34396",
+    "libbirnam_nativeLoader.dylib": "6d048840ca7877e0171bbab926b69b970a5ccfec7188acd1ec6ee9277d8f47a5",
+    "libbirnam_nativeValues.dylib": "9059f3aeb18bc1da9661b53e9a758fe23691a80616126a4bd37339f18d8966ab",
+    "libbirnam_native_backend.dylib": "0c2cd93da006d9fca93850866e812b48f214081bbb8cb9af4fdc1e4a4167bcc4",
+    "libbirnam_nativedoc.dylib": "7f0f94568917831d99f923ce1849ef91128ae98184bbedc554c2c5254985d633",
+    "libbirnam_nil.dylib": "9929a983ffcd4a27d800d52b080123613cc2bb574340ee3a02035dc3c128e0e5",
+    "libbirnam_object_model.dylib": "2ab791359902ca2aafe80d75ee3e5680b6981ef42a9f362c23161647a6bd58d4",
+    "libbirnam_os.dylib": "413169196f8f74bbacd8221a5e11e937b4bb7771934ef11c4ef14998128acf83",
+    "libbirnam_peg.dylib": "2d11cff210bc0cf96de316f002b059c7a02f5ded31b134a5427f7eaaf985cf43",
+    "libbirnam_portable_code.dylib": "d0462c75e1471e202db8fa685f452d17f294e547d66a019d8d1094984cd3be43",
+    "libbirnam_prelude.dylib": "58b9d02c0ffb5226e78e8f672d15e03c31f70354672eb5ab42a314e534d0ae5e",
+    "libbirnam_printing.dylib": "bfa057666ae00f0cbe411943690fc5787a58dded607a61ecd822c0c23b657edd",
+    "libbirnam_process.dylib": "212d2d7a36c88cfda20b48515b158614e5e03dc3ca755af46714b839e513f0ac",
+    "libbirnam_project_build.dylib": "701154b14a0e3633dc292c928a733c9189cd18593b1b36c29e5cfe7c3b1024aa",
+    "libbirnam_random.dylib": "d80aa5b5a853763e11ce6310c97ac6126fe01cf13be524edce27a4a6d201e32d",
+    "libbirnam_range.dylib": "2a7ec71f642fcaa41500aa21c98e550b7ba91c20002c41a2304793f05228aa52",
+    "libbirnam_relational.dylib": "1cf0ed644d8e142464b88b23bd7a56010b9d7cce84f8257df86af90b78784366",
+    "libbirnam_repl.dylib": "252734bc9de48718a895f681b223ee212731f1d6dfd5ca77cfbe15e35b1ffde9",
+    "libbirnam_root_registry.dylib": "3e01b88df7e619746c6eeaf81ce8bda64a50e87114144224025f6377357f91ce",
+    "libbirnam_socket.dylib": "27f624b2c9ccbebea90037babf781b87651dc1e75d5740ab7b2075b6a41f2632",
+    "libbirnam_sourceLoader.dylib": "361bbe01afafdbacb9fc3523c8e5d6e79741ec4b7de8e2630d007caa63d57616",
+    "libbirnam_sourceRegistry.dylib": "501e4183f3beef978965c19d1355b3c382dbd495649dfbe831558f970247a22c",
+    "libbirnam_stacklessControl.dylib": "753ba13d5c74a61cb629edabd62ee662501c3c0031916e7e98acb58c8afce082",
+    "libbirnam_stdlib.dylib": "411ae2462cace7686cd6e67f9c208b6c519195d0171cdccd33cfda767941d1d8",
+    "libbirnam_storage.dylib": "6a6bb28c23153b294985f56548685bf656b3a933252cf2f20fc15ca76f304f90",
+    "libbirnam_store.dylib": "9e68d7506241bc47ed666d85ea8ee6ec231c657c4f69752f24a2d293f046fdca",
+    "libbirnam_string.dylib": "e490cec17223051a0ad169deef48ca1ff4d264b8c170dcba0d0d2c68c8f63614",
+    "libbirnam_systemGc.dylib": "eda7679d293b7afc0796f20e36fd850575c469226142e8ed2181933297956ab8",
+    "libbirnam_system_input.dylib": "2fd808cebb8c48086e2619e1ef3292d4e21d9279b4528f2ac87948f88b59e9b5",
+    "libbirnam_system_output.dylib": "ee867d8b8b31a86ea9b8241b5230e4d118c8f2e26128029ae457c11c6b0f0e9d",
+    "libbirnam_tcc.dylib": "448af074b491eab71851b1bf7ea6d5ebf2875fc33db1738dac6a83cb562f601a",
+    "libbirnam_time.dylib": "dee2cb1474c64068c6384388d6484d1ff2991924f86246663c07737993ec57e6",
+    "libbirnam_toml.dylib": "a228a7a0b279e9e6ae8df71bf2aeed1e57479d118e16baa4991789f5c1fba8a0",
+    "libbirnam_trace.dylib": "9f6f28b7b97f66e6a8f5843ca3ef6dd3a3936462e7cbc765fdf2c9213af08995",
+    "libbirnam_vector.dylib": "34b7eb9d08018f2bc29b9c28db8ea3a6ef81b9a4ca42421c8dbda8772a7b40c9",
+    "libbirnam_word.dylib": "d97ede4ee9c4d2cdb74aaf431a6908e16d667e70ba3bb942dd3a567e2e865550"
+  },
+  "raw_sha256": {
+    "forward.json": "db99ba94e867ac92c9c5a409830e3ee35da9cd5c05e448a1433f9eefec29e9ec",
+    "reverse.json": "dcd6813c09b99a818dfa88a08a2e4eac96218bdbd79e92f596b4906efad9ca9e",
+    "forward.log": "6af512f609931cc33d559ece317330c568e8946687cf272ccb86c2400031715c",
+    "reverse.log": "ff2b179ae1236b6d1225ec64fa3681d0232a7721a0fde59fa8f3d9b4117a9955",
+    "build.log": "914be1d4d67615187b8b5bc5c8e9c7dbc9bdbe863251e2eb647346a7438f008a"
+  }
+}
