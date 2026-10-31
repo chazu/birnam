@@ -5,6 +5,10 @@ cleanup that preserves current behavior, and an ordinary-return proposal awaitin
 a decision about an observable reentry difference. The latter is not applied to
 production source.
 
+The [current-runtime requalification](../native-result-current-20261031/README.md)
+updates the unapplied proposal after later runtime changes. This original receipt
+retains its historical baseline and results.
+
 ## Implemented buffer cleanup
 
 Incoming native adapters previously built a receiver-plus-arguments Vec for every

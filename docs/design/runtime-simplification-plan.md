@@ -128,6 +128,10 @@ allocate eight, and numeric storage accounts for seven. Plain Boolean replacemen
 reduce the diagnostic to 15 allocations and about 20.55 microseconds, but change
 wrong-arity failures and are not accepted. Target the generic adapter path while
 preserving its actual contracts; do not apply that diagnostic as a shortcut.
+The [updated ordinary-result candidate](../measurements/native-result-current-20261031/README.md)
+retains native validation and reduces addition from 40 to 30 allocations, with
+about 6.7% less time in its comparison. It remains isolated pending the explicit
+decision about independent Id drives during native conversion callbacks.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate

@@ -1,0 +1,336 @@
+diff --git a/rust/birnam-execution/src/oop_native.rs b/rust/birnam-execution/src/oop_native.rs
+index 74552d8b..91b26842 100644
+--- a/rust/birnam-execution/src/oop_native.rs
++++ b/rust/birnam-execution/src/oop_native.rs
+@@ -186,6 +186,7 @@ unsafe fn conversion(
+         let declared = q.keep(s.send(
+-            if environment == s.nil {
+-                s.native_value
+-            } else {
+-                s.native_method_value
++            match (signature.result() == b'v', environment == s.nil) {
++                (true, true) => s.native_value,
++                (true, false) => s.native_method_value,
++                (false, true) => s.native_result,
++                (false, false) => s.native_method_result,
+             },
+@@ -394,3 +395,3 @@ unsafe fn notify(s: &State, q: &Scope<'_>, receiver: Oop, error: Oop) {
+ pub(super) unsafe extern "C" fn value(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
+-    unsafe { enter(c, r, a, n, false) }
++    unsafe { enter(c, r, a, n, false, true) }
+ }
+@@ -403,9 +404,19 @@ pub(super) unsafe extern "C" fn method_value(
+ ) -> Oop {
+-    unsafe { enter(c, r, a, n, true) }
++    unsafe { enter(c, r, a, n, true, true) }
++}
++pub(super) unsafe extern "C" fn result(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
++    unsafe { enter(c, r, a, n, false, false) }
++}
++pub(super) unsafe extern "C" fn method_result(_: Oop, c: Oop, r: Oop, a: *const Oop, n: usize) -> Oop {
++    unsafe { enter(c, r, a, n, true, false) }
+ }
+-unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
++unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool, continuing: bool) -> Oop {
+     (|| unsafe {
+         let s = runtime()?;
+-        let [k, args @ ..] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+-            return Err(invalid());
++        let passed = borrowed_slice(a, n).ok_or_else(invalid)?;
++        let (k, args) = if continuing {
++            let (&k, args) = passed.split_first().ok_or_else(invalid)?;
++            (k, args)
++        } else {
++            (ptr::null_mut(), passed)
+         };
+@@ -420,3 +431,3 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
+         };
+-        let q = s.scope(&[c, r, *k]);
++        let q = s.scope(&[c, r, k]);
+         if let Some(receiver) = receiver { q.keep(receiver); }
+@@ -435,2 +446,5 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
+             .ok_or_else(invalid)?;
++        // A substituted context must agree with the entry convention before
++        // conversion or body effects. Old continuation entries remain usable.
++        if !continuing && sig.result() == b'v' { return Err(invalid()); }
+         if receiver.is_none() || args.len() != sig.arguments().len() {
+@@ -500,3 +514,3 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
+             let destination = if sig.observes_failure() {
+-                let context = q.keep(s.send(s.id.root, b"sequence", &[*k, receiver])?);
++                let context = q.keep(s.send(s.id.root, b"sequence", &[k, receiver])?);
+                 let answer = q.keep(s.send(s.native_answer, b"withContext:", &[context])?);
+@@ -504,3 +518,3 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
+             } else {
+-                *k
++                k
+             };
+@@ -512,4 +526,6 @@ unsafe fn enter(c: Oop, r: Oop, a: *const Oop, n: usize, bound: bool) -> Oop {
+             )
++        } else if continuing {
++            s.transfer(b"answerTo:with:", &[k, value])
+         } else {
+-            s.transfer(b"answerTo:with:", &[*k, value])
++            Ok(value)
+         }
+diff --git a/rust/birnam-execution/src/synchronous.rs b/rust/birnam-execution/src/synchronous.rs
+index 2a28cf7f..904fdfae 100644
+--- a/rust/birnam-execution/src/synchronous.rs
++++ b/rust/birnam-execution/src/synchronous.rs
+@@ -38,2 +38,4 @@ struct State {
+     native_method_value: Oop,
++    native_result: Oop,
++    native_method_result: Oop,
+     native_answer: Oop,
+@@ -445,2 +447,4 @@ unsafe extern "C" fn roots(_: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) -> O
+             s.native_method_value,
++            s.native_result,
++            s.native_method_result,
+             s.native_answer,
+@@ -792,2 +796,4 @@ const NAMES: &[&[u8]] = &[
+     b"receiveByteValues",
++    b"nativeSignatureResult",
++    b"nativeMethodResult",
+ ];
+@@ -1373,2 +1379,4 @@ static METHODS: &[MethodSpec] = &[
+     MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"receiveByteValues"), entry: Some(abi::byte_transfer::receive_entry), convention: 0 },
++    MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"nativeSignatureResult"), entry: Some(native_adapters::result), convention: 0 },
++    MethodSpec { name: birnam_abi::id_protocol::literal_index(NAMES, b"nativeMethodResult"), entry: Some(native_adapters::method_result), convention: 0 },
+ ];
+@@ -1441,2 +1449,4 @@ unsafe extern "C" fn initialize(
+             )?)?,
++            native_result: keep(send(image, b"methodAt:", &[names[b"nativeSignatureResult".as_slice()]])?)?,
++            native_method_result: keep(send(image, b"methodAt:", &[names[b"nativeMethodResult".as_slice()]])?)?,
+             native_answer: keep(send(
+@@ -1481,2 +1491,4 @@ unsafe extern "C" fn initialize(
+                     | b"nativeMethodValue"
++                    | b"nativeSignatureResult"
++                    | b"nativeMethodResult"
+                     | b"nativeDeferredAnswer"
+diff --git a/rust/birnam-siphon/tests/native_result_entry.rs b/rust/birnam-siphon/tests/native_result_entry.rs
+new file mode 100644
+index 00000000..1339c952
+--- /dev/null
++++ b/rust/birnam-siphon/tests/native_result_entry.rs
+@@ -0,0 +1,128 @@
++//! Ordinary native-result adapters do not need a reply continuation of their own.
++#[path = "support/oop.rs"]
++mod oop;
++use birnam_abi::{as_size, size};
++use std::path::Path;
++
++#[test]
++#[ignore = "requires native owners and authored bootstrap artifacts"]
++fn native_result_entry_returns_data_without_outer_continuation_setup() {
++    let h = oop::bootstrap();
++    let q = h.scope();
++    let cg = h.named(b"Codegen").unwrap();
++    let source = q.string(b"[:self :argument | argument]").unwrap();
++    let method = q.call(cg, b"compileSynchronous:", &[source]).unwrap();
++    let block = q.call(h.named(b"Block").unwrap(), b"fromMethod:captureOperands:", &[method]).unwrap();
++    let body = q.call(block, b"value", &[]).unwrap();
++    let signature = q.string(b"oO").unwrap();
++    let typed = q.call(h.named(b"Execution").unwrap(), b"block:withNativeSignature:", &[body, signature]).unwrap();
++    let target = q.call(h.named(b"Object").unwrap(), b"clone", &[]).unwrap();
++    let selector = q.keep(h.intern(b"nativeEcho:").unwrap()).unwrap();
++    q.call(h.named(b"Reflect").unwrap(), b"defineMethod:on:as:", &[selector, target, typed]).unwrap();
++    let epoch = q.keep(h.intern(b"allocationEpoch").unwrap()).unwrap();
++    let yes = h.named(b"true").unwrap();
++    q.call(h.named(b"GC").unwrap(), b"automaticCollection:", &[size(0).unwrap()]).unwrap();
++    let count = || unsafe { as_size(h.id.send(h.id.root, epoch, &[]).unwrap()).unwrap() };
++    let before = count();
++    assert_eq!(unsafe { h.id.send(target, selector, &[yes]).unwrap() }, yes);
++    let allocations = count() - before;
++    eprintln!("native result entry allocations={allocations}");
++    q.call(h.named(b"GC").unwrap(), b"automaticCollection:", &[size(1).unwrap()]).unwrap();
++    // A private cost regression, not a language allocation-count promise.
++    // Body invocation still has its own explicit Method-invocation boundary.
++
++
++    // Returning a Method as data must not enter it as continuation work.
++    assert_eq!(unsafe { h.id.send(target, selector, &[method]).unwrap() }, method);
++    assert!(h.send(target, b"nativeEcho:", &[]).is_err());
++    assert!(h.send(target, b"nativeEcho:", &[yes, yes]).is_err());
++    assert!(h.send(target, b"nativeEcho:", &[std::ptr::null_mut()]).is_err());
++
++    // The body is still invoked across a synchronous native boundary. Only a
++    // deferred-result signature may move its selected branch outside it.
++    let compile_body = |text: &[u8]| {
++        let text = q.string(text).unwrap();
++        let method = q.call(cg, b"compileSynchronous:", &[text]).unwrap();
++        let block = q.call(h.named(b"Block").unwrap(), b"fromMethod:captureOperands:", &[method]).unwrap();
++        let value = q.call(block, b"value", &[]).unwrap();
++        q.check_result(value).unwrap();
++        value
++    };
++    let path = std::env::temp_dir().join(format!("birnam-native-result-{}.dylib", std::process::id()));
++    assert!(std::process::Command::new("clang")
++        .args(["-dynamiclib", "-O2", "-Wall", "-Wextra", "-Werror"])
++        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/oop-host/native-result.c"))
++        .arg("-o").arg(&path).status().unwrap().success());
++    let module = h.load_native(&q, &path, &[]).unwrap();
++    std::fs::remove_file(path).unwrap();
++    let name = q.keep(h.intern(b"pauseResult").unwrap()).unwrap();
++    let pause = q.call(module, b"methodAt:", &[name]).unwrap();
++    let callback = q.call(h.named(b"Object").unwrap(), b"clone", &[]).unwrap();
++    let behavior = q.call(h.id.root, b"ensurePrivateVtableFor:", &[callback]).unwrap();
++    let value = q.keep(h.intern(b"value").unwrap()).unwrap();
++    q.call(behavior, b"addMethod", &[value, pause]).unwrap();
++    let body = compile_body(b"[:self :callback | [callback value]]");
++    let typed = q.call(h.named(b"Execution").unwrap(), b"block:withNativeSignature:", &[body, signature]).unwrap();
++    q.call(h.named(b"Reflect").unwrap(), b"defineMethod:on:as:", &[selector, target, typed]).unwrap();
++    let error = unsafe { h.id.send(target, selector, &[callback]) }.unwrap_err();
++    q.keep(error).unwrap();
++    let kind = q.call(error, b"faultKind", &[]).unwrap();
++    assert_eq!(kind, h.intern(b"continuationBarrier").unwrap());
++
++    let seen = q.call(h.global(&q, b"Cell").unwrap(), b"with:", &[h.named(b"nil").unwrap()]).unwrap();
++    let install_observer = compile_body(br#"[:target :seen |
++      [Reflect defineMethod: #nativeFailed:detail: on: target as: [:self :status :detail |
++        [System gc]; [seen set: #[status detail]]
++      ]]
++    ]"#);
++    q.call(install_observer, b"value:value:", &[target, seen]).unwrap();
++    let observed_signature = q.string(b"!oO").unwrap();
++    let observed = q.call(h.named(b"Execution").unwrap(), b"block:withNativeSignature:", &[body, observed_signature]).unwrap();
++    q.call(h.named(b"Reflect").unwrap(), b"defineMethod:on:as:", &[selector, target, observed]).unwrap();
++    let failure_selector = q.keep(h.intern(b"failNative:detail:").unwrap()).unwrap();
++    let failure = unsafe { h.id.send(h.named(b"Execution").unwrap(), failure_selector, &[size(719).unwrap(), size(23).unwrap()]) }.unwrap_err();
++    q.keep(failure).unwrap();
++    for (name, marked) in [(b"failure".as_slice(), true), (b"data".as_slice(), false)] {
++        let key = q.keep(h.intern(name).unwrap()).unwrap();
++        let method = q.call(module, b"methodAt:", &[key]).unwrap();
++        let method = q.call(method, b"withContext:", &[failure]).unwrap();
++        q.call(behavior, b"addMethod", &[value, method]).unwrap();
++        q.call(seen, b"set:", &[h.named(b"nil").unwrap()]).unwrap();
++        let answer = unsafe { h.id.send(target, selector, &[callback]) };
++        let observed = q.call(seen, b"value", &[]).unwrap();
++        if marked {
++            assert_eq!(answer, Err(failure));
++            assert_eq!(q.vector_at(observed, 0).unwrap(), size(719).unwrap());
++            assert_eq!(q.vector_at(observed, 1).unwrap(), size(23).unwrap());
++        } else {
++            assert_eq!(answer, Ok(failure));
++            assert_eq!(observed, h.named(b"nil").unwrap());
++        }
++    }
++
++    let word = h.named(b"Word").unwrap();
++    let word_behavior = q.call(h.id.root, b"behaviorOf:", &[word]).unwrap();
++    let from_bits = q.keep(h.intern(b"fromBits:").unwrap()).unwrap();
++    let original = q.call(word_behavior, b"lookup", &[from_bits]).unwrap();
++    let probe_key = q.keep(h.intern(b"probeWord:").unwrap()).unwrap();
++    let probe = q.call(module, b"methodAt:", &[probe_key]).unwrap();
++    let probe = q.call(probe, b"withContext:", &[original]).unwrap();
++    let word_body = compile_body(b"[:self :bits | bits]");
++    let sig = q.string(b"ww").unwrap();
++    let word_method = q.call(h.named(b"Execution").unwrap(), b"block:withNativeSignature:", &[word_body, sig]).unwrap();
++    q.call(h.named(b"Reflect").unwrap(), b"defineMethod:on:as:", &[selector, target, word_method]).unwrap();
++    q.call(word_behavior, b"addMethod", &[from_bits, probe]).unwrap();
++    assert_eq!(unsafe { h.id.send(target, selector, &[size(7).unwrap()]).unwrap() }, size(7).unwrap());
++    let state_key = q.keep(h.intern(b"driveState").unwrap()).unwrap();
++    let state_method = q.call(module, b"methodAt:", &[state_key]).unwrap();
++    let state = q.call(state_method, b"invokeOn:", &[target]).unwrap();
++    eprintln!("root conversion drive state={}", as_size(state).unwrap());
++    assert_eq!(as_size(state), Some(2), "an independent drive is allowed when no drive is active");
++    let driver_key = q.keep(h.intern(b"inDrive:selector:argument:").unwrap()).unwrap();
++    let driver = q.call(module, b"methodAt:", &[driver_key]).unwrap();
++    let target_behavior = q.call(h.id.root, b"behaviorOf:", &[target]).unwrap();
++    q.call(target_behavior, b"addMethod", &[driver_key, driver]).unwrap();
++    assert_eq!(unsafe { h.id.send(target, driver_key, &[target, selector, size(7).unwrap()]).unwrap() }, size(1).unwrap());
++    q.call(word_behavior, b"addMethod", &[from_bits, original]).unwrap();
++    assert!(allocations <= 3);
++}
+diff --git a/tests/fixtures/oop-host/native-result.c b/tests/fixtures/oop-host/native-result.c
+new file mode 100644
+index 00000000..a6e22240
+--- /dev/null
++++ b/tests/fixtures/oop-host/native-result.c
+@@ -0,0 +1,88 @@
++#include "../oop-continuation/id.h"
++static IdContinuationProtocol api;
++static Oop pause_selector;
++static Oop drive_selector, sequence_selector, invoke_selector, fault_selector, active_name, send_selector;
++static size_t drive_state, drive_runs;
++static Oop probe_module, work_name, entry_selector, method_at;
++static Oop drive_probe_work(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    (void)root; (void)context; (void)receiver; (void)args;
++    if (n) return api.common.invalid;
++    drive_runs++;
++    return 0;
++}
++static Oop pause_result(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    (void)context; (void)receiver;
++    if (n != 1) return api.common.invalid;
++    return api.control(root, pause_selector, args, 1);
++}
++static Oop failure(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    (void)root; (void)receiver; (void)args;
++    return n ? api.common.invalid : id_failure(context);
++}
++static Oop data(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    (void)root; (void)receiver; (void)args;
++    return n ? api.common.invalid : context;
++}
++static Oop probe_word(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    if (n != 1) return api.common.invalid;
++    Oop method = api.common.message(root, probe_module, method_at, &work_name, 1);
++    if (id_fault(method)) return method;
++    Oop entry[] = {method, receiver, 0};
++    Oop work = api.control(root, entry_selector, entry, 3);
++    if (id_fault(work)) return work;
++    size_t before = drive_runs;
++    Oop request[] = {work, id_size(1)};
++    Oop result = api.control(root, drive_selector, request, 2);
++    if (id_fault(result)) {
++        Oop kind = api.common.message(root, id_error_value(result), fault_selector, 0, 0);
++        if (kind != active_name) return api.common.invalid;
++        if (drive_runs != before) return api.common.invalid;
++        drive_state = 1;
++    } else {
++        if (result || drive_runs != before + 1) return api.common.invalid;
++        drive_state = 2;
++    }
++    Oop values = api.common.message(root, root, sequence_selector, args, n);
++    if (id_fault(values)) return values;
++    Oop invoke[] = {receiver, values};
++    return api.common.message(root, context, invoke_selector, invoke, 2);
++}
++static Oop state(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    (void)root; (void)context; (void)receiver; (void)args;
++    return n ? api.common.invalid : id_size(drive_state);
++}
++static Oop in_drive(Oop root, Oop context, Oop receiver, const Oop *args, size_t n) {
++    (void)context; (void)receiver;
++    if (n != 3) return api.common.invalid;
++    Oop request[] = {args[0], args[1], 0, args[2]};
++    Oop work = api.control(root, send_selector, request, 4);
++    if (id_fault(work)) return work;
++    Oop run[] = {work, id_size(10000)};
++    Oop result = api.control(root, drive_selector, run, 2);
++    if (id_fault(result) || result) return result;
++    return id_size(drive_state);
++}
++static const IdLiteral literals[] = {
++    LIT("pause:"), LIT("pauseResult"), LIT("failure"), LIT("data"),
++    LIT("drive:budget:"), LIT("sequence"), LIT("invokeOn:arguments:"),
++    LIT("faultKind"), LIT("driveActive"), LIT("prepareSend"),
++    LIT("probeWord:"), LIT("driveState"), LIT("inDrive:selector:argument:"),
++    LIT("driveProbeWork"), LIT("prepareEntry"), LIT("methodAt:")
++};
++static const IdContinuationMethodSpec methods[] = {
++    {1, pause_result, 1}, {2, failure, 0}, {3, data, 0},
++    {10, probe_word, 0}, {11, state, 0}, {12, in_drive, 0}, {13, drive_probe_work, 0}
++};
++static Oop initialize(const IdContinuationProtocol *p, Oop image,
++                      const Oop *symbols, size_t n, const Oop *args, size_t count) {
++    (void)args;
++    if (n != 16 || count) return p->common.invalid;
++    api = *p; pause_selector = symbols[0]; drive_selector = symbols[4];
++    sequence_selector = symbols[5]; invoke_selector = symbols[6];
++    fault_selector = symbols[7]; active_name = symbols[8]; send_selector = symbols[9];
++    probe_module = image; work_name = symbols[13]; entry_selector = symbols[14]; method_at = symbols[15];
++    return image;
++}
++const IdContinuationModule birnam_native_module_v3 = {
++    3, sizeof(IdContinuationModule), literals, 16, methods, 7, initialize
++};

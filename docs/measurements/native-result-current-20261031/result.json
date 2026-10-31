@@ -1,0 +1,313 @@
+{
+  "baseline_commit": "fdd658c6defb780c005652ea6b9b412817f4cddc",
+  "status": "isolated candidate; independent-drive policy decision pending; not applied to production",
+  "patch_sha256": "333ce0ccc4689f5719da85878914091c8d36a6237726b8ddb95579f10af63428",
+  "source_sha256": {
+    "rust/birnam-execution/src/oop_native.rs": "26e5ec0b3f5b233530f5a4b89a26dbc973f41a2ea6a5026d937e67729253fa53",
+    "rust/birnam-execution/src/synchronous.rs": "b7a8ecb5d6a5c5669d5e90867d9509ab53de1c42d0ad854abd4341dc1489bc5f",
+    "rust/birnam-siphon/tests/native_result_entry.rs": "92cf5c852826bf4d96b361e72471bd3eb21c597674ca31b24d8b3f01087796a0",
+    "tests/fixtures/oop-host/native-result.c": "80c29351ef3a9d193f36f320f940f847ee7751a505e07f6c95a23a4db1c34d92"
+  },
+  "library_sha256": {
+    "baseline": {
+      "libbirnam_id.dylib": "19b53a3162b372f998c5734cb6f24554f6923a6f48d201e976fb31ae8fc75a9d",
+      "libbirnam_execution.dylib": "dcf9b5420666274eddf86859220d0c163d66df26702d4caa9729d381916946ed"
+    },
+    "candidate": {
+      "libbirnam_id.dylib": "19b53a3162b372f998c5734cb6f24554f6923a6f48d201e976fb31ae8fc75a9d",
+      "libbirnam_execution.dylib": "715b30edce27e71da4317945352afe6130a3cd59b945f64153ab08a97fc19eb0"
+    }
+  },
+  "arithmetic": [
+    {
+      "variant": "baseline",
+      "case": "Integer addition",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 28.241145500000002,
+      "allocations": [
+        40.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer addition",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 28.093791500000002,
+      "allocations": [
+        40.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer exact Error check",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 5.388604,
+      "allocations": [
+        5.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer exact Error check",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 5.5061455,
+      "allocations": [
+        5.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer add bits and overflow",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 7.352021,
+      "allocations": [
+        12.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer add bits and overflow",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 7.38175,
+      "allocations": [
+        12.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer addition",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 26.345354,
+      "allocations": [
+        30.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer addition",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 26.50675,
+      "allocations": [
+        30.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer exact Error check",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 5.0373335,
+      "allocations": [
+        3.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer exact Error check",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 5.015812,
+      "allocations": [
+        3.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer add bits and overflow",
+      "automatic_gc": true,
+      "samples": 10,
+      "median_us": 7.0332704999999995,
+      "allocations": [
+        10.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer add bits and overflow",
+      "automatic_gc": false,
+      "samples": 10,
+      "median_us": 6.948,
+      "allocations": [
+        10.0
+      ]
+    }
+  ],
+  "inventory": [
+    {
+      "variant": "baseline",
+      "case": "dense",
+      "samples": 14,
+      "median_ms": 339.620875
+    },
+    {
+      "variant": "baseline",
+      "case": "registry_module",
+      "samples": 14,
+      "median_ms": 792.1508744999999
+    },
+    {
+      "variant": "candidate",
+      "case": "dense",
+      "samples": 14,
+      "median_ms": 340.23660400000006
+    },
+    {
+      "variant": "candidate",
+      "case": "registry_module",
+      "samples": 14,
+      "median_ms": 805.5647084999999
+    }
+  ],
+  "commands": [
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/arithmetic-1-baseline.json"
+      ],
+      "environment": {}
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/inventory-1-baseline.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/arithmetic-2-candidate.json"
+      ],
+      "environment": {
+        "ARITHMETIC_REVERSE": "1"
+      }
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/inventory-2-candidate.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/arithmetic-3-candidate.json"
+      ],
+      "environment": {}
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/inventory-3-candidate.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/arithmetic-4-baseline.json"
+      ],
+      "environment": {
+        "ARITHMETIC_REVERSE": "1"
+      }
+    },
+    {
+      "argv": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/synchronous-return-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/inventory-4-baseline.json"
+      ],
+      "environment": {
+        "INVENTORY_COMPILE_MODE": "compile:"
+      }
+    }
+  ],
+  "validation": {
+    "workspace_check": "all targets and all features passed",
+    "default_library_tests": 320,
+    "focused_targets": [
+      "continuation_transparency",
+      "execution_methods",
+      "integer_box_observability",
+      "integer_operation_objects",
+      "integer_values",
+      "native_boundaries",
+      "native_incoming",
+      "native_result_entry"
+    ],
+    "additional_targets": [
+      "execution_machines",
+      "image",
+      "image_native_refusal",
+      "image_slot_values",
+      "image_snapshot_stamp",
+      "root_batches",
+      "root_reuse"
+    ],
+    "full_image": "roundtrip, resaves, native refusal, slots and snapshot stamp passed",
+    "baseline_probe": "expected failure at independent-drive expectation; five allocations; work refused",
+    "candidate_probe": "three allocations; real independent work executes once; overlapping drive refused",
+    "scope": "Existing source-built prefix with only Execution rebuilt; no new full-source build or release qualification"
+  },
+  "raw_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031",
+  "raw_sha256": {
+    "build.log": "5ed9e7195874533ac765b39b42c00e5a5e6e480ed22062aa5fcbbd830e7e0bf8",
+    "focused.log": "18c078196f0edea70836556025e853e70f5445a9d6c757e8886e95bc3f8f596b",
+    "images-roots.log": "b8858c5e375d39230f476dee1592124210259abdc346704c5bafebccd10ca6b2",
+    "candidate-probe.log": "63f21281ed65bc705fce070ee220f3e8dbb7d144000d7eb2dd351e2a0efa29b2",
+    "baseline-probe.log": "3677654afdacdb85d5d361575f7010f27fa80094556eeb27bac944156afc7442",
+    "workspace-unit.log": "6b2811cd9ebaeea36080625d8a52c29eacd8f11e53d6b87b710b8336e78b3aca",
+    "workspace-check.log": "4706698a9922604a3967907d5c36d28162b6385ae9e0fb42bde5ab2864f14583",
+    "arithmetic-summary.json": "a429ac76f6cd9fe686cf788c2bdcd74b47904522180878468a01e627658671f9",
+    "inventory-summary.json": "f2eaa2229643a808866eb0a499019c0a75ca15827eac2e15e7710d74c40dd6b8",
+    "arithmetic-1-baseline.json": "390e38e77239e9079953f073829a94b7cea1445cbcd1f55fde6359b3f44749da",
+    "arithmetic-2-candidate.json": "75d0425a9e33c27b9468b8c947e61d98b44112a5f0522e045b9161f113a5b3d3",
+    "arithmetic-3-candidate.json": "f4cc3a4663581a0112bf0b2c9ed9d091ea481a6f9de310730c6d82416355a7a4",
+    "arithmetic-4-baseline.json": "9be1c538310d0ad242c9862a8b0ea2628b366491e52da6271dff41f0a314fc8f",
+    "inventory-1-baseline.json": "96e305dcb2be96f6e0055935e257cbcc706239c6f913e93cef6ec63b90ebde20",
+    "inventory-2-candidate.json": "faece726219e6e88c326591f0bbed0b6cb944f57aa23a0b320792b36f8351f29",
+    "inventory-3-candidate.json": "5c5c1380177674a00def8878bc45bb96a5f843ce42c376b9bc967a7990d3765f",
+    "inventory-4-baseline.json": "77be0ccf728a752405e66c24032fc136bf14f305138ff918a66a64736e3ba14c"
+  },
+  "build_and_test_replay": {
+    "manifest": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/source/Cargo.toml",
+    "target_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/target",
+    "test_module_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/native-result-current-20261031/candidate-prefix/lib",
+    "test_profile_environment": {
+      "CARGO_PROFILE_DEV_PANIC": "unwind"
+    },
+    "commands": [
+      "mise exec -- cargo build --release --offline --locked -p birnam-execution",
+      "mise exec -- cargo check --workspace --all-targets --all-features --offline --locked",
+      "mise exec -- cargo test --workspace --lib --offline --locked",
+      "mise exec -- cargo test -p birnam-siphon --offline --locked --test continuation_transparency --test execution_methods --test integer_box_observability --test integer_operation_objects --test integer_values --test native_boundaries --test native_incoming --test native_result_entry -- --include-ignored",
+      "mise exec -- cargo test -p birnam-siphon --offline --locked --test execution_machines --test image --test image_native_refusal --test image_slot_values --test image_snapshot_stamp --test root_batches --test root_reuse -- --include-ignored"
+    ]
+  }
+}
