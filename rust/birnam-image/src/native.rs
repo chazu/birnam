@@ -250,16 +250,31 @@ impl State {
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Failure> {
         unsafe { Ok(optional(self.send(o, b"isError", &[])?) == Some(self.named(b"true")?)) }
     }
+    unsafe fn slot_owner(&self, behavior: Oop) -> Result<Option<Oop>, Failure> {
+        unsafe {
+            let q = Scope::new(self);
+            q.keep(behavior)?;
+            if abi::as_size(self.send(self.id.root, b"isBehavior:", &[behavior])?) != Some(1) {
+                return Ok(None);
+            }
+            let owner = q.keep(self.send(self.id.root, b"ownerOf:", &[behavior])?)?;
+            if owner.is_null() { return Ok(None); }
+            let operation = self.names[b"imageAcceptsSlots:".as_slice()];
+            let method = self.send(self.id.root, b"bind:to:", &[operation, owner])?;
+            Ok((!method.is_null()).then_some(owner))
+        }
+    }
     unsafe fn accepts_slots(&self, behavior: Oop, words: usize) -> Result<bool, Failure> {
         unsafe {
-            if abi::as_size(self.send(self.id.root,b"isBehavior:",&[behavior])?) != Some(1) {return Ok(false);}
-            let owner=self.send(self.id.root,b"ownerOf:",&[behavior])?;
-            if owner.is_null() {return Ok(false);}
-            let operation=self.intern(b"imageAcceptsSlots:")?;
-            if self.send(self.id.root,b"bind:to:",&[operation,owner])?.is_null() {return Ok(false);}
-            let count=abi::size(words).ok_or_else(bad)?;
-            Ok(self.id.send(owner,operation,&[count])? == self.named(b"true")?
-                && abi::as_size(self.send(self.model,b"allOopLayoutOf:words:",&[behavior,count])?)==Some(1))
+            let q = Scope::new(self);
+            q.keep(behavior)?;
+            let Some(owner) = self.slot_owner(behavior)? else { return Ok(false); };
+            q.keep(owner)?;
+            let operation = self.names[b"imageAcceptsSlots:".as_slice()];
+            let count = abi::size(words).ok_or_else(bad)?;
+            let accepted = q.keep(self.id.send(owner, operation, &[count])?)?;
+            Ok(accepted == self.named(b"true")?
+                && abi::as_size(self.send(self.model, b"allOopLayoutOf:words:", &[behavior, count])?) == Some(1))
         }
     }
     fn reject(&self, detail: &[u8]) {
@@ -422,6 +437,12 @@ impl Value {
             bindings::Field::HeapRef(n) => Self::Heap(n),
         }
     }
+}
+// These names describe the existing image format's built-in slot encodings.
+// Other native families use their owner's explicit slot-admission protocol.
+fn builtin_slot_family(name: &[u8]) -> bool {
+    matches!(name, b"ObjectVt" | b"SystemVt" | b"VectorVt" | b"VectorNodeVt"
+        | b"VectorNode" | b"MapVt" | b"MapNodeVt" | b"MapNode" | b"RangeVt" | b"ErrorVt")
 }
 struct Node {
     locator: Value,
@@ -659,22 +680,15 @@ impl Graph<'_, '_> {
                         }
                     }
                     _ => {
-                        let allowed = matches!(
-                            name.as_slice(),
-                            b"ObjectVt"
-                                | b"SystemVt"
-                                | b"VectorVt"
-                                | b"VectorNodeVt"
-                                | b"VectorNode"
-                                | b"MapVt"
-                                | b"MapNodeVt"
-                                | b"MapNode"
-                                | b"RangeVt"
-                                | b"ErrorVt"
-                        );
+                        let allowed = builtin_slot_family(&name);
+                        // An unadvertised native layout is unsupported, not an
+                        // invitation to query storage owned by another object.
+                        if !allowed && self.s.slot_owner(vt)?.is_none() { return Err(bad()); }
                         let bytes =
                             abi::as_size(self.s.send(self.s.model, b"imageSizeOf:", &[payload])?)
                                 .ok_or_else(bad)?;
+                        // The size query can call replaced code. Resolve the
+                        // owner and its current approval again after it returns.
                         if !allowed && !self.s.accepts_slots(vt, bytes / size_of::<usize>())? {return Err(bad());}
                         // Prelude owns System as an empty Object. Native service state
                         // belongs to module contexts, never to a cloned receiver.
@@ -1121,19 +1135,7 @@ unsafe fn restore_heap(
                     s.call(q, store, b"cellFor:attr:", &[nil, nil])?
                 }
                 Value::Export(n) if n != b"CodeObjectVt" => {
-                    let known = matches!(
-                        n.as_slice(),
-                        b"ObjectVt"
-                            | b"SystemVt"
-                            | b"VectorVt"
-                            | b"VectorNode"
-                            | b"VectorNodeVt"
-                            | b"MapVt"
-                            | b"MapNode"
-                            | b"MapNodeVt"
-                            | b"RangeVt"
-                            | b"ErrorVt"
-                    );
+                    let known = builtin_slot_family(n);
                     let vt = q.keep(s.named(n)?)?;
                     if !known && (node.fields.iter().any(|f|matches!(f,Value::Raw(_))) || !s.accepts_slots(vt,node.fields.len())?) {return Err(bad());}
                     if n == b"SystemVt" && !node.fields.is_empty() {
@@ -2289,6 +2291,7 @@ literals![
     b"objectBehavior",
     b"methodAt:",
     b"releaseTokensProtecting",
+    b"imageAcceptsSlots:",
     b"receiveByteValues",
 ];
 static METHODS: &[MethodSpec] = &[

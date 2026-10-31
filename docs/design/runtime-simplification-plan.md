@@ -111,6 +111,13 @@ decision about a native conversion callback's independent-root-drive refusal.
 Do not infer that decision from timing improvements or apply the saved patch
 without resolving the recorded behavior difference.
 
+The previously blocking image refusal failure is
+[fixed by checking native slot admission before storage projection](../measurements/image-admission-20261031/README.md).
+The final full image suite, focused slot/refusal/mutation checks, workspace check,
+and library unit tests pass. Earlier experiment receipts retain their original
+failure outcomes. This closes that validation gap, not the remaining performance
+or migration work.
+
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
 are candidates, not preselected requirements. Prefer behavior expressible through

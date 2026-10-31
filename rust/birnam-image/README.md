@@ -40,6 +40,13 @@ original identity and behavior remain. Native families retain their existing
 codecs and cannot receive arbitrary replacement layouts. Canonical values and
 Namespace exports retain their existing reference encoding.
 
+For other native families, Image first checks whether the behavior's owner
+advertises `imageAcceptsSlots:`. A missing policy rejects the save without asking
+ObjectModel to interpret storage it does not own. After an applicable size query,
+Image resolves the current owner and approval again, then checks the all-Oop
+layout. Failures from owner policy or applicable storage operations still propagate;
+they are not converted wholesale into an unsupported-format rejection.
+
 Globals uses this same protocol for its transient-binding projection. TaskControl
 keeps a named `processLocal` reference slot: preparation sets it, completion leaves
 it set, and its imagePayload rejects marked handles. Unused factory clones and

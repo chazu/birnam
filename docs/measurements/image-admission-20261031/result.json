@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "date": "2026-10-31",
+  "baseline": "cd18e9c5",
+  "change": "reject native families without slot-policy support before ObjectModel storage queries",
+  "result": "fixed baseline image refusal failure; final full image test passes",
+  "validation": {
+    "focused": [
+      "image_native_refusal",
+      "image_slot_values",
+      "image_snapshot_stamp"
+    ],
+    "full_image_parent_tests": 2,
+    "workspace_check": "passed; existing unused-unsafe warning in round3_costs example",
+    "workspace_unit_passed": 321,
+    "workspace_unit_ignored": 30,
+    "release_qualification": false,
+    "user_installation_changed": false
+  },
+  "source_sha256": {
+    "rust/birnam-image/src/native.rs": "d94d81675b9c996898a5025b3330127894dc0ab5d62f1f055d214549c66ed814",
+    "rust/birnam-siphon/tests/image_native_refusal.rs": "18bb0eb1f7ffaf972a9aee868804dce6c59abdfc5d4e1e80762c673fa3ca80a6"
+  },
+  "image_library_sha256": {
+    "baseline": "8cdacf3fa46504c4b6b945f3c0dcecced57ac2a6d70bf82fc8dd68c849392f1a",
+    "candidate": "443400ef4b92d50aab57f45fc72407bbd7b9e3370ac08d938f458110f204b34a"
+  },
+  "logs": {
+    ".cargo-target/measurements/image-refusal-20261031/red-generic.log": "1ead6cb2a3ac28af0687ae1596ad7ae1fb87ff5e69295e91996c5385adf7fff5",
+    ".cargo-target/measurements/image-refusal-20261031/refusal-final.log": "b4cc1a3dbe2570462b536c5641f970d76bb83b40ae058d53ae74d428f1400d61",
+    ".cargo-target/measurements/image-refusal-20261031/final-focused.log": "2e63672554739008f9d6d0183002295b86d09e8994ec72d7ec76e6b1ba944355",
+    ".cargo-target/measurements/image-refusal-20261031/final-full-image.log": "32cf8474beb34e565fbfddcd80ac194bf7cf43322547da299e404dfe0ffa4bf8",
+    ".cargo-target/measurements/image-refusal-20261031/workspace-check.log": "a52cfb9f0b2242cc5247f14dcf630d28d63a6b42ba7bca6dab4fd8d358a1724f",
+    ".cargo-target/measurements/image-refusal-20261031/workspace-unit.log": "d2e6c29bd0b29963e77f34fa792345abfd70b4eb9d6c2568e90b98fcf15121be"
+  }
+}
