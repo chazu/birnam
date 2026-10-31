@@ -38,8 +38,12 @@ impl State {
         self.native_method_index(a,&[b]).is_some()
     }
     pub(super) fn native_method_index(&self,selected:Oop,candidates:&[Oop])->Option<usize>{
+        let selected_object = selected;
         let selected=self.method_data(selected).ok()?;
         candidates.iter().position(|&candidate|{
+            // The selected object was just validated, with no intervening
+            // callback. Matching it to itself needs no second metadata read.
+            if candidate == selected_object { return true; }
             let Ok(candidate)=self.method_data(candidate) else { return false; };
             selected.entry as usize==candidate.entry as usize
                 && selected.continuation == candidate.continuation
@@ -405,6 +409,16 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn matching_a_method_to_itself_still_requires_valid_method_data() {
+        let s = super::super::initial_objects::construct();
+        let method = s.tables.borrow().lookup(s.object, s.selector(b"yourself")).unwrap();
+        let copied = s.clone_method(method, s.root).unwrap();
+        assert_eq!(s.native_method_index(method, &[method]), Some(0));
+        assert_eq!(s.native_method_index(method, &[copied]), Some(0));
+        let malformed = s.allocate(s.method, 0).unwrap();
+        assert_eq!(s.native_method_index(malformed, &[malformed]), None);
+    }
     #[test]
     fn representation_queries_follow_live_bindings_graph_and_allocation_records() {
         let s = super::super::initial_objects::construct();

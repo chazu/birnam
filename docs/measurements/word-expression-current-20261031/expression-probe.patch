@@ -1,0 +1,27 @@
+--- a/probe.rs
++++ b/probe.rs
+@@ -77,7 +77,16 @@
+     let probe = q.call(block, b"value", &[]).unwrap();
+     q.check_result(probe).unwrap();
+     // Each result kind is checked outside timing. Inputs remain rooted for all samples.
++    let bytes = h.named(b"Bytes").unwrap();
++    let plan = |b: &[u8]| q.call(bytes, b"fromBytes:", &[q.byte_values(b).unwrap()]).unwrap();
++    let one = plan(&[1,2,1,2,6,0,1]);
++    let mixed = plan(&[1,2,4,5,13,0,1,6,2,0,11,3,1,6,4,0]);
++    let repeated = plan(&[1,2,4,5,6,0,1,6,2,1,6,3,1,6,4,1]);
+     let mut cases = vec![
++        ("one expression operation",word,b"tryPrimitiveExpression:".as_slice(),vec![one,wa,wb],"word",7),
++        ("four mixed expression operations",word,b"tryPrimitiveExpression:",vec![mixed,wa,wb],"word",7),
++        ("four repeated expression operations",word,b"tryPrimitiveExpression:",vec![repeated,wa,wb],"word",16),
++
+         (
+             "return argument",
+             probe,
+@@ -196,6 +205,7 @@
+         )
+         .unwrap();
+         for (label, receiver, name, arguments, kind, expected) in &cases {
++            if !label.contains("expression") && *label != "Integer addition" {continue;}
+             let selector = q.keep(h.intern(name).unwrap()).unwrap();
+             let check = || {
+                 let local = h.scope();

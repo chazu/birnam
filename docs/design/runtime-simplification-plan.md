@@ -108,6 +108,11 @@ following [conservative reuse of Id's query-binding proof](../measurements/query
 That change improves full addition about 6%, Word addition about 43%, and existing
 metadata analysis about 19–21%; the authored inventory barely changes. Structurally
 equivalent mutable Methods still receive live checks, with a dedicated regression.
+A [Word expression audit](../measurements/word-expression-current-20261031/README.md)
+also removes stale epoch-cached primitive meanings and rechecks allocation permission
+after callbacks. Those expression entrypoints are slower with correct live checks;
+their old timings must not justify restoring the invalid assumptions. Method matching
+avoids a duplicate read only within one callback-free comparison.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate

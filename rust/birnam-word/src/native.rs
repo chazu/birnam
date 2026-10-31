@@ -26,7 +26,6 @@ pub(crate) struct Number {
     pub(crate) names: HashMap<&'static [u8], Oop>,
     scoped: RefCell<Vec<Oop>>,
     pub(crate) witnesses: [Cell<Oop>; 19],
-    pub(crate) expression_meanings: Cell<(usize, u32)>,
     ready: Cell<bool>,
 }
 struct Scope<'a> {
@@ -521,7 +520,6 @@ unsafe extern "C" fn initialize(
                 names: names.clone(),
                 scoped: RefCell::new(Vec::new()),
                 witnesses: std::array::from_fn(|_| Cell::new(ptr::null_mut())),
-                expression_meanings: Cell::new((usize::MAX, 0)),
                 ready: Cell::new(false),
             }));
             INSTANCE.store(s, Ordering::Release);

@@ -100,26 +100,21 @@ unsafe fn inner(
             return Ok(refuse);
         }
         let mut used = inputs.len();
-        let (cached, mut meanings) = s.expression_meanings.get();
-        if cached != epoch {
-            meanings = 0;
-        }
         for (i, op) in bytes[4..].chunks_exact(3).enumerate() {
             let name = meaning(op[0]).ok_or(s.invalid())?;
-            if meanings & (1u32 << op[0]) == 0 {
-                if s.send(
-                    s.id.root,
-                    b"nativeBindingsMatch:",
-                    &[
-                        s.prototype,
-                        s.names[name],
-                        s.witnesses[op[0] as usize].get(),
-                    ],
-                )? != abi::size(1).unwrap()
-                {
-                    return Ok(refuse);
-                }
-                meanings |= 1u32 << op[0];
+            // Method data can change without a dictionary edit. Check each
+            // operation now; an epoch alone cannot certify its current meaning.
+            if s.send(
+                s.id.root,
+                b"nativeBindingsMatch:",
+                &[
+                    s.prototype,
+                    s.names[name],
+                    s.witnesses[op[0] as usize].get(),
+                ],
+            )? != abi::size(1).unwrap()
+            {
+                return Ok(refuse);
             }
             if op[1] as usize >= used || op[2] as usize >= used {
                 return Err(s.invalid());
@@ -145,10 +140,14 @@ unsafe fn inner(
         if bytes[3] as usize + 1 != used {
             return Err(s.invalid());
         }
-        if abi::as_size(s.send(s.id.root, b"behaviorEpoch", &[])?) != Some(epoch) {
+        // Admission callbacks can change allocator data without changing the
+        // binding epoch. Omission must still be permitted before publication.
+        if s.send(s.id.root, b"usesDefaultAllocation", &[])? != abi::size(1).unwrap()
+            || s.send(s.model, b"canOmitAllocationFor:", &[s.behavior])? != abi::size(1).unwrap()
+            || abi::as_size(s.send(s.id.root, b"behaviorEpoch", &[])?) != Some(epoch)
+        {
             return Ok(refuse);
         }
-        s.expression_meanings.set((epoch, meanings));
         let value = values[bytes[3] as usize];
         if matches!(bytes[count - 3], 2 | 16) {
             Ok(s.boolean(value != 0))

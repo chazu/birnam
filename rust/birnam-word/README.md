@@ -1,7 +1,7 @@
 # Word
 
 The native initializer takes Namespace (Object), publishes `Word` and `WordVt`,
-and returns Word. Bootstrap loads it after Integer and String/Error. Repeating
+and returns Word. Bootstrap loads it before authored numeric policy. Repeating
 initialization returns the published object.
 
 | Receiver / message | Arguments | Result |
@@ -46,6 +46,23 @@ incoming byte plan and operand array before callbacks and retains current
 permission/lookup/epoch checks. Newly allocated outputs keep their first Root
 through representation validation; these are not covered by caller input roots.
 No payload access crosses representation owners.
+
+## Current expression admission
+
+The native `tryPrimitiveExpression:` and `tryPrimitiveExpressionAtEpoch:` entries
+check each operation against its current Method witness. They do not remember
+primitive meanings by epoch: Method data can change without a dictionary edit,
+including during another admission callback. Inputs and the byte program remain
+protected under the existing call and snapshot rules.
+
+Allocation omission is checked before work and again before returning a result,
+after admission callbacks. A callback can change allocator Method data without
+advancing the binding epoch; the final check prevents losing constructor effects.
+The epoch check remains an additional check for dictionary changes. A refused
+expression produces no arithmetic result, and native failures still propagate.
+
+See the [current-guard investigation](../../docs/measurements/word-expression-current-20261031/README.md)
+for regressions, measurements and the cost of removing the unsound shortcut.
 
 ## Private construction roots
 

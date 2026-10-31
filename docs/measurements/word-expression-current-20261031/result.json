@@ -1,0 +1,244 @@
+{
+  "date": "2026-10-31",
+  "baseline_commit": "85ffaac9",
+  "status": "Word expression correctness repair; overall simplification and migration remain incomplete",
+  "disposition": "Remove unsound cached meanings and retain current checks despite slower explicit expressions. No general arithmetic speedup is claimed.",
+  "results": [
+    {
+      "variant": "baseline",
+      "case": "one expression operation",
+      "automatic_gc": true,
+      "median_us": 2.5380624999999997,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "one expression operation",
+      "automatic_gc": false,
+      "median_us": 2.5998330000000003,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "four mixed expression operations",
+      "automatic_gc": true,
+      "median_us": 2.5518125,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "four mixed expression operations",
+      "automatic_gc": false,
+      "median_us": 2.6177295000000003,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "four repeated expression operations",
+      "automatic_gc": true,
+      "median_us": 2.583521,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "four repeated expression operations",
+      "automatic_gc": false,
+      "median_us": 2.620521,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer addition",
+      "automatic_gc": true,
+      "median_us": 41.9697085,
+      "allocations": [
+        49.0
+      ]
+    },
+    {
+      "variant": "baseline",
+      "case": "Integer addition",
+      "automatic_gc": false,
+      "median_us": 40.137375,
+      "allocations": [
+        49.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "one expression operation",
+      "automatic_gc": true,
+      "median_us": 3.9020829999999997,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "one expression operation",
+      "automatic_gc": false,
+      "median_us": 3.9395625,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "four mixed expression operations",
+      "automatic_gc": true,
+      "median_us": 4.3250625,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "four mixed expression operations",
+      "automatic_gc": false,
+      "median_us": 4.311833,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "four repeated expression operations",
+      "automatic_gc": true,
+      "median_us": 4.3060624999999995,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "four repeated expression operations",
+      "automatic_gc": false,
+      "median_us": 4.3217085,
+      "allocations": [
+        2.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer addition",
+      "automatic_gc": true,
+      "median_us": 41.4484585,
+      "allocations": [
+        49.0
+      ]
+    },
+    {
+      "variant": "candidate",
+      "case": "Integer addition",
+      "automatic_gc": false,
+      "median_us": 41.042896,
+      "allocations": [
+        49.0
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "label": "final-baseline-1",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/probe/target/release/expression-cost",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/final-baseline-1.json"
+      ],
+      "reverse": false
+    },
+    {
+      "label": "final-candidate-2",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/probe/target/release/expression-cost",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/final-candidate-2.json"
+      ],
+      "reverse": true
+    },
+    {
+      "label": "final-candidate-3",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/probe/target/release/expression-cost",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/final-candidate-3.json"
+      ],
+      "reverse": false
+    },
+    {
+      "label": "final-baseline-4",
+      "command": [
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/probe/target/release/expression-cost",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/query-bindings-20261031/candidate-prefix",
+        "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/word-expression-current-20261031/final-baseline-4.json"
+      ],
+      "reverse": true
+    }
+  ],
+  "validation": {
+    "final_library_tests": 323,
+    "final_integration_targets": 17,
+    "final_workspace_check": "passed all targets/all features; existing unused_unsafe warning remains",
+    "id_continuation": "passed for final unchanged Id comparison",
+    "full_image_scope": "Roundtrip and 20 resave epochs passed before the final Word allocation-permission recheck. Final focused image slot/refusal/snapshot targets were rerun.",
+    "regressions": [
+      "epoch cache fails mutable primitive context change",
+      "per-call bitset fails after an intervening callback",
+      "early-only allocation permission fails when callback changes allocator data",
+      "final implementation declines these cases and ordinary fallback observes changed constructor effects"
+    ]
+  },
+  "source_sha256": {
+    "rust/birnam-id/src/id/bootstrap_values.rs": "0a098859a6495fb8cbbae23770dfda8eeef93ca18bdd9f43b289670ab1ddd066",
+    "rust/birnam-word/src/expression.rs": "4ca13f62e43c35d0ae133d90af462efaf5d510da232dbc9c03e634412774113a",
+    "rust/birnam-word/src/native.rs": "55727abcd43f795c66de8c976dc19e488ae43f04a58f1c5debe4dcb2bdb70ad7",
+    "rust/birnam-siphon/tests/word_expression_mutation.rs": "164f92362b56ab783d63581a523affae7bf38ccab7075a88a231d786fc5906c3",
+    "tests/fixtures/oop-host/word-expression.c": "ef8872cdc489cd1388377043381e0899cc7bde56b474b08327cfcd217db8ae2f"
+  },
+  "library_sha256": {
+    "baseline": {
+      "id": "ac40bf851c2a367e3876cb50bd7a421c72bacf7513e56e1943fe7d96b52520fd",
+      "word": "d97ede4ee9c4d2cdb74aaf431a6908e16d667e70ba3bb942dd3a567e2e865550"
+    },
+    "candidate": {
+      "id": "df29c803dfb22addcfa031646cdb1830915027fcbfba534bd0e98261015edf99",
+      "word": "6e85a19051c289a700ca34908817053bd8e4a9958d70715358721310587127db"
+    }
+  },
+  "probe_sha256": "12eff294bbf0f6fddbf53eaecdfd8a3599cdf0a4a0a46411a2f64f7ef0e48230",
+  "probe_binary_sha256": "487d2a6171a962b9a1a61f4d8f7055bf8c68e0896fc4b3fb8c1de4db9fb2c3ec",
+  "probe_patch_sha256": "ddce79c9bffc42c46459aabd588ad2148cc342c403c9006ab7d60340ecc246a3",
+  "raw_directory": ".cargo-target/measurements/word-expression-current-20261031",
+  "raw_sha256": {
+    "red.log": "e1a41ae75a5dbdd384383b15012ee5f1cd8818c6570ed400f4610375bc858570",
+    "local-cache-red.log": "431f4e6714a1065b1d0960784b320284ccd54061b2008c46682f70bd546ea278",
+    "allocation-red.log": "22dd83343379e6a498fbcc45d114eca69fbfe942ab085e4eef3222c244f4b9ac",
+    "permission-green.log": "844302ca58b2114350ae4feaaeef5a2c6705a4b461b4e87db395802c39a5e521",
+    "qualified-integration.log": "16fd3f290569c09109e96224d6531bfcdebe0367a3f9495b8358fb5af8a84ce7",
+    "qualified-workspace-check.log": "fb4ab511f688887fc1b05089db0d4b0d41159170ea3436c70e04eac1890026ec",
+    "qualified-workspace-unit.log": "efb98e34b4c8c7c1a1a484ecf63e5cf10facceebeba3590b8e8dace04b4f4ad5",
+    "final-continuation.log": "34b3a37cb853f812fb4a045adab0123dc54cc07af38f03e69e823d50cc74b5a7",
+    "final-integration.log": "da2cebbe19069da9693b1b6d04ecce63323722a2a832c0a8f843ea1e45c2e9be",
+    "final-baseline-1.json": "23d7bcf7f35726231a600f95ff120ab9c26b54d9c251e43ab5aa79a50dccb6aa",
+    "final-baseline-4.json": "9bbbf97a11fba97e1c2479d5db54ac768bca45ef4115b5a24f19cf31d8c7b07d",
+    "final-candidate-2.json": "06882afb13cde93985be718e603495c68605bce813a208298efa6ea7fcec3b0c",
+    "final-candidate-3.json": "414db0376b04c7ed9b72a61d1fbf16679e1114be3ea31027403711912973d92d"
+  },
+  "limits": [
+    "Native libraries were replaced in a copied prefix; no fresh install or release qualification",
+    "Timings include native send and Host result protection; no application-wide speed claim",
+    "No production compiler caller switch or Birnam migration"
+  ]
+}
