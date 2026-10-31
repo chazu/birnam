@@ -12,7 +12,7 @@ pub(super) mod recovery;
 pub(super) mod native_tier;
 use crate::{entry::EntryKey, execution::*};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     sync::Arc,
 };
 const OWNER: u64 = 1;
@@ -34,16 +34,16 @@ struct Registered {
 #[derive(Default)]
 pub(super) struct Runtime {
     pub roots: Vec<Oop>,
-    runs: HashMap<usize, Run>,
-    returns: HashMap<usize, ReturnSite>,
-    pub(super) return_methods: HashMap<usize, usize>,
+    runs: WordIndex<Run>,
+    returns: WordIndex<ReturnSite>,
+    pub(super) return_methods: WordIndex<usize>,
     advance_template: Oop,
     return_template: Oop,
     sink_template: Oop,
     bridge_template: Oop,
-    records: HashMap<usize, Registered>,
+    records: WordIndex<Registered>,
     // Derived weak Method -> context association, including known captures.
-    by_method: HashMap<usize, usize>,
+    by_method: WordIndex<usize>,
     context_vt: Oop,
     template: Oop,
     dnu_template: Oop,

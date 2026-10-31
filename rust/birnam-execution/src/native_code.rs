@@ -17,8 +17,8 @@ struct Instance {
 #[derive(Default)]
 pub(super) struct Runtime {
     context_vt: Oop,
-    instances: HashMap<usize, Instance>,
-    by_method: HashMap<usize, usize>,
+    instances: WordIndex<Instance>,
+    by_method: WordIndex<usize>,
 }
 pub(super) fn knows(s: &State, method: Oop) -> bool {
     s.native_code.borrow().by_method.contains_key(&method.addr())
@@ -270,13 +270,9 @@ pub(super) unsafe extern "C" fn field<const WHICH: u8>(
         if n != 0 {
             return Err(invalid());
         }
-        let data = s
-            .native_code
-            .borrow()
-            .instances
-            .get(&r.addr())
-            .cloned()
-            .ok_or_else(invalid)?;
+        // This field read makes no callbacks; keep the existing record in place.
+        let runtime = s.native_code.borrow();
+        let data = runtime.instances.get(&r.addr()).ok_or_else(invalid)?;
         Ok(match WHICH {
             0 => data.environment.ok_or_else(invalid)?,
             1 => abi::size(data.code.parameters).ok_or_else(invalid)?,

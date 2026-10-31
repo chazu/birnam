@@ -132,6 +132,10 @@ The [updated ordinary-result candidate](../measurements/native-result-current-20
 retains native validation and reduces addition from 40 to 30 allocations, with
 about 6.7% less time in its comparison. It remains isolated pending the explicit
 decision about independent Id drives during native conversion callbacks.
+[Reusing Execution's private address index](../measurements/execution-address-index-20261031/README.md)
+and removing a callback-free metadata clone reduce inventory time about 6%, with
+little arithmetic change. This is independent of the pending adapter decision;
+the inventory port remains too slow for cutover.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate
