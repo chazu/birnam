@@ -136,6 +136,11 @@ decision about independent Id drives during native conversion callbacks.
 and removing a callback-free metadata clone reduce inventory time about 6%, with
 little arithmetic change. This is independent of the pending adapter decision;
 the inventory port remains too slow for cutover.
+[Reusing ordinary lookup results](../measurements/lookup-cache-20261031/README.md)
+while the dictionary graph is unchanged reduces addition time about 6% and
+inventory time about 3–4% in the final comparison, without reducing allocations.
+Custom lookup, mutable Method data, retirement and saturated-epoch invalidation
+remain covered; this does not resolve the pending adapter policy decision.
 The CPU investigation rejected a checked-Method-data refactor after it failed to
 improve performance. Further inventory cutover work needs a credible performance
 path, rather than more qualification of the same slow implementation. The separate

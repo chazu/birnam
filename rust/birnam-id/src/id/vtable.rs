@@ -55,9 +55,17 @@ impl VtableRecord {
 
 }
 
-// Position hints contain no Objects, selected methods, contexts or parent links.
-// Any hint is safe only after checking the current ordered key at that position.
-const SLOT_HINTS: usize = 256;
+// Weak lookup results for an unchanged dictionary graph. These are not GC roots.
+// Method data is still read at entry; only dictionary resolution is reused.
+// Zero is the existing absent-Method value and cannot be a registered vtable.
+const LOOKUP_CACHE_SIZE: usize = 256;
+#[derive(Clone, Copy, Default)]
+struct LookupCacheEntry {
+    vtable: usize,
+    selector: usize,
+    epoch: u64,
+    method: Oop,
+}
 
 /// Ordered registry of every vtable in one runtime.
 pub(crate) struct Vtables {
@@ -70,7 +78,7 @@ pub(crate) struct Vtables {
     // Explicit binding/parent/association changes, including ABA. Retiring an
     // unreachable behavior cannot change a live lookup and does not advance it.
     binding_epoch: u64,
-    slot_hints: [Cell<Option<usize>>; SLOT_HINTS],
+    lookup_cache: [Cell<LookupCacheEntry>; LOOKUP_CACHE_SIZE],
     // Only a positive fact about Id's own lookup primitive, never a selected
     // source method. Addresses identify the checked metabehavior, selector and
     // registry context; they retain no objects. Every existing-graph mutation
@@ -88,7 +96,7 @@ impl Vtables {
             by_address: AddressMap::default(),
             mutation_epoch: 0,
             binding_epoch: 0,
-            slot_hints: std::array::from_fn(|_| Cell::new(None)),
+            lookup_cache: std::array::from_fn(|_| Cell::new(LookupCacheEntry::default())),
             default_lookup: std::array::from_fn(|_| Cell::new(None)),
             representation_queries_canonical: Cell::new(false),
         }
@@ -97,10 +105,17 @@ impl Vtables {
         self.mutation_epoch
     }
 
-    pub(crate) fn note_mutation(&mut self) {
+    fn invalidate_lookups(&mut self) {
         for fact in &self.default_lookup { fact.set(None); }
         self.representation_queries_canonical.set(false);
+        // Saturated epochs cannot distinguish further edits or retirement.
+        if self.mutation_epoch == u64::MAX {
+            for entry in &self.lookup_cache { entry.set(LookupCacheEntry::default()); }
+        }
         self.mutation_epoch = self.mutation_epoch.saturating_add(1);
+    }
+    pub(crate) fn note_mutation(&mut self) {
+        self.invalidate_lookups();
         self.binding_epoch = self.binding_epoch.saturating_add(1);
     }
     pub(crate) fn binding_epoch(&self) -> u64 {
@@ -146,7 +161,7 @@ impl Vtables {
             .get(&vtable.addr())
             .unwrap_or_else(|| boundary::fatal_invariant("vtable is not registered"))
     }
-    pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {
+    fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {
         self.by_address
             .get_mut(&vtable.addr())
             .unwrap_or_else(|| boundary::fatal_invariant("vtable is not registered"))
@@ -168,7 +183,7 @@ impl Vtables {
     }
     /// Owner-local proof, valid until the next dictionary/graph mutation. The
     /// receiver's current metabehavior is still checked by each dispatch, and
-    /// its requested method is still selected from the current dictionaries.
+    /// requested methods are resolved against the current dictionary graph.
     #[inline]
     fn default_lookup_fact(&self, meta: Oop, selector: Oop, expected: Oop) -> Option<bool> {
         let key = (meta.addr(), selector.addr(), expected.addr());
@@ -190,39 +205,36 @@ impl Vtables {
     pub(crate) fn has_default_root_lookup(&self, meta: Oop, selector: Oop, expected: Oop) -> bool {
         self.default_lookup_fact(meta, selector, expected) == Some(true)
     }
-    // Expose this callback-free walk to its callers so the optimizer can
-    // eliminate helper call/return work. Values and parents are still read live.
+    // This owner controls every dictionary and parent mutation. The dispatch
+    // layer still checks current receiver behavior and custom lookup before
+    // consulting this ordinary dictionary resolution.
     #[inline(always)]
-    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<Oop> {
-        while !vtable.is_null() {
-            // Membership is still checked before consulting a hint. Retirement,
-            // address reuse and slot shifts cannot make an old index authority.
-            let record = self.record(vtable);
-            // Tiny dictionaries already use a cheaper linear scan. Avoid adding
-            // hint hashing to fresh one-method Block behaviors and empty parents.
-            let hint = if record.key_indices.is_empty() {
-                None
-            } else {
-                let hash = (vtable.addr().rotate_left(13) ^ selector.addr())
-                    .wrapping_mul(0x9e3779b97f4a7c15);
-                Some(&self.slot_hints[(hash >> (usize::BITS - 8)) & (SLOT_HINTS - 1)])
-            };
-            if let Some(slot) = hint
-                && let Some(index) = slot.get()
-                && record.keys.get(index) == Some(&selector)
-            {
-                return Some(record.values[index]);
-            }
-            if let Some(index) = record.key_index(selector) {
-                if let Some(slot) = hint {
-                    slot.set(Some(index));
-                }
-                return Some(record.values[index]);
-            }
-            // Never memoize inherited resolution or absence: read this live link.
-            vtable = record.parent;
+    pub(crate) fn lookup(&self, vtable: Oop, selector: Oop) -> Option<Oop> {
+        let hash = (vtable.addr().rotate_left(13) ^ selector.addr())
+            .wrapping_mul(0x9e3779b97f4a7c15);
+        let slot = &self.lookup_cache[(hash >> (usize::BITS - 8)) & (LOOKUP_CACHE_SIZE - 1)];
+        let entry = slot.get();
+        if entry.epoch == self.mutation_epoch
+            && entry.vtable == vtable.addr()
+            && entry.selector == selector.addr()
+        {
+            return (!entry.method.is_null()).then_some(entry.method);
         }
-        None
+        let mut at = vtable;
+        let mut method = None;
+        while !at.is_null() {
+            let record = self.record(at);
+            if let Some(index) = record.key_index(selector) {
+                method = Some(record.values[index]);
+                break;
+            }
+            at = record.parent;
+        }
+        slot.set(LookupCacheEntry {
+            vtable: vtable.addr(), selector: selector.addr(),
+            epoch: self.mutation_epoch, method: method.unwrap_or(core::ptr::null_mut()),
+        });
+        method
     }
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Oop) {
         assert!(!method.is_null(), "method binding requires a Method object");
@@ -255,9 +267,7 @@ impl Vtables {
         self.ordered
             .retain(|vtable| self.by_address.contains_key(&vtable.addr()));
         if !dead.is_empty() {
-            for fact in &self.default_lookup { fact.set(None); }
-            self.representation_queries_canonical.set(false);
-            self.mutation_epoch = self.mutation_epoch.saturating_add(1);
+            self.invalidate_lookups();
         }
     }
 
@@ -334,7 +344,7 @@ mod core_tests {
     }
 
     #[test]
-    fn slot_hints_follow_live_values_shifts_parents_and_reused_records() {
+    fn lookup_cache_follows_live_values_shifts_parents_and_reused_records() {
         fn reference(tables: &Vtables, mut at: Oop, key: Oop) -> Option<Oop> {
             while !at.is_null() {
                 let row = tables.record(at);
@@ -404,10 +414,12 @@ mod core_tests {
         for &key in &keys {
             assert_eq!(tables.lookup(child, key), reference(&tables, child, key));
         }
-        // Force stale/out-of-range entries and cache collisions independently
-        // of the hash, then check fallback against a linear reference.
-        for hint in &tables.slot_hints {
-            hint.set(Some(usize::MAX));
+        // Force key collisions independently of the hash; a matching epoch
+        // cannot authorize a result for a different receiver or selector.
+        for cached in &tables.lookup_cache {
+            cached.set(LookupCacheEntry { vtable: other.addr(),
+                selector: keys[1].addr(), epoch: tables.mutation_epoch,
+                method: reference(&tables, other, keys[1]).unwrap_or(core::ptr::null_mut()) });
         }
         assert_eq!(tables.lookup(child, keys[0]), Some(entry(9999)));
         for &key in &keys {
@@ -416,6 +428,37 @@ mod core_tests {
         for &key in &keys {
             assert_eq!(tables.lookup(child, key), reference(&tables, child, key));
         }
+    }
+
+    #[test]
+    fn cached_absence_and_inheritance_change_even_at_saturated_epochs() {
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let nil = core::ptr::null_mut();
+        let parent = tables.create(&mut memory, nil, nil);
+        let child = tables.create(&mut memory, parent, nil);
+        let key = memory.allocate(0, nil);
+        let first = memory.allocate(0, nil);
+        let second = memory.allocate(0, nil);
+        tables.mutation_epoch = u64::MAX;
+        tables.binding_epoch = u64::MAX;
+        assert_eq!(tables.lookup(child, key), None);
+        assert_eq!(tables.lookup(child, key), None);
+        tables.add_method(parent, key, first);
+        assert_eq!(tables.lookup(child, key), Some(first));
+        tables.add_method(parent, key, second);
+        assert_eq!(tables.lookup(child, key), Some(second));
+        tables.set_parent(child, nil);
+        assert_eq!(tables.lookup(child, key), None);
+        tables.set_parent(child, parent);
+        assert_eq!(tables.lookup(child, key), Some(second));
+        tables.remove_objects(&[child]);
+        tables.register(child, nil);
+        assert_eq!(tables.lookup(child, key), None);
+        tables.add_method(child, key, first);
+        assert_eq!(tables.lookup(child, key), Some(first));
+        tables.remove_method(child, key);
+        assert_eq!(tables.lookup(child, key), None);
     }
 
     #[test]

@@ -1,0 +1,341 @@
+{
+  "runtime_baseline_commit": "9a053b1f",
+  "test_repair_commit": "1313c6b6",
+  "status": "lookup cache validated; overall runtime simplification incomplete",
+  "source_sha256": {
+    "rust/birnam-id/src/id/vtable.rs": "e4dea6e63d892b7e411c3057884b68ed8a503900debe022aaa76eec10663cb29",
+    "rust/birnam-id/src/id/id_dispatch.rs": "28bba172ae44d2e9b79cf6322b29bf327ccbbf00063bee809a5167f14a598230"
+  },
+  "test_source_sha256": {
+    "rust/birnam-siphon/examples/oop_slice.rs": "67dd58a5e1cad4b7b0115c9ea802f70eea2711cbb1157017d7d8bf5223a7228a",
+    "rust/birnam-siphon/examples/oop_slice/resumable.rs": "b1b396348376c3f7ee102a1c8ed7447e5d8728b00933e027ff749a3181e684d4",
+    "tests/fixtures/oop-continuation/module.c": "e71d21e9f68e2f0d53cc185a28fcf49774edbe96693769fdf6423808d6bbb7f5"
+  },
+  "library_sha256": {
+    "baseline_id": "19b53a3162b372f998c5734cb6f24554f6923a6f48d201e976fb31ae8fc75a9d",
+    "candidate_id": "9829d0f4d410cd06e4d2748c6124027e83db3a154c8d32b07c8274c27576b76e"
+  },
+  "state_bytes": {
+    "old_position_hints": 4096,
+    "lookup_cache": 8192
+  },
+  "measurements": {
+    "commands": [
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/execution-address-index-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-arithmetic-1-baseline.json"
+        ],
+        "environment": {}
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-arithmetic-2-candidate.json"
+        ],
+        "environment": {
+          "ARITHMETIC_REVERSE": "1"
+        }
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-arithmetic-3-candidate.json"
+        ],
+        "environment": {}
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/arithmetic-layers-20261031/final/probe/target/release/arithmetic-layers",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/execution-address-index-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-arithmetic-4-baseline.json"
+        ],
+        "environment": {
+          "ARITHMETIC_REVERSE": "1"
+        }
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/execution-address-index-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-inventory-1-baseline.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-inventory-2-candidate.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-inventory-3-candidate.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      },
+      {
+        "argv": [
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/method-source-inventory-20261030/replay/probe/target/release/method-source-probe",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/execution-address-index-20261031/candidate-prefix",
+          "/Users/chazu/dev/zig/birnam/docs/measurements/inventory-bulk-20261031/inventory.birnam",
+          "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031/final-inventory-4-baseline.json"
+        ],
+        "environment": {
+          "INVENTORY_COMPILE_MODE": "compile:"
+        }
+      }
+    ],
+    "results": [
+      {
+        "variant": "baseline",
+        "case": "Integer addition",
+        "automatic_gc": true,
+        "median_us": 28.10275,
+        "allocations": [
+          40.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer addition",
+        "automatic_gc": false,
+        "median_us": 28.270521000000002,
+        "allocations": [
+          40.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer exact Error check",
+        "automatic_gc": true,
+        "median_us": 5.4102915,
+        "allocations": [
+          5.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer exact Error check",
+        "automatic_gc": false,
+        "median_us": 5.4844585,
+        "allocations": [
+          5.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": true,
+        "median_us": 7.2919789999999995,
+        "allocations": [
+          12.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": false,
+        "median_us": 7.406062500000001,
+        "allocations": [
+          12.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Block return nil",
+        "automatic_gc": true,
+        "median_us": 0.584333,
+        "allocations": [
+          2.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "Block return nil",
+        "automatic_gc": false,
+        "median_us": 0.624854,
+        "allocations": [
+          2.0
+        ]
+      },
+      {
+        "variant": "baseline",
+        "case": "inventory dense",
+        "median_ms": 323.80622950000003
+      },
+      {
+        "variant": "baseline",
+        "case": "inventory registry_module",
+        "median_ms": 750.7752085
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer addition",
+        "automatic_gc": true,
+        "median_us": 26.360374999999998,
+        "allocations": [
+          40.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer addition",
+        "automatic_gc": false,
+        "median_us": 26.171645499999997,
+        "allocations": [
+          40.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer exact Error check",
+        "automatic_gc": true,
+        "median_us": 4.943687499999999,
+        "allocations": [
+          5.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer exact Error check",
+        "automatic_gc": false,
+        "median_us": 4.954082999999999,
+        "allocations": [
+          5.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": true,
+        "median_us": 7.027583,
+        "allocations": [
+          12.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Integer add bits and overflow",
+        "automatic_gc": false,
+        "median_us": 6.9180625,
+        "allocations": [
+          12.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Block return nil",
+        "automatic_gc": true,
+        "median_us": 0.5702704999999999,
+        "allocations": [
+          2.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "Block return nil",
+        "automatic_gc": false,
+        "median_us": 0.5809795,
+        "allocations": [
+          2.0
+        ]
+      },
+      {
+        "variant": "candidate",
+        "case": "inventory dense",
+        "median_ms": 310.60814600000003
+      },
+      {
+        "variant": "candidate",
+        "case": "inventory registry_module",
+        "median_ms": 725.4616255000001
+      }
+    ]
+  },
+  "validation": {
+    "workspace_check": "all targets/all features passed",
+    "default_library_tests": 321,
+    "integration_targets": [
+      "binding_proof",
+      "continuation_transparency",
+      "direct_method_construction",
+      "execution_machines",
+      "execution_methods",
+      "image",
+      "image_native_refusal",
+      "image_slot_values",
+      "image_snapshot_stamp",
+      "integer_box_observability",
+      "integer_operation_objects",
+      "integer_values",
+      "query_binding_mutation",
+      "root_reuse",
+      "word_expression_mutation"
+    ],
+    "full_image": "roundtrip/resaves, refusal, slot values and snapshot stamp passed",
+    "independent_continuation": "passed with updated fixture",
+    "full_oop_gate": "passed, including independent C/TinyCC, direct dispatch, native owners and compiled controls",
+    "baseline_failure": "stale callSite hook reproduced with unchanged Id; updated bulk-preparation fixture passes on unchanged Id",
+    "test_repair": "same suspension, capture, recovery, boundary and effect-count assertions retained"
+  },
+  "validation_commands": [
+    "python3 scripts/id-continuation-test.py",
+    "bash scripts/oop-id-slice-test.sh",
+    "CARGO_PROFILE_DEV_PANIC=unwind mise exec -- cargo test --workspace --lib --offline --locked",
+    "mise exec -- cargo check --workspace --all-targets --all-features --offline --locked",
+    "BIRNAM_TEST_MODULE_DIRECTORY=<candidate-prefix>/lib CARGO_PROFILE_DEV_PANIC=unwind mise exec -- cargo test --offline --locked -p birnam-siphon --test binding_proof --test continuation_transparency --test direct_method_construction --test execution_machines --test execution_methods --test image --test image_native_refusal --test image_slot_values --test image_snapshot_stamp --test integer_box_observability --test integer_operation_objects --test integer_values --test query_binding_mutation --test root_reuse --test word_expression_mutation -- --include-ignored"
+  ],
+  "raw_directory": "/Users/chazu/dev/zig/birnam/.cargo-target/measurements/lookup-cache-20261031",
+  "raw_sha256": {
+    "workspace-unit.log": "b166d15f694c098db14837e9b76c3052d1cd3e9e6e3167e637be4477fd37765c",
+    "workspace-check-final.log": "91cbd227c84ab57b00865fa147bd0c7f26da8b4c75bb70802aa922e531345a31",
+    "integration.log": "e84d1605bc9c133b8695b607b051d6223eecbaeabc4381879996c10e89964656",
+    "continuation-final.log": "c66e635aca1b009e96e88a209e2b6ce637b1c321700e3ba14ba4347502a7483e",
+    "oop-gate-final.log": "80e109c1c1642c10a4a132465b133f751e200b9bde9936a7c6782aae28f3719e",
+    "oop-gate.log": "4ceeeb503a09e105db11104bf5fe922b477fae630098d74e969cfa24e17b1967",
+    "baseline-numeric.log": "f7b795aa4a1fd0d88bf9bc34bb0940ffa622d068e629fa6d5ec435bc5afa4ac6",
+    "updated-baseline-numeric.log": "f007d66acbf09766e030f047dc2e11387d6534d42ed0b34fe40e38abcc30ec1f",
+    "run-numeric.py": "2f3a841c3f3cc419007d787d8031b1a34893fe12b3fb1b29521055534fbab8b6",
+    "measure-final.py": "e0f6571e755151a5ab3e1796633704442b2006567f2d1ff49762a9e51ca933b9",
+    "final-summary.json": "546c839d1fdd42f18772896c62cc0a0ee179c590d8907eedd509fc446629609e",
+    "layout.rs": "78dd560d244338963ab2deab026ef883571ba99f8c720eaa2142db5a86c10dd2",
+    "layout.log": "de15ef6bf50560ccc559815ccf2d0ced6c26c28ae365c5f7551e2461511293e7",
+    "gate-dispatch-contract.log": "a6a2a4783ad28d1e20bd323d0cac97e77787f872517cbe29578cb3b73f3d624f",
+    "gate-finalizer-failure.log": "4a1e16226e5178bb4b26887250fb4cd10d4295b1f4033be25c0df6414769fb3d",
+    "gate-independent-c.log": "28c547b2b66a62114d86e5f6d5831e351ec80b253362f8327da88756275a2138",
+    "gate-numeric-integration.log": "13e26e58dd225cb5b5f9de49a0305c26cf6d3aa616f59d1c0ed2b8b3e1f11edc",
+    "gate-owned-code-construction.log": "6ff49a79d17f7af6f7fc4d40485c664fa108e2a879b2bb9671938a5b2935438f",
+    "gate-retirement-failure.log": "d80fac0585015a926a5de8cb69e4226597d541e6fee5dd35d2c43adc10628610",
+    "gate-runtime.log": "b7c1e54d70307e457437be2b0d02147c10054407f17c1685d7a58a49ec0c06cc",
+    "final-arithmetic-1-baseline.json": "7b03dd0fdec70789c0c358c85a8eb1e1f63ff840a5309608cc3acb7411921a9e",
+    "final-arithmetic-2-candidate.json": "59056c5a0061e62c9fc50b672cef3b9c26f58f6a4ce39fcead0139b578b7c09d",
+    "final-arithmetic-3-candidate.json": "8a07d89bcd40878f60301f1a17cc64e26c09b3e5e4c1870ef5699dd4e0dfd730",
+    "final-arithmetic-4-baseline.json": "b965345c749afc39c00f4793b5cbd7a6339d4b290d4d2fe558f5caf80c403e4e",
+    "final-inventory-1-baseline.json": "ee9bb63e1fd5d41cdcacf0b857b3764332f006af0838d7abc8f268c5355fdcfd",
+    "final-inventory-2-candidate.json": "d328574a15488204217822e07c67ce511f3b9e6fb0a6f53317940a3b222da40f",
+    "final-inventory-3-candidate.json": "bd2108b37d86397c67356636ec6ad6c9cded9047c2f0cb248b1e5b3545ccf875",
+    "final-inventory-4-baseline.json": "5f2dea65226fa5bde5aa07cb9b0915634734812efe57e07260c7ef6130d86fc9"
+  },
+  "limits": [
+    "Existing source-built prefix with only Id rebuilt; no new installer/source-build qualification",
+    "No application speedup, inventory cutover, user installation or push",
+    "Ordinary-result adapter proposal remains unapplied pending its drive-policy decision"
+  ]
+}

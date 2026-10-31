@@ -8,7 +8,7 @@ pub(super) fn selection(s: &State, r: Oop, selector: Oop) -> Result<Selection, O
     let behavior = s.behavior(r)?;
     // The validated receiver's vtable was admitted when assigned and is kept
     // alive by that receiver. Read its current vtable, without a second check
-    // of the same allocation. This does not cache method selection.
+    // of the same allocation. Current graph mutations invalidate lookup results.
     // A detached receiver's former vtable may already have been released.
     // Keep the checked path during finalization; the live path has the
     // receiver's strong reference to its admitted vtable.

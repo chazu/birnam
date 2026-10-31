@@ -15,6 +15,10 @@ entry into selected implementations. It supplies bootstrap implementations for
 the initial objects. Generic dispatch does not interpret their payloads or require
 an application message on the selected Method.
 
+Id reuses ordinary dictionary lookup results only while the dictionary graph is
+unchanged. Graph edits and retirement invalidate that private cache; custom lookup
+and Method entry still use their current behavior. Cache entries add no GC roots.
+
 Ordinary heap objects currently have contiguous header/payload allocations;
 implementations may refer to other objects or separate storage. Moving storage
 must preserve identity and all supported references.
