@@ -110,12 +110,7 @@ impl State {
         drive.paused = Some(work);
         Ok(ptr::null_mut())
     }
-    pub(super) unsafe fn drive_work(
-        &self,
-        mut work: Oop,
-        budget: usize,
-        synchronous: bool,
-    ) -> Result<Oop, Oop> {
+    fn begin_drive(&self, synchronous: bool) -> Result<DriveScope<'_>, Oop> {
         self.check()?;
         let index = {
             let mut drives = self.drives.borrow_mut();
@@ -131,7 +126,23 @@ impl State {
             });
             index
         };
-        let _drive = DriveScope { s: self, index };
+        Ok(DriveScope { s: self, index })
+    }
+    pub(super) unsafe fn drive_work(
+        &self,
+        work: Oop,
+        budget: usize,
+        synchronous: bool,
+    ) -> Result<Oop, Oop> {
+        let drive = self.begin_drive(synchronous)?;
+        unsafe { self.drive_pending(work, budget, drive.index) }
+    }
+    unsafe fn drive_pending(
+        &self,
+        mut work: Oop,
+        budget: usize,
+        index: usize,
+    ) -> Result<Oop, Oop> {
         for _ in 0..budget {
             if work.is_null() {
                 return Ok(work);
@@ -170,6 +181,48 @@ impl State {
         }
         Ok(work)
     }
+    // Values are retained and checked by the caller. This is the entry part
+    // of an explicit control transfer, shared by immediate and deferred calls.
+    unsafe fn enter_values(&self, values: &[Oop]) -> Result<Oop, Oop> {
+        let s = self;
+        unsafe {
+            let [method, receiver, k, args @ ..] = values else {
+                return Err(s.invalid());
+            };
+            let scope = s.scope(*receiver, ptr::null_mut(), values);
+            let data = s.method_data(*method)?;
+            scope.entered(*method, data.context, data.owner);
+            if data.continuation {
+                // The owned snapshot already contains the continuation and arguments
+                // contiguously, and stays rooted for the complete native call.
+                let passed = &values[2..];
+                let value = (data.entry)(
+                    s.root,
+                    data.context,
+                    *receiver,
+                    passed.as_ptr(),
+                    passed.len(),
+                );
+                s.behavior(value)?;
+                if abi::is_fault(value) && !k.is_null() {
+                    s.prepare_answer(*k, value)
+                } else if abi::is_fault(value) {
+                    Err(abi::object_reference(value))
+                } else {
+                    Ok(value)
+                }
+            } else {
+                let value = s
+                    .enter_method(*method, *receiver, args, &scope)
+                    .unwrap_or_else(abi::fault_reference);
+                if abi::is_fault(value) && k.is_null() {
+                    Err(abi::object_reference(value))
+                } else {
+                    s.prepare_answer(*k, value)
+                }
+            }
+        }
+    }
     pub(super) unsafe fn enter_synchronously(
         &self,
         method: Oop,
@@ -188,8 +241,17 @@ impl State {
         let answer = self.new_method_index(OPERATIONS.len() + RESULT, context, self.root)?;
         let mut values = vec![method, receiver, answer];
         values.extend_from_slice(args);
-        let work = self.prepare_entry(&values)?;
-        let outcome = unsafe { self.drive_work(work, usize::MAX, true) };
+        // The call is already selected and is being entered now. Keep its
+        // values live without allocating a deferred entry Method and Sequence.
+        let _call = self.scope(receiver, ptr::null_mut(), &values);
+        let outcome = (|| unsafe {
+            for &value in &values {
+                self.behavior(value)?;
+            }
+            let drive = self.begin_drive(true)?;
+            let next = self.enter_values(&values)?;
+            self.drive_pending(next, usize::MAX, drive.index)
+        })();
         let ready = self.reference_at(context, 1)?;
         let value = self.reference_at(context, 2)?;
         // Closing an escaped answer continuation must not retain the completed
@@ -316,41 +378,7 @@ unsafe extern "C" fn enter_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usi
             return Err(s.invalid());
         }
         let values = s.sequence_values(c)?;
-        let [method, receiver, k, args @ ..] = values.as_slice() else {
-            return Err(s.invalid());
-        };
-        let scope = s.scope(*receiver, ptr::null_mut(), &values);
-        let data = s.method_data(*method)?;
-        scope.entered(*method, data.context, data.owner);
-        if data.continuation {
-            // The owned snapshot already contains the continuation and arguments
-            // contiguously, and stays rooted for the complete native call.
-            let passed = &values[2..];
-            let value = (data.entry)(
-                s.root,
-                data.context,
-                *receiver,
-                passed.as_ptr(),
-                passed.len(),
-            );
-            s.behavior(value)?;
-            if abi::is_fault(value) && !k.is_null() {
-                s.prepare_answer(*k, value)
-            } else if abi::is_fault(value) {
-                Err(abi::object_reference(value))
-            } else {
-                Ok(value)
-            }
-        } else {
-            let value = s
-                .enter_method(*method, *receiver, args, &scope)
-                .unwrap_or_else(abi::fault_reference);
-            if abi::is_fault(value) && k.is_null() {
-                Err(abi::object_reference(value))
-            } else {
-                s.prepare_answer(*k, value)
-            }
-        }
+        s.enter_values(&values)
     })()
     .unwrap_or_else(abi::fault_reference)
 }

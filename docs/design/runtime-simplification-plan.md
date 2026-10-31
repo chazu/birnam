@@ -78,6 +78,26 @@ implementation choices. A small useful guard need not be removed to match a styl
 **Purpose:** demonstrate a repeatable migration that deletes production native
 work rather than adding an authored wrapper.
 
+**Candidate investigated, production migration not delivered:** the
+[2026-10-30 comparison](first-migration-comparison.md) selected method-source
+inventory as a bounded part of metadata analysis. The
+[feasibility experiment](../measurements/method-source-inventory-20261030/README.md)
+proved early installation without a new native inventory seed and matched six
+source fixtures, but found a severe performance regression in both compiled
+representations. The prototype remains measurement evidence; production callers
+and the Rust collector are unchanged. Do not resume this cutover without resolving
+the measured cost or an explicit decision accepting it.
+
+The [subsequent traversal diagnosis](../measurements/method-source-investigation-20261030/README.md)
+isolated a large arithmetic/control cost and removed the deferred setup object
+for an already selected synchronous entry. The measured wrapped addition drops
+from 115 allocations to 87 and improves about 4% with automatic collection enabled.
+This is not enough to qualify the inventory port. An image refusal test also fails
+unchanged on the baseline; the report keeps that validation failure explicit.
+The next focus is the authored Integer arithmetic/control sequence, rather than
+a whole-runtime rewrite. Full metadata analysis and isolated literal lowering
+still have the larger integration costs recorded in the comparison.
+
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
 are candidates, not preselected requirements. Prefer behavior expressible through

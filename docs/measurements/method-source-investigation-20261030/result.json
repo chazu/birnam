@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "baseline": "58fddef260750bc6a0a07e1b40e6d7f311f9e94f",
+  "change": "enter the initial selected synchronous Method directly within the existing drive",
+  "machine": "Apple M3 arm64 macOS 14.6",
+  "profile": "release",
+  "comparison_order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "instrumentation_excluded_from_final_timings": true,
+  "results": {
+    "addition_automatic_gc_True": {
+      "baseline": {
+        "median_us": 53.979417,
+        "allocations_per_call": 115.0,
+        "id_bytes_per_call": 4744.0,
+        "samples": [
+          52.546458,
+          52.963084,
+          53.377042,
+          52.812540999999996,
+          52.996083,
+          56.191832999999995,
+          54.58179199999999,
+          54.782709,
+          54.929209,
+          54.689083
+        ]
+      },
+      "candidate": {
+        "median_us": 51.598854,
+        "allocations_per_call": 87.0,
+        "id_bytes_per_call": 3416.0,
+        "samples": [
+          51.775208000000006,
+          50.133666,
+          50.647791999999995,
+          50.661958,
+          50.640875,
+          53.166167,
+          51.629208000000006,
+          51.5685,
+          52.675875,
+          52.841625
+        ]
+      },
+      "median_reduction_percent": 4.410130994930894
+    },
+    "addition_automatic_gc_False": {
+      "baseline": {
+        "median_us": 54.058875,
+        "allocations_per_call": 115.0,
+        "id_bytes_per_call": 4744.0,
+        "samples": [
+          53.68275,
+          56.779625,
+          54.429708,
+          54.4805,
+          54.349,
+          53.76875,
+          54.912958999999994,
+          52.335083,
+          51.90025,
+          52.470208
+        ]
+      },
+      "candidate": {
+        "median_us": 50.570021,
+        "allocations_per_call": 87.0,
+        "id_bytes_per_call": 3416.0,
+        "samples": [
+          51.550875,
+          50.647957999999996,
+          48.606583,
+          48.170834,
+          48.489916,
+          53.045542000000005,
+          52.441416,
+          50.297833,
+          50.501875,
+          50.638167
+        ]
+      },
+      "median_reduction_percent": 6.45380430132888
+    },
+    "inventory_empty": {
+      "baseline": {
+        "median_us": 1105.5005,
+        "min_us": 984.0000000000001,
+        "max_us": 2153.75
+      },
+      "candidate": {
+        "median_us": 998.3955,
+        "min_us": 976.584,
+        "max_us": 1040.292
+      },
+      "median_reduction_percent": 9.688371918420668
+    },
+    "inventory_cases": {
+      "baseline": {
+        "median_us": 37278.8125,
+        "min_us": 35598.583000000006,
+        "max_us": 321554.667
+      },
+      "candidate": {
+        "median_us": 35955.396,
+        "min_us": 35122.375,
+        "max_us": 332359.58300000004
+      },
+      "median_reduction_percent": 3.550050045183173
+    },
+    "inventory_sparse": {
+      "baseline": {
+        "median_us": 54849.9375,
+        "min_us": 51669.833,
+        "max_us": 336810.375
+      },
+      "candidate": {
+        "median_us": 53238.8335,
+        "min_us": 50097.083,
+        "max_us": 365953.458
+      },
+      "median_reduction_percent": 2.937294140034341
+    },
+    "inventory_dense": {
+      "baseline": {
+        "median_us": 487541.1875,
+        "min_us": 478727.791,
+        "max_us": 493318.04099999997
+      },
+      "candidate": {
+        "median_us": 481860.8545,
+        "min_us": 195948.834,
+        "max_us": 507481.4170000001
+      },
+      "median_reduction_percent": 1.1650980769701613
+    },
+    "inventory_nested": {
+      "baseline": {
+        "median_us": 30056.6875,
+        "min_us": 29330.417,
+        "max_us": 327030.83300000004
+      },
+      "candidate": {
+        "median_us": 28591.604,
+        "min_us": 28311.084,
+        "max_us": 319505.91699999996
+      },
+      "median_reduction_percent": 4.874401079626622
+    },
+    "inventory_registry_module": {
+      "baseline": {
+        "median_us": 1418684.979,
+        "min_us": 1129822.167,
+        "max_us": 1459020.5410000002
+      },
+      "candidate": {
+        "median_us": 1145225.8125,
+        "min_us": 1115200.791,
+        "max_us": 1477465.625
+      },
+      "median_reduction_percent": 19.27553830116362
+    }
+  },
+  "validation": {
+    "id_continuation": "passed; baseline allocation regression failed at 6, candidate passes at 4",
+    "integration_passed": [
+      "block_arity",
+      "block_method_capture",
+      "candidate",
+      "compiler_source",
+      "continuation_transparency",
+      "execution_machines",
+      "execution_methods",
+      "frame_views",
+      "native_boundaries",
+      "root_batches",
+      "root_reuse",
+      "source_inspection",
+      "source_loader"
+    ],
+    "image": "full suite fails at image.rs:1014; unchanged Id reproduces the same failure; ordinary roundtrip children, repeated resaves and minimal transient-refusal test pass",
+    "release_or_installed_delivery": false
+  },
+  "raw_files": {
+    ".cargo-target/measurements/method-source-investigation/final-add-baseline-1/samples.json": "cb6c3eb62e4f384f5d962015fcffdb7c9d1ddd0639a38726e05a1b17c9f9021f",
+    ".cargo-target/measurements/method-source-investigation/final-add-baseline-2/samples.json": "2d1498677ae993fbce5252f9dccba60bfa0fe01ff30d80647ed9ee408459e69f",
+    ".cargo-target/measurements/method-source-investigation/final-add-candidate-1/samples.json": "c38c90ddb38d6455afb7838cb2e4c2f3d584c0f72cf85aabddff1c9ae93e7334",
+    ".cargo-target/measurements/method-source-investigation/final-add-candidate-2/samples.json": "ea99ed4eb892d096a6da6d4d97d945b74bbce9c405fce6a84329e279a18a4833",
+    ".cargo-target/measurements/method-source-investigation/final-inventory-baseline-1.json": "5603bbb0f8bf31c5ce88dbc5046523f2a6a1ad268a329d36e820ff366e08534d",
+    ".cargo-target/measurements/method-source-investigation/final-inventory-baseline-2.json": "74e1680e6278b586fff4dd677e7345b7a4edd6c84cddcfd290181d3e82da1948",
+    ".cargo-target/measurements/method-source-investigation/final-inventory-candidate-1.json": "6986dfbaca6d81a1b2e7d6b25d8f4fd5aeaee9c5f3a2375db65f69a9d32c5090",
+    ".cargo-target/measurements/method-source-investigation/final-inventory-candidate-2.json": "efd1eea848a20e783f0bce3e4d5f84323bb536d6fab02df2fcb9215a90b7bd3a",
+    ".cargo-target/measurements/method-source-investigation/walks.json": "ac5dd08f68fe1587431c59fa517b48c8ce02b7a4b2788af6cd52b3d6ce2e740d",
+    ".cargo-target/measurements/method-source-investigation/counts.json": "4d9ab34b25e7851854feab953a3e305018149dfe5335cc47eeb8b24ec40727bd",
+    ".cargo-target/measurements/method-source-investigation/counts-2.json": "c0b24a3fc37f18e8880bb32636d7ee7bb5bbe0cc243180061843568ddbb784e5",
+    ".cargo-target/measurements/method-source-investigation/add-counts.json": "74eddf3c9b9acff6345a518f30cd72b4e7187da79455c2d0ec6c2b28caa5ca0a",
+    ".cargo-target/measurements/method-source-investigation/entry-red.log": "f7f1e162d0d753089357070c5a2857117becb87263d5f6c4755af80a9b8bea75",
+    ".cargo-target/measurements/method-source-investigation/entry-green.log": "9ec723384f32ab51c6e68c3129ab50e2ed1dabff177b10b6f80a68f68e772385",
+    ".cargo-target/measurements/method-source-investigation/integration.log": "c2ed740b0a3c5e94a3e8336f3fb9a8643167434036016bfa8a6b45c6fd52e7f2",
+    ".cargo-target/measurements/method-source-investigation/integration-rest.log": "acb27db1c47da274892825576cffccd5eb6e25b286f8aaefae77ff12b3848dcb",
+    ".cargo-target/measurements/method-source-investigation/image-baseline.log": "827073dd13290a371f3736df51f08a74b3c6ebe0dadb3ef29606b67591766eb7",
+    ".cargo-target/measurements/method-source-investigation/image-candidate.log": "1c667d7ffda5d1f6b966f314b1d5ff0d6faad9b38ee8d83de0eefb68776175cc",
+    ".cargo-target/measurements/method-source-investigation/image-minimal-baseline.log": "4751f0e21660c34d44acd0269d3baf4410adf0c2f11d170544d496e3a2505247",
+    ".cargo-target/measurements/method-source-investigation/image-minimal-candidate.log": "d8d0c6d7840b01ef2b1d63f4280c0d5d11028baf06cbbf8b9c16f54ad4f4161b"
+  },
+  "production_source_sha256": {
+    "rust/birnam-id/src/id/continuation.rs": "351b42805649a2b4bff604cbf61a1c1e4e4908b0efe54675b1ce7ea1db909c8f",
+    "tests/fixtures/oop-continuation/caller.c": "3c14ca16bf3c5946e2e028077cec3b0aeb9aabcc5894684e380721d927bd775d",
+    "scripts/id-continuation-test.py": "8eadfa713b0939ad9b7888c8c4e99c855b7b3edb1c67194ed642d2e4c11ade8f"
+  },
+  "id_library_sha256": {
+    "baseline": "bcd33d2a5686e5c1d4e4268436ab2625b19dfc88c93e822a7751300d03eb3a5f",
+    "candidate": "d7b25227384eb81e6d9c1d00d1bb97ed5cf8e0b86ab6b1e0983cc4f601ddb5b8"
+  },
+  "diagnostic_source_sha256": {
+    "probe.rs": "d52ebbb73160ed9f5245079f5af946d61b6f7d6cf888153a594f6112b16466fd",
+    "walks.birnam": "ef5431aaee82fc7e33ff390bf1622b200e1a39795a9713e178f35696c5642c0b",
+    "instrument.py": "e220e238599ba7929f1738469d3a1e2de53d201cec749a5b51eaf7646ad76b39",
+    "run.py": "4e7a883e57b90ccfae71e04b62bacac801d53ce2398cb0fee16aeb656b9b4ad2"
+  }
+}

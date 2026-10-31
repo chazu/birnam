@@ -1,0 +1,25 @@
+[Reflect defineMethod: #walkIndexed: on: Codegen as: [:self :node |
+  [1 + [self walkIndexedChildren: node index: 0 count: [node childCount]]]
+]];
+[Reflect defineMethod: #walkIndexedChildren:index:count: on: Codegen as: [:self :node :index :count |
+  [[index = count] ifTrue: [| 0] ifFalse: [|
+    [[self walkIndexed: [node childAt: index]] + [self walkIndexedChildren: node index: [index + 1] count: count]]
+  ]]
+]];
+[Reflect defineMethod: #walkBulkCount: on: Codegen as: [:self :node |
+  [[node children] inject: 1 into: [:sum :child | [sum + [self walkBulkCount: child]]]]
+]];
+[Reflect defineMethod: #walkBulkVisit: on: Codegen as: [:self :node |
+  [[node children] do: [:child | [self walkBulkVisit: child]]]; self
+]];
+[Reflect defineMethod: #walkRuleNames: on: Codegen as: [:self :node |
+  [node ruleName]; [[node children] do: [:child | [self walkRuleNames: child]]]; self
+]];
+[Reflect defineMethod: #walkRules: on: Codegen as: [:self :node |
+  [node rule]; [[node children] do: [:child | [self walkRules: child]]]; self
+]];
+Codegen
+[Reflect defineMethod: #addPair:with: on: Codegen as: [:self :left :right | [left + right]]];
+[Reflect defineMethod: #subtractPair:with: on: Codegen as: [:self :left :right | [left - right]]];
+[Reflect defineMethod: #equalPair:with: on: Codegen as: [:self :left :right | [left = right]]];
+Codegen

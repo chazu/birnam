@@ -1,0 +1,388 @@
+{
+  "schema": 1,
+  "date": "2026-10-30",
+  "decision": "reject_production_cutover_for_measured_performance",
+  "baseline": {
+    "commit": "58fddef260750bc6a0a07e1b40e6d7f311f9e94f",
+    "profile": "release",
+    "source_manifest_sha256": "fa061bc6085ba7abb99cd5ea265ca2ef3765406a25ab3eda244fba7b38f98d79",
+    "build_mode": "development-cache",
+    "fresh_build_cache": true,
+    "fresh_prefix": true,
+    "machine": "Apple M3 arm64",
+    "os": "macOS 14.6"
+  },
+  "scope": {
+    "runtime": "explicit Bootstrap namespace, no CLI startup or stdlib/tool image in timers",
+    "warmups": 2,
+    "samples": 7,
+    "native_inventory_iterations_per_sample": 1000,
+    "authored_and_metadata_iterations_per_sample": 1,
+    "units": "microseconds per operation",
+    "gc": "automatic collection enabled; no forced collection between samples",
+    "result": "six fixtures matched the native inventory before timing in both compilation modes",
+    "limitation": "baseline_metadata is the current complete operation; no production after-cutover measurement"
+  },
+  "cases": {
+    "default": [
+      {
+        "name": "empty",
+        "bytes": 2,
+        "nodes": 6,
+        "declarations": 0,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.020541,
+            "min": 0.020209,
+            "max": 0.022792000000000003
+          },
+          "authored_inventory_us": {
+            "median": 1453.541,
+            "min": 1436.167,
+            "max": 2768.75
+          },
+          "native_metadata_us": {
+            "median": 124.49999999999999,
+            "min": 122.709,
+            "max": 134.5
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 11.6750281124498
+      },
+      {
+        "name": "cases",
+        "bytes": 427,
+        "nodes": 175,
+        "declarations": 4,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.965125,
+            "min": 0.9574170000000001,
+            "max": 0.9930419999999999
+          },
+          "authored_inventory_us": {
+            "median": 57510.041,
+            "min": 56742.209,
+            "max": 380724.75
+          },
+          "native_metadata_us": {
+            "median": 2021.542,
+            "min": 2005.8749999999998,
+            "max": 2054.916
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 28.448600622692975
+      },
+      {
+        "name": "sparse",
+        "bytes": 1030,
+        "nodes": 302,
+        "declarations": 0,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.5908329999999999,
+            "min": 0.586625,
+            "max": 0.5982080000000001
+          },
+          "authored_inventory_us": {
+            "median": 358955.5,
+            "min": 77708.875,
+            "max": 360584.666
+          },
+          "native_metadata_us": {
+            "median": 3375.166,
+            "min": 3335.458,
+            "max": 3381.25
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 106.35195424462086
+      },
+      {
+        "name": "dense",
+        "bytes": 1996,
+        "nodes": 930,
+        "declarations": 32,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 5.724291999999999,
+            "min": 5.696917,
+            "max": 5.774166
+          },
+          "authored_inventory_us": {
+            "median": 896925.9160000001,
+            "min": 890737.042,
+            "max": 954452.292
+          },
+          "native_metadata_us": {
+            "median": 10396.208,
+            "min": 10298.541,
+            "max": 11350.333
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 86.27433348774862
+      },
+      {
+        "name": "nested",
+        "bytes": 184,
+        "nodes": 159,
+        "declarations": 1,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.718375,
+            "min": 0.7095,
+            "max": 0.769875
+          },
+          "authored_inventory_us": {
+            "median": 43100.917,
+            "min": 42398.917,
+            "max": 324172.625
+          },
+          "native_metadata_us": {
+            "median": 1831.333,
+            "min": 1819.7910000000002,
+            "max": 1877.4589999999998
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 23.535270210278522
+      },
+      {
+        "name": "registry_module",
+        "bytes": 6596,
+        "nodes": 2719,
+        "declarations": 20,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 10.048583999999998,
+            "min": 10.028208999999999,
+            "max": 10.076875
+          },
+          "authored_inventory_us": {
+            "median": 2350290.208,
+            "min": 2326059.0,
+            "max": 2642560.0
+          },
+          "native_metadata_us": {
+            "median": 31202.625,
+            "min": 30434.040999999997,
+            "max": 32919.042
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 75.32347704720357
+      }
+    ],
+    "synchronous": [
+      {
+        "name": "empty",
+        "bytes": 2,
+        "nodes": 6,
+        "declarations": 0,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.02025,
+            "min": 0.02025,
+            "max": 0.020375
+          },
+          "authored_inventory_us": {
+            "median": 1070.0,
+            "min": 964.3330000000001,
+            "max": 2080.083
+          },
+          "native_metadata_us": {
+            "median": 123.375,
+            "min": 121.167,
+            "max": 128.125
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 8.67274569402229
+      },
+      {
+        "name": "cases",
+        "bytes": 427,
+        "nodes": 175,
+        "declarations": 4,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.964583,
+            "min": 0.9590420000000001,
+            "max": 0.9813339999999999
+          },
+          "authored_inventory_us": {
+            "median": 36869.709,
+            "min": 35555.916,
+            "max": 311277.917
+          },
+          "native_metadata_us": {
+            "median": 1953.0839999999998,
+            "min": 1948.125,
+            "max": 1982.9589999999998
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 18.87768728841156
+      },
+      {
+        "name": "sparse",
+        "bytes": 1030,
+        "nodes": 302,
+        "declarations": 0,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.600166,
+            "min": 0.592,
+            "max": 0.6084579999999999
+          },
+          "authored_inventory_us": {
+            "median": 53946.875,
+            "min": 52014.875,
+            "max": 326366.375
+          },
+          "native_metadata_us": {
+            "median": 3262.375,
+            "min": 3250.959,
+            "max": 3288.834
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 16.536074179087322
+      },
+      {
+        "name": "dense",
+        "bytes": 1996,
+        "nodes": 930,
+        "declarations": 32,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 5.792375,
+            "min": 5.753167,
+            "max": 5.8078330000000005
+          },
+          "authored_inventory_us": {
+            "median": 484216.58400000003,
+            "min": 479095.375,
+            "max": 510497.41699999996
+          },
+          "native_metadata_us": {
+            "median": 10164.084,
+            "min": 10072.958,
+            "max": 10408.625
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 47.63996283383727
+      },
+      {
+        "name": "nested",
+        "bytes": 184,
+        "nodes": 159,
+        "declarations": 1,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 0.7535,
+            "min": 0.749833,
+            "max": 0.757125
+          },
+          "authored_inventory_us": {
+            "median": 29867.875,
+            "min": 29544.584,
+            "max": 306683.375
+          },
+          "native_metadata_us": {
+            "median": 1801.75,
+            "min": 1796.3339999999998,
+            "max": 1829.7089999999998
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 16.577147217982517
+      },
+      {
+        "name": "registry_module",
+        "bytes": 6596,
+        "nodes": 2719,
+        "declarations": 20,
+        "measurements": {
+          "native_inventory_us": {
+            "median": 10.357458000000001,
+            "min": 10.311791999999999,
+            "max": 10.382290999999999
+          },
+          "authored_inventory_us": {
+            "median": 1435378.0,
+            "min": 1132934.2920000001,
+            "max": 1481160.5
+          },
+          "native_metadata_us": {
+            "median": 30371.75,
+            "min": 30009.417,
+            "max": 31879.499999999996
+          }
+        },
+        "authored_inventory_over_baseline_metadata": 47.260299455908864
+      }
+    ]
+  },
+  "raw_files": {
+    ".cargo-target/measurements/method-source-inventory-20261030/timings.json": {
+      "sha256": "672590e6be37ec842519e4d536c294b496bf2aa1e52c5dedb4a94557f436ebd2",
+      "bytes": 3414
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/synchronous-timings.json": {
+      "sha256": "d41919e1880fdf64b20400bb32ba5b26c61d37beff33aa084e2b36041fe3f110",
+      "bytes": 3717
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/cold.log": {
+      "sha256": "e044273746094f3263b0c6e9aaedea40c0846dfe2f26c4e19d7640a15e437b3b",
+      "bytes": 2203
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/profile.txt": {
+      "sha256": "07f50552f33af93e9836dc2a75ca9b9e3e12cb0ebb40ea63fbad3efe77e2d09a",
+      "bytes": 192811081
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/profile-run.log": {
+      "sha256": "13e10ebecc8c4ed32600604b7c38621c61bc53a9eff39f0b57f33e34251ef1c2",
+      "bytes": 825
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/baseline-build.log": {
+      "sha256": "b274fb0cfd3b9722127f308bc0e05216f73af9a5c85a67c8281e69c56be301b1",
+      "bytes": 8764
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/replay/default.json": {
+      "sha256": "af3464065663dd76d293368d7446d86d6272295b070540af7889a5d0ffba16c5",
+      "bytes": 3721
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/replay/synchronous.json": {
+      "sha256": "533ed1709968d1e24065c37ab30a999e962ca194f7866f68e6c4c41802d42479",
+      "bytes": 3776
+    },
+    ".cargo-target/measurements/method-source-inventory-20261030/replay/cold.log": {
+      "sha256": "02a14027c3078f0679b6fdf0b570a5f7f987fc3b849597b8c2e5c0092d349a3a",
+      "bytes": 94
+    }
+  },
+  "profile": {
+    "seconds": 3,
+    "main_thread_samples": 2475,
+    "top_leaf_counts": {
+      "Id method selection": 328,
+      "Id behavior lookup": 192,
+      "Id Method entry": 135,
+      "Id send": 110,
+      "Id payload lookup": 91
+    },
+    "interpretation": "dispatch and object/collection bookkeeping are candidates for diagnosis; no redundancy or percentage-of-regression proof"
+  },
+  "bootstrap": {
+    "result": "passed initial isolated proof and portable replay",
+    "new_native_inventory_seed": false,
+    "before_authored_artifacts": [
+      "error",
+      "globalsOwner",
+      "sourceRegistry"
+    ],
+    "compiled_artifacts_removed_before_entry": true,
+    "source_only_collector_compiled_and_explicitly_invoked": true,
+    "limitation": "not an implemented installed-product cutover or full release gate"
+  },
+  "experiment_files": {
+    "inventory.birnam": "eaaf5204257ef2dfa8e013591dd35418b423874eac4b552f08f76c1edd65bc77",
+    "probe.rs": "24c94ecb820e622b55568abe76cb9c07420f8957d9d429805cd2bd0c88183d1b",
+    "run.py": "ad36c38ebe5334e913e3457a321f22e26c1df957ce4f13b13f2ae3e35550703f",
+    "cold-bootstrap.patch": "ec04e1d58e9e6508df7cac8f59df4543910ab3cfd9a6f7166296f694929f5e02"
+  }
+}
