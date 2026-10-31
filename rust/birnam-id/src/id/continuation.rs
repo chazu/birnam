@@ -1,9 +1,9 @@
-//! Continuation transfers use captured Methods and owned Sequence contexts.
+//! Continuation transfers use captured Methods with inline context references.
 //! Only this bootstrap owner reads those contexts. The trampoline reads Method
 //! declaration metadata, never Execution payloads or a catalog of object kinds.
 use super::{
     id_dispatch::{self, Selection},
-    native_id::{OPERATIONS, State},
+    native_id::State,
 };
 use crate::abi::{self, Oop, id_protocol::Method};
 use core::ptr;
@@ -54,16 +54,6 @@ pub(super) static ENTRIES: &[Method] = &[send_work, enter_work, looked_up, resul
 impl State {
     fn control_failure(&self, name: &'static [u8]) -> Oop {
         self.make_fault(self.selector(name), ptr::null_mut())
-    }
-    fn work(&self, entry: usize, values: &[Oop]) -> Result<Oop, Oop> {
-        // Both constructors are owner-local, non-callback allocation. Protect
-        // the inputs independently of their previous owner throughout creation.
-        let _roots = self.scope(self.root, ptr::null_mut(), values);
-        for &value in values {
-            self.behavior(value)?;
-        }
-        let context = self.new_sequence(values)?;
-        self.new_method_index(OPERATIONS.len() + entry, context, self.root)
     }
     pub(super) fn prepare_send(&self, values: &[Oop]) -> Result<Oop, Oop> {
         let [_, _, k, ..] = values else {
@@ -229,16 +219,15 @@ impl State {
         receiver: Oop,
         args: &[Oop],
     ) -> Result<Oop, Oop> {
-        // A heap context, not a pointer to a native stack result slot. A retained
-        // callback delivered after this boundary closes is rejected safely.
-        let context = self.new_sequence(&[
+        // The answer Method retains its result state in managed storage. A
+        // retained callback delivered after this boundary closes is rejected.
+        let answer = self.work(RESULT, &[
             abi::size(1).unwrap(),
             abi::size(0).unwrap(),
             ptr::null_mut(),
         ])?;
-        let kept = [context, method, receiver];
+        let kept = [answer, method, receiver];
         let _roots = self.scope(self.root, ptr::null_mut(), &kept);
-        let answer = self.new_method_index(OPERATIONS.len() + RESULT, context, self.root)?;
         let mut values = vec![method, receiver, answer];
         values.extend_from_slice(args);
         // The call is already selected and is being entered now. Keep its
@@ -252,12 +241,12 @@ impl State {
             let next = self.enter_values(&values)?;
             self.drive_pending(next, usize::MAX, drive.index)
         })();
-        let ready = self.reference_at(context, 1)?;
-        let value = self.reference_at(context, 2)?;
+        let ready = self.work_at(answer, 1)?;
+        let value = self.work_at(answer, 2)?;
         // Closing an escaped answer continuation must not retain the completed
         // answer forever. These owner-local writes cannot call or collect.
-        self.reference_put(context, 0, abi::size(0).unwrap())?;
-        self.reference_put(context, 2, ptr::null_mut())?;
+        self.work_put(answer, 0, abi::size(0).unwrap())?;
+        self.work_put(answer, 2, ptr::null_mut())?;
         outcome?;
         if abi::as_size(ready) != Some(1) {
             return Err(self.control_failure(b"continuationBarrier"));
@@ -316,7 +305,7 @@ unsafe extern "C" fn send_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
         if arguments(s, a, n)?.len() != 1 {
             return Err(s.invalid());
         }
-        let mut values = s.sequence_values(c)?;
+        let mut values = s.work_values(c)?;
         if values.len() >= 2 {
             values[0] = abi::object_reference(values[0]);
             values[1] = abi::object_reference(values[1]);
@@ -350,7 +339,7 @@ unsafe extern "C" fn looked_up(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
         let [_, method] = arguments(s, a, n)? else {
             return Err(s.invalid());
         };
-        let values = s.sequence_values(c)?;
+        let values = s.work_values(c)?;
         let [used, original @ ..] = values.as_slice() else {
             return Err(s.invalid());
         };
@@ -360,12 +349,8 @@ unsafe extern "C" fn looked_up(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usiz
         let roots: Vec<_> = values.iter().copied()
             .chain(std::iter::once(*method)).collect();
         let _scope = s.scope(c, ptr::null_mut(), &roots);
-        s.reference_put(c, 0, abi::size(1).unwrap())?;
-        // A consumed lookup continuation retains its rejection state, not the
-        // receiver/arguments/code of a call it can no longer resume.
-        for index in 1..values.len() {
-            s.reference_put(c, index, ptr::null_mut())?;
-        }
+        // Retain the rejection state, not arguments of an already consumed call.
+        s.consume_work(c)?;
         s.selected_work(original, *method)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -377,7 +362,7 @@ unsafe extern "C" fn enter_work(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usi
         if arguments(s, a, n)?.len() != 1 {
             return Err(s.invalid());
         }
-        let values = s.sequence_values(c)?;
+        let values = s.work_values(c)?;
         s.enter_values(&values)
     })()
     .unwrap_or_else(abi::fault_reference)
@@ -389,13 +374,13 @@ unsafe extern "C" fn result(root: Oop, c: Oop, _: Oop, a: *const Oop, n: usize) 
         let [_, value] = arguments(s, a, n)? else {
             return Err(s.invalid());
         };
-        if abi::as_size(s.reference_at(c, 0)?) != Some(1)
-            || abi::as_size(s.reference_at(c, 1)?) != Some(0)
+        if abi::as_size(s.work_at(c, 0)?) != Some(1)
+            || abi::as_size(s.work_at(c, 1)?) != Some(0)
         {
             return Err(s.control_failure(b"continuationConsumed"));
         }
-        s.reference_put(c, 2, *value)?;
-        s.reference_put(c, 1, abi::size(1).unwrap())?;
+        s.work_put(c, 2, *value)?;
+        s.work_put(c, 1, abi::size(1).unwrap())?;
         Ok(ptr::null_mut())
     })()
     .unwrap_or_else(abi::fault_reference)

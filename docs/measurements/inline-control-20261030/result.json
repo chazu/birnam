@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "baseline": "72e38d80",
+  "validated_date": "2026-10-31",
+  "change": "inline control context references and bulk consumed-lookup clearing",
+  "platform": "Apple M3 arm64 macOS 14.6",
+  "profile": "release",
+  "comparison_order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "results": {
+    "addition_automatic_gc_True": {
+      "baseline": {
+        "median_us": 50.5987915,
+        "min_us": 49.864208,
+        "max_us": 52.1065,
+        "allocations": 87.0,
+        "id_bytes": 3416.0
+      },
+      "candidate": {
+        "median_us": 46.9129585,
+        "min_us": 45.99075,
+        "max_us": 48.018917,
+        "allocations": 50.0,
+        "id_bytes": 2824.0
+      },
+      "reduction_percent": 7.28442891763531
+    },
+    "addition_automatic_gc_False": {
+      "baseline": {
+        "median_us": 50.518375,
+        "min_us": 47.708416,
+        "max_us": 52.902291999999996,
+        "allocations": 87.0,
+        "id_bytes": 3416.0
+      },
+      "candidate": {
+        "median_us": 45.541708,
+        "min_us": 44.755875,
+        "max_us": 48.306,
+        "allocations": 50.0,
+        "id_bytes": 2824.0
+      },
+      "reduction_percent": 9.851201666720277
+    },
+    "inventory_empty": {
+      "baseline": {
+        "median_us": 1013.1665,
+        "min_us": 956.7090000000001,
+        "max_us": 1087.875
+      },
+      "candidate": {
+        "median_us": 868.0205000000001,
+        "min_us": 858.75,
+        "max_us": 991.4590000000001
+      },
+      "reduction_percent": 14.32597702351982
+    },
+    "inventory_cases": {
+      "baseline": {
+        "median_us": 37893.8745,
+        "min_us": 34921.708000000006,
+        "max_us": 334941.75
+      },
+      "candidate": {
+        "median_us": 33352.729,
+        "min_us": 31571.416999999998,
+        "max_us": 194838.125
+      },
+      "reduction_percent": 11.983851110289601
+    },
+    "inventory_sparse": {
+      "baseline": {
+        "median_us": 52100.9375,
+        "min_us": 49687.958,
+        "max_us": 344090.625
+      },
+      "candidate": {
+        "median_us": 49531.396,
+        "min_us": 46286.708000000006,
+        "max_us": 251656.416
+      },
+      "reduction_percent": 4.931852713782736
+    },
+    "inventory_dense": {
+      "baseline": {
+        "median_us": 476212.25,
+        "min_us": 197300.75,
+        "max_us": 515731.25
+      },
+      "candidate": {
+        "median_us": 381551.5205,
+        "min_us": 180198.083,
+        "max_us": 389719.292
+      },
+      "reduction_percent": 19.87784428057028
+    },
+    "inventory_nested": {
+      "baseline": {
+        "median_us": 28656.7915,
+        "min_us": 28433.25,
+        "max_us": 322622.291
+      },
+      "candidate": {
+        "median_us": 26606.875,
+        "min_us": 26337.666999999998,
+        "max_us": 27212.75
+      },
+      "reduction_percent": 7.153335711012865
+    },
+    "inventory_registry_module": {
+      "baseline": {
+        "median_us": 1141865.1455,
+        "min_us": 1114313.875,
+        "max_us": 1426319.125
+      },
+      "candidate": {
+        "median_us": 942509.6254999998,
+        "min_us": 719147.584,
+        "max_us": 978034.5
+      },
+      "reduction_percent": 17.458762165186016
+    }
+  },
+  "raw_files": {
+    ".cargo-target/measurements/inline-control-20261030/final-add-baseline-1/samples.json": "561ef6ac8c8411d42c86800aeb006a6b6fd3c8a5747058d6301293b70284ac54",
+    ".cargo-target/measurements/inline-control-20261030/final-add-baseline-2/samples.json": "f63eab92d0169ce98136b73164f6888c372ed8e3174764eadf6a4588d4065521",
+    ".cargo-target/measurements/inline-control-20261030/final-add-candidate-1/samples.json": "b120e1e91d0a8dc3f4c5b4cd9aa4c1ebeeb1f2d59a1c49c100246fd73d5f43c6",
+    ".cargo-target/measurements/inline-control-20261030/final-add-candidate-2/samples.json": "d005928ec9a3f820f1ee5f28bd621dfc0600145ae71708a755fb39947b3f8ecd",
+    ".cargo-target/measurements/inline-control-20261030/final-inventory-baseline-1.json": "b9af0f8fac707ce1f8fd382cd3ed949290a55207056e3cba28bcc34bf44dadc2",
+    ".cargo-target/measurements/inline-control-20261030/final-inventory-baseline-2.json": "e0c369b0283f3c76861ef0e19f607a3953358b50322ccd282fa9de9da902458d",
+    ".cargo-target/measurements/inline-control-20261030/final-inventory-candidate-1.json": "291c4e6654cf7eba46bf83e0dc0ff5614a4e827a9085a51ada9d051b489cf72b",
+    ".cargo-target/measurements/inline-control-20261030/final-inventory-candidate-2.json": "3a1fa062fd756f106132bd799eb6220554419c6c56703dd28437122c67ac3e18",
+    ".cargo-target/measurements/inline-control-20261030/integration.log": "402a05f14981f74532d18891cc36836028ab0bf6ec78518627ae97cb00958695",
+    ".cargo-target/measurements/inline-control-20261030/integration-rest.log": "a1f44a4027db1aaf2de7c7440d13b0e829165ba1b25ba4dbd16a51f1d7f4c9de",
+    ".cargo-target/measurements/inline-control-20261030/integration-final.log": "0d4c47f352bc58db885cf56db878b807a7ed31d37b0b3f1f6288f85c42831883",
+    ".cargo-target/measurements/inline-control-20261030/lookup-final.log": "a066b03f3e4e1c14ae2621aaa79cf6b144feccf734123c9f365f9c65965ff843",
+    ".cargo-target/measurements/inline-control-20261030/red.log": "e47309aca67351454fbc93a79fbc7bb129bd74761350d6b806fb9a6d9131f835",
+    ".cargo-target/measurements/inline-control-20261030/green.log": "34b3a37cb853f812fb4a045adab0123dc54cc07af38f03e69e823d50cc74b5a7",
+    ".cargo-target/measurements/inline-control-20261030/image.log": "4a9e9b1460fb8856e3bd738c7442e87575e10f07a17b524506611fabfef10fff",
+    ".cargo-target/id-continuation/qualification/receipt.json": "9b86f64b8555ff67edf157c93f4640d03c16393fa84c607105d34dd0acf4813c"
+  },
+  "validation": {
+    "core": "id-continuation-test.py passed; cost regression failed at 4 before change and passes at 2",
+    "new_unit_cases": "shared context, reference clearing, fault-marked references, bounds and malformed layouts passed",
+    "image": "ordinary child roundtrips pass; the known baseline failure remains at image.rs:1014",
+    "release_qualification": false,
+    "user_installation_changed": false,
+    "integration_targets_passed": [
+      "block_arity",
+      "block_method_capture",
+      "candidate",
+      "compiler_source",
+      "continuation_transparency",
+      "execution_machines",
+      "execution_methods",
+      "fixed_abi",
+      "frame_views",
+      "integer_operation_objects",
+      "integer_values",
+      "memory",
+      "method_invocation",
+      "native_boundaries",
+      "native_code_construction",
+      "native_incoming",
+      "owned_code_construction",
+      "root_batches",
+      "root_reuse",
+      "source_inspection",
+      "source_loader"
+    ]
+  },
+  "source_sha256": {
+    "rust/birnam-id/src/id/bootstrap_values.rs": "f72efeb54e9527c39f687bc91bc2c1e7768efadf9147b399700251c6cde7d027",
+    "rust/birnam-id/src/id/continuation.rs": "5aa04d6c2e69fcdb3d97c95be83f639a32c01d415c2fe7af234cc37d6cbd8792",
+    "tests/fixtures/oop-continuation/caller.c": "f03ece35f7a7116c95a8495580f992ed1e3e0d9cadccd743297662fd81c86cfc"
+  },
+  "id_library_sha256": {
+    "baseline": "d7b25227384eb81e6d9c1d00d1bb97ed5cf8e0b86ab6b1e0983cc4f601ddb5b8",
+    "candidate": "314e0eb259a9bae003b3d00e5cb804993e5f2b23d3fecde76c8df9d01ef02251"
+  }
+}

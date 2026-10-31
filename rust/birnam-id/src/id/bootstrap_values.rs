@@ -72,20 +72,80 @@ impl State {
         let data = self.native_method_fields(method)?;
         self.method_with_behavior(data.entry_index, data.context, data.owner, self.behavior(method)?)
     }
-    fn native_method_fields(&self, o: Oop) -> Result<NativeMethod, Oop> {
+    fn inline_context(&self, object: Oop, data: NativeMethod) -> bool {
+        data.context == abi::object_reference(object) && data.owner == self.root
+            && data.entry_index.checked_sub(OPERATIONS.len())
+                .is_some_and(|index| index < super::continuation::ENTRIES.len())
+    }
+    fn native_method_storage(&self, o: Oop) -> Result<(NativeMethod, *mut Oop, usize), Oop> {
         let (p, n) = self.payload(o)?;
-        if n != size_of::<NativeMethod>() {
-            return Err(self.invalid());
-        }
-        // The owner interprets a bounded declaration index, never unvalidated
-        // payload bytes as a Rust function pointer.
+        let extra = n.checked_sub(size_of::<NativeMethod>()).ok_or(self.invalid())?;
+        if extra % size_of::<Oop>() != 0 { return Err(self.invalid()); }
         let data = unsafe { p.cast::<NativeMethod>().read() };
-        // The bootstrap context is permanently rooted. Other contexts must
-        // still be valid Oops before native code sees them. Invocation checks
-        // the code owner when resolving its declared entry; tracing validates
-        // every emitted owner through the collector's allocation inventory.
-        if data.context != self.root { self.behavior(data.context)?; }
-        Ok(data)
+        // Only this owner's control entries carry inline references. Other
+        // Methods retain their ordinary three-field representation.
+        if extra != 0 && !self.inline_context(o, data) { return Err(self.invalid()); }
+        // A self-context is the allocation just checked above; rereading its
+        // allocation record cannot establish anything further here.
+        if data.context != self.root && data.context != abi::object_reference(o) {
+            self.behavior(data.context)?;
+        }
+        Ok((data, unsafe { p.add(size_of::<NativeMethod>()).cast() }, extra / size_of::<Oop>()))
+    }
+    fn native_method_fields(&self, o: Oop) -> Result<NativeMethod, Oop> {
+        self.native_method_storage(o).map(|(data, _, _)| data)
+    }
+    // A control Method holds its own context references. There is no interior
+    // Oop, extra allocation, behavior, or table describing this private layout.
+    pub(super) fn work(&self, entry: usize, values: &[Oop]) -> Result<Oop, Oop> {
+        let _roots = self.scope(self.root, core::ptr::null_mut(), values);
+        for &value in values { self.behavior(value)?; }
+        let entry_index = OPERATIONS.len().checked_add(entry).ok_or(self.invalid())?;
+        if entry >= super::continuation::ENTRIES.len() { return Err(self.invalid()); }
+        let bytes = values.len().checked_mul(size_of::<Oop>())
+            .and_then(|n| n.checked_add(size_of::<NativeMethod>())).ok_or(self.invalid())?;
+        let object = self.allocate(self.method, bytes)?;
+        unsafe {
+            object.cast::<NativeMethod>().write(NativeMethod { entry_index, context: object, owner: self.root });
+            core::ptr::copy_nonoverlapping(values.as_ptr(), object.cast::<NativeMethod>().add(1).cast::<Oop>(), values.len());
+        }
+        Ok(object)
+    }
+    fn work_storage(&self, o: Oop) -> Result<(*mut Oop, usize), Oop> {
+        let (data, values, count) = self.native_method_storage(o)?;
+        if !self.inline_context(o, data) { return Err(self.invalid()); }
+        Ok((values, count))
+    }
+    pub(super) fn work_values(&self, o: Oop) -> Result<Vec<Oop>, Oop> {
+        let (p, count) = self.work_storage(o)?;
+        let values = unsafe { core::slice::from_raw_parts(p, count) }.to_vec();
+        for &value in &values { self.behavior(value)?; }
+        Ok(values)
+    }
+    pub(super) fn work_at(&self, o: Oop, index: usize) -> Result<Oop, Oop> {
+        let (p, count) = self.work_storage(o)?;
+        if index >= count { return Err(self.invalid()); }
+        let value = unsafe { p.add(index).read() };
+        self.behavior(value)?;
+        Ok(value)
+    }
+    pub(super) fn consume_work(&self, o: Oop) -> Result<(), Oop> {
+        let (p, count) = self.work_storage(o)?;
+        if count == 0 { return Err(self.invalid()); }
+        // The caller retains a checked snapshot. Clear the whole reference
+        // group without rereading Method data for each discarded argument.
+        unsafe {
+            p.write(abi::size(1).unwrap());
+            core::slice::from_raw_parts_mut(p.add(1), count - 1).fill(core::ptr::null_mut());
+        }
+        Ok(())
+    }
+    pub(super) fn work_put(&self, o: Oop, index: usize, value: Oop) -> Result<(), Oop> {
+        let (p, count) = self.work_storage(o)?;
+        if index >= count { return Err(self.invalid()); }
+        self.behavior(value)?;
+        unsafe { p.add(index).write(value) };
+        Ok(())
     }
     pub(super) fn fault_data(&self, o: Oop) -> Result<FaultData, Oop> {
         let (p, n) = self.payload(o)?;
@@ -294,8 +354,10 @@ impl State {
         match operation {
             Action::NoReferences => Ok(Vec::new()),
             Action::MethodReferences => {
-                let m = self.native_method_fields(o)?;
-                Ok(vec![m.context, m.owner])
+                let (m, values, count) = self.native_method_storage(o)?;
+                let mut references = vec![m.context, m.owner];
+                references.extend_from_slice(unsafe { core::slice::from_raw_parts(values, count) });
+                Ok(references)
             }
             Action::FaultReferences => {
                 let f = self.fault_data(o)?;
@@ -325,6 +387,49 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn control_context_references_are_inline_and_shared_by_captured_methods() {
+        let s = super::super::initial_objects::construct();
+        let child = s.new_sequence(&[s.root]).unwrap();
+        let work = s.work(0, &[child, s.root, core::ptr::null_mut()]).unwrap();
+        let data = s.method_data(work).unwrap();
+        assert_eq!(data.context, work);
+        assert!(data.continuation);
+        assert_eq!(s.work_values(work).unwrap(), vec![child, s.root, core::ptr::null_mut()]);
+        assert_eq!(s.work_at(abi::fault_reference(work), 0).unwrap(), child);
+        let references = s.owned_references(Action::MethodReferences, work).unwrap();
+        assert!(references.contains(&child));
+        let captured = s.captured_method(work).unwrap();
+        assert_eq!(s.method_data(captured).unwrap().context, work);
+        s.work_put(work, 0, s.root).unwrap();
+        assert_eq!(s.work_at(s.method_data(captured).unwrap().context, 0).unwrap(), s.root);
+        assert!(!s.owned_references(Action::MethodReferences, work).unwrap().contains(&child));
+        assert!(s.work_at(work, 3).is_err());
+        assert!(s.work_put(work, 3, s.root).is_err());
+        assert!(s.work_values(child).is_err());
+        let lookup = s.work(2, &[abi::size(0).unwrap(), child, s.root]).unwrap();
+        s.consume_work(lookup).unwrap();
+        assert_eq!(s.work_values(lookup).unwrap(), vec![abi::size(1).unwrap(), core::ptr::null_mut(), core::ptr::null_mut()]);
+        assert!(!s.owned_references(Action::MethodReferences, lookup).unwrap().contains(&child));
+    }
+    #[test]
+    fn trailing_method_fields_require_this_owners_control_representation() {
+        let s = super::super::initial_objects::construct();
+        for bytes in [0, size_of::<NativeMethod>() - 1, size_of::<NativeMethod>() + 1] {
+            let object = s.allocate(s.method, bytes).unwrap();
+            assert!(s.native_method_fields(object).is_err());
+        }
+        let object = s.allocate(s.method, size_of::<NativeMethod>() + size_of::<Oop>()).unwrap();
+        for (entry_index, context, owner) in [
+            (0, object, s.root),
+            (OPERATIONS.len(), s.root, s.root),
+            (OPERATIONS.len(), object, s.method),
+            (OPERATIONS.len() + super::super::continuation::ENTRIES.len(), object, s.root),
+        ] {
+            unsafe { object.cast::<NativeMethod>().write(NativeMethod { entry_index, context, owner }); }
+            assert!(s.native_method_fields(object).is_err());
+        }
+    }
     #[test]
     fn retired_registry_and_constructor_operations_are_not_installed() {
         let s = super::super::initial_objects::construct();

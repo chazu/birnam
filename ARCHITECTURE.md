@@ -69,6 +69,11 @@ objects' defined representations; other objects are addressed through messages.
 Private helper calls do not create an alternative API for changing another
 object's state or invoking its behavior.
 
+Bootstrap control Methods currently hold their arguments or reply state in their
+own allocation, with a self-context, instead of a separate Sequence. The Method
+implementation reports those references for GC and validates its own layout;
+generic allocation and other objects remain unaware of that representation.
+
 Current bulk byte transfers use bounded groups of Oops and a temporary receiving
 object. Native consumers collect those groups in their own buffers. The executable
 facade currently declares its receiving callback through TCC. These mechanisms

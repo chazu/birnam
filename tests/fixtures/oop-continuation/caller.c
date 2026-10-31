@@ -46,12 +46,12 @@ int main(int argc,char**argv){assert(argc==8);void*h=dlopen(argv[1],RTLD_NOW|RTL
  drain(work);assert(id_unbox(get(state,0))==1&&get(state,1)==value);
  printf("CPS_NATIVE_ECHO_OK\n");
  /* Implementation-cost regression, not a language allocation-count promise:
-    an already selected entry needs its answer state, not a deferred initial call. */
+    an already selected entry needs two control objects, not separate context Sequences. */
  size_t entry_before=id_unbox(send(id.root,COUNT,0,0));
  assert(send(r,ECHO,&value,1)==value);
  size_t entry_allocations=id_unbox(send(id.root,COUNT,0,0))-entry_before;
  fprintf(stderr,"synchronous entry allocations=%zu\n",entry_allocations);
- assert(entry_allocations<=4);printf("DIRECT_SYNCHRONOUS_ENTRY_SETUP_OK\n");
+ assert(entry_allocations<=2);printf("DIRECT_SYNCHRONOUS_ENTRY_SETUP_OK\n");
  bind(vt,SYNC,method(SYNC,0));size_t sync_before=id_unbox(send(id.root,COUNT,0,0));
  assert(send(r,SYNC,&value,1)==value);assert(id_unbox(send(id.root,COUNT,0,0))==sync_before);printf("MIXED_NATIVE_CONVENTIONS_OK\n");
  /* Continuation Oop returned as data is not executed or classified. */

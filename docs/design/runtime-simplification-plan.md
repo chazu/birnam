@@ -98,6 +98,12 @@ The next focus is the authored Integer arithmetic/control sequence, rather than
 a whole-runtime rewrite. Full metadata analysis and isolated literal lowering
 still have the larger integration costs recorded in the comparison.
 
+A [second control simplification](../measurements/inline-control-20261030/README.md)
+stores context references in the control Method itself. Wrapped addition falls
+from 87 allocations to 50, with a further measured 7% time reduction in the normal
+collection comparison. This preserves the existing message/control interface;
+it does not make the arithmetic path fast enough or complete the migration.
+
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
 are candidates, not preselected requirements. Prefer behavior expressible through
