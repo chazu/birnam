@@ -134,5 +134,7 @@
     "inventory-final-baseline-4.json": "6ce1c5dbe268953803deef3199fe5bd329e47dbc65d68f46abde8d6cba7130eb",
     "inventory-final-candidate-2.json": "d4c0af88bbe8ee1b008660326ece5ca7ab64751b8f56bd43a4da4aa3b31e1471",
     "inventory-final-candidate-3.json": "31e07907c668cd60c2dcb740ebe43349c730916cfd5ec0aaea43ca64fef8ec76"
-  }
+  },
+  "candidate_source_revision": "43d555f0",
+  "historical_note": "Timing source precedes the initializer-scope repair. See qualification.json for current source and safe execution mode."
 }

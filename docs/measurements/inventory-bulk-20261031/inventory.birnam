@@ -1,3 +1,5 @@
+// Keep initializer bindings local; this can run before Globals exists.
+[[|
 // Counters are private bounded traversal state represented as unsigned Words.
 let inventoryZero := [Execution wordResultOf: 0 selector: #word];
 let inventoryOne := [Execution wordResultOf: 1 selector: #word];
@@ -71,3 +73,5 @@ let inventoryLimit := [Execution wordResultOf: 4096 selector: #word];
   [self inventoryCollect: tree source: source depth: inventoryZero into: #[]]
 ]];
 Codegen
+
+] value]

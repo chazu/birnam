@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-31",
+  "baseline": "43d555f0",
+  "status": "prototype initialization repaired; resumable boundary checks pass; production cutover unqualified",
+  "change": "Initializer bindings are local to an explicitly invoked Block.",
+  "positive_checks": [
+    "local bindings in both compilation modes",
+    "starting depths 0, 4095, 4096, 4097",
+    "substitute CST, duplicate child order, precise GC",
+    "live children replacement",
+    "actual resumable ancestor chains 4095 and 4096",
+    "early seed bootstrap before Globals, Error and SourceRegistry"
+  ],
+  "known_failure": {
+    "mode": "compileSynchronous:",
+    "actual_ancestor_depth": 1024,
+    "returncode": 134,
+    "error": "native stack overflow",
+    "command": "QUAL_MODE=compileSynchronous: QUAL_CHAIN_DEPTH=1024 <qualification-binary> <prefix> inventory.birnam <output.json>",
+    "log_sha256": "1821bd544c6171dd8f38b8251774c17e913e5ae4f58cc4317b7dc682ab621c5e"
+  },
+  "limits": [
+    "not full source/release qualification",
+    "not arbitrary malformed CST or callback qualification",
+    "bulk children and indexed childAt views are not interchangeable under inconsistent replacement",
+    "no production metadata cutover"
+  ],
+  "source_sha256": {
+    "inventory.birnam": "3d78c626103bbf7af04a17f317011615e33c5d5dfb3f841e87e4a8b4b0e3173c",
+    "qualification.rs": "7ab0c88b580fdd3c60544344fdd362cc89055c85c7479c3de01d5f48a8207ca3",
+    "qualify.py": "0e755c1c92c81b0d7fd2a118ee7541ea0c6dd112ce9a07cd439fccd46523e212",
+    "early-bootstrap.patch": "c0f2a91722cf1d7d2adc6b560f794852a65c08db91a128b39d0e6999df60c0bc"
+  },
+  "qualification_receipt": ".cargo-target/measurements/inventory-bulk-qualification-20261031/final/receipt.json",
+  "qualification_receipt_sha256": "4c58af769ed85f9868cb64286e93443343acab74d2608115d90697390ee30bd4",
+  "library_receipt": "../arithmetic-layers-20261031/result.json",
+  "raw_directory": ".cargo-target/measurements/inventory-bulk-qualification-20261031",
+  "raw_sha256": {
+    "early-run.log": "4abc92a818450f34532fa1d5a37e681a11ff56ca5689db5efa90a53cef2df930",
+    "early-debug.log": "a841b5b983e06dbb58c23b05c08b093752dd1d7741930499d070eb43cc68cf66",
+    "early-final.log": "02a14027c3078f0679b6fdf0b570a5f7f987fc3b849597b8c2e5c0092d349a3a",
+    "boundary-0.log": "8a007e55993490350be93f441d82fcd4aaf4f00e50470d90d18ff49496ddc74f",
+    "boundary-1.log": "8a007e55993490350be93f441d82fcd4aaf4f00e50470d90d18ff49496ddc74f",
+    "chain-4095-0.log": "96e3862e05fa08909dc5c92adb4cc0ff8067cb79460346a174551a9594905134",
+    "chain-4096.log": "a2db71e55c995c88e5d3207ab7df1946c4bebaf325307491b63b963c178edd6f",
+    "chain-1024-sync.log": "1821bd544c6171dd8f38b8251774c17e913e5ae4f58cc4317b7dc682ab621c5e",
+    "resumable.json": "c81873b85cd9f1a721fdd21be4f5123591c471572a5841b3713dd4d065d46ecb"
+  },
+  "resumable_timing": [
+    {
+      "case": "empty",
+      "samples": 7,
+      "authored_median_ms": 0.486209,
+      "native_metadata_median_ms": 0.114333
+    },
+    {
+      "case": "cases",
+      "samples": 7,
+      "authored_median_ms": 23.501167000000002,
+      "native_metadata_median_ms": 1.873958
+    },
+    {
+      "case": "sparse",
+      "samples": 7,
+      "authored_median_ms": 27.401167,
+      "native_metadata_median_ms": 3.316792
+    },
+    {
+      "case": "dense",
+      "samples": 7,
+      "authored_median_ms": 353.168,
+      "native_metadata_median_ms": 10.106416
+    },
+    {
+      "case": "nested",
+      "samples": 7,
+      "authored_median_ms": 16.72225,
+      "native_metadata_median_ms": 1.7995
+    },
+    {
+      "case": "registry_module",
+      "samples": 7,
+      "authored_median_ms": 838.632708,
+      "native_metadata_median_ms": 30.100832999999998
+    }
+  ]
+}

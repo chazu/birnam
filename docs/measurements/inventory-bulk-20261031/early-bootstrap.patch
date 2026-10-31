@@ -1,0 +1,44 @@
+diff --git a/rust/birnam-bootstrap/src/lib.rs b/rust/birnam-bootstrap/src/lib.rs
+index f8f863a9a..b17a969b6 100644
+--- a/rust/birnam-bootstrap/src/lib.rs
++++ b/rust/birnam-bootstrap/src/lib.rs
+@@ -333,6 +333,8 @@ literals![
+     b"releaseTokensProtecting",
+     b"Bytes",
+     b"fromByteValues",
++    b"compile:", b"fromMethod:captureOperands:", b"value", b"parse:",
++    b"methodSourceTextsIn:source:",
+     b"receiveByteValues",
+ ];
+ static METHODS: &[MethodSpec] = &[
+@@ -499,6 +501,30 @@ unsafe extern "C" fn initialize(
+         }
+         #[cfg(feature = "lang-seed")]
+         s.native("lang_seed", &[ns])?;
++        #[cfg(feature = "lang-seed")]
++        {
++            let q = s.scope(&[]);
++            let codegen = q.keep(s.named(b"Codegen")?);
++            for name in [b"Globals".as_slice(), b"Error", b"SourceRegistry"] {
++                if !s.named(name)?.is_null() { return Err(invalid()); }
++            }
++            let source = q.keep(s.text(include_bytes!("__INVENTORY_SOURCE__"))?);
++            let method = q.keep(s.send(codegen, b"compile:", &[source])?);
++            let block = q.keep(s.send(s.named(b"Block")?, b"fromMethod:captureOperands:", &[method])?);
++            let result = q.keep(s.send(block, b"value", &[])?);
++            if result != codegen { return Err(invalid()); }
++            for name in [b"Globals".as_slice(), b"Error", b"SourceRegistry"] {
++                if !s.named(name)?.is_null() { return Err(invalid()); }
++            }
++            let text = q.keep(s.text(b"[Reflect defineMethod: #earlyProbe on: Object as: [:self | 17]]")?);
++            let tree = q.keep(s.send(s.named(b"Lang")?, b"parse:", &[text])?);
++            let found = q.keep(s.send(codegen, b"methodSourceTextsIn:source:", &[tree, text])?);
++            let count = q.keep(s.send(found, b"size", &[])?);
++            let count = s.send(s.named(b"Integer")?, b"wordOf:", &[count])?;
++            if abi::as_size(count) != Some(1) { return Err(invalid()); }
++            eprintln!("EARLY_METHOD_SOURCE_INVENTORY_OK before Error GlobalsOwner SourceRegistry");
++        }
++
+         for (name, source) in [
+             (
+                 "error",

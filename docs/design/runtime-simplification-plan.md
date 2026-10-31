@@ -78,64 +78,38 @@ implementation choices. A small useful guard need not be removed to match a styl
 **Purpose:** demonstrate a repeatable migration that deletes production native
 work rather than adding an authored wrapper.
 
-**Candidate investigated, production migration not delivered:** the
-[2026-10-30 comparison](first-migration-comparison.md) selected method-source
-inventory as a bounded part of metadata analysis. The
-[feasibility experiment](../measurements/method-source-inventory-20261030/README.md)
-proved early installation without a new native inventory seed and matched six
-source fixtures, but found a severe performance regression in both compiled
-representations. The prototype remains measurement evidence; production callers
-and the Rust collector are unchanged. Do not resume this cutover without resolving
-the measured cost or an explicit decision accepting it.
+**Current status: prototype investigated; production migration not delivered.**
+The [candidate comparison](first-migration-comparison.md) selected method-source
+inventory as a bounded part of metadata analysis. The production Rust collector
+and its callers remain unchanged. Full metadata analysis and isolated literal
+lowering still have the larger integration costs recorded in that comparison.
 
-The [subsequent traversal diagnosis](../measurements/method-source-investigation-20261030/README.md)
-isolated a large arithmetic/control cost and removed the deferred setup object
-for an already selected synchronous entry. The measured wrapped addition drops
-from 115 allocations to 87 and improves about 4% with automatic collection enabled.
-This is not enough to qualify the inventory port. An image refusal test also fails
-unchanged on the baseline; the report keeps that validation failure explicit.
-The next focus is the authored Integer arithmetic/control sequence, rather than
-a whole-runtime rewrite. Full metadata analysis and isolated literal lowering
-still have the larger integration costs recorded in the comparison.
+The [current inventory prototype](../measurements/inventory-bulk-20261031/README.md)
+uses bulk child traversal and a Word for its private depth counter. Its initializer
+now runs before Globals exists. Selected fixtures, substitute-CST behavior,
+precise GC, actual deep chains and early seed bootstrap pass in resumable mode.
+Synchronous compilation overflows the native stack on a 1024-ancestor chain;
+its faster timings are diagnostic evidence, not a production execution choice.
+The resumable prototype still takes about 353 ms and 839 ms for dense and real-module
+fixtures, versus about 10 ms and 30 ms for complete native metadata analysis.
+The bulk-versus-indexed CST protocol distinction also remains explicit. Neither
+performance nor full production integration is qualified for cutover.
 
-A [second control simplification](../measurements/inline-control-20261030/README.md)
-stores context references in the control Method itself. Wrapped addition falls
-from 87 allocations to 50, with a further measured 7% time reduction in the normal
-collection comparison. This preserves the existing message/control interface;
-it does not make the arithmetic path fast enough or complete the migration.
+Runtime work has removed [deferred synchronous setup](../measurements/method-source-investigation-20261030/README.md),
+[separate control-context Sequences](../measurements/inline-control-20261030/README.md),
+and [redundant native argument buffers](../measurements/native-result-20261031/README.md).
+The [image admission fix](../measurements/image-admission-20261031/README.md) closes
+the previously recorded image validation failure. These are bounded improvements,
+not completion of the migration or overall simplification goal.
 
-The [native-result investigation](../measurements/native-result-20261031/README.md)
-removes redundant native argument buffers while preserving the current calling
-convention. A separate ordinary-return proposal is unapplied pending the user's
-decision about a native conversion callback's independent-root-drive refusal.
-Do not infer that decision from timing improvements or apply the saved patch
-without resolving the recorded behavior difference.
-
-The previously blocking image refusal failure is
-[fixed by checking native slot admission before storage projection](../measurements/image-admission-20261031/README.md).
-The final full image suite, focused slot/refusal/mutation checks, workspace check,
-and library unit tests pass. Earlier experiment receipts retain their original
-failure outcomes. This closes that validation gap, not the remaining performance
-or migration work.
-
-The [arithmetic cost breakdown](../measurements/arithmetic-layers-20261031/README.md)
-measures full Integer addition at about 44 microseconds and 49 managed allocations,
-against about 1 microsecond and one allocation for Word wrapping addition. The
-signed overflow helper takes about 12 microseconds; an exact Error check alone
-takes about 8.5. These different operations are not interchangeable or a promised
-speedup. They place the next investigation on repeated control construction and
-the authored operand-handling path, with full arithmetic and inventory measurements
-as acceptance evidence. The earlier 50 versus current 49 count reflects moving
-selector interning outside the probe's timer, not a new runtime change.
-
-A [bulk traversal revision](../measurements/inventory-bulk-20261031/README.md) removes
-the prototype's child-index recursion and uses a Word for its private depth counter.
-On identical current libraries it reduces dense inventory from 373 to 72 ms and
-the real-module case from 919 to 375 ms, with six fixtures matching in four runs.
-This is still much slower than complete native metadata analysis. Cold bootstrap,
-extreme-depth and substitute-CST acceptance are not qualified for this revision;
-the production collector remains unchanged. The accompanying CPU investigation
-rejected a checked-Method-data refactor after it failed to improve performance.
+Return the performance focus to [arithmetic and generated control work](../measurements/arithmetic-layers-20261031/README.md):
+full Integer addition still measures about 44 microseconds and 49 managed allocations.
+The CPU investigation rejected a checked-Method-data refactor after it failed to
+improve performance. Further inventory cutover work needs a credible performance
+path, rather than more qualification of the same slow implementation. The separate
+[ordinary-native-return proposal](../measurements/native-result-20261031/README.md)
+remains unapplied pending the user's independent-root-drive decision; measurements
+and unrelated progress do not answer that question.
 
 Choose one bounded compiler or policy operation after inspecting its callers and
 bootstrap dependencies. Source metadata analysis or a small CST lowering operation
