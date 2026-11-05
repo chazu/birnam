@@ -1,0 +1,3 @@
+let answer := [[:x | [| [x + 1]]] value: 41];
+[GC collect];
+[System println: [answer value]];

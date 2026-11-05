@@ -152,6 +152,7 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	state.reflect = send(state.object, "clone")
 	local_method(state.reflect, "methodFrom:", reflect_method_from, 1)
 	local_method(state.reflect, "methodFor:on:", reflect_method_for, 2)
+	local_method(state.reflect, "send:to:with:", reflect_send, 3)
 	local_method(state.reflect, "defineMethod:on:as:", reflect_define, 3)
 	install(birnam_method_behavior(), "valueOn:with:", method_value_on, 2)
 

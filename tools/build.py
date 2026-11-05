@@ -66,7 +66,7 @@ def test() -> None:
     cflags, ldflags = build()
     common = ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
               "-O2", "-g", "-Iinclude", *cflags, "-dynamiclib", "-undefined", "dynamic_lookup"]
-    for name in ("contract", "handover", "after_handover", "no_entry", "fail_init", "seed_contract", "peg_contract", "lang_guard", "lang_contract"):
+    for name in ("contract", "handover", "after_handover", "no_entry", "fail_init", "seed_contract", "peg_contract", "lang_guard", "lang_contract", "compiler_guard", "compiler_probe", "compiler_contract", "compiler_checked"):
         run(*common, f"tests/{name}.c", *ldflags, "-o", f"build/{name}.dylib")
     run(*common, "examples/native/hello.c", *ldflags, "-o", "build/hello.dylib")
     run("build/siphon", "--version")
@@ -94,6 +94,7 @@ def test() -> None:
     run("python3", "tests/lang_grammar_test.py")
     run("python3", "tests/seed_test.py", "--authored")
     run("python3", "tests/lang_test.py")
+    run("python3", "tests/compiler_test.py")
 
 
 def main() -> None:

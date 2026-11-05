@@ -1,0 +1,75 @@
+// Authored reference IR. Neither its variants nor evaluation are native tags.
+[[|
+let ir := [Namespace new];
+let literal := [Namespace new]; let name := [Namespace new];
+let declaration := [Namespace new]; let send := [Namespace new];
+let block := [Namespace new]; let vector := [Namespace new]; let sequence := [Namespace new];
+[Reflect defineMethod: #literal:bytes: on: ir as: [:self :factory :bytes |
+  let node := [literal clone]; [node at: #factory put: factory]; [node at: #bytes put: bytes]; node]];
+[Reflect defineMethod: #name: on: ir as: [:self :symbol |
+  let node := [name clone]; [node at: #name put: symbol]; node]];
+[Reflect defineMethod: #declaration:expression: on: ir as: [:self :symbol :expression |
+  let node := [declaration clone]; [node at: #name put: symbol]; [node at: #expression put: expression]; node]];
+[Reflect defineMethod: #send:selector:arguments: on: ir as: [:self :receiver :selector :arguments |
+  let node := [send clone]; [node at: #receiver put: receiver]; [node at: #selector put: selector];
+  [node at: #arguments put: arguments]; node]];
+[Reflect defineMethod: #block:body: on: ir as: [:self :parameters :body |
+  let node := [block clone]; [node at: #parameters put: parameters]; [node at: #body put: body]; node]];
+[Reflect defineMethod: #vector: on: ir as: [:self :elements |
+  let node := [vector clone]; [node at: #elements put: elements]; node]];
+[Reflect defineMethod: #sequence:source: on: ir as: [:self :forms :source |
+  let node := [sequence clone]; [node at: #forms put: forms]; [node at: #source put: source]; node]];
+
+[Reflect defineMethod: #evalIn: on: literal as: [:self :env |
+  [[self at: #factory] fromBytes: [self at: #bytes]]]];
+[Reflect defineMethod: #evalIn: on: name as: [:self :env | [env lookup: [self at: #name]]]];
+[Reflect defineMethod: #evalIn: on: declaration as: [:self :env |
+  let value := [[self at: #expression] evalIn: env];
+  let result := [env define: [self at: #name] as: value];
+  [[result isError] ifTrue: [| result] ifFalse: [| nil]]]];
+// Evaluation of operands retains Errors as values and never short-circuits.
+[Reflect defineMethod: #values:in: on: ir as: [:self :nodes :env |
+  let index := [Cell with: 0]; let values := [Cell with: #[]];
+  [[| [[index value] < [nodes size]]] whileTrue: [|
+    let value := [[nodes at: [index value]] evalIn: env];
+    [values value: [[values value] append: value]];
+    [index value: [[index value] + 1]]]];
+  [values value]]];
+[Reflect defineMethod: #evalIn: on: send as: [:self :env |
+  let receiver := [[self at: #receiver] evalIn: env];
+  let arguments := [ir values: [self at: #arguments] in: env];
+  [Reflect send: [self at: #selector] to: receiver with: arguments]]];
+[Reflect defineMethod: #evalIn: on: block as: [:self :env |
+  [Block code: [self at: #body] environment: env parameters: [self at: #parameters]]]];
+[Reflect defineMethod: #evalIn: on: vector as: [:self :env |
+  [Vector fromElements: [ir values: [self at: #elements] in: env]]]];
+[Reflect defineMethod: #source on: sequence as: [:self | [self at: #source]]];
+[Reflect defineMethod: #evalIn: on: sequence as: [:self :env |
+  let forms := [self at: #forms]; let index := [Cell with: 0];
+  let result := [Cell with: nil]; let running := [Cell with: true];
+  [[| [[[index value] < [forms size]] and: [| [running value]]]] whileTrue: [|
+    [result value: [[forms at: [index value]] evalIn: env]];
+    [index value: [[index value] + 1]];
+    [[[[index value] < [forms size]] and: [| [[result value] isError]]] ifTrue: [| [running value: false]]]
+  ]];
+  [result value]]];
+let nodes := [Namespace new];
+[nodes at: #Literal put: literal]; [nodes at: #Name put: name];
+[nodes at: #Declaration put: declaration]; [nodes at: #Send put: send];
+[nodes at: #Block put: block]; [nodes at: #Vector put: vector]; [nodes at: #Sequence put: sequence];
+[Reflect defineMethod: #nodes on: ir as: [:self | nodes]];
+
+let compiler := [Namespace new];
+let frontend := [Lang clone];
+let visitor := [[Lang translator] clone];
+[Reflect defineMethod: #syntax on: visitor as: [:self | ir]];
+[Reflect defineMethod: #translator on: frontend as: [:self | visitor]];
+[Reflect defineMethod: #frontend on: compiler as: [:self | frontend]];
+[Reflect defineMethod: #ir on: compiler as: [:self | ir]];
+[Reflect defineMethod: #lower: on: compiler as: [:self :source | [[self frontend] code: source]]];
+[Reflect defineMethod: #evaluate:in: on: compiler as: [:self :source :namespace |
+  let code := [self lower: source];
+  [[code isError] ifTrue: [| code] ifFalse: [| [code evalIn: [Environment forNamespace: namespace]]]]]];
+[Namespace at: #Compiler put: compiler];
+compiler
+] value]

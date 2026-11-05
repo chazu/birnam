@@ -3,6 +3,7 @@
 let lang := Lang;
 let visitor := [Namespace new];
 let syntax := [Seed syntax];
+[Reflect defineMethod: #syntax on: visitor as: [:self | syntax]];
 [Reflect defineMethod: #lower: on: visitor as: [:self :node |
   let selected := [Reflect methodFor: [node rule] on: self];
   [selected valueOn: self with: #[node]]]];
@@ -24,12 +25,12 @@ let syntax := [Seed syntax];
 [Reflect defineMethod: #expression on: visitor as: [:self :node | [self lower: [node childAt: 0]]]];
 [Reflect defineMethod: #sequence on: visitor as: [:self :node |
   let forms := [self childrenOf: node];
-  [[forms isError] ifTrue: [| forms] ifFalse: [| [syntax sequence: forms source: [self at: #source]]]]]];
-[Reflect defineMethod: #identifier on: visitor as: [:self :node | [syntax name: [self nameOf: node]]]];
+  [[forms isError] ifTrue: [| forms] ifFalse: [| [[self syntax] sequence: forms source: [self at: #source]]]]]];
+[Reflect defineMethod: #identifier on: visitor as: [:self :node | [[self syntax] name: [self nameOf: node]]]];
 [Reflect defineMethod: #declaration on: visitor as: [:self :node |
   let value := [self lower: [node childAt: 1]];
   [[value isError] ifTrue: [| value] ifFalse: [|
-    [syntax declaration: [self nameOf: [node childAt: 0]] expression: value]]]]];
+    [[self syntax] declaration: [self nameOf: [node childAt: 0]] expression: value]]]]];
 
 // Check decimal range without invoking Integer's replaceable literal factory.
 [Reflect defineMethod: #integer on: visitor as: [:self :node |
@@ -51,10 +52,10 @@ let syntax := [Seed syntax];
       [cursor value: [[cursor value] + 1]]]]
   ]];
   [[tooLarge value] ifTrue: [| [self error: #integerRange message: "Integer literal exceeds signed 64-bit range" node: node]]
-    ifFalse: [| [syntax literal: Integer bytes: bytes]]]]];
+    ifFalse: [| [[self syntax] literal: Integer bytes: bytes]]]]];
 [Reflect defineMethod: #symbol on: visitor as: [:self :node |
   let bytes := [self bytes: node];
-  [syntax literal: Symbol bytes: [bytes bytesFrom: 1 to: [bytes byteSize]]]]];
+  [[self syntax] literal: Symbol bytes: [bytes bytesFrom: 1 to: [bytes byteSize]]]]];
 [Reflect defineMethod: #string on: visitor as: [:self :node |
   let bytes := [self bytes: node]; let end := [[bytes byteSize] - 1];
   let index := [Cell with: 1]; let start := [Cell with: 1]; let result := [Cell with: ""];
@@ -75,10 +76,10 @@ let syntax := [Seed syntax];
     ]];
     [index value: [[index value] + 1]]]];
   [result value: [[result value] , [[bytes bytesFrom: [start value] to: end] asString]]];
-  [syntax literal: String bytes: [[result value] asBytes]]]];
+  [[self syntax] literal: String bytes: [[result value] asBytes]]]];
 [Reflect defineMethod: #vector on: visitor as: [:self :node |
   let elements := [self childrenOf: node];
-  [[elements isError] ifTrue: [| elements] ifFalse: [| [syntax vector: elements]]]]];
+  [[elements isError] ifTrue: [| elements] ifFalse: [| [[self syntax] vector: elements]]]]];
 [Reflect defineMethod: #block on: visitor as: [:self :node |
   let parameters := [Cell with: #[]]; let names := [Namespace new];
   let index := [Cell with: 0]; let failure := [Cell with: nil];
@@ -94,7 +95,7 @@ let syntax := [Seed syntax];
     [index value: [[index value] + 1]]]];
   [[[failure value] isNil] ifTrue: [|
     let body := [self lower: [node childAt: last]];
-    [[body isError] ifTrue: [| body] ifFalse: [| [syntax block: [parameters value] body: body]]]
+    [[body isError] ifTrue: [| body] ifFalse: [| [[self syntax] block: [parameters value] body: body]]]
   ] ifFalse: [| [failure value]]]]];
 
 // A message clause lowers to #[selector argumentSyntaxVector].
@@ -118,7 +119,7 @@ let syntax := [Seed syntax];
   [[receiver isError] ifTrue: [| receiver] ifFalse: [|
     let message := [self lower: [node childAt: 1]];
     [[message isError] ifTrue: [| message] ifFalse: [|
-      [syntax send: receiver selector: [message at: 0] arguments: [message at: 1]]]]
+      [[self syntax] send: receiver selector: [message at: 0] arguments: [message at: 1]]]]
   ]]]];
 
 [Reflect defineMethod: #translator on: lang as: [:self | visitor]];

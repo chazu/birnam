@@ -1,0 +1,3 @@
+// Probe is supplied by the C witness and has effectful receiver-aware lookup.
+[Probe probe];
+[Probe probe];

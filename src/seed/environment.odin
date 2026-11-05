@@ -98,3 +98,11 @@ reflect_define :: proc "c" (m, r, a: Oop) -> Oop {
 }
 reflect_method_for :: proc "c" (m, r, a: Oop) -> Oop { return birnam_bind(arg(a, 1), arg(a, 0)) }
 method_value_on :: proc "c" (m, r, a: Oop) -> Oop { return birnam_enter(r, arg(a, 0), arg(a, 1)) }
+
+// Dynamic source-level send for authored evaluators: all operands have already
+// been evaluated. Selection and entry use Id directly, with no Method invocation
+// message inserted between them.
+reflect_send :: proc "c" (m, r, a: Oop) -> Oop {
+	if !valid_vector(arg(a, 2)) { return fail("typeMismatch", "send arguments must be a Vector") }
+	return birnam_send(arg(a, 1), arg(a, 0), arg(a, 2))
+}

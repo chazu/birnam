@@ -10,7 +10,7 @@ CST labels include `program`, `sequence`, `declaration`, `expression`, `identifi
 
 The grammar corpus exercises accepted/rejected forms, byte spans, and complete parsing of PEG's and Lang's own source. `tests/lang_grammar_test.py` runs these through the real host from an unrelated working directory. It is part of `make verify`. This interpreter workload is substantial: parsing both modules took about 29 seconds in the initial local run. That is an implementation observation, not a benchmark or performance qualification; PEG has no memoization and copies persistent collections.
 
-The CST-to-executable-syntax and explicit parser takeover layer is described below. Full language compatibility, compilation, images, and fibers remain later work.
+The CST-to-executable-syntax and explicit parser takeover layer is described below. The first [authored C compiler](compiler.md) now consumes this front end. Full language compatibility, self-hosting, images, and fibers remain later work.
 
 ## Executable syntax and takeover
 
@@ -30,7 +30,7 @@ This prints `42`. The takeover file sends `[Lang installOn: Seed]`. Later `Seed 
 
 The visitor selects an ordinary Method using the CST's rule Symbol and enters it with the CST node. A fresh shallow clone holds the source for each translation; nested sequences retain that original source. Methods handle the individual syntax families, flatten expression wrappers, combine keyword selector pieces, decode String escapes, check signed-64-bit Integer bounds, and reject duplicate Block parameters. All syntax construction goes through the existing representation owner's messages. The visitor never interprets native payloads or calls the bootstrap parser.
 
-The syntax namespace returned by `Seed syntax` now provides:
+The visitor obtains its syntax owner through its replaceable `syntax` message; the compiler supplies a separate authored IR owner through that protocol. The default syntax namespace returned by `Seed syntax` provides:
 
 | Message | Result |
 |---|---|
