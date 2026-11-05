@@ -27,6 +27,7 @@ def run_source(source, expected=None, kind=None):
 def main():
     run_source((ROOT / "examples/seed/answer.birnam").read_text(), "42\n")
     run_source((ROOT / "tests/seed/semantics.birnam").read_text(), "PASS seed source semantics\n")
+    run_source((ROOT / "tests/seed/collections.birnam").read_text(), "PASS general collection and control helpers\n")
     cases = [
         ("[x]", "syntaxError"), ("[[1 + 2]]", "syntaxError"),
         ("let := 3", "syntaxError"), ("[1 + 2", "syntaxError"),

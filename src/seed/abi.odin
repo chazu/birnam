@@ -83,8 +83,8 @@ vector :: proc "contextless" (list: List) -> Oop {
 
 Symbol_Cache :: struct { name: Oop, value: Oop, next: ^Symbol_Cache }
 State :: struct {
-	world, seed, error, nil_value, yes, no, object, integer, text, block, reflect, system, symbol_factory, vector_factory: Oop,
-	integer_vt, text_vt, block_vt, environment_vt, interpreted_method_vt: Oop,
+	world, seed, error, nil_value, yes, no, object, integer, text, block, reflect, system, symbol_factory, vector_factory, cell: Oop,
+	integer_vt, text_vt, block_vt, environment_vt, interpreted_method_vt, cell_vt: Oop,
 	literal_vt, name_vt, let_vt, send_vt, block_expr_vt, vector_expr_vt, sequence_vt: Oop,
 	environment_factory, syntax: Oop,
 	symbols: ^Symbol_Cache,

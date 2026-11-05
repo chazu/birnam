@@ -47,6 +47,7 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	state.block_vt = new_behavior()
 	state.environment_vt = new_behavior()
 	state.interpreted_method_vt = send(birnam_method_behavior(), "delegated")
+	state.cell_vt = new_behavior()
 	state.literal_vt = new_behavior()
 	state.name_vt = new_behavior()
 	state.let_vt = new_behavior()
@@ -109,6 +110,7 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 		install(behavior, "byteSize", text_byte_size, 0)
 		install(behavior, "byteAt:", text_byte_at, 1)
 		install(behavior, "bytesFrom:to:", text_slice, 2)
+		install(behavior, "commonPrefixLengthWith:at:", text_prefix_length, 2)
 	}
 	install(birnam_bytes_behavior(), "asString", bytes_string, 0)
 	install(birnam_bytes_behavior(), "printString", bytes_string, 0)
@@ -120,6 +122,13 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	install(birnam_vector_behavior(), "size", vector_size, 0)
 	install(birnam_vector_behavior(), "at:", vector_at, 1)
 	install(birnam_vector_behavior(), "at:put:", vector_put, 2)
+	install(birnam_vector_behavior(), "append:", vector_append, 1)
+	install(birnam_vector_behavior(), "concat:", vector_concat, 1)
+	state.cell = allocate(state.cell_vt, size_of(Oop))
+	(cast(^Oop)state.cell)^ = state.nil_value
+	install(state.cell_vt, "with:", cell_with, 1)
+	install(state.cell_vt, "value", cell_value, 0)
+	install(state.cell_vt, "value:", cell_set, 1)
 
 	state.block = allocate(state.block_vt, size_of(Function))
 	empty_body := allocate(state.sequence_vt, size_of(Sequence))
@@ -135,6 +144,7 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	install(state.block_vt, "code", block_code, 0)
 	install(state.block_vt, "parameters", block_parameters, 0)
 	install(state.block_vt, "environment", block_environment, 0)
+	install(state.block_vt, "whileTrue:", block_while_true, 1)
 	install(state.interpreted_method_vt, "code", block_code, 0)
 	install(state.interpreted_method_vt, "parameters", block_parameters, 0)
 	install(state.interpreted_method_vt, "environment", block_environment, 0)
@@ -158,6 +168,8 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 		local_method(value, "ifTrue:", if_true, 1)
 		local_method(value, "ifFalse:", if_false, 1)
 		local_method(value, "not", bool_not, 0)
+		local_method(value, "and:", bool_and, 1)
+		local_method(value, "or:", bool_or, 1)
 		local_method(value, "printString", bool_print, 0)
 	}
 	error_vt := send(state.error, "behavior")
@@ -187,5 +199,6 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	publish("Environment", state.environment_factory)
 	publish("Reflect", state.reflect)
 	publish("System", state.system)
+	publish("Cell", state.cell)
 	return state.seed
 }

@@ -73,17 +73,20 @@ The parser currently limits nested source expressions to 512 and reports `source
 | Environment | `forNamespace:`, `lookup:`, `define:as:`, `namespace`, `parent`, `names` |
 | Reflect | `methodFrom:`, `methodFor:on:`, `defineMethod:on:as:` |
 | Method | Explicit `valueOn:with:` for an already-selected Method; interpreted Methods additionally expose `code`, `environment`, and `parameters` through their own behavior |
-| Block | `value` through four keyword arguments, `valueWithArguments:`, `code`, `environment`, `parameters`, and the construction message |
+| Block | `value` through four keyword arguments, `valueWithArguments:`, `whileTrue:`, `code`, `environment`, `parameters`, and the construction message |
 | Integer | `fromBytes:`, `asInteger`, checked `+ - * / %`, `= < > <= >=`, `printString` |
-| String | `fromBytes:`, `asBytes`, `intern`, `printString`, concatenation `,`, equality `=`, and byte operations |
+| String | `fromBytes:`, `asBytes`, `intern`, `printString`, concatenation `,`, equality `=`, and byte operations including `commonPrefixLengthWith:at:` |
 | Bytes | `asString`, `printString`, and byte operations, in addition to native interning/loading support |
-| Vector | `fromElements:`, `size`, `at:`, persistent `at:put:` |
-| Boolean objects | `ifTrue:ifFalse:`, `ifTrue:`, `ifFalse:`, `not`, `printString` |
+| Vector | `fromElements:`, `size`, `at:`, persistent `at:put:`, `append:`, `concat:` |
+| Cell | `with:`, `value`, `value:`; shallow cloning keeps independent own storage |
+| Boolean objects | `ifTrue:ifFalse:`, `ifTrue:`, `ifFalse:`, `and:`, `or:`, `not`, `printString` |
 | Error | Explicit `ifError:`, `ifNotError:`, and `printString` in addition to the native Error protocol |
 | Object | Default conversion failures, `printString`, `isNil`, and success-side recovery/composition messages |
 | System | `print:`, `println:` |
 
-The core adds `Error kind:message:`, `Bytes asBytes`, and empty `Namespace new` for use by loaded modules. These do not introduce interpreter-specific structures into generic dispatch. The existing collector remains available as `GC collect`.
+The core adds `Error kind:message:`, `Bytes asBytes`, empty `Namespace new`, and `at:ifAbsent:` for use by loaded modules. These do not introduce interpreter-specific structures into generic dispatch. The existing collector remains available as `GC collect`.
+
+General collection/control support for authored parsing includes Cells, persistent Vector extension, short-circuit Boolean messages, and `Block whileTrue:`. The loop sends current `value` messages to its predicate and body, propagates Errors, and rejects non-Boolean conditions. `commonPrefixLengthWith:at:` compares a byte buffer with another buffer from a supplied offset and returns the matching byte count; it has no grammar, backtracking, or CST behavior. Their separate source acceptance is `tests/seed/collections.birnam`.
 
 Defining a Method from a Block obtains the Block's code, parameters, and environment through messages. The resulting Method retains those references and binds its first parameter to the application receiver. Its native entry evaluates that captured code directly; it does not send an implicit `value`, `apply`, or `invoke` to the selected Method. Subsequent dictionary replacement changes later sends while captured Methods retain their selected implementation.
 

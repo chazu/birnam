@@ -191,6 +191,11 @@ namespace_put_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	binding_put(&(cast(^Namespace)r).bindings, arg(a, 0), arg(a, 1))
 	return r
 }
+namespace_at_if_absent_entry :: proc "c" (m, r, a: Oop) -> Oop {
+	found := binding_at((cast(^Namespace)r).bindings, arg(a, 0))
+	if found != nil { return found }
+	return birnam_send(arg(a, 1), symbol("value"), arguments())
+}
 
 namespace_clone_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	result := allocate(header(r).behavior, size_of(Namespace))
@@ -283,6 +288,7 @@ birnam_bootstrap :: proc "c" () -> Oop {
 	install(roots.object_vt, "==", same_entry, 1)
 	install(roots.namespace_vt, "at:", namespace_at_entry, 1)
 	install(roots.namespace_vt, "at:put:", namespace_put_entry, 2)
+	install(roots.namespace_vt, "at:ifAbsent:", namespace_at_if_absent_entry, 2)
 	install(roots.namespace_vt, "clone", namespace_clone_entry, 0)
 	install(roots.namespace_vt, "new", namespace_new_entry, 0)
 	install(roots.symbols_vt, "intern:", intern_entry, 1)
