@@ -121,6 +121,9 @@ string_from_bytes :: proc "c" (m, r, a: Oop) -> Oop {
 	return new_string(text)
 }
 string_bytes :: proc "c" (m, r, a: Oop) -> Oop { return new_bytes(native_text(r)) }
+text_utf8_error_offset :: proc "c" (m, r, a: Oop) -> Oop {
+	return new_integer(i64(utf8_error_offset(native_text(r))))
+}
 text_byte_size :: proc "c" (m, r, a: Oop) -> Oop { return new_integer(i64(header(r).payload_bytes)) }
 text_byte_at :: proc "c" (m, r, a: Oop) -> Oop {
 	index, error := integer_operand(arg(a, 0))

@@ -70,14 +70,18 @@ let form := [choice value: #[[ref value: #declaration] [seq value: #[[letToken n
 [Reflect defineMethod: #furthestFail on: lang as: [:self | [grammar furthestFail]]];
 [Reflect defineMethod: #parse: on: lang as: [:self :input |
   let bytes := [input asBytes];
-  let text := [String fromBytes: bytes];
-  [[text isError] ifTrue: [| text] ifFalse: [|
-    let parsed := [grammar parse: bytes from: #program];
-    [[parsed isError] ifTrue: [|
-      [[[parsed kind] == #syntaxError] ifTrue: [|
-        [self error: #syntaxError message: "invalid Birnam source" at: [grammar furthestFail] source: bytes]
+  let invalid := [bytes utf8ErrorOffset];
+  [[invalid isError] ifTrue: [| invalid] ifFalse: [|
+    [[invalid >= 0] ifTrue: [|
+      [self error: #invalidUtf8 message: "source is not valid UTF-8" at: invalid source: bytes]
+    ] ifFalse: [|
+      let parsed := [grammar parse: bytes from: #program];
+      [[parsed isError] ifTrue: [|
+        [[[parsed kind] == #syntaxError] ifTrue: [|
+          [self error: #syntaxError message: "invalid Birnam source" at: [grammar furthestFail] source: bytes]
+        ] ifFalse: [| parsed]]
       ] ifFalse: [| parsed]]
-    ] ifFalse: [| parsed]]
+    ]]
   ]]]];
 [Namespace at: #Lang put: lang];
 lang

@@ -1,0 +1,135 @@
+// Translate Lang CSTs through an ordinary visitor and syntax-owner messages.
+[[|
+let lang := Lang;
+let visitor := [Namespace new];
+let syntax := [Seed syntax];
+[Reflect defineMethod: #lower: on: visitor as: [:self :node |
+  let selected := [Reflect methodFor: [node rule] on: self];
+  [selected valueOn: self with: #[node]]]];
+[Reflect defineMethod: #bytes: on: visitor as: [:self :node |
+  [[self at: #source] bytesFrom: [node start] to: [node end]]]];
+[Reflect defineMethod: #nameOf: on: visitor as: [:self :node | [[self bytes: node] intern]]];
+[Reflect defineMethod: #error:message:node: on: visitor as: [:self :kind :message :node |
+  [lang error: kind message: message at: [node start] source: [self at: #source]]]];
+[Reflect defineMethod: #childrenOf: on: visitor as: [:self :node |
+  let result := [Cell with: #[]]; let index := [Cell with: 0];
+  let failure := [Cell with: nil];
+  [[| [[[index value] < [node childCount]] and: [| [[failure value] isNil]]]] whileTrue: [|
+    let child := [self lower: [node childAt: [index value]]];
+    [[child isError] ifTrue: [| [failure value: child]] ifFalse: [|
+      [result value: [[result value] append: child]]]];
+    [index value: [[index value] + 1]]]];
+  [[[failure value] isNil] ifTrue: [| [result value]] ifFalse: [| [failure value]]]]];
+[Reflect defineMethod: #program on: visitor as: [:self :node | [self lower: [node childAt: 0]]]];
+[Reflect defineMethod: #expression on: visitor as: [:self :node | [self lower: [node childAt: 0]]]];
+[Reflect defineMethod: #sequence on: visitor as: [:self :node |
+  let forms := [self childrenOf: node];
+  [[forms isError] ifTrue: [| forms] ifFalse: [| [syntax sequence: forms source: [self at: #source]]]]]];
+[Reflect defineMethod: #identifier on: visitor as: [:self :node | [syntax name: [self nameOf: node]]]];
+[Reflect defineMethod: #declaration on: visitor as: [:self :node |
+  let value := [self lower: [node childAt: 1]];
+  [[value isError] ifTrue: [| value] ifFalse: [|
+    [syntax declaration: [self nameOf: [node childAt: 0]] expression: value]]]]];
+
+// Check decimal range without invoking Integer's replaceable literal factory.
+[Reflect defineMethod: #integer on: visitor as: [:self :node |
+  let bytes := [self bytes: node]; let length := [bytes byteSize];
+  let negative := [[bytes byteAt: 0] = 45];
+  let index := [Cell with: [negative ifTrue: [| 1] ifFalse: [| 0]]];
+  [[| [[[index value] < length] and: [| [[bytes byteAt: [index value]] = 48]]]] whileTrue: [|
+    [index value: [[index value] + 1]]]];
+  let digits := [length - [index value]];
+  let limit := [negative ifTrue: [| "9223372036854775808"] ifFalse: [| "9223372036854775807"]];
+  let tooLarge := [Cell with: [digits > 19]];
+  [[digits = 19] ifTrue: [|
+    let cursor := [Cell with: 0]; let equal := [Cell with: true];
+    [[| [[[cursor value] < 19] and: [| [equal value]]]] whileTrue: [|
+      let left := [bytes byteAt: [[index value] + [cursor value]]];
+      let right := [limit byteAt: [cursor value]];
+      [tooLarge value: [left > right]];
+      [equal value: [left = right]];
+      [cursor value: [[cursor value] + 1]]]]
+  ]];
+  [[tooLarge value] ifTrue: [| [self error: #integerRange message: "Integer literal exceeds signed 64-bit range" node: node]]
+    ifFalse: [| [syntax literal: Integer bytes: bytes]]]]];
+[Reflect defineMethod: #symbol on: visitor as: [:self :node |
+  let bytes := [self bytes: node];
+  [syntax literal: Symbol bytes: [bytes bytesFrom: 1 to: [bytes byteSize]]]]];
+[Reflect defineMethod: #string on: visitor as: [:self :node |
+  let bytes := [self bytes: node]; let end := [[bytes byteSize] - 1];
+  let index := [Cell with: 1]; let start := [Cell with: 1]; let result := [Cell with: ""];
+  [[| [[index value] < end]] whileTrue: [|
+    [[[bytes byteAt: [index value]] = 92] ifTrue: [|
+      [result value: [[result value] , [[bytes bytesFrom: [start value] to: [index value]] asString]]];
+      [index value: [[index value] + 1]];
+      let escaped := [bytes byteAt: [index value]];
+      let replacement := [[escaped = 110] ifTrue: [| "\n"] ifFalse: [|
+        [[escaped = 114] ifTrue: [| "\r"] ifFalse: [|
+          [[escaped = 116] ifTrue: [| "\t"] ifFalse: [|
+            [[bytes bytesFrom: [index value] to: [[index value] + 1]] asString]
+          ]]
+        ]]
+      ]];
+      [result value: [[result value] , replacement]];
+      [start value: [[index value] + 1]]
+    ]];
+    [index value: [[index value] + 1]]]];
+  [result value: [[result value] , [[bytes bytesFrom: [start value] to: end] asString]]];
+  [syntax literal: String bytes: [[result value] asBytes]]]];
+[Reflect defineMethod: #vector on: visitor as: [:self :node |
+  let elements := [self childrenOf: node];
+  [[elements isError] ifTrue: [| elements] ifFalse: [| [syntax vector: elements]]]]];
+[Reflect defineMethod: #block on: visitor as: [:self :node |
+  let parameters := [Cell with: #[]]; let names := [Namespace new];
+  let index := [Cell with: 0]; let failure := [Cell with: nil];
+  let last := [[node childCount] - 1];
+  [[| [[[index value] < last] and: [| [[failure value] isNil]]]] whileTrue: [|
+    let parameter := [[node childAt: [index value]] childAt: 0];
+    let name := [self nameOf: parameter];
+    [[names at: name ifAbsent: [| false]] ifTrue: [|
+      [failure value: [self error: #duplicateBinding message: "duplicate Block parameter" node: parameter]]
+    ] ifFalse: [|
+      [names at: name put: true]; [parameters value: [[parameters value] append: name]]
+    ]];
+    [index value: [[index value] + 1]]]];
+  [[[failure value] isNil] ifTrue: [|
+    let body := [self lower: [node childAt: last]];
+    [[body isError] ifTrue: [| body] ifFalse: [| [syntax block: [parameters value] body: body]]]
+  ] ifFalse: [| [failure value]]]]];
+
+// A message clause lowers to #[selector argumentSyntaxVector].
+[Reflect defineMethod: #unary on: visitor as: [:self :node | #[[self nameOf: [node childAt: 0]] #[]]]];
+[Reflect defineMethod: #binary on: visitor as: [:self :node |
+  let argument := [self lower: [node childAt: 1]];
+  [[argument isError] ifTrue: [| argument] ifFalse: [| #[[self nameOf: [node childAt: 0]] #[argument]]]]]];
+[Reflect defineMethod: #keywords on: visitor as: [:self :node |
+  let selector := [Cell with: ""]; let arguments := [Cell with: #[]];
+  let index := [Cell with: 0]; let failure := [Cell with: nil];
+  [[| [[[index value] < [node childCount]] and: [| [[failure value] isNil]]]] whileTrue: [|
+    [selector value: [[selector value] , [[self bytes: [node childAt: [index value]]] asString]]];
+    let argument := [self lower: [node childAt: [[index value] + 1]]];
+    [[argument isError] ifTrue: [| [failure value: argument]] ifFalse: [|
+      [arguments value: [[arguments value] append: argument]]]];
+    [index value: [[index value] + 2]]]];
+  [[[failure value] isNil] ifTrue: [| #[[[selector value] intern] [arguments value]]]
+    ifFalse: [| [failure value]]]]];
+[Reflect defineMethod: #send on: visitor as: [:self :node |
+  let receiver := [self lower: [node childAt: 0]];
+  [[receiver isError] ifTrue: [| receiver] ifFalse: [|
+    let message := [self lower: [node childAt: 1]];
+    [[message isError] ifTrue: [| message] ifFalse: [|
+      [syntax send: receiver selector: [message at: 0] arguments: [message at: 1]]]]
+  ]]]];
+
+[Reflect defineMethod: #translator on: lang as: [:self | visitor]];
+[Reflect defineMethod: #lower:source: on: lang as: [:self :tree :source |
+  let run := [[self translator] clone];
+  [run at: #source put: [source asBytes]];
+  [run lower: tree]]];
+[Reflect defineMethod: #code: on: lang as: [:self :source |
+  let tree := [self parse: source];
+  [[tree isError] ifTrue: [| tree] ifFalse: [| [self lower: tree source: source]]]]];
+[Reflect defineMethod: #installOn: on: lang as: [:self :seed |
+  [Reflect defineMethod: #parse: on: seed as: [:receiver :source | [self code: source]]]; seed]];
+lang
+] value]

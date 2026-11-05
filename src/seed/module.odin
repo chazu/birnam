@@ -108,6 +108,7 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	text_behaviors := [2]Oop{state.text_vt, birnam_bytes_behavior()}
 	for behavior in text_behaviors {
 		install(behavior, "byteSize", text_byte_size, 0)
+		install(behavior, "utf8ErrorOffset", text_utf8_error_offset, 0)
 		install(behavior, "byteAt:", text_byte_at, 1)
 		install(behavior, "bytesFrom:to:", text_slice, 2)
 		install(behavior, "commonPrefixLengthWith:at:", text_prefix_length, 2)
@@ -186,6 +187,13 @@ birnam_module_init_v1 :: proc "c" (method, world, args: Oop) -> Oop {
 	local_method(state.seed, "evalFile:", seed_eval_file, 1)
 	local_method(state.seed, "syntax", seed_syntax, 0)
 	state.syntax = send(world, "new")
+	local_method(state.syntax, "literal:bytes:", syntax_literal, 2)
+	local_method(state.syntax, "name:", syntax_name, 1)
+	local_method(state.syntax, "declaration:expression:", syntax_declaration, 2)
+	local_method(state.syntax, "send:selector:arguments:", syntax_send, 3)
+	local_method(state.syntax, "block:body:", syntax_block, 2)
+	local_method(state.syntax, "vector:", syntax_vector, 1)
+	local_method(state.syntax, "sequence:source:", syntax_sequence, 2)
 	syntax_exports := [7]struct { name: string, behavior: Oop }{
 		{"Literal", state.literal_vt}, {"Name", state.name_vt}, {"Declaration", state.let_vt},
 		{"Send", state.send_vt}, {"Block", state.block_expr_vt}, {"Vector", state.vector_expr_vt}, {"Sequence", state.sequence_vt},

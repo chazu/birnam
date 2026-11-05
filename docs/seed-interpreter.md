@@ -33,6 +33,7 @@ The build uses the existing pinned Mac/Odin/Clang/Boehm configuration. `make bui
 | [parser.odin](../src/seed/parser.odin) | Small bootstrap lexer/parser, UTF-8/source diagnostics, and construction of syntax objects. Token enums exist only in this parser. |
 | [syntax.odin](../src/seed/syntax.odin) | Separate ordinary behaviors for literals, names, declarations, sends, Blocks, Vector expressions, and sequences; each implements `evalIn:`. |
 | [environment.odin](../src/seed/environment.odin) | Lexical environments, Block captures/calls, receiver-first interpreted Methods, and reflection operations. |
+| [collections.odin](../src/seed/collections.odin) | General Cell, loop/control, Vector, and byte-prefix operations used by authored modules. |
 | [values.odin](../src/seed/values.odin) | Native Integer, String, byte/Vector operations, Boolean control, Error recovery, and printing Methods. |
 
 The module links against the C ABI exported by the host, not against a second Id runtime. Its native entries have the same Method/receiver/argument-Vector Oop signature as the C fixtures. Odin context is established inside native entry code where Odin library routines need it.
@@ -43,7 +44,7 @@ The parser produces an object graph with distinct vtables for each syntax family
 
 `Seed eval:in:` sends `parse:` to the current Seed receiver, creates a lexical environment, then sends `evalIn:` to the returned syntax object. Replacing `Seed parse:` therefore changes evaluation. Replacing a syntax family's `evalIn:` also changes later evaluation; both paths have acceptance witnesses.
 
-Syntax fields are inspectable through owner-provided methods. `Seed syntax` answers a namespace of syntax vtables. A sequence exposes `forms` and `source`; a send exposes `receiver`, `selector`, and `arguments`; a literal exposes `factory` and `textBytes`; Block syntax exposes `parameters` and `body`. Other node fields have corresponding getters. Sequences retain the original source Bytes, shared by nested bodies. Detailed runtime source spans and a debugger are not yet supplied.
+Syntax fields are inspectable through owner-provided methods. `Seed syntax` answers a namespace of syntax vtables. A sequence exposes `forms` and `source`; a send exposes `receiver`, `selector`, and `arguments`; a literal exposes `factory` and `textBytes`; Block syntax exposes `parameters` and `body`. Other node fields have corresponding getters. Sequences retain the original source Bytes, shared by nested bodies. The namespace also exposes owner-provided construction messages for authored CST translation; see [Lang](lang.md). Detailed runtime source spans and a debugger are not yet supplied.
 
 Literal evaluation uses current `fromBytes:` behavior on the retained Integer/String/Symbol factory objects. Block construction uses current `code:environment:parameters:` behavior; Vector literal construction uses current `fromElements:` behavior. Native transport vectors and parser scratch objects are separate construction machinery. Arithmetic, Boolean branches, and Block `value` operations are ordinary sends, and tests replace those Methods to rule out evaluator shortcuts.
 
@@ -63,7 +64,7 @@ Integers are boxed signed 64-bit payloads. Arithmetic is checked; overflow and d
 
 Strings represent valid UTF-8. Bytes can hold arbitrary byte sequences. `byteSize`, `byteAt:`, and `bytesFrom:to:` explicitly operate in bytes; the slice is half-open and returns Bytes. Converting an invalid byte slice to String returns `invalidUtf8`. Character/grapheme indexing and broader Unicode identifier syntax are deferred.
 
-The parser currently limits nested source expressions to 512 and reports `sourceTooDeep`; it does not impose a language-wide limit on future authored parsing. There is no evaluator recursion/fiber scheduler in this slice beyond ordinary native execution.
+The native bootstrap parser limits nested source expressions to 512 and reports `sourceTooDeep`; it does not impose a language-wide limit on future authored parsing. There is no evaluator recursion/fiber scheduler in this slice beyond ordinary native execution.
 
 ## Native primitives exposed through messages
 
@@ -100,4 +101,4 @@ Defining a Method from a Block obtains the Block's code, parameters, and environ
 
 The implementation and qualification are recorded in [seed interpreter validation](seed-interpreter-validation.md).
 
-Authored PEG/Lang/compiler, Map and broader collection libraries, source slot/accessor factories, source module declaration/dependency protocols, full language syntax, image persistence, native-code generation, CBPV, fibers, and complete Alien facilities remain later work. Loading the same seed library again in the same process returns the already-installed Seed; it is not rebuilt-code hot reload. This is the initial evaluator slice, not completion of the PEG milestone or a native-speed claim.
+The authored [PEG](peg.md) and [Lang](lang.md) layers now run on this seed, including explicit parser takeover. The compiler, Map and broader collection libraries, source slot/accessor factories, source module declaration/dependency protocols, full language syntax, image persistence, native-code generation, CBPV, fibers, and complete Alien facilities remain later work. Loading the same seed library again in the same process returns the already-installed Seed; it is not rebuilt-code hot reload. The original evaluator receipt predates the authored front end; see the separate PEG/Lang receipts for those milestones. No native-speed claim is made.

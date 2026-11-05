@@ -10,4 +10,48 @@ CST labels include `program`, `sequence`, `declaration`, `expression`, `identifi
 
 The grammar corpus exercises accepted/rejected forms, byte spans, and complete parsing of PEG's and Lang's own source. `tests/lang_grammar_test.py` runs these through the real host from an unrelated working directory. It is part of `make verify`. This interpreter workload is substantial: parsing both modules took about 29 seconds in the initial local run. That is an implementation observation, not a benchmark or performance qualification; PEG has no memoization and copies persistent collections.
 
-CST-to-executable-syntax translation and `Seed parse:` takeover are the next slice. Until then, source evaluation still uses the bootstrap Odin parser. Full language compatibility, compilation, images, and fibers remain later work.
+The CST-to-executable-syntax and explicit parser takeover layer is described below. Full language compatibility, compilation, images, and fibers remain later work.
+
+## Executable syntax and takeover
+
+The second slice adds [modules/lang-syntax.birnam](../modules/lang-syntax.birnam). It adds `Lang code:` (parse and translate), `lower:source:` (translate a CST with its original source), `translator` (the visitor prototype), and `installOn:` (install the authored parser on a Seed object). Loading the module adds behavior without automatically switching parsers.
+
+```sh
+make build
+./build/siphon ./build/seed.dylib \
+  --eval modules/peg.birnam \
+  --eval modules/lang.birnam \
+  --eval modules/lang-syntax.birnam \
+  --eval examples/lang/takeover.birnam \
+  --eval examples/seed/answer.birnam
+```
+
+This prints `42`. The takeover file sends `[Lang installOn: Seed]`. Later `Seed parse:` sends `code:` to the installed Lang object; that path calls Lang's current grammar and translator. The Odin parser remains necessary for initial bootstrapping. No automatic fallback exists in the authored path.
+
+The visitor selects an ordinary Method using the CST's rule Symbol and enters it with the CST node. A fresh shallow clone holds the source for each translation; nested sequences retain that original source. Methods handle the individual syntax families, flatten expression wrappers, combine keyword selector pieces, decode String escapes, check signed-64-bit Integer bounds, and reject duplicate Block parameters. All syntax construction goes through the existing representation owner's messages. The visitor never interprets native payloads or calls the bootstrap parser.
+
+The syntax namespace returned by `Seed syntax` now provides:
+
+| Message | Result |
+|---|---|
+| `literal:bytes:` | Literal retaining a factory and byte spelling |
+| `name:` | Name reference |
+| `declaration:expression:` | Binding declaration |
+| `send:selector:arguments:` | Send with a Vector of argument syntax |
+| `block:body:` | Block expression with a Vector of parameter Symbols |
+| `vector:` | Vector expression with a Vector of element syntax |
+| `sequence:source:` | Sequence with a Vector of forms and source Bytes |
+
+These are replaceable native Methods in the seed, owning the existing syntax representations. Vector-bearing constructors reject incompatible containers. Literal factories still run during evaluation; authored Integer range checks do not construct the source literal at parse time. The authored parser itself executes ordinary Integer/String operations, which remain replaceable and can have observable effects. Arbitrary replacements can consequently disrupt parsing, just as they can disrupt other authored code.
+
+The only additional text primitive is `utf8ErrorOffset` on String/Bytes: it returns the first invalid UTF-8 byte offset, or `-1` for valid text. Lang uses it for located invalid-source diagnostics. `furthestFail` reports PEG's latest completed parse diagnostic; UTF-8 rejection before matching and semantic errors during translation carry their own Error location instead.
+
+Reloading source still creates new module objects. The acceptance test reloads PEG, Lang, and the translator in dependency order, then explicitly installs the newly loaded Lang on Seed. This proves authored bootstrapping, not identity-preserving module reload.
+
+## Acceptance and remaining boundary
+
+`tests/seed_test.py --authored` runs the existing source semantics and negative cases after takeover. `tests/lang_test.py` exercises translator/constructor replacement, GC during translation, complete source reload/reinstallation, and the seed/PEG semantic corpora. Its C guard replaces the original native parser Method entry with an Error-producing sentinel, checks that the sentinel works, and leaves it disabled for the acceptance run. Captured references to that original Method cannot quietly provide a fallback.
+
+The C lifecycle witness registers finalizers on discarded syntax roots and lexical closures created through the authored parser, verifies bounded reclamation, and checks retained code and captures after collection. The exact results and fresh-build evidence are recorded in [Lang validation](lang-validation.md).
+
+This supplies an authored front end for the seed subset and parser takeover. It does not deliver the full language grammar, a compiler/backend, native-speed parsing, packrat memoization, image persistence, fibers, or dependency-aware source loading. Both matching and translation still use the interpreter and native call stack. The native parser's 512-expression guard is not a new promise for the authored parser; arbitrary-depth behavior is unqualified.

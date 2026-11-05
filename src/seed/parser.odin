@@ -112,11 +112,6 @@ expect :: proc(p: ^Parser, kind: Token_Kind, message: string) -> bool {
 	return p.error == nil
 }
 
-literal :: proc "contextless" (factory, data: Oop) -> Oop {
-	result := allocate(state.literal_vt, size_of(Literal))
-	(cast(^Literal)result)^ = Literal{factory, data}
-	return result
-}
 decode_string :: proc(p: ^Parser, token: Token) -> Oop {
 	result := allocate(birnam_bytes_behavior(), uintptr(len(token.text)))
 	dest := cast([^]u8)result

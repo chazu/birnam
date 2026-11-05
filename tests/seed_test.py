@@ -3,18 +3,25 @@
 from pathlib import Path
 import subprocess
 import tempfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SIPHON = ROOT / "build/siphon"
 SEED = ROOT / "build/seed.dylib"
+AUTHORED = "--authored" in sys.argv
+PREFIX = [str(SIPHON), str(SEED)]
+if AUTHORED:
+    for name in ("peg", "lang", "lang-syntax"):
+        PREFIX.extend(["--eval", str(ROOT / f"modules/{name}.birnam")])
+    PREFIX.append(str(ROOT / "build/lang_guard.dylib"))
 
 
 def run_source(source, expected=None, kind=None):
     with tempfile.TemporaryDirectory(prefix="birnam-source-") as tmp:
         path = Path(tmp) / "test.birnam"
         path.write_bytes(source if isinstance(source, bytes) else source.encode())
-        result = subprocess.run([str(SIPHON), str(SEED), "--eval", str(path)],
-                                cwd=tmp, text=True, capture_output=True, timeout=20)
+        result = subprocess.run([*PREFIX, "--eval", str(path)],
+                                cwd=tmp, text=True, capture_output=True, timeout=120)
         if kind:
             assert result.returncode == 1 and f": {kind}:" in result.stderr, (source[:160], result)
         else:
@@ -61,17 +68,17 @@ def main():
         first, second = Path(tmp)/"first.birnam", Path(tmp)/"second.birnam"
         first.write_text('let shared := 41; let reader := [| shared];')
         second.write_text('[Namespace at: #shared put: 42]; [GC collect]; [System println: [reader value]];')
-        result = subprocess.run([str(SIPHON), str(SEED), "--eval", str(first), "--eval", str(second)],
-                                cwd=tmp, text=True, capture_output=True, timeout=20)
+        result = subprocess.run([*PREFIX, "--eval", str(first), "--eval", str(second)],
+                                cwd=tmp, text=True, capture_output=True, timeout=120)
         assert result.returncode == 0 and result.stdout == "42\n", result
-        result = subprocess.run([str(SIPHON), str(SEED), "--eval", str(Path(tmp)/"absent.birnam")],
-                                cwd=tmp, text=True, capture_output=True, timeout=20)
+        result = subprocess.run([*PREFIX, "--eval", str(Path(tmp)/"absent.birnam")],
+                                cwd=tmp, text=True, capture_output=True, timeout=120)
         assert result.returncode == 1 and "sourceOpenFailed" in result.stderr, result
-        result = subprocess.run([str(SIPHON), "--eval", str(first)], text=True, capture_output=True, timeout=20)
+        result = subprocess.run([str(SIPHON), "--eval", str(first)], text=True, capture_output=True, timeout=120)
         assert result.returncode == 1 and "unknownName" in result.stderr, result
-        result = subprocess.run([str(SIPHON), str(SEED), "--eval"], text=True, capture_output=True, timeout=20)
+        result = subprocess.run([str(SIPHON), str(SEED), "--eval"], text=True, capture_output=True, timeout=120)
         assert result.returncode == 2 and "requires a source path" in result.stderr, result
-    print(f"PASS seed CLI: sample, semantic corpus, {len(cases)} failure cases, ordering and diagnostics")
+    print(f"PASS {'authored Lang' if AUTHORED else 'seed'} CLI: sample, semantic corpus, {len(cases)} failure cases, ordering and diagnostics")
 
 
 if __name__ == "__main__":

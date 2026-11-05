@@ -1,0 +1,52 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that:label: on: Assert as: [:self :condition :label |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: label]]]]];
+[Assert that: [NativeParserGuard untouched] label: "native parser disabled"];
+let parsed := [Seed parse: "let x := 41; [x + 1]"];
+[Assert that: [[[parsed source] asString] = "let x := 41; [x + 1]"] label: "source retained"];
+[Assert that: [[parsed evalIn: [Environment forNamespace: [Namespace clone]]] = 42] label: "authored lowering"];
+[Assert that: [[[Lang code: "[:x :x | x]"] kind] == #duplicateBinding] label: "duplicate parameter"];
+[Assert that: [[[Lang code: "9223372036854775808"] kind] == #integerRange] label: "positive range"];
+[Assert that: [[[Lang code: "-9223372036854775809"] kind] == #integerRange] label: "negative range"];
+[Assert that: [[Seed eval: "-0009223372036854775808"] = -9223372036854775808] label: "signed min with zeros"];
+[Assert that: [[Seed eval: "0000000000000000000000000000000000000001"] = 1] label: "leading zeros"];
+[Assert that: [[Seed eval: "\"é\\n界\\t\\\"\\\\\""] = "é\n界\t\"\\"] label: "authored escape decoding"];
+
+// Translation selects current visitor behavior through ordinary binding.
+let translator := [Lang translator];
+let oldName := [Reflect methodFor: #identifier on: translator];
+[Reflect defineMethod: #identifier on: translator as: [:self :node |
+  [[Seed syntax] literal: Integer bytes: "73"]]];
+[Assert that: [[Seed eval: "unbound"] = 73] label: "replaceable translator"];
+[translator define: #identifier as: oldName];
+
+// The syntax owner constructs objects; Lang does not decode native payloads.
+let syntax := [Seed syntax];
+let oldLiteral := [Reflect methodFor: #literal:bytes: on: syntax];
+let constructions := [Cell with: 0];
+[Reflect defineMethod: #literal:bytes: on: syntax as: [:self :factory :bytes |
+  [constructions value: [[constructions value] + 1]];
+  [GC collect];
+  [oldLiteral valueOn: self with: #[factory bytes]]]];
+let value := [Seed eval: "#[1 2 3]"];
+[syntax define: #literal:bytes: as: oldLiteral];
+[Assert that: [[constructions value] = 3] label: "construction messages and GC"];
+[Assert that: [[value at: 2] = 3] label: "partial syntax survives collection"];
+[Assert that: [[[syntax send: parsed selector: #x arguments: 1] kind] == #typeMismatch] label: "owner rejects invalid argument vector"];
+[Assert that: [[[syntax block: 1 body: parsed] kind] == #typeMismatch] label: "owner rejects invalid parameter vector"];
+[Assert that: [[[syntax sequence: 1 source: ""] kind] == #typeMismatch] label: "owner rejects invalid form vector"];
+[Assert that: [[[syntax vector: 1] kind] == #typeMismatch] label: "owner rejects invalid vector"];
+
+// Literal construction remains an evaluation effect, not a parsing effect.
+let oldInteger := [Reflect methodFor: #fromBytes: on: Integer];
+let special := [Cell with: false];
+[Reflect defineMethod: #fromBytes: on: Integer as: [:self :bytes |
+  [["7654321" = bytes] ifTrue: [| [special value: true]]];
+  [oldInteger valueOn: self with: #[bytes]]]];
+let deferred := [Lang code: "7654321"];
+[Integer define: #fromBytes: as: oldInteger];
+[Assert that: [[[special value] not] and: [| [[deferred evalIn: [Environment forNamespace: Namespace]] = 7654321]]]
+  label: "literal factory deferred until evaluation"];
+[GC collect];
+[Assert that: [NativeParserGuard untouched] label: "no native fallback"];
+[System println: "PASS authored Lang takeover and replacement"];
