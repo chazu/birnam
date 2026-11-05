@@ -1,12 +1,16 @@
 # First milestone: authored PEG on the Odin seed
 
-Draft implementation contract, 4 November 2026. The milestone direction is agreed; the detailed subset and invocation proposal below are now concrete for review. No runtime, authored PEG implementation, or passing acceptance result exists in this checkout yet. [Architecture](../ARCHITECTURE.md) governs this work.
+Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The concrete calling ABI, native lookup base case, and remaining small protocol details still need specification. No runtime, authored PEG implementation, or passing acceptance result exists in this checkout yet. [Architecture](../ARCHITECTURE.md) governs this work.
 
 ## Outcome and boundary
 
 From a clean checkout, build an Odin seed and run a Birnam-authored PEG module that constructs grammars and parses input. Grammar matching, combinator behavior, rule recursion, and concrete syntax tree construction execute as Birnam code through ordinary Id messages. Native primitives supply general object/data/file operations, not a hidden PEG engine.
 
 This is a single-threaded interpreter milestone. It does not deliver compiled Birnam, full Lang, fibers, image saving/loading, optimized code, native module packaging, or a performance claim. It must not invoke, link, or generate artifacts through the old Rust system or an installed Birnam.
+
+## Initial platform and build baseline
+
+**Agreed, 5 November 2026:** this Mac is the first supported target; add Linux after the first working slice. Record the actual OS/architecture and pin Odin, C-toolchain, and Boehm build details. Provide reproducible build/test commands rather than depending on an unrecorded local installation. The seed uses ordinary non-incremental collection and a single execution thread. Boehm sits behind the Id-facing collector interface, and its actual build must pass allocation, rooting, and reclamation checks before evaluator work relies on it. Specific versions, build commands, and measured results are implementation work, not supplied by this design decision. The eventual fiber/collector strategy remains open.
 
 ## Reference inspection
 
@@ -24,6 +28,8 @@ The old tree has authored Lang over a native PEG implementation. This milestone 
 
 ## Seed syntax and evaluation
 
+**Initial syntax scope agreed, 5 November 2026:** bracketed unary/binary/keyword sends, immutable `let` bindings, Integer/String/Symbol/Vector literals, lexical Blocks with parameters and captures, multiple expressions, optional semicolons, and `//` comments. Namespace/module operations use ordinary messages. Floats, map literals, relational variables, and result-threaded `=>` sends are deferred from the seed, not removed from the eventual language. Unsupported forms must be diagnosed explicitly. The seed Integer policy is settled below; the table also states proposed evaluation edge cases to validate against the existing language.
+
 The seed supports a subset of the existing language, not a different bootstrap syntax. Unsupported forms produce an explicit diagnostic; they must not be silently accepted with another meaning.
 
 | Form | M1 contract |
@@ -33,14 +39,16 @@ The seed supports a subset of the existing language, not a different bootstrap s
 | Separation | Whitespace or optional `;`, including a trailing separator; `//` comments end at newline. |
 | Literals | Signed decimal Integers, Strings with `\n`, `\r`, `\t`, `\"`, `\\`, interned Symbols including keyword selectors, and fresh persistent Vectors `#[expressions]`. |
 | Blocks | `[| body]` and `[:x :y | body]`; lexical captures, nested blocks, local lets, last-expression result. Empty body answers canonical nil. Support ordinary `value`/keyword `value:` forms needed by the authored module, including the existing zero-to-four argument block surface. |
-| Names | Lexical lookup then the current source namespace. `true`, `false`, and `nil` resolve to canonical objects. Namespace operations are messages, not a new qualifier syntax. |
+| Names | Agreed 5 November 2026: resolve parameters and enclosing lexical bindings first, then current bindings in the Block's defining namespace, retained even when invoked elsewhere. Captures retain object references without cloning and survive the enclosing call's return. Namespace replacement affects later global-name lookup, while captured references retain their original objects. Unresolved names answer kinded Errors. `true`, `false`, and `nil` resolve to canonical objects. Namespace operations are messages, not a new qualifier syntax. |
 | Control | Boolean branch selection and block application are messages; only the selected deferred branch runs. The evaluator does not hardwire selector meanings for `ifTrue:ifFalse:` or arithmetic. |
-| Order | Evaluate receiver and argument expressions once, in source order, then send. Vector elements similarly evaluate in order. An evaluation sequence returns its last result. |
-| Errors | Runtime failures answer kinded Error objects; source syntax failures include location. A discarded Error aborts the source unit at that form, with previous effects retained. Error protocol operations allow inspecting/recovering the value; ordinary sends to an Error propagate it. No native exception crosses Id. |
+| Order | Agreed 5 November 2026: evaluate the receiver first, then arguments left to right once each, then select the current Method and enter it. Replacements during argument evaluation affect the pending send. Vector elements and successive expressions evaluate left to right; Block bodies require explicit invocation. An evaluation sequence returns its last result. |
+| Errors | Agreed 5 November 2026: operations answer kinded Error objects; inspection/recovery messages handle them explicitly, and ordinary messages sent to an Error propagate it. Discarding an Error before another source expression stops loading and reports it; completed effects remain, with no implied rollback. No native exception crosses Id. Source syntax diagnostics also include location. |
 
-For the seed, propose signed 64-bit Integer storage with checked overflow reported as an Error. This matches the inspected guide's width but is a milestone choice, not a new permanent numeric invariant. A minus sign belongs to a decimal literal only when followed by digits; binary subtraction remains a message.
+**Seed Integer policy agreed, 5 November 2026:** store signed 64-bit values in ordinary Integer payloads. Arithmetic is checked: out-of-range results answer kinded Errors, including the signed minimum divided by minus one. Division by zero answers an Error. Out-of-range literals produce explicit diagnostics; the signed minimum literal must parse successfully. Arbitrary precision remains a later extension. These are Integer-implementation policies, not generic Id rules. A minus sign belongs to a decimal literal only when followed by digits; binary subtraction remains a message. Exact Error kind names and division rounding remain separate details.
 
-Floats, map literals, relational variables, result-threaded `=>` sends, and the complete production syntax are deferred. A Map can still be constructed through messages for grammar/rule tables. Deferral does not remove these forms from Birnam; the authored Lang milestone must handle the wider existing syntax. Full Unicode character semantics are also deferred: PEG and source spans operate on bytes.
+Floats, map literals, relational variables, result-threaded `=>` sends, and the complete production syntax are deferred. A Map can still be constructed through messages for grammar/rule tables. Deferral does not remove these forms from Birnam; the authored Lang milestone must handle the wider existing syntax.
+
+**Text policy agreed, 5 November 2026:** String represents UTF-8 text and Bytes represents arbitrary bytes. PEG consumes bytes, with positions/spans measured in byte offsets. Byte operations use explicit names and are not character indexing. Invalid UTF-8 conversion from Bytes to String returns an Error. Unicode character/grapheme operations are deferred without changing this parsing convention. A byte-oriented slice may yield Bytes; it cannot silently manufacture an invalid String when it splits a UTF-8 sequence. Exact selector names remain implementation choices.
 
 ## Minimum object/library surface
 
@@ -48,8 +56,9 @@ Use ordinary objects for persistent syntax trees, lexical environments, closures
 
 The seed supplies only general operations needed to author PEG:
 
-- Object cloning, behavior access, identity comparison, and object-owned mutable slots; method construction/installation through Reflect and vtables. `Reflect defineMethod:on:as:` follows the existing receiver-first block convention (`:self` followed by message arguments).
+- Object cloning, behavior access, identity comparison, and object-owned mutable slots; method construction/installation through Reflect and vtables. Cloning is shallow, object-local method edits leave siblings unchanged, and shared accessor methods operate on each message receiver's own slot storage. Readable slots have getters and writable slots also have setters; reflection follows the object's supported protocol. `Reflect defineMethod:on:as:` follows the existing receiver-first block convention (`:self` followed by message arguments).
 - Canonical Boolean/nil behavior; Block evaluation and captures; Error construction, `isError`, and `kind`.
+- Receiver-aware lookup receives the vtable, selector, and application receiver. Default lookup searches own behavior then a single parent chain, preserving the original application receiver as `self` when entering an inherited Method. Lookup may select an existing Method or synthesize a Method closure, and explicit binding returns that actual selection. Test local overrides, later parent replacement, and distinct selected Method identities for receivers sharing one vtable. No independent send/bind policy stage is required.
 - Integer comparison and checked arithmetic; Strings/Bytes with size, byte access, and bulk slicing/equality; persistent Vector and Map construction/access/update. No per-byte messaging requirement for bulk literal matching.
 - Namespace lookup/publication and sequential source loading. Recognize existing `[Module named: #peg requires: #[]]` and `markLoaded:` through objects/messages if used; M1 is source loading, not the finished dependency/package system.
 - File input, basic printing, process success/failure, and an explicit GC collection message for acceptance.
@@ -102,10 +111,18 @@ Expected observations are `#root`, `0`, `3`, and `#word`. A second parse of `"ab
 
 Acceptance includes nested rule spans; prefix versus EOF matching; ordered-choice backtracking; zero-width star/plus; lookahead without CST leakage; undefined rules; direct/indirect left recursion; a deep finite rule chain; and independent diagnostics from two grammars. Replace an authored matching method and demonstrate that later parsing observes it. Memoization must not make results stale across separate parses after replacement.
 
+Evaluation acceptance must include distinct effects from receiver/argument expressions to verify order and single evaluation, plus an argument that replaces the pending selector's Method before final selection. A constructed or returned Block must remain unexecuted until explicitly invoked.
+
+Error acceptance must distinguish explicit recovery from propagation and from discarding a top-level Error. Verify that the discarded-error path reports failure, does not evaluate the following source expression, and preserves a preceding observable effect. No native exception or private Error tag may substitute for the Id-facing Error object protocol.
+
+Name/capture acceptance must compare a local capture with a global-name lookup after namespace rebinding, invoke a Block from another namespace, retain and collect a closure after its enclosing call returns, and verify that shared-object mutations remain visible through captured references. Missing names must return kinded Errors.
+
+Text acceptance must include multibyte UTF-8 literals and byte spans, arbitrary non-text Bytes, and invalid/truncated UTF-8 conversion failures. Verify that byte slicing through a multibyte sequence does not silently produce an invalid String and that parser spans count source bytes rather than characters.
+
 GC validation must distinguish survival from leaking everything: add a bounded reclamation check accounting for conservative retention. Use the collector's own supported observations or finalization instrumentation only in the harness. The proposed Boehm baseline is not qualified merely because allocation works. Fiber, incremental-mode, and Alien tests from the collector research remain later obligations.
 
 A clean build and test must work without access to the old checkout, Cargo, an installed Birnam, or generated artifacts from the Rust tree. Record the exact Odin/C/collector versions and commands actually used. Do not invent a passing gate or require obsolete Zig/Rust acceptance commands.
 
 ## Review boundary before implementation
 
-The [invocation proposal](seed-invocation.md) deliberately exposes a few decisions: the uniform argument carrier, exact send/bind placement, and the native recursion base case. They must be resolved before implementing dependent dispatch/evaluator code. The seed Integer choice is also a proposal. The first code slice should be bounded by these contracts rather than a full runtime port.
+The [invocation contract](seed-invocation.md) records receiver-aware lookup and the uniform seed C entry with an Oop argument Vector. Remaining implementation specifications are callable-envelope layout/ownership, arity handling, exact lookup selector spelling, and the native recursion base case. Resolve these before dependent dispatch/evaluator code. Small library details can be resolved within the agreed behavior during implementation. The first code slice should be bounded by these contracts rather than a full runtime port.

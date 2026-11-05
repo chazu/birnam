@@ -1,5 +1,7 @@
 # Does replaceable lookup subsume replaceable send and bind?
 
+**Decision follow-up, 5 November 2026:** receiver-aware lookup was selected for the seed, with mechanical send/bind and direct entry of the actual selected Method or Method closure. Plain receiver-unaware lookup remains a considered alternative, not the chosen contract. The analysis below records the reasoning and earlier recommendations; [the invocation contract](seed-invocation.md) describes the current choice.
+
 For a self-contained review of the alternatives and their implications, see [Lookup Binding and Sending in Birnam](dispatch-design-review.md). The argument below provides the narrower derivation and records the discussion that led to it.
 
 4 November 2026. A scoped mathematical argument and counterexample, not a machine-checked proof or a verified implementation. This analysis reconsiders the extra dispatch layers in [the seed invocation proposal](seed-invocation.md); it does not silently amend the accepted architecture.
@@ -108,7 +110,7 @@ Prefer plain Id-style fixed mechanical send/bind with replaceable lookup, provid
 
 This retains the ordinary-call capabilities motivating the larger proposal and avoids adding independent send/bind dispatch layers by default. Ordinary lookup can return an existing Method directly, so no universal per-call policy-wrapper allocation is required. Specialized policies may have costs and require measurement.
 
-Adopting this recommendation would revise the current architectural requirement that `send` and `bind` themselves must independently be replaceable methods. It does not follow solely from the proof and is not yet recorded as an accepted change. The independent argument-vector ABI proposal also remains open; this equivalence argument neither requires nor validates it.
+At the time of this recommendation, independent send/bind replacement was still required. The subsequent 5 November decision revised that requirement for the seed by selecting receiver-aware lookup, rather than the receiver-unaware plain Id alternative above. The independent argument-vector ABI proposal remains open; this equivalence argument neither requires nor validates it.
 
 ## What receiver-aware binding adds
 
@@ -120,4 +122,4 @@ The practical distinction is selection time. For example, a receiver-aware binde
 
 Independent hooks also separate ordinary-send interception from explicit binding and direct invocation. Whether Birnam needs that separation is an API/semantics decision. Neither the expressiveness argument nor the counterexample establishes how many native dispatch layers are needed to implement the chosen interface efficiently.
 
-The demonstrated binding advantage comes from receiver information, not the name `bind`. A receiver-aware lookup, `L(v,s,r)`, could implement `B(r,s)` directly and close this particular gap while retaining fixed mechanical send/bind. That is a third candidate extending plain Id's lookup interface; it is not adopted here and does not establish equivalence of every reflective observation of separately exposed hooks.
+The demonstrated binding advantage comes from receiver information, not the name `bind`. Receiver-aware lookup, `L(v,s,r)`, can implement `B(r,s)` directly and close this particular gap while retaining fixed mechanical send/bind. This candidate was selected for the seed on 5 November 2026. The selection does not establish equivalence of every reflective observation of separately exposed hooks.

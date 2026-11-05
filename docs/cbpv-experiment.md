@@ -30,7 +30,7 @@ Id continues to define object identity, behavior, lookup, and the selected Metho
 
 The IR nodes, code objects, compiler passes, and any language-visible suspended-code objects remain ordinary Birnam objects with replaceable behavior. An internal distinction between semantic sorts is allowed; a fixed native catalog of Birnam values or a second authoritative object model is not. Odin remains bootstrap machinery. Its context and ABI knowledge stay within Odin code.
 
-The experimental core must accommodate whichever dispatch contract is ultimately selected. It does not decide between plain Id, receiver-aware lookup, or independent bind/send policies. In particular, it cannot supply information to lookup that the selected interface does not receive. See [the dispatch review](dispatch-design-review.md).
+The experimental core must preserve the selected dispatch contract. As of 5 November 2026, the seed uses receiver-aware lookup with mechanical send/bind and direct entry of the selected Method or Method closure. CBPV did not determine that choice and does not supply additional information to lookup through an implicit context. See [the dispatch review](dispatch-design-review.md).
 
 ## Values and computations in the trial
 
@@ -59,7 +59,7 @@ The compiler may represent operations through object messages rather than these 
 
 `let x <- c` is computation sequencing. It is not Id's method-binding operation. The argument list shown in the sketch also does not choose a Vector ABI or require allocation of a new argument object for every send.
 
-The initial representation keeps `idSend` as an operation with the finalized dispatch contract. Decomposing it into selection and entry is permitted only with a stated contract for effects and publication between those stages. The experiment must not accidentally adopt the extra dispatch layers from an unresolved proposal.
+The initial representation keeps `idSend` as an operation with the selected receiver-aware dispatch contract. Decomposing it into selection and entry is permitted only with a stated contract for effects and publication between those stages. The experiment must not reintroduce the superseded extra send/bind policy layers.
 
 ## Example lowering
 
@@ -191,6 +191,22 @@ If rejected, keep the agreed source language, Id contracts, authored PEG/Lang/co
 
 ## Questions left open by the experiment
 
-The exact IR object protocol, internal typing discipline, treatment of administrative thunks, and relation to a later control-flow representation remain to design. So do the final dispatch choice, argument ABI, concurrent publication points, and the proof obligations for speculative optimization. A full formal preservation theorem would need an explicit Birnam source semantics with identity, mutation, lookup effects, Errors, and the desired reflective observations.
+The exact IR object protocol, internal typing discipline, treatment of administrative thunks, and relation to a later control-flow representation remain to design. So do native lookup base-case details, concurrent publication points, optimized calling paths, and the proof obligations for speculative optimization. The seed's receiver-aware lookup and uniform Oop-Vector entry are settled separately. A full formal preservation theorem would need an explicit Birnam source semantics with identity, mutation, lookup effects, Errors, and the desired reflective observations.
 
 The intended outcome of this work is evidence about whether CBPV helps implement Birnam faithfully. “We are going to try it” is the current decision; “CBPV is Birnam's permanent execution foundation” is not.
+
+## Effect facilities reserved for later exploration
+
+5 November 2026: preserve the option to explore effects that fit Birnam, without adding them to the first milestone or the bounded CBPV trial. The most direct candidate is scoped handling of service operations. This is a research direction, not an adopted feature set, syntax, or handler protocol.
+
+Effect tracking and effect handlers are distinct. Tracking describes what a computation may do and can inform analyses. Handlers supply behavior for requested operations and, in richer systems, control whether and how execution resumes. The CBPV effects/coeffects work establishes tracking properties for its calculus; it does not provide a ready-made handler implementation for Birnam. [Effects and Coeffects in CBPV](https://cassiatorczon.github.io/Archivos/OOPSLA2024_CBPV.pdf)
+
+**First candidate: scoped services.** A Block could run with a chosen clock, random source, or logging destination for operations explicitly routed through those services. Tests could use a deterministic clock and collected log while other fibers keep their own services. The implementation could begin with ordinary objects and scoped context; CBPV is not required for this feature. Any dynamic service scope is distinct from lexical name resolution and belongs to Birnam/fiber state, not hidden Odin thread-local policy. Native calls that bypass the service protocol are not automatically intercepted, so this does not imply a sandbox or complete deterministic replay.
+
+**Later candidate: resumable control.** Generators, streams, and scheduler coordination could be explored through effect operations and one-shot resumptions, meaning each resumption is used at most once. Requests, handlers, and any exposed resumptions would be ordinary Oops, invoked through explicit messages. This could complement the already-agreed transparent fiber suspension model; it would not add mandatory `await` syntax. Koka demonstrates that handlers can support control abstractions as libraries, but its type/effect system and memory model are not being adopted. [Koka project](https://www.microsoft.com/en-us/research/project/koka/)
+
+Even one-shot handling needs specified cleanup when execution is abandoned or cancelled, and defined behavior around Alien calls and callbacks. It does not make arbitrary native stack segments safe to capture. Multi-shot continuations, search/backtracking, automatic transaction rollback, native-stack persistence, and broad replay guarantees remain outside the reserved initial exploration. Resource finalization under resumable effects is a separate substantive problem. [Effect handlers with resources](https://www.microsoft.com/en-us/research/wp-content/uploads/2018/04/resource-v1.pdf)
+
+**Optional analysis candidate:** expose conservative effect summaries to development tools, such as possible I/O, mutation, or suspension. Unknown sends remain unknown/potentially effectful, and method/lookup replacement must invalidate assumptions derived from previous implementations. No source-level static effect annotations, purity guarantee, or ownership discipline is required by reserving this possibility.
+
+For now, retain explicit sequencing and room for effect operations in the experimental IR. Do not implement a universal handler dispatcher, instrument every Id send with effect interception, or add runtime overhead solely for this future option. Any later feature needs its own contract, ordinary-message implementation boundary, and acceptance evidence before it becomes part of the language.

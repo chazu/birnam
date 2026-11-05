@@ -2,6 +2,8 @@
 
 **Discussion draft for programming language design review — 4 November 2026**
 
+**Decision follow-up, 5 November 2026:** Birnam selected option B, receiver-aware lookup, for the seed. It may return an existing Method or a Method closure; mechanical send/bind enters the actual selection directly. The native calling ABI remains open. The discussion below is retained as the comparative review, including the alternatives and questions considered before that decision.
+
 Birnam is a prototype-based, image-oriented language being rebuilt around Ian Piumarta's Id object model. The immediate design question is how much of message dispatch should be independently replaceable: lookup alone, lookup with access to the application receiver, or separate lookup, binding, and sending policies.
 
 The central finding is that two questions must be separated. **What information can method selection inspect?** And **which dispatch stages are independently observable and replaceable?** Giving lookup the receiver closes an important gap in selection expressiveness. Adding separate bind and send hooks creates additional reflective boundaries, but those hooks are not necessary for many behaviors usually described as custom sending.

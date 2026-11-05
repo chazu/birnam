@@ -1,4 +1,4 @@
-> Consolidated on 4 November 2026 into [ARCHITECTURE.md](ARCHITECTURE.md). This earlier record is retained as discussion history; use the consolidated document for current requirements and the milestone documents for implementation proposals.
+> Consolidated on 4 November 2026 into [ARCHITECTURE.md](ARCHITECTURE.md). This earlier record is retained as discussion history; use the consolidated document for current requirements and the milestone documents for implementation proposals. In particular, the 5 November seed decision selects receiver-aware lookup with mechanical send/bind, superseding this historical record's independent send/bind-hook requirement.
 
 **Decision record — 31 October 2026**\
 **Status:** Agreed architectural direction; not an implementation specification.

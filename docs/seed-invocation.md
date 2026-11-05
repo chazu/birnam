@@ -1,25 +1,75 @@
-# Seed invocation proposal
+# Seed Invocation Contract and ABI Proposal
 
-> Under reconsideration: [dispatch equivalence analysis](dispatch-equivalence.md) proves a restricted ordinary-send expressiveness result and gives a counterexample to unrestricted equivalence. The extra replaceable send/bind layers below remain a proposal; no implementation should assume they have been accepted.
+**Receiver-aware lookup selected for the seed, 5 November 2026.** The semantic contract below is agreed. Under the user's permission to choose either argument convention provided all arguments remain Oops, the seed uses a uniform C entry with an Oop argument Vector. Exact exported names, callable-envelope layout, selector spelling, and native recursion details still need implementation specification. No runtime is implemented yet. [Architecture](../ARCHITECTURE.md) governs this work.
 
-4 November 2026. Concrete proposal for the first interpreter milestone, not a ratified permanent ABI or implemented API. [Architecture](../ARCHITECTURE.md) defines the requirements; this document isolates the remaining dispatch choices so they can be reviewed before code.
+This replaces the earlier layered send/bind proposal. The alternatives and their tradeoffs remain in [the dispatch review](dispatch-design-review.md) and [equivalence analysis](dispatch-equivalence.md).
 
-## Required operation
+## Agreed operation
 
 ```text
-ordinary send
-  → current send behavior
-  → current bind behavior
-  → current lookup selects a Method
-  → enter that exact Method
+receiver and argument evaluation
+  → receiver-aware lookup selects a Method or Method closure
+  → enter that exact selection directly
   → return an Oop
 ```
 
-The metaobject operations needed to find those behaviors require a finite native base case. They must not become a second general-purpose dispatch path that ordinary compiled/interpreted sends use to bypass replacement. There is no implicit `apply`/`invoke` message after selection.
+Lookup receives the receiver's vtable, the selector, and the application receiver. The vtable is lookup's own receiver; the application receiver is an explicit additional argument. Default lookup searches own behavior and then a single parent chain. Throughout delegation, the eventual application Method's receiver remains the original object.
 
-## Proposed C boundary
+Lookup may return an existing Method or synthesize a Method closure carrying data. Both are callable Method objects with the same entry contract. Explicit binding returns the actual selected Method, not a promised underlying dictionary entry. Two objects sharing one vtable may therefore bind the same selector to different existing Methods.
 
-Use an incomplete C object pointer as `Oop`. The proposal uses an ordinary Vector of arguments for the uniform seed entry:
+Send and bind are mechanical glue; the seed does not require independently dispatched send/bind policy hooks. Sending follows current lookup and enters its selection. Capturing or entering a Method retains that selected implementation, while future sends observe the current lookup behavior. Captures can still refer to mutable objects: retaining an implementation does not freeze its reachable state.
+
+There is no implicit second lookup of `apply` or `invoke` on the selected Method. Explicit Method/Block invocation remains an ordinary explicit operation. Returning a Block does not execute it. A lookup failure propagates as the defined failure outcome and must not be entered as a Method.
+
+Receiver and argument expressions execute once, left to right with the receiver first, before application method selection. If an argument replaces the pending behavior, final selection must observe the applicable replacement.
+
+## Semantic equations
+
+```text
+v(r)         = receiver r's behavior
+L(v,s,r)     = receiver-aware lookup
+E(m,r,args)  = direct Method entry
+
+bind(r,s)      = L(v(r),s,r)
+send(r,s,args) = E(bind(r,s),r,args)    // successful binding case
+```
+
+These equations specify the selected mechanism, not its caching or allocation strategy. Custom lookup may have effects and inspect receiver state. A cache or specialization must preserve all those observations and dependencies; `(vtable, selector)` alone is not generally a sufficient cache key. Repeated lookup is not required to synthesize a fresh closure, and this choice does not promise stable identity for arbitrary repeated synthesized selections.
+
+## Native lookup base case proposal
+
+A finite native base case is still needed to find lookup's own implementation. Propose the selector `lookup:for:` and the Piumarta-style self-referential root vtable. This is a concrete candidate for the mechanics, not another accepted policy layer:
+
+```text
+bind(receiver, selector):
+    vt = behavior(receiver)
+    if receiver == RootMeta and selector == LookupSelector:
+        return primitiveTableLookup(vt, selector)
+    return send(vt, LookupSelector, args(selector, receiver))
+
+send(receiver, selector, arguments):
+    method = bind(receiver, selector)
+    if binding failed:
+        return the failure
+    return enter(method, receiver, arguments)
+```
+
+Here `LookupSelector` is the interned `lookup:for:` selector, `behavior` reads the mechanical vtable link, and `args(...)` denotes whatever argument convention is ultimately selected. The displayed failure branch is semantic notation, not permission to introduce a hidden native Error value kind.
+
+For an ordinary object `r` with behavior `V`, and `behavior(V) = RootMeta`:
+
+1. `bind(r,s)` sends `lookup:for:` to `V` with `(s,r)`.
+2. Binding that lookup message sends `lookup:for:` to `RootMeta` with `(LookupSelector,V)`.
+3. Binding this root lookup message hits the native table-search base case. Its current Method is entered to select V's lookup implementation, which is then entered on V with `(s,r)`.
+4. V's lookup implementation returns the application Method. The original send enters it with `r` and the already-evaluated arguments.
+
+The two receiver roles are deliberately different at each meta level. The primitive reads the current root dictionary entry; it does not pin the original lookup Method. Delegation inside the default application lookup keeps the original `r` argument while traversing parent behaviors. Custom lookup and metaobject cycles can still be nonterminating; a recursion-depth shortcut must not silently replace their semantics with native default lookup.
+
+This proposal needs direct tests of root replacement and nested custom lookup before evaluator work relies on it. It eliminates the previous `findControl`/`controlCall` layer for independently replaceable send/bind policies.
+
+## Seed C boundary
+
+Use an incomplete C pointer type for Oop and a uniform argument Vector for the seed. This is an engineering choice for simple interpreter/native interoperability, not a permanent requirement to allocate a Vector at every optimized call:
 
 ```c
 typedef struct BirnamObject *Oop;
@@ -30,81 +80,37 @@ Oop birnam_bind(Oop receiver, Oop selector);
 Oop birnam_enter(Oop method, Oop receiver, Oop arguments);
 ```
 
-Names and signatures are proposed. All parameters and results are Oops, including the argument carrier. There is no Odin context, native value union, raw argument-count parameter, or Rust outcome enum at the message boundary. The native entry address is implementation machinery associated with a Method; it is not an extra language-visible value kind.
+`arguments` is an ordinary Vector Oop containing the argument Oops. The Method, receiver, and result are also Oops. A source Vector passed as one argument remains that argument; the transport Vector contains its reference and does not replace or flatten it. Odin context, a native semantic value union, and Rust outcome enums do not cross this boundary. Native collector/Alien adapters may use the signatures required by their underlying libraries internally.
 
-`birnam_send` follows current replaceable send/bind behavior. `birnam_bind` explicitly asks for the currently selected Method. `birnam_enter` invokes an already-selected Method without another dictionary lookup; native adapters, the seed evaluator, and future generated code use the same calling contract. Errors are Oop values. Host I/O and collector callbacks can have their library-mandated C signatures internally; Alien/collector adapters translate at the Id boundary.
+The Vector carrier simplifies arity-independent entry but can add packing, allocation, and access costs. Later native compilation may use direct, arity-specific Oop entries for known targets with a generic bridge where needed. Such paths must preserve lookup effects, replacement dependencies, argument identity, and any exposed carrier behavior. The seed choice neither proves the direct path faster nor freezes a permanent native artifact ABI. Oop-only interaction does not itself require a fresh transport Vector for every send.
 
-The Vector carrier is proposed for an easily inspected, arity-independent seed. It has real allocation and access costs and must not quietly become a permanent requirement for every optimized send. Future call specialization may eliminate internal packing where semantics allow; it must still honor observable send/bind replacement. Compare with fixed-arity Oop entries before freezing a shipped artifact ABI. No near-native performance claim follows from this proposal.
+The runtime owns carrier lifetime. Any carrier exposed or retained by a Method or suspended computation must remain valid; reusable storage cannot be overwritten while still observable. The convention introduces no language-level borrowing rules. Transport packing must not introduce observable construction behavior absent from the source; if its implementation depends on replaceable constructors, those dependencies/effects must be accounted for.
 
-## Candidate metaobject placement
+`birnam_bind` obtains the current selected Method through receiver-aware lookup. `birnam_enter` directly enters an already-selected Method. A C caller must require no Odin-specific knowledge. Exact exported names, arity-validation mechanism, and callable-envelope layout/ownership remain open.
 
-Proposed defaults live on the behavior of vtables, so the receiver of the control methods is the application receiver's vtable:
+## Method representation and lifetime
 
-| Proposed selector | Receiver | Arguments | Result |
-|---|---|---|---|
-| `send:to:with:` | receiver's vtable | selector, application receiver, argument Vector | Application result Oop |
-| `bind:to:` | receiver's vtable | selector, application receiver | Selected Method Oop or Error |
-| `lookup:` | receiver's vtable | selector | Method Oop or lookup failure |
+The bootstrap needs a compatible callable envelope identifying a Method's native entry and captured state. Interpreted Methods use an entry that evaluates a Birnam expression graph with captures and receiver bindings; native Methods enter their owner implementation. Both obey the same selection and lifetime contract.
 
-The default send behavior asks that vtable to bind, then directly enters the selected Method. The default bind behavior asks it to look up the selector. Custom vtable behavior can replace these methods. The application receiver is passed explicitly so binding can depend on more than its behavior identity. The selector names are proposals, not imported facts about Piumarta's implementation.
+Defining a Method from a Block retains its code and lexical environment and binds its first parameter to the application receiver. Creating a Method does not change dictionaries. Installation publishes it for future sends. Replacement retains old captured/entered Methods and their needed code. Incorrect arity must not enter an incompatible native routine.
 
-For the native base case, propose a Piumarta-style internal meta-dispatch routine. `RootMeta` below is the self-referential vtable of vtables; `behavior` reads the minimal mechanical vtable link. `args(...)` denotes an argument carrier, not source syntax:
+Persistent expression nodes and environments remain objects with message-based behavior. Native tokenization scratch and owner-local algorithms do not become a permanent semantic value/AST hierarchy bypassing replaceable behavior.
 
-```text
-findControl(receiver, selector):
-    vt = behavior(receiver)
-    if receiver == RootMeta and selector == #lookup:
-        return primitiveTableLookup(vt, selector)
-    lookupMethod = findControl(vt, #lookup:)
-    return enter(lookupMethod, vt, args(selector))
+Collector integration must preserve live receiver/argument Oops, selected Methods, captures, expression graphs, and code. The only reference must not be hidden in unscanned native storage. Odin adapters establish their context internally and keep it valid for the duration of any suspended native frames. No generic catalog of Integer/String/etc. payload layouts is introduced into Id.
 
-controlCall(receiver, selector, arguments):
-    method = findControl(receiver, selector)
-    return enter(method, receiver, arguments)
+## Acceptance before evaluator dependence
 
-ordinarySend(receiver, selector, arguments):
-    return controlCall(behavior(receiver), #send:to:with:,
-                       args(selector, receiver, arguments))
+- A C caller uses only Oops and the reviewed header, without an Odin context definition.
+- Normal method replacement changes the next send; a previously captured Method retains its selected implementation.
+- Two receivers sharing a vtable can select distinct existing Method identities through receiver-aware lookup.
+- A synthesized Method closure is the actual result of explicit binding and executes with the supplied application receiver/arguments.
+- Own behavior overrides parent behavior, and inherited Methods retain the original application receiver as `self`.
+- Replacing lookup changes later binding/sending. Warm execution preserves its required effects and receiver-state dependencies.
+- Ordinary sending enters the selected Method without consulting an `apply` or `invoke` method on that Method.
+- Constructing a Method leaves dictionary bindings unchanged until installation.
+- An argument that replaces the pending target affects the final send's selection.
+- GC inside a nested call retains receiver, arguments, selected Method, captures, code, and return values.
+- The native root case observes current root bindings and terminates in the valid bootstrap graph. Nested custom lookup is not bypassed by a depth-based fallback.
+- Missing methods and incorrect arity produce defined Error objects rather than an accidental native ABI failure.
 
-default #send:to:with: on a vtable:
-    method = controlCall(self, #bind:to:, args(selector, receiver))
-    return enter(method, receiver, arguments)
-
-default #bind:to: on a vtable:
-    return controlCall(self, #lookup:, args(selector))
-```
-
-For readability this omits propagation of lookup/arity Errors; an Error result must propagate rather than be entered as a Method. A captured-Method entry bypasses `ordinarySend` intentionally because its selection has already happened.
-
-For an ordinary object whose vtable has `RootMeta` as its behavior, finding `send:to:with:` reaches `findControl(RootMeta, #lookup:)`. That primitive table search retrieves the currently installed lookup Method. It is then used to find the current send Method on `RootMeta`. The send Method receives the application vtable, obtains the current bind Method through the same mechanism, and binding obtains the current lookup Method to search the application vtable. Finally the selected application Method is entered directly.
-
-This separates a narrowly scoped metaobject traversal from ordinary sending: `findControl`/`controlCall` are native mechanics for reaching the replaceable control methods and are not alternate evaluator/compiler send paths. Meta-level lookup therefore does not recursively consult replaceable `send`/`bind` just to find those same controls. Replacing the root lookup entry is still observed because the base case reads the table, not a cached original Method. Custom metaobject cycles can fail to terminate; a broad recursion-depth fallback must not silently bypass their behavior.
-
-This explicit unresolved point is preferable to implementing the old fixed native send and calling it replaceable because lookup alone is replaceable. Do not add a second implicit invocation protocol to resolve it.
-
-## Method representation and evaluation
-
-The bootstrap needs a minimal callable envelope identifying a Method's native entry and captured state. Its exact byte layout remains open. Interpreted Methods use an entry that evaluates a Birnam expression graph with the selected Method's captures and receiver binding. Native Methods use entries implementing their owner object's primitive behavior. Selection and lifetime are the same in both cases.
-
-Persistent expression nodes and environments are objects whose evaluation/lookup behavior is reached through messages. Tokenization scratch and native loops over an owner's byte buffer can remain implementation helpers. The evaluator must not become a permanent native switch over every language value or expression kind that bypasses replaceable behavior.
-
-Defining a method from a Block creates a Method that retains the Block's code and lexical environment and binds its first parameter to the message receiver. Installing it changes a dictionary; merely creating or explicitly capturing it does not. Replacement creates a new Method for future sends and keeps old captured/entered Methods usable. Invocation arity validation must happen before entering an incompatible native routine.
-
-## Native allocation and lifetime boundary
-
-Generic allocation establishes addressable storage; each implementation interprets its own payload. The collector module performs conservative, initially non-moving collection. The seed must preserve Oops in registers, native stacks, argument carriers, expression graphs, and captures according to the qualified collector integration. Do not hide the only pointer in unscanned Odin allocation, host maps, or opaque C-owned memory.
-
-The callable envelope and vtable links need a compatible bootstrap representation, not a generic catalog of Integer/String/etc. Id may know the mechanical layout required to dispatch; it may not branch on semantic payload types. Odin-owned entry adapters establish Odin context internally. No Odin-specific layout or implicit calling argument leaks into the C declarations above.
-
-## Acceptance required before the evaluator depends on this ABI
-
-- A C caller uses only Oops and the reviewed C header to send and enter Methods; it requires no Odin context definition.
-- Replacing a normal method changes the next send; a previously captured Method still returns the old result.
-- Replacing `send`, `bind`, and `lookup` separately changes their respective supported operations. A custom lookup is not bypassed by the seed dispatch path.
-- Looking up a Method enters it once. Adding or replacing an `apply`/`invoke` method on that Method does not affect ordinary sends.
-- Creating a Method leaves dictionary bindings unchanged until installation.
-- GC inside a nested call retains the receiver, arguments, selected Method, captures, and return value.
-- The root meta-dispatch case terminates while observing current bindings; arbitrary nested metaobject calls do not trigger a depth-based shortcut.
-- Incorrect arity and missing-method paths return defined Error objects rather than crossing an incompatible native ABI or crashing accidentally.
-
-The review decisions are whether to adopt this argument carrier and control-dispatch boundary, the proposed selector placement, and the callable-envelope layout/ownership. The sequence above is a concrete candidate, not a claim that the user has approved these implementation details. In particular, the boundary between native metaobject traversal and replaceable ordinary sending must be reviewed against the malleability contract before it becomes code.
+Dispatch and the uniform Oop-Vector seed entry are settled. Exact envelope/arity mechanics and the bounded native lookup implementation still need specification and tests. Arity-specific fast paths and the published artifact ABI remain later decisions.

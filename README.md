@@ -6,7 +6,7 @@ This checkout currently contains design documents, not an implemented runtime.
 
 - [Architecture](ARCHITECTURE.md) is the consolidated record of the agreed requirements and directions.
 - [First milestone](docs/first-milestone.md) specifies the proposed seed-language scope and acceptance evidence: an Odin interpreter running Birnam-authored PEG.
-- [Seed invocation proposal](docs/seed-invocation.md) makes the first milestone's native boundary and dispatch sequence concrete for review. It is a proposal, not an accepted permanent ABI.
+- [Seed invocation contract and ABI proposal](docs/seed-invocation.md) records the selected receiver-aware lookup design and separates the still-proposed native calling convention and recursion details.
 - [Dispatch equivalence analysis](docs/dispatch-equivalence.md) examines whether replaceable lookup can replace the proposed extra send/bind layers, with explicit assumptions and a counterexample.
 - [Lookup, binding, and sending review](docs/dispatch-design-review.md) is a standalone treatment for external language-design review, comparing plain Id, receiver-aware lookup, and independent bind/send hooks.
 - [CBPV compiler core experiment](docs/cbpv-experiment.md) records a direction to try, with invariant constraints, a bounded trial, and adoption/rejection criteria. CBPV is not an adopted architectural requirement.
