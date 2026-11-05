@@ -1,6 +1,6 @@
 # Birnam architecture
 
-Consolidated 4 November 2026 from the agreed design discussion. This document specifies the end product and its architectural boundaries. Milestone proposals and research do not silently add requirements. The first [native siphon slice](docs/siphon.md) is implemented as of 5 November 2026; its bounded delivery is distinct from the complete runtime described here.
+Consolidated 4 November 2026 from the agreed design discussion. This document specifies the end product and its architectural boundaries. Milestone proposals and research do not silently add requirements. The [native siphon](docs/siphon.md) and [loadable seed interpreter](docs/seed-interpreter.md) are implemented as of 5 November 2026; their bounded delivery is distinct from the complete runtime described here.
 
 ## Purpose
 

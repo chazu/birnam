@@ -199,6 +199,9 @@ namespace_clone_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	}
 	return result
 }
+namespace_new_entry :: proc "c" (m, r, a: Oop) -> Oop {
+	return allocate(header(r).behavior, size_of(Namespace))
+}
 
 intern_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	// The name object interprets its own payload through its current behavior.
@@ -210,6 +213,11 @@ bytes_intern_entry :: proc "c" (m, r, a: Oop) -> Oop {
 error_kind_entry :: proc "c" (m, r, a: Oop) -> Oop { return (cast(^Error_Data)r).kind }
 error_description_entry :: proc "c" (m, r, a: Oop) -> Oop { return (cast(^Error_Data)r).description }
 error_return_entry :: proc "c" (m, r, a: Oop) -> Oop { return r }
+error_make_entry :: proc "c" (m, r, a: Oop) -> Oop {
+	object := allocate(roots.error_vt, size_of(Error_Data))
+	(cast(^Error_Data)object)^ = Error_Data{arg(a, 0), arg(a, 1)}
+	return object
+}
 
 // A missing ordinary message on Error resolves to an arity-matched propagator.
 // No Error branch is installed in the application's sending path.
@@ -276,15 +284,18 @@ birnam_bootstrap :: proc "c" () -> Oop {
 	install(roots.namespace_vt, "at:", namespace_at_entry, 1)
 	install(roots.namespace_vt, "at:put:", namespace_put_entry, 2)
 	install(roots.namespace_vt, "clone", namespace_clone_entry, 0)
+	install(roots.namespace_vt, "new", namespace_new_entry, 0)
 	install(roots.symbols_vt, "intern:", intern_entry, 1)
 	install(roots.symbols_vt, "clone", identity_entry, 0)
 	install(roots.bytes_vt, "intern", bytes_intern_entry, 0)
+	install(roots.bytes_vt, "asBytes", identity_entry, 0)
 	install(roots.symbol_vt, "intern", identity_entry, 0)
 	install(roots.symbol_vt, "clone", identity_entry, 0)
 	install(roots.singleton_vt, "clone", identity_entry, 0)
 	install(roots.error_vt, "isError", true_entry, 0)
 	install(roots.error_vt, "kind", error_kind_entry, 0)
 	install(roots.error_vt, "description", error_description_entry, 0)
+	install(roots.error_vt, "kind:message:", error_make_entry, 2)
 	install(roots.error_vt, "behavior", behavior_entry, 0)
 	install(roots.error_vt, "define:as:", define_entry, 2)
 	install(roots.error_vt, "==", same_entry, 1)
@@ -310,6 +321,7 @@ birnam_bootstrap :: proc "c" () -> Oop {
 	publish("Bytes", bytes(""))
 	publish("Vector", arguments())
 	publish("Method", allocate(roots.method_vt, 0))
+	publish("Error", failure("error", "Error prototype"))
 	publish("Vtable", roots.root_meta)
 	publish("Symbols", roots.symbols)
 	publish("Namespace", roots.world)

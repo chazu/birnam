@@ -4,7 +4,7 @@
 
 We will investigate call-by-push-value (CBPV) as a semantic foundation and intermediate representation for Birnam's authored compiler. The trial asks whether an explicit distinction between values and computations improves lowering, reasoning, and optimization while preserving the language already described in [ARCHITECTURE.md](../ARCHITECTURE.md).
 
-The decision to try this does not select CBPV permanently, change Birnam's syntax or evaluation strategy, settle its dispatch alternatives, or authorize relaxing an invariant to make an experiment pass. The first milestone remains an Odin seed interpreter running Birnam-authored PEG. No CBPV runtime, compiler pass, or preservation result has yet been implemented in this checkout.
+The decision to try this does not select CBPV permanently, change Birnam's syntax or evaluation strategy, settle its dispatch alternatives, or authorize relaxing an invariant to make an experiment pass. The first milestone remains an Odin seed interpreter running Birnam-authored PEG. A [direct seed evaluator](seed-interpreter.md) now supplies an initial baseline, but no CBPV runtime, compiler pass, or preservation result has been implemented.
 
 ## Motivation and hypothesis
 

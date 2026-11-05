@@ -1,6 +1,6 @@
 # Native siphon validation
 
-5 November 2026. Scope: the first single-threaded native siphon and C module ABI. The design checkpoint preceding implementation is `74ebd20`.
+5 November 2026. Historical receipt for native siphon commit `e13b252`: the first single-threaded native siphon and C module ABI. The design checkpoint preceding implementation is `74ebd20`. Later source-module changes are qualified separately in [seed interpreter validation](seed-interpreter-validation.md).
 
 ## Build inputs
 

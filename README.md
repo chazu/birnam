@@ -2,11 +2,12 @@
 
 An Odin reboot of Birnam: a malleable `id` object universe with native compilation, stackful fibers, and source-bearing native images.
 
-The first native siphon is implemented: an Odin executable booting one Id world and loading native modules through an Oop-only C interface. The source interpreter and authored PEG are not implemented yet.
+The native siphon boots one Id world and loads modules through an Oop-only C interface. A separately loaded Odin seed interpreter now evaluates the initial Birnam source subset, including lexical Blocks and source-defined Methods. Authored PEG/Lang/compiler remain later work.
 
 ```sh
 make doctor
 make build
+./build/siphon ./build/seed.dylib --eval examples/seed/answer.birnam
 make verify
 ./build/siphon ./build/hello.dylib
 ```
@@ -15,6 +16,7 @@ The build is pinned to the initial Mac toolchain. See [the siphon implementation
 
 - [Architecture](ARCHITECTURE.md) is the consolidated record of the agreed requirements and directions.
 - [Native siphon](docs/siphon.md) describes the delivered first slice; [validation](docs/siphon-validation.md) records its evidence.
+- [Loadable seed interpreter](docs/seed-interpreter.md) documents source execution and the supported subset; [validation](docs/seed-interpreter-validation.md) records the checks.
 - [First milestone](docs/first-milestone.md) specifies the proposed seed-language scope and acceptance evidence: an Odin interpreter running Birnam-authored PEG.
 - [Seed invocation contract and ABI proposal](docs/seed-invocation.md) records the selected receiver-aware lookup design and separates the still-proposed native calling convention and recursion details.
 - [Dispatch equivalence analysis](docs/dispatch-equivalence.md) examines whether replaceable lookup can replace the proposed extra send/bind layers, with explicit assumptions and a counterexample.

@@ -2,6 +2,8 @@
 
 Implemented 5 November 2026. This is the first native bootstrap slice, not the seed interpreter or a completed Birnam runtime.
 
+Follow-up: [the seed interpreter](seed-interpreter.md) is now available as a separately loaded module. The host's thin `--eval` option sends `evalFile:` to the current `Seed` object; it contains no parser/evaluator. The original native-slice qualification below remains separate from the new source-language evidence.
+
 ## Build and run
 
 ```sh

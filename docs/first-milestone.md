@@ -1,6 +1,6 @@
 # First milestone: authored PEG on the Odin seed
 
-Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The first [native siphon slice](siphon.md) implements and tests the object/dispatch/loading foundation. The source evaluator and authored PEG remain undelivered, so the overall milestone is not complete. [Architecture](../ARCHITECTURE.md) governs this work.
+Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The [native siphon](siphon.md) supplies the object/dispatch/loading foundation, and the [loadable seed interpreter](seed-interpreter.md) now runs the initial source subset with captures and source-defined Methods. Authored PEG and the additional general library operations it needs remain undelivered, so the overall milestone is not complete. [Architecture](../ARCHITECTURE.md) governs this work.
 
 ## Outcome and boundary
 
