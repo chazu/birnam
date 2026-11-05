@@ -1,6 +1,6 @@
 # Seed interpreter validation
 
-5 November 2026. Scope: the separately loaded Odin seed interpreter, its initial source subset, and integration with the existing native siphon. Authored PEG and the complete first milestone remain future work.
+Historical receipt for commit `90d96af`, 5 November 2026. Later general library and authored PEG work is qualified separately in [PEG validation](peg-validation.md). Scope: the separately loaded Odin seed interpreter, its initial source subset, and integration with the existing native siphon. Authored PEG was not part of this receipt.
 
 ## Inputs and commands
 

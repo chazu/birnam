@@ -66,7 +66,7 @@ def test() -> None:
     cflags, ldflags = build()
     common = ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
               "-O2", "-g", "-Iinclude", *cflags, "-dynamiclib", "-undefined", "dynamic_lookup"]
-    for name in ("contract", "handover", "after_handover", "no_entry", "fail_init", "seed_contract"):
+    for name in ("contract", "handover", "after_handover", "no_entry", "fail_init", "seed_contract", "peg_contract"):
         run(*common, f"tests/{name}.c", *ldflags, "-o", f"build/{name}.dylib")
     run(*common, "examples/native/hello.c", *ldflags, "-o", "build/hello.dylib")
     run("build/siphon", "--version")
@@ -88,6 +88,9 @@ def test() -> None:
     print("PASS siphon native acceptance (no source interpreter or fiber qualification)")
     run("python3", "tests/seed_test.py")
     run("build/siphon", str(BUILD / "seed.dylib"), str(BUILD / "seed_contract.dylib"))
+    run("python3", "tests/peg_test.py")
+    run("build/siphon", str(BUILD / "seed.dylib"), "--eval", "modules/peg.birnam",
+        str(BUILD / "peg_contract.dylib"))
 
 
 def main() -> None:

@@ -1,6 +1,6 @@
 # First milestone: authored PEG on the Odin seed
 
-Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The [native siphon](siphon.md) supplies the object/dispatch/loading foundation, and the [loadable seed interpreter](seed-interpreter.md) now runs the initial source subset with captures and source-defined Methods. Authored PEG and the additional general library operations it needs remain undelivered, so the overall milestone is not complete. [Architecture](../ARCHITECTURE.md) governs this work.
+Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The [native siphon](siphon.md) supplies the object/dispatch/loading foundation, and the [loadable seed interpreter](seed-interpreter.md) now runs the initial source subset with captures and source-defined Methods. The [authored PEG module](peg.md) and its general library support now satisfy this milestone on the pinned Mac toolchain; [validation](peg-validation.md) records the completed acceptance checks. [Architecture](../ARCHITECTURE.md) governs this work.
 
 ## Outcome and boundary
 
@@ -78,16 +78,16 @@ Export `Peg` using the existing spelling. The module implements the following th
 | Pattern `star`, `plus`, `opt`, `negate`, `lookahead` | Repetition, optionality, negative and positive lookahead; these spellings are confirmed by the inspected public method declarations. |
 | Grammar `rule:is:` | Define a named rule; String rule names resolve to the same interned identity as Symbols. |
 | Grammar `parse:from:` | Prefix parse from a named root rule; include `eof` explicitly to require full consumption. |
-| Grammar `furthestFail` | Per-grammar byte offset from its most recent failed parse. |
+| Grammar `furthestFail` | Furthest recorded failure byte offset in the latest completed parse, including successful parses with failed attempts; starts at zero. |
 | CST `rule`, `ruleName`, `start`, `end`, `childCount`, `childAt:`, `children` | Ordinary messages exposing labelled rule nodes with half-open byte spans and source-ordered children. |
 
-A successful root rule produces a CST root. Only rule applications create nodes; sequences/repetitions flatten child rule nodes. Ordered choice starts each alternative at the original position. Failed alternatives must not leave successful CST children behind. Lookahead consumes no input and contributes no children. Successful zero-width repetition terminates rather than looping forever.
+A successful root rule produces a CST root. Only rule applications create nodes; sequences/repetitions flatten child rule nodes. Ordered choice starts each alternative at the original position. Failed alternatives must not leave successful CST children behind. Lookahead consumes no input and contributes no children. Successful zero-width repetition contributes its children once and then terminates. Plus requires an advancing match and fails when every success is zero-width.
 
 An ordinary mismatch answers a `syntaxError` Error; an undefined root/reference answers `undefinedRule`; re-entering a rule at the same input position answers `leftRecursion`. Do not report structural grammar failures as ordinary mismatches that choice can silently recover from. Include Error support in the seed so the old no-Error-rung nil fallback is unnecessary. Memoization, if introduced, stays authored and scoped appropriately; its storage algorithm is not a required native mechanism.
 
 ## Intended acceptance program
 
-This is an executable target for the milestone, not code claimed to run today:
+This acceptance program now runs on the seed with `modules/peg.birnam` loaded:
 
 ```birnam
 let grammar := [Peg grammar];
