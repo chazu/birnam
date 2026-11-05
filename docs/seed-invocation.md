@@ -1,6 +1,8 @@
 # Seed Invocation Contract and ABI Proposal
 
-**Receiver-aware lookup selected for the seed, 5 November 2026.** The semantic contract below is agreed. Under the user's permission to choose either argument convention provided all arguments remain Oops, the seed uses a uniform C entry with an Oop argument Vector. Exact exported names, callable-envelope layout, selector spelling, and native recursion details still need implementation specification. No runtime is implemented yet. [Architecture](../ARCHITECTURE.md) governs this work.
+**Receiver-aware lookup selected for the seed, 5 November 2026.** The semantic contract below is agreed. Under the user's permission to choose either argument convention provided all arguments remain Oops, the seed uses a uniform C entry with an Oop argument Vector. The first native implementation specifies and tests exported names, the callable envelope, selector spelling, and native recursion details as described below. [Architecture](../ARCHITECTURE.md) governs this work.
+
+**Implementation follow-up, 5 November 2026:** the [native siphon](siphon.md) implements this sequence with `lookup:for:`, the Oop-only C exports in `include/birnam.h`, and the mechanical envelope/call-Vector layout in `include/birnam_native.h`. Native fixtures exercise root replacement, receiver-sensitive selection, direct entry, and captured Method lifetime. The original proposal discussion below remains useful context; the implementation note states the delivered scope and open limitations. This is a seed ABI, not a frozen production artifact ABI.
 
 This replaces the earlier layered send/bind proposal. The alternatives and their tradeoffs remain in [the dispatch review](dispatch-design-review.md) and [equivalence analysis](dispatch-equivalence.md).
 
@@ -36,9 +38,9 @@ send(r,s,args) = E(bind(r,s),r,args)    // successful binding case
 
 These equations specify the selected mechanism, not its caching or allocation strategy. Custom lookup may have effects and inspect receiver state. A cache or specialization must preserve all those observations and dependencies; `(vtable, selector)` alone is not generally a sufficient cache key. Repeated lookup is not required to synthesize a fresh closure, and this choice does not promise stable identity for arbitrary repeated synthesized selections.
 
-## Native lookup base case proposal
+## Native lookup base case
 
-A finite native base case is still needed to find lookup's own implementation. Propose the selector `lookup:for:` and the Piumarta-style self-referential root vtable. This is a concrete candidate for the mechanics, not another accepted policy layer:
+A finite native base case is still needed to find lookup's own implementation. The native seed uses `lookup:for:` and the Piumarta-style self-referential root vtable. These are the implemented mechanics, not another policy layer:
 
 ```text
 bind(receiver, selector):
@@ -65,7 +67,7 @@ For an ordinary object `r` with behavior `V`, and `behavior(V) = RootMeta`:
 
 The two receiver roles are deliberately different at each meta level. The primitive reads the current root dictionary entry; it does not pin the original lookup Method. Delegation inside the default application lookup keeps the original `r` argument while traversing parent behaviors. Custom lookup and metaobject cycles can still be nonterminating; a recursion-depth shortcut must not silently replace their semantics with native default lookup.
 
-This proposal needs direct tests of root replacement and nested custom lookup before evaluator work relies on it. It eliminates the previous `findControl`/`controlCall` layer for independently replaceable send/bind policies.
+The native acceptance fixtures test root replacement and nested custom lookup. It eliminates the previous `findControl`/`controlCall` layer for independently replaceable send/bind policies.
 
 ## Seed C boundary
 
@@ -86,11 +88,11 @@ The Vector carrier simplifies arity-independent entry but can add packing, alloc
 
 The runtime owns carrier lifetime. Any carrier exposed or retained by a Method or suspended computation must remain valid; reusable storage cannot be overwritten while still observable. The convention introduces no language-level borrowing rules. Transport packing must not introduce observable construction behavior absent from the source; if its implementation depends on replaceable constructors, those dependencies/effects must be accounted for.
 
-`birnam_bind` obtains the current selected Method through receiver-aware lookup. `birnam_enter` directly enters an already-selected Method. A C caller must require no Odin-specific knowledge. Exact exported names, arity-validation mechanism, and callable-envelope layout/ownership remain open.
+`birnam_bind` obtains the current selected Method through receiver-aware lookup. `birnam_enter` directly enters an already-selected Method. A C caller must require no Odin-specific knowledge. The exported names and native envelope/arity checks are specified in the current C headers and implementation note; their wider portability and optimized alternatives remain open.
 
 ## Method representation and lifetime
 
-The bootstrap needs a compatible callable envelope identifying a Method's native entry and captured state. Interpreted Methods use an entry that evaluates a Birnam expression graph with captures and receiver bindings; native Methods enter their owner implementation. Both obey the same selection and lifetime contract.
+The bootstrap uses a compatible callable envelope identifying a Method's native entry and captured state. Interpreted Methods use an entry that evaluates a Birnam expression graph with captures and receiver bindings; native Methods enter their owner implementation. Both obey the same selection and lifetime contract.
 
 Defining a Method from a Block retains its code and lexical environment and binds its first parameter to the application receiver. Creating a Method does not change dictionaries. Installation publishes it for future sends. Replacement retains old captured/entered Methods and their needed code. Incorrect arity must not enter an incompatible native routine.
 
@@ -113,4 +115,4 @@ Collector integration must preserve live receiver/argument Oops, selected Method
 - The native root case observes current root bindings and terminates in the valid bootstrap graph. Nested custom lookup is not bypassed by a depth-based fallback.
 - Missing methods and incorrect arity produce defined Error objects rather than an accidental native ABI failure.
 
-Dispatch and the uniform Oop-Vector seed entry are settled. Exact envelope/arity mechanics and the bounded native lookup implementation still need specification and tests. Arity-specific fast paths and the published artifact ABI remain later decisions.
+Dispatch and the uniform Oop-Vector seed entry are implemented and covered by the native acceptance fixtures. Arity-specific fast paths, broader platform/collector qualification, and the published artifact ABI remain later decisions.

@@ -1,0 +1,10 @@
+{
+  "platform": "Darwin",
+  "architecture": "arm64",
+  "odin": "dev-2026-10:84bc3fc21",
+  "clang": "Apple clang version 16.0.0 (clang-1600.0.26.3)",
+  "sdk": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.0.sdk",
+  "sdk_settings_sha256": "1f8d9531b992145bd1338075321a2c46e22ac83cb6d25a5cb9cf9e1efd9b9d5b",
+  "bdw_gc": "8.2.12",
+  "bdw_gc_dylib_sha256": "357ca358cf58b0e23bcbea6389d53030ce62209ca3236c081e8c63af64da3a84"
+}

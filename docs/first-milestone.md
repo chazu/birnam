@@ -1,6 +1,6 @@
 # First milestone: authored PEG on the Odin seed
 
-Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The concrete calling ABI, native lookup base case, and remaining small protocol details still need specification. No runtime, authored PEG implementation, or passing acceptance result exists in this checkout yet. [Architecture](../ARCHITECTURE.md) governs this work.
+Implementation contract under development, begun 4 November 2026. The milestone direction, seed language policies, Mac-first baseline, and receiver-aware lookup choice are agreed as of 5 November 2026. The first [native siphon slice](siphon.md) implements and tests the object/dispatch/loading foundation. The source evaluator and authored PEG remain undelivered, so the overall milestone is not complete. [Architecture](../ARCHITECTURE.md) governs this work.
 
 ## Outcome and boundary
 
@@ -125,4 +125,4 @@ A clean build and test must work without access to the old checkout, Cargo, an i
 
 ## Review boundary before implementation
 
-The [invocation contract](seed-invocation.md) records receiver-aware lookup and the uniform seed C entry with an Oop argument Vector. Remaining implementation specifications are callable-envelope layout/ownership, arity handling, exact lookup selector spelling, and the native recursion base case. Resolve these before dependent dispatch/evaluator code. Small library details can be resolved within the agreed behavior during implementation. The first code slice should be bounded by these contracts rather than a full runtime port.
+The [invocation contract](seed-invocation.md) records receiver-aware lookup and the uniform seed C entry with an Oop argument Vector. The first [siphon](siphon.md) now concretizes the callable envelope, arity handling, `lookup:for:` selector, and root recursion base case with native acceptance evidence. Review that implementation and its limitations before evaluator dependence. Small library details can be resolved within the agreed behavior during implementation; the remaining work should stay within this milestone rather than become a full runtime port.
