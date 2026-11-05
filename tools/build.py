@@ -91,6 +91,7 @@ def test() -> None:
     run("python3", "tests/peg_test.py")
     run("build/siphon", str(BUILD / "seed.dylib"), "--eval", "modules/peg.birnam",
         str(BUILD / "peg_contract.dylib"))
+    run("python3", "tests/lang_grammar_test.py")
 
 
 def main() -> None:

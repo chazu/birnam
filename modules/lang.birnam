@@ -1,0 +1,84 @@
+// Lang owns source grammar. PEG owns matching; all nodes are ordinary CSTs.
+[[|
+let lang := [Namespace new];
+let grammar := [Peg grammar];
+let lit := [:text | [Peg literal: text]];
+let seq := [:children | [Peg seqOf: children]];
+let choice := [:children | [Peg choiceOf: children]];
+let ref := [:name | [Peg ruleRef: name]];
+let alpha := [[[Peg charset] from: 65 to: 90] from: 97 to: 122];
+[alpha from: 95 to: 95];
+let digit := [[Peg charset] from: 48 to: 57];
+let alnum := [choice value: #[alpha digit]];
+let identifier := [seq value: #[alpha [alnum star]]];
+let operators := [Peg anyOf: "+-*/<>=~!&,%@^|"];
+let comment := [seq value: #[[lit value: "//"] [[seq value: #[[[lit value: "\n"] negate] [Peg any]]] star]]];
+let skip := [[choice value: #[[Peg anyOf: " \t\r\n"] comment]] star];
+let token := [:pattern | [seq value: #[pattern skip]]];
+let named := [:name | [token value: [ref value: name]]];
+// A name followed by a keyword colon is not an identifier token. := is separate.
+let keywordColon := [seq value: #[[lit value: ":"] [[lit value: "="] negate]]];
+[grammar rule: #identifier is: [seq value: #[identifier [keywordColon negate]]]];
+[grammar rule: #keyword is: [seq value: #[identifier keywordColon]]];
+let letToken := [seq value: #[[lit value: "let"] [alnum negate] [keywordColon negate]]];
+
+[Reflect defineMethod: #error:message:at:source: on: lang as: [:self :kind :message :position :source |
+  let index := [Cell with: 0]; let line := [Cell with: 1]; let column := [Cell with: 1];
+  [[| [[index value] < position]] whileTrue: [|
+    [[[source byteAt: [index value]] = 10] ifTrue: [|
+      [line value: [[line value] + 1]]; [column value: 1]
+    ] ifFalse: [| [column value: [[column value] + 1]]]];
+    [index value: [[index value] + 1]]]];
+  [Error kind: kind message:
+    [[[[[[message , " at byte "] , [position printString]] , " (line "] , [[line value] printString]] , ", byte column "] , [[[column value] printString] , ")"]]]
+]];
+let unsupported := [Object clone];
+[Reflect defineMethod: #match:at: on: unsupported as: [:self :run :position |
+  [run failureAt: position];
+  [lang error: #unsupportedSyntax message: "form is outside the current Lang subset" at: position source: [run source]]]];
+let badNumber := [seq value: #[[[lit value: "-"] opt] [digit plus] [choice value: #[[lit value: "."] alpha]]]];
+let unsupportedExpression := [seq value: #[[[choice value: #[badNumber [Peg anyOf: "{}?"]]] lookahead] unsupported]];
+[grammar rule: #integer is: [seq value: #[[[lit value: "-"] opt] [digit plus]]]];
+let escape := [seq value: #[[lit value: "\\"] [Peg anyOf: "nrt\"\\"]]];
+let plain := [seq value: #[[[Peg anyOf: "\"\\"] negate] [Peg any]]];
+[grammar rule: #string is: [seq value: #[[lit value: "\""] [[choice value: #[escape plain]] star] [lit value: "\""]]]];
+let symbolName := [choice value: #[[seq value: #[alpha [[choice value: #[alnum [lit value: ":"]]] star]]] [operators plus]]];
+[grammar rule: #symbol is: [seq value: #[[lit value: "#"] symbolName]]];
+[grammar rule: #vector is: [seq value: #[[token value: [lit value: "#["]] [[ref value: #expression] star] [token value: [lit value: "]"]]]]];
+[grammar rule: #parameter is: [seq value: #[[token value: [lit value: ":"]] [named value: #identifier]]]];
+[grammar rule: #block is: [seq value: #[[token value: [lit value: "["]] [[ref value: #parameter] star] [token value: [lit value: "|"]] [ref value: #sequence] [token value: [lit value: "]"]]]]];
+[grammar rule: #unary is: [named value: #identifier]];
+// The native lexer treats a leading | separately and - followed by a digit as a number.
+let binary := [choice value: #[[lit value: "|"] [seq value: #[[[seq value: #[[lit value: "-"] digit]] negate] [operators plus]]]]];
+let badSelector := [seq value: #[[[seq value: #[[lit value: "=>"] [operators negate]]] lookahead] unsupported]];
+[grammar rule: #operator is: [choice value: #[badSelector binary]]];
+[grammar rule: #binary is: [seq value: #[[named value: #operator] [ref value: #expression]]]];
+[grammar rule: #keywords is: [[seq value: #[[named value: #keyword] [ref value: #expression]]] plus]];
+[grammar rule: #send is: [seq value: #[[token value: [lit value: "["]] [ref value: #expression]
+  [choice value: #[[ref value: #keywords] [ref value: #unary] [ref value: #binary]]]
+  [token value: [lit value: "]"]]]]];
+[grammar rule: #expression is: [choice value: #[unsupportedExpression
+  [named value: #integer] [named value: #string] [ref value: #vector] [named value: #symbol]
+  [ref value: #block] [ref value: #send] [named value: #identifier]]]];
+[grammar rule: #declaration is: [seq value: #[[token value: letToken] [named value: #identifier]
+  [token value: [lit value: ":="]] [ref value: #expression]]]];
+let form := [choice value: #[[ref value: #declaration] [seq value: #[[letToken negate] [ref value: #expression]]]]];
+[grammar rule: #sequence is: [[choice value: #[[token value: [lit value: ";"]] form]] star]];
+[grammar rule: #program is: [seq value: #[skip [ref value: #sequence] [Peg eof]]]];
+
+[Reflect defineMethod: #grammar on: lang as: [:self | grammar]];
+[Reflect defineMethod: #furthestFail on: lang as: [:self | [grammar furthestFail]]];
+[Reflect defineMethod: #parse: on: lang as: [:self :input |
+  let bytes := [input asBytes];
+  let text := [String fromBytes: bytes];
+  [[text isError] ifTrue: [| text] ifFalse: [|
+    let parsed := [grammar parse: bytes from: #program];
+    [[parsed isError] ifTrue: [|
+      [[[parsed kind] == #syntaxError] ifTrue: [|
+        [self error: #syntaxError message: "invalid Birnam source" at: [grammar furthestFail] source: bytes]
+      ] ifFalse: [| parsed]]
+    ] ifFalse: [| parsed]]
+  ]]]];
+[Namespace at: #Lang put: lang];
+lang
+] value]

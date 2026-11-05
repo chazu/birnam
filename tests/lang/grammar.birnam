@@ -1,0 +1,34 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that: on: Assert as: [:self :condition |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: "Lang grammar assertion"]]]]];
+let source := "// lead\nlet x := #[1 -2 #foo: \"é\"]; [:arg | [x at: arg]];";
+let tree := [Lang parse: source];
+[Assert that: [[tree rule] == #program]];
+[Assert that: [[tree start] = 0]];
+[Assert that: [[tree end] = [source byteSize]]];
+let sequence := [tree childAt: 0];
+[Assert that: [[sequence rule] == #sequence]];
+[Assert that: [[sequence childCount] = 2]];
+let declaration := [sequence childAt: 0];
+[Assert that: [[declaration rule] == #declaration]];
+[Assert that: [[declaration start] = 8]];
+let name := [declaration childAt: 0];
+[Assert that: [[name start] = 12]];
+[Assert that: [[name end] = 13]];
+[Assert that: [[[source bytesFrom: [name start] to: [name end]] asString] = "x"]];
+let positives := #["" ";;; //empty" "[|]" "[:x :y | x]" "#[[1 + 2] [| true]]" "[x a: 1 b: 2]" "[x | 1]" "let x:=1" "#foo:bar: #+ #||" "let let := 1; [let printString]" "[x == -2]" "[1 - 2]" "\"a\\n\\r\\t\\\"\\\\z\"" "let letter := 1; letter"];
+let index := [Cell with: 0];
+[[| [[index value] < [positives size]]] whileTrue: [|
+  [Assert that: [[[Lang parse: [positives at: [index value]]] isError] not]];
+  [index value: [[index value] + 1]]]];
+let negatives := #["[x]" "[[1 + 2]]" "let := 3" "[1 + 2" "\"unfinished" "\"bad\\q\"" "[a b c]" "[1 -2]" "#[1;2]" "[:x: | x]" "let" "a:" "#" ":=" "[| 1" "[x || 1]"];
+[index value: 0];
+[[| [[index value] < [negatives size]]] whileTrue: [|
+  [Assert that: [[[Lang parse: [negatives at: [index value]]] kind] == #syntaxError]];
+  [index value: [[index value] + 1]]]];
+let unsupported := #["1.5" "0x10" "1e3" "?variable" "{#a -> 1}" "[x => printString]"];
+[index value: 0];
+[[| [[index value] < [unsupported size]]] whileTrue: [|
+  [Assert that: [[[Lang parse: [unsupported at: [index value]]] kind] == #unsupportedSyntax]];
+  [index value: [[index value] + 1]]]];
+[System println: "PASS Lang grammar and CST spans"];
