@@ -76,6 +76,8 @@ The siphon supplies initial Id dispatch, allocation, loading, and machine primit
 
 ## Remaining implementation decisions
 
+CBPV is an [experimental candidate for the compiler core](docs/cbpv-experiment.md), not a selected IR or a new language invariant. The trial must preserve this architecture; adopting or rejecting it requires a later decision based on evidence. It does not settle dispatch, change source evaluation, or expand the first milestone's requirements.
+
 The first milestone must concretize dispatch entry and the bootstrap language subset without weakening the contracts above. Its proposed details live in [the milestone](docs/first-milestone.md) and [invocation proposal](docs/seed-invocation.md).
 
 Later work must choose and qualify the collector build/mode, native stack/context-switch implementation, safepoint and invalidation machinery, executable-code lifetime, Alien/native resource protocols, image entrypoints/encoding/selective installation, representation identifiers and migrations, native artifact ABI, and optional unloading. These are explicit open areas, not features already implemented.
