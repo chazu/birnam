@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74j-internal-guarded-sends-rejected-1.json",
-  "bytes": 384155,
-  "sha256": "548fccd6fde41e9a84461972293af77556dce3191f0b558100bf8fd09853199d",
-  "status": "incomplete-or-rejected",
-  "design": "74J"
-}

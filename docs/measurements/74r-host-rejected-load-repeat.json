@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74r-host-rejected-load-repeat.json",
-  "bytes": 59091,
-  "sha256": "80f0d28217829a26e3e5d3872283bd2356c107d65594eead45907276819ad921",
-  "status": "failed",
-  "design": "74R"
-}

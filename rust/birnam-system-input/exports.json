@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "System stdin method constructed through Bootstrap",
-  "install_name": "@rpath/libbirnam_system_input.dylib",
-  "exported_symbols": [
-    "birnam_native_module_v2"
-  ]
-}

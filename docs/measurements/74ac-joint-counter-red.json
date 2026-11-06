@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ac-joint-counter-red.json",
-  "bytes": 766,
-  "sha256": "61d2b277301345d25c1a0bd86929fb23f95ec4f69d5d28b97bba9b645c28d737",
-  "status": "failed",
-  "scope": "Source sequence correctness and allocation accounting; no timing claim"
-}

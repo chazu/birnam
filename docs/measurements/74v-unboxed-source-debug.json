@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-unboxed-source-debug.json",
-  "bytes": 67422,
-  "sha256": "ffc73fdf50665209f4f547d680233e8667148c24783659f1053526769f1b2c05",
-  "status": "passed",
-  "scope": "Installed Prelude and Codegen with a test-only floor; no timing claim"
-}

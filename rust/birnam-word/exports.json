@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "Generic unsigned Word representation and machine operations via Id",
-  "install_name": "@rpath/libbirnam_word.dylib",
-  "exported_symbols": [
-    "birnam_native_module_v2"
-  ]
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-applications-settled-rejected.json",
-  "bytes": 207498,
-  "sha256": "a710bffaddb8c1e9e06b038d46a0a3a07b5ae1295c560b59ddfda64da639b180",
-  "status": "failed",
-  "design": "74S"
-}

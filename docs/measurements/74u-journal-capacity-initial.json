@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-journal-capacity-initial.json",
-  "bytes": 21779,
-  "sha256": "d79e7d6c11b1b7390f343c36805530cff675a5361eed54486674aa0cf7323e59",
-  "status": "failed",
-  "scope": "Source closure capture lifetime and observing-finalizer journal settlement. No timing claim."
-}

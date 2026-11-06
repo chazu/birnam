@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ad-composition-tests.json",
-  "bytes": 107579,
-  "sha256": "eb4c25c496d11c717c45cff5aa3ec859550aabd255d3345b845882df2bf13665",
-  "status": "passed",
-  "qualified": false
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-repeated-closure-profile.json",
-  "bytes": 902790,
-  "sha256": "6a79fc45bd1d3d7873ae3067fecd8f04f1e236dc663e0a4dac2514960d71c6d7",
-  "status": "passed",
-  "scope": "Diagnostic source sampling; not qualified timing. Twelve measurement calls reuse the same source factory, each with 500 batches of 128 factory invocations. Sampling begins after preparation output. Shape 0 returns the captured Cell. Profiles include collection; admission subtrees distinguish runtime costs. Source, floor and installation come from the completed repeated-use timing receipt; the wrapper repeats the measurement call to extend sampling duration."
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-closure-threshold-release.json",
-  "bytes": 44918,
-  "sha256": "64300d0bc9d85d51fb56b8289856a569564c291a118a61f9f9046d68a2169d14",
-  "status": "passed",
-  "scope": "Validate repeated-closure measurement counters; timings here are unqualified."
-}

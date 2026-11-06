@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-consumer-teardown-completion-audit.json",
-  "bytes": 36767,
-  "sha256": "81779ae04c4352b8f6eb34c400cf1bf3a1e4806b229419df3ac38a7318b973c4",
-  "status": "passed",
-  "scope": "All four private compiler consumers release exact native/heap storage after three complete semantic matrix repetitions per profile. Original executed test binaries preserved byte-for-byte outside Cargo cache. Independent of rebuilt normal source modules, whose new acceptance is pending."
-}

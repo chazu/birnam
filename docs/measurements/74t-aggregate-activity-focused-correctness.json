@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-aggregate-activity-focused-correctness.json",
-  "bytes": 118980,
-  "sha256": "5e3007dc7834e9111b0ab4a039c34341e8ccbbb9006a4af8405442c1feb2e75d",
-  "status": "passed",
-  "scope": "Isolated aggregate activity diagnostic, no production integration or timing claim."
-}

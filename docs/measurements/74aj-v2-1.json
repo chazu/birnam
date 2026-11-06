@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74aj-v2-1.json",
-  "bytes": 131972,
-  "sha256": "225035a8cb5d40460720cf43778c9b0d570082ade34434ed964fb7a2c9856c64",
-  "status": "passed"
-}

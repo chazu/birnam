@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-native-storage-numeric-release.json",
-  "bytes": 41264,
-  "sha256": "0a8e15d52a819b6ba3a6440717216be3b99903caa7cb012fcd28e4e75debe04e",
-  "status": "passed",
-  "scope": "Measurement correctness only; no qualified timing claim"
-}

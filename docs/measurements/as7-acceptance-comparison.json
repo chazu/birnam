@@ -1,7 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "as7-acceptance-comparison.json",
-  "bytes": 101278,
-  "sha256": "fcbdfa56a0696cfdb40cb770c9789a29e0bad0fc964e4926ed41323ae6970ecc"
-}

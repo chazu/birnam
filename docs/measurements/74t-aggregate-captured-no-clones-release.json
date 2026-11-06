@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-aggregate-captured-no-clones-release.json",
-  "bytes": 147933,
-  "sha256": "829a04fa77c4acb801fded20cdef5fa03959632cf3b8f10bc615abb76b233e95",
-  "status": "passed",
-  "scope": "Real host REPL, installed compiler and Relational native getter, using the previously verified test floor. Each expression returns to the host between phases so removed code can retire before readmission. Existing numeric probe supplies logical-byte and physical-allocation counters only: its completed/materialized fields count numeric optimization and must remain zero here. Four phases per process: native getter; effectful Id override creating a private vtable; inherited native getter restored with undeclared private layout still refused; unchanged canonical-layout prototype readmitted. Shapes include field-only returns, a tail getter, successive clones, an escaping observer and discarded repeated clones. Selected disabled consumers must omit no physical allocations; unrelated consumers remain active. This is source correctness and admission evidence, not a timing comparison or a proof of every aggregate shape."
-}

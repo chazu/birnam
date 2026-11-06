@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-verification-support-composition.json",
-  "bytes": 34455,
-  "sha256": "72cb8352f4e86690a685ff31ae003c9bd168a00305cdbb764c290a19ca2744c9",
-  "status": "passed",
-  "scope": "Pre-verification source composition audit only; full production acceptance still required."
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74w-unchanged-reuse-focused-correctness.json",
-  "bytes": 4941,
-  "sha256": "b1c05e2767e9835911a522dff8ff7eade57a1c2846310fe77029ad662888d89a",
-  "status": "passed",
-  "scope": "Focused debug/release checks of unchanged-input reuse: registered mutation/input/declaration/GC/fresh-identity cases, real capture/suspension/retirement, actual-tail stamps and arithmetic transitive-dependency/earliest-error comparisons. No full production or timing claim."
-}

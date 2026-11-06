@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74x-literal-control-correctness.json",
-  "bytes": 62005,
-  "sha256": "8eeb3487b48115df417854a9f5b15fe16f3c589f65c7d2dcbd449cbf87c6eb25",
-  "status": "passed",
-  "scope": "Focused V2 capture/suspension of fresh literal closure results and original-control regression; full updated production gate pending"
-}

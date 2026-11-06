@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-descriptor-control-release.json",
-  "bytes": 60793,
-  "sha256": "9e14d636842db54e187eca7bafc97ae62bcb2b5455961fdd94326c47a89aaa8c",
-  "status": "passed"
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-scratch-control-release.json",
-  "bytes": 368796,
-  "sha256": "0b63b7baa5f353cfa3d0b408f29a08274ac542945d8e828e4e65aebf3b1fe2db",
-  "status": "passed",
-  "scope": "Forced source recovery followed by test-floor V2 control; no timing claim"
-}

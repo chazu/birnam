@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-applications-blocked.json",
-  "bytes": 143612,
-  "sha256": "c95e68cae74858b2a17fffc337201873324172797fbade2779f2dc41b518fc17",
-  "status": "interrupted",
-  "design": "74S"
-}

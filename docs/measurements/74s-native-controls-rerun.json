@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-native-controls-rerun.json",
-  "bytes": 188212,
-  "sha256": "1a9c7623c647526ee6af3563a85d4123c97ef893fdcb11cf2d9eca82e5d3c17b",
-  "status": "passed",
-  "design": "74S"
-}

@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-workflow-consolidation.json",
-  "bytes": 9849,
-  "sha256": "a13a3761995f9d665e8e75eefa1b99f88235c31760f90e0314768ddabdc2dbd2",
-  "status": "cancelled_superseded_queues"
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-restored-artifacts.json",
-  "bytes": 40150,
-  "sha256": "f92c8e81106704d9ccff43ac00682470db3af68ca27ee41170537ac8694fae5f",
-  "status": "prepared",
-  "scope": "Copied rebuilt normal modules and unchanged diagnostic modules/teardown executables outside Cargo caches. New normal hashes require new source acceptance; original evidence remains retained."
-}

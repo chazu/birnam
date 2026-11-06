@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74h-frame-read-reuse.json",
-  "bytes": 110018,
-  "sha256": "b991122ed02dfbf4c3a00e9f027a5571cc66554b953621a721ee634ce08087f4",
-  "design": "74H",
-  "scope": "test-local generated PC entries; repeated argument staging; counters compiled out of timed reads; no production performance claim"
-}

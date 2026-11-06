@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74r-qualified-timing.json",
-  "bytes": 238384,
-  "sha256": "d83d2e325d0eaed505f35d39bbfe528349c3b074a12623095f5f628b97de8bc1",
-  "status": "passed",
-  "design": "74R"
-}

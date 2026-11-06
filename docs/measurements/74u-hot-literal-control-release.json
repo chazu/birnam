@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-hot-literal-control-release.json",
-  "bytes": 61129,
-  "sha256": "ae5f6688e89f50fa8b53f0a3ce348226aae7a13109274e85d3dfbb0822a5815f",
-  "status": "passed"
-}

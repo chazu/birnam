@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-application-diagnostic-profiles.json",
-  "bytes": 1834847,
-  "sha256": "7d931833d15292e821cbd811be8b60c540734d78aa571649f86e38ec77957668",
-  "status": "passed",
-  "scope": "Diagnostic application profiles only, not qualified timings. Defaults and all four developer switches are separate runs under competing verification load, not paired performance evidence. Default-on aggregate consumers are present in both configurations. Named sample counts are inclusive; groups overlap, and absent symbols do not prove zero optimization hits. RSS observations include any terminal zero reading and are not process peaks."
-}

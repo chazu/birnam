@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-dispatch-qualified-timing.json",
-  "bytes": 159896,
-  "sha256": "4b5647ae6718a46a811bd27dfdf9a497c35c35b8984512ed92f0dc1fc6a486d0",
-  "status": "passed",
-  "design": "74S"
-}

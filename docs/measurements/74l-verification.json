@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74l-verification.json",
-  "bytes": 6012,
-  "sha256": "d63940bfb9af352b8ca22588581e078fa36dc9cf56f272b66cb0894292341c13",
-  "design": "74L",
-  "scope": "workspace, normal native prefix, independent cold archives, relocated runtimes; timing and focused regressions recorded separately"
-}

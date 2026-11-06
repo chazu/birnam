@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "Integer arithmetic and callable iteration through Id messages; complete mixed extension after Float",
-  "exported_symbols": [
-    "birnam_native_module_v2"
-  ]
-}

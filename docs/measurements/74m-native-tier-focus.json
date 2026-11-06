@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74m-native-tier-focus.json",
-  "bytes": 506248,
-  "sha256": "4738abddf93ea6ed3fa521e827a8391002310b9ca188d7176978d4df7569560e",
-  "design": "74M"
-}

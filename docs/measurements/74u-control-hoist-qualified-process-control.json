@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-control-hoist-qualified-process-control.json",
-  "bytes": 893,
-  "sha256": "db0fc59ebc2347cd8edcf3c7b58ac8b0f01a3ab3d8a3473a43ee83bc2fe32ba5",
-  "status": "passed"
-}

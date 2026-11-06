@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ak-closure-confirmation.json",
-  "bytes": 323612,
-  "sha256": "1578b4a467a62628644b5a9134494047939e271c6ca136b3d15f58995ea2d168",
-  "status": "passed",
-  "qualified": false
-}

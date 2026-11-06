@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-native-storage-focused-correctness.json",
-  "bytes": 154514,
-  "sha256": "20ab6b064725dbef27b15987e1110e021b589861f878d976a2c8ff6ce27634e0",
-  "status": "passed",
-  "scope": "Focused test-only private Unit relocated-allocation accounting. Default workspace and feature-enabled release runtime pass; source counters pass. No production-gate completion or performance claim. The default workspace excludes the ffi probe whose initial declaration placement was corrected before the passing release build. Totals exclude compiler metadata, baseline TCC module instances and other process allocations."
-}

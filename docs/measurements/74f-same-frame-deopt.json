@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74f-same-frame-deopt.json",
-  "bytes": 7518,
-  "sha256": "e638fdd757ea978c2367792fbe01ae6e7e279e7514419f4d9faa99a99132e76c",
-  "design": "74F",
-  "scope": "test-only static native entries; real Runtime driver; descriptor-v2"
-}

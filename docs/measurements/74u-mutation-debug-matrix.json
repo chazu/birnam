@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-mutation-debug-matrix.json",
-  "bytes": 10912,
-  "sha256": "25935ac1233fd6abf1dc36ae603d40ce8aba024830c6760bffbcdfdd5fb9f11a",
-  "status": "passed",
-  "scope": "Retained debug source mutation counters from the fresh installed-prefix full correctness run; release coverage is recorded in 74u-mutation-correctness.json. No timing claim."
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74w-loop-invariant-source-debug.json",
-  "bytes": 17571,
-  "sha256": "37f3af4fb9b13335abebc025b0abba57e6fb8f81d43c4c68af3d6069d541cf1f",
-  "status": "passed",
-  "scope": "Source loops through installed Codegen; raw kernel prediction work reused, not result Oop identity. No timing qualification."
-}

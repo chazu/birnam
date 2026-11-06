@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-hot-measurement-release.json",
-  "bytes": 65199,
-  "sha256": "ff3ee1bb4e43a1cba5f69fdd3da01ab288b304df3b73f0d40529e20392441b23",
-  "status": "passed",
-  "scope": "Validate repeated-closure measurement counters; timings here are unqualified."
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ak-rust-storage-completion.json",
-  "bytes": 58423,
-  "sha256": "a675262ca0643a35ee4196c6d67250e42372c1760197617df08ce01fbb4815bb",
-  "status": "passed",
-  "scope": "Eight isolated debug/release complete-runtime cases, three cycles each. Compiler storage and Rust allocation requests routed through the instrumented floor return to their initial baselines. Excludes separately linked allocators and whole-process memory."
-}

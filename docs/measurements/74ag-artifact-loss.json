@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-artifact-loss.json",
-  "bytes": 8555,
-  "sha256": "28e3396136568cc990b8f4d17e498740a2211e222b19b257754a18e36ae1b385",
-  "status": "observed"
-}

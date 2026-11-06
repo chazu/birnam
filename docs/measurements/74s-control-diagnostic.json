@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-control-diagnostic.json",
-  "bytes": 9144,
-  "sha256": "3343c69beba3da2a094ded5b1b6d1c482cf4ecafbf409ffab6d86ce8c95f0ea6",
-  "status": "passed"
-}

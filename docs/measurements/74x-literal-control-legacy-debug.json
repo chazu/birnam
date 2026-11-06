@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74x-literal-control-legacy-debug.json",
-  "bytes": 5854,
-  "sha256": "d9df3c15cb0e2e1dbed396b90e246da103acef0ad5e3de9a628431574c4dd8d1",
-  "status": "passed"
-}

@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-debug-artifact-rebuild.json",
-  "bytes": 964,
-  "sha256": "d37344ba1697d09a81873e3c7076a6f94993236f14d98889bcede6d3dd18bd66",
-  "status": "different"
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-compact-numeric-measure-debug.json",
-  "bytes": 35393,
-  "sha256": "63c80362d04812f0319480ffb8baaa48b4adc6e7897d2e692d0a88c567cee28c",
-  "status": "passed",
-  "scope": "Measurement correctness only; no qualified timing claim"
-}

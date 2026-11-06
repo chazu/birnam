@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-dispatch-correctness.json",
-  "bytes": 112648,
-  "sha256": "f409162d8f6a95a77fc0ac96434da32e66ebd5af99d8f5ce6e99136bd2052a78",
-  "status": "passed",
-  "design": "74S"
-}

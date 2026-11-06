@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-applications-smoke.json",
-  "bytes": 32797,
-  "sha256": "455f600db1adab07f5f5366a4452e0ec151f54018b6dd7e971d0903139f0cac4",
-  "status": "passed"
-}

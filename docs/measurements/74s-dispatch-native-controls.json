@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-dispatch-native-controls.json",
-  "bytes": 193314,
-  "sha256": "df58eb531a729db3364cd75b9fce11390f0fdf950fbf8f674e1ec55d7f3b4ec0",
-  "status": "passed",
-  "design": "74S"
-}

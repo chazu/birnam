@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ac-budget-release-on.json",
-  "bytes": 74628,
-  "sha256": "1d568fbb7be2f190892946bd43fdb21d710de7106ad55f68ccde0fb8ff0ba5e3",
-  "status": "passed",
-  "scope": "Compare real automatic GC boundaries around source closure regions. No timing claim."
-}

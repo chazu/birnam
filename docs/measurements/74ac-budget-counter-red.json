@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ac-budget-counter-red.json",
-  "bytes": 921,
-  "sha256": "4c3747e821121b50680ec74cf93b8e62a33456c49afb47310e27d98f1f1dbf3b",
-  "status": "failed",
-  "scope": "Compare real automatic GC boundaries around source closure regions. No timing claim."
-}

@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-closure-refusal-profile.json",
-  "bytes": 735927,
-  "sha256": "38d02e015b8e85606d5de3ff555ae9e505e63b50c4d5b55791eb99f8bb956cf5",
-  "scope": "Diagnostic repeated-source sampling after pinned constructor reuse; not host-qualified timing. Twelve measurement calls reuse the same real source factory. Sampling begins after preparation output. Whole profiles include collection; named admission subtrees isolate remaining work."
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74j-regression-74f.json",
-  "bytes": 7864,
-  "sha256": "7f1a9314ef7d8e41d73f031ab949aa7f1a3accb7e708bc5fe6be4080a2fec8af",
-  "design": "74F",
-  "scope": "test-only static native entries; real Runtime driver; descriptor-v2"
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-unboxed-runtime-correctness.json",
-  "bytes": 21727,
-  "sha256": "e66d250920b9b0ea408128684472ce27ff86b485071bb1d4ab6b9df8b47b4357",
-  "status": "targeted-runtime-correctness-passed",
-  "production_verification": "pending"
-}

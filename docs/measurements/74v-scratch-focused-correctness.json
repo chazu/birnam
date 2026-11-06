@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-scratch-focused-correctness.json",
-  "bytes": 89194,
-  "sha256": "57fc1226dc933448e6059d257899179369fad69ed82ee5d667acf80f88768f7a",
-  "status": "passed",
-  "scope": "Focused scratch-pool correctness; full production verification and numeric/V2 source matrices remain pending; no timing claim"
-}

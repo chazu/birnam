@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-unboxed-control-release.json",
-  "bytes": 370532,
-  "sha256": "a65f479ba67215f848b3bcf9d573fa1f614774f0adb0d655c9b207ffd7060942",
-  "status": "passed",
-  "scope": "Forced source recovery followed by test-floor V2 control; no timing claim"
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-native-storage-loop-release.json",
-  "bytes": 90565,
-  "sha256": "e58e14f3042199cdc4eee56a6b8ff02c6b51f2f8e31208ee55e4bec1afab34b8",
-  "status": "passed",
-  "scope": "Measurement correctness only. Real Id loops, both GC modes, boxed/unboxed arithmetic; cache capacity is stable across complete loops and collections. No timing qualification."
-}

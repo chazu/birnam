@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-production-queue-stop.json",
-  "bytes": 82982,
-  "sha256": "e932f92fe9cc69e58f40cfa0d94f3a843a60fa099e70cf719ba0e2be99ca6d2c",
-  "status": "stopped"
-}

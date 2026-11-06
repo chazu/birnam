@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-restored-verification-start.json",
-  "bytes": 88576,
-  "sha256": "58f942b94f2515eecf75f0c49222ced029b80bee7a7066e0d4f0e338922f5077",
-  "status": "running",
-  "scope": "Fresh acceptance of saved rebuilt artifacts after external cache loss; previous completed and failed records remain preserved."
-}

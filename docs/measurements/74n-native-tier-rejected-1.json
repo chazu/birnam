@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74n-native-tier-rejected-1.json",
-  "bytes": 224031,
-  "sha256": "fafbf55ef63b2b7776e5ae758658921a195f325efb5669ae20ceb93133273748",
-  "design": "74N"
-}

@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "Complete normal production Id dylib, without upper Runtime or compiler",
-  "install_name": "@rpath/libbirnam_id.dylib",
-  "exported_symbols": [
-    "birnam_id_bootstrap_v2"
-  ]
-}

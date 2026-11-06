@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "Map canonical objects, HAMT storage, methods, traversal and printing",
-  "install_name": "@rpath/libbirnam_map.dylib",
-  "exported_symbols": [
-    "birnam_native_module_v2"
-  ]
-}

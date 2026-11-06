@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74l-regression-74g.json",
-  "bytes": 14182,
-  "sha256": "e186ae063c4647da1adc7d758e79dab7ef968b42ba0530809bb63cdf9b9560cd",
-  "design": "74G",
-  "scope": "canonical CodeProgram; generated per-PC entries; real Runtime driver; test-local dylib adapter"
-}

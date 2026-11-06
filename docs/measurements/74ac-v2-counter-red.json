@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ac-v2-counter-red.json",
-  "bytes": 47606,
-  "sha256": "3fe279ac60671b0f6fd67d4ab1698d2fe596ea22ef4f6a6b256c6e417e676f94",
-  "status": "failed"
-}

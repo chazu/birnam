@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74w-loop-control-source-release.json",
-  "bytes": 17573,
-  "sha256": "c1686c15e549dc00dbc3d4c9d1806c3100d599f0ad919d463404c04121fb19a1",
-  "status": "passed",
-  "scope": "Source loops through installed Codegen; raw kernel prediction work reused, not result Oop identity. No timing qualification."
-}

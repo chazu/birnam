@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-journal-native-repeat.json",
-  "bytes": 3359,
-  "sha256": "29f8f07a976d5027cebc5f7a24937384e90354fef27bfe747ee12a0eb2c6a308",
-  "status": "diagnostic completed",
-  "scope": "Development diagnostic of native-root variation; no qualification or correctness promotion"
-}

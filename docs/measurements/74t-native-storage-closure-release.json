@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-native-storage-closure-release.json",
-  "bytes": 70032,
-  "sha256": "b153b70d7710a90207fa67815285b35ff90e2486cb0da6004776adeb7de4d801",
-  "status": "passed",
-  "scope": "Validate repeated-closure measurement counters; timings here are unqualified."
-}

@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74m-native-tier-symbol-invalidation.json",
-  "bytes": 5196,
-  "sha256": "13de27b5cb6c03b21a5966252d724e5d45368ac04650dda8a4226ad61f2149f3",
-  "scope": "diagnostic entry counts and checked answers; no timing claim"
-}

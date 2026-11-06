@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-source-composition-audit.json",
-  "bytes": 5514,
-  "sha256": "b6cc3b9b2f86a743f87115e8d8603f7e8b65600f4e81350e00c5e84a55760a41",
-  "status": "passed",
-  "scope": "Exact merged gate-helper ASTs and unchanged production ownership/numeric implementation files against accepted source slices; ABI/descriptor/image source unchanged against composition base. This is a composition audit, not runtime acceptance."
-}

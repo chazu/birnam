@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-sequence-development.json",
-  "bytes": 9324,
-  "sha256": "6daf0b16f7604a7e6a1019ebf387d39e3df5f73fcb9848956e870c4437e876fa",
-  "status": "passed",
-  "scope": "Source sequence correctness and allocation accounting; no timing claim"
-}

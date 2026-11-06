@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-descriptor-mutation-release.json",
-  "bytes": 9074,
-  "sha256": "5e47b54e600be55d5de4317383fd40d54ddb5d215a0ab3146f4aa0e402a8cb94",
-  "status": "passed",
-  "scope": "Later-target mutation and immediate restoration in real source closure regions. No timing claim."
-}

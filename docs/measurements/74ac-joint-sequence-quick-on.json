@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ac-joint-sequence-quick-on.json",
-  "bytes": 10098,
-  "sha256": "d1b74aec85fbf38f977e6e68ffc728da5f5911065ded09f77c7cbac1436d5c33",
-  "status": "passed",
-  "scope": "Source sequence correctness and allocation accounting; no timing claim"
-}

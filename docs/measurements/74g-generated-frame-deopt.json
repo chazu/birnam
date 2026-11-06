@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74g-generated-frame-deopt.json",
-  "bytes": 12658,
-  "sha256": "29edbc96fd0a5e46f665029d2c428193ea8e373570600de9592daae574b889fd",
-  "design": "74G",
-  "scope": "canonical CodeProgram; generated per-PC entries; real Runtime driver; test-local dylib adapter"
-}

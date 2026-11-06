@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74j-regression-74h.json",
-  "bytes": 30441,
-  "sha256": "a6fb8b17dcbcb13b6972fe0bb7703b4f7d6f5346a74e7df96d5ec6572a5c82f9",
-  "design": "74H",
-  "scope": "test-local generated PC entries; repeated argument staging; counters compiled out of timed reads; no production performance claim"
-}

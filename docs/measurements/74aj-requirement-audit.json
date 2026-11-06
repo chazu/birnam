@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74aj-requirement-audit.json",
-  "bytes": 33941,
-  "sha256": "7621f7ecedc9e0012343cd265650344a2c26661ec5d750ae13b4b28b9532753b",
-  "status": "audit_complete"
-}

@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74x-closure-literals-source-debug.json",
-  "bytes": 47940,
-  "sha256": "83b26a3f9c6b8752550abb47064b93e55c968a9f5e527b296112f5709c57220a",
-  "status": "passed"
-}

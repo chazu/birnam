@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-normal-export-audit.json",
-  "bytes": 5289,
-  "sha256": "76c482d9a103c89ab0c73fd32996642edd6a25724a9e2085c0e5daa4d91c2551",
-  "status": "passed",
-  "scope": "Same-feature debug production module and floor export parity with the ownership checkpoint. No ABI export additions in the combined source build."
-}

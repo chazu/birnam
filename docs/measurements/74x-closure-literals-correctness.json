@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74x-closure-literals-correctness.json",
-  "bytes": 59933,
-  "sha256": "16916b297f60d2e1478260087571809bf2503bec5ba5930e198e201639c4e3ca",
-  "status": "passed",
-  "scope": "Focused literal callee and installed three-call closure correctness; full production/control/performance acceptance pending"
-}

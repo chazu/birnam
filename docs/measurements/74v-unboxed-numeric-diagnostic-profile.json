@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-unboxed-numeric-diagnostic-profile.json",
-  "bytes": 757848,
-  "sha256": "2d01984808a78b93f05062bddc407acf76d31b22b45ca1503d59b8524b96a3c0",
-  "status": "passed",
-  "scope": "Diagnostic native stack samples after the first measurement batch; no timing or qualification claim"
-}

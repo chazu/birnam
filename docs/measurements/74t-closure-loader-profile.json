@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-closure-loader-profile.json",
-  "bytes": 734748,
-  "sha256": "f692976cadcfaa720ad74f359194267c714948da929ae36a89cc886fd9ea105b",
-  "scope": "Diagnostic sampling, not a timing qualification. Each enabled process ran 500 batches of 128 calls using the same installed binary and feature floor as the preceding paired timing receipt, before adding discovery instrumentation. Total process profiles include compilation and GC; comparisons below use named admission stack entries only."
-}

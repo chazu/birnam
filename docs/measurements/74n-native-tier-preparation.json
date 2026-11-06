@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74n-native-tier-preparation.json",
-  "bytes": 281634,
-  "sha256": "63b77247bc520130a5517829fc0db01a849b7cc30beeb6fca040c0d713849c74",
-  "design": "74N"
-}

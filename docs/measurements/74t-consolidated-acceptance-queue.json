@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-consolidated-acceptance-queue.json",
-  "bytes": 29731,
-  "sha256": "5d107fb8230fb45b38efe4c91c108e56b55d95e84b3a840f6de9f567fa039c85",
-  "status": "failed",
-  "scope": "Sequential current-source acceptance after the existing consolidated production process exits successfully; no quiet wait and no qualified timing."
-}

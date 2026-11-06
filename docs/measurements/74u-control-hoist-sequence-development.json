@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-control-hoist-sequence-development.json",
-  "bytes": 9324,
-  "sha256": "def220c23a5a67e1a5f282b5cff0022a4acb32e65d6d523707d22d9ef1c4b37f",
-  "status": "passed",
-  "scope": "Source sequence correctness and allocation accounting; no timing claim"
-}

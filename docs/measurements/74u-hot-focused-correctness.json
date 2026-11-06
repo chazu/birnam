@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-hot-focused-correctness.json",
-  "bytes": 91997,
-  "sha256": "f2b54c4fec5d6c527079726bf271063c44f39e21336326f65d1fa58987e17e3a",
-  "status": "passed",
-  "scope": "Focused hot-preparation correctness, including aggregate controls. Workspace/release suites precede the final additional disabled-pool assertion, which passes in its dedicated rerun. Full combined production and normal-floor cost acceptance remain pending; no timing claim."
-}

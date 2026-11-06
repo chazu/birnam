@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-batch-measure-release.json",
-  "bytes": 37890,
-  "sha256": "09cd55b94b0786eeed40f790a98489a43a153b4c1fc947d6ca4d2203b5df92c4",
-  "status": "passed",
-  "scope": "Measurement correctness only; no qualified timing claim"
-}

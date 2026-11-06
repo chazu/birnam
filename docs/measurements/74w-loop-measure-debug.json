@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74w-loop-measure-debug.json",
-  "bytes": 82021,
-  "sha256": "361d9fa2db06c4eacb7635fe7b5b249cd2d79e4af6dca1b211bf63e88fbdc8ac",
-  "status": "passed",
-  "scope": "Measurement correctness only. Real Id loops, both GC modes, boxed/unboxed arithmetic; cache capacity is stable across complete loops and collections. No timing qualification."
-}

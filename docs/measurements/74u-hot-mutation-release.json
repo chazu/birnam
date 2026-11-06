@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-hot-mutation-release.json",
-  "bytes": 9074,
-  "sha256": "4ca22d149d5059f3fa0bac95d7b812060df983aa9d3c065fb0d67f342ee69dd2",
-  "status": "passed",
-  "scope": "Later-target mutation and immediate restoration in real source closure regions. No timing claim."
-}

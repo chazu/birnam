@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-scratch-measure-release.json",
-  "bytes": 37882,
-  "sha256": "7d91d04f07620bc5188fd5db7fffe7cb57d372f6b0990c4f3b416681b4665a52",
-  "status": "passed",
-  "scope": "Measurement correctness only; no qualified timing claim"
-}

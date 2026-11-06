@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74w-loop-cost-focused-correctness.json",
-  "bytes": 85634,
-  "sha256": "858e86cbd1e3157015f0503d249a165939a6941bd235b815a7f0d4b99d20286e",
-  "status": "passed",
-  "scope": "Focused loop counter/resource verification; no timing qualification or full production claim. Workspace preceded the final test-only probe argument extension; the feature-enabled release runtime and both final installed matrices follow it."
-}

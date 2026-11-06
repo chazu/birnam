@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74m-native-tier-diagnostics-initial.json",
-  "bytes": 228458,
-  "sha256": "92eb95f9ae82a1b5cf171e55ae9149e0d949756a33c1acfdfc9c5c29a486b70f",
-  "design": "74M"
-}

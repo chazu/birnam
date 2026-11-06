@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-control-hoist-measurement-development.json",
-  "bytes": 22410,
-  "sha256": "2e47ced2bf9aa916e8e0ab1b4c9bea1f79cc0bdb4f015b60c85c2d6c13668159",
-  "status": "passed",
-  "scope": "Validate repeated-closure measurement counters; timings here are unqualified."
-}

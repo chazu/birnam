@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-compact-snapshots-correctness.json",
-  "bytes": 110149,
-  "sha256": "b4d97c9ebd338c2a0acda8981aeb001d196ddc4a7b3e2b87c1122ba8fafa6c03",
-  "status": "passed",
-  "scope": "Compact private snapshot storage; 84 source cases and memory comparison, no speed or promotion claim. Full production verification pending."
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74v-batch-focused-correctness.json",
-  "bytes": 120942,
-  "sha256": "54da1a030f8c9a3bcc9d818f7fe2a0f092de95644e3b0163f7742df9550b1924",
-  "status": "passed",
-  "scope": "Focused numeric batch correctness; full production and installed source verification remain pending; no timing claim"
-}

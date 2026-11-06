@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ak-promotion-comparison.json",
-  "bytes": 323837,
-  "sha256": "91de8535b4280be76f7f24162f33bd79b1018764b4f7ec6da978f651270f60bc",
-  "status": "passed",
-  "qualified": false
-}

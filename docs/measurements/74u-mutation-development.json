@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-mutation-development.json",
-  "bytes": 9074,
-  "sha256": "6611e09665675eb695f7063027338d62038253b4a6e4a59940f9270a94a15646",
-  "status": "passed",
-  "scope": "Later-target mutation and immediate restoration in real source closure regions. No timing claim."
-}

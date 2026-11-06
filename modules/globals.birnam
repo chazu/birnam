@@ -1,5 +1,0 @@
-// Named module registration for the already-constructed foundational owner.
-// The actual policy lives in globals-owner.birnam and is present before Module.
-[Module named: #globals requires: #[]];
-[Module markLoaded: #globals];
-Globals

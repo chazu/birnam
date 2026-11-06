@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-memory-fixture-correctness.json",
-  "bytes": 119805,
-  "sha256": "9cc368053692c0762b10cc1cbf77bb437ccacbda4ef07b3a5f8185cf66aa0103",
-  "status": "passed",
-  "scope": "Focused Id driver correctness only on the normal release installation; no memory or timing measurements and no replacement for full production verification."
-}

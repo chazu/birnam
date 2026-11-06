@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74ag-slim-interruption.json",
-  "bytes": 11081,
-  "sha256": "a4525df8d9c6d2312f5d924bdad4cc8dcafb82ce527a5d372535e4635dbad3f1",
-  "status": "interrupted"
-}

@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74u-descriptor-measurement-release.json",
-  "bytes": 44911,
-  "sha256": "8f923091490af578c7d6c42b7027b9fc24a4a314dcbc974f3697c5f3c80012cc",
-  "status": "passed",
-  "scope": "Validate repeated-closure measurement counters; timings here are unqualified."
-}

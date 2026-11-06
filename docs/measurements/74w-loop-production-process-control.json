@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74w-loop-production-process-control.json",
-  "bytes": 3782,
-  "sha256": "6d74022a3c609f0b5cd979f898e8d432c9773dc524d32439bd203840ebfd8c55",
-  "status": "finished",
-  "scope": "User-authorized SIGSTOP/SIGCONT of the verified rk daemon only. Existing compiler children receive no signals. Existing host gates remain unchanged. Finally resumes the same daemon on completion, failure, timeout or handled interruption."
-}

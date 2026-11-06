@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-regions-initial-timing.json",
-  "bytes": 203494,
-  "sha256": "3d008da4cc2d3d5eb735ab7da7fbed1d1f633aa552eede1542e21be8e8951bda",
-  "status": "passed",
-  "design": "74S"
-}

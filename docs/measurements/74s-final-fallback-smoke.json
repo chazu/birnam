@@ -1,8 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-final-fallback-smoke.json",
-  "bytes": 24146,
-  "sha256": "c7c6c3f2085e8b91abae896faf36d47fef9ea8810657e61bfeda9d9631e67db2",
-  "status": "passed"
-}

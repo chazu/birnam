@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-installed-aggregate-release.json",
-  "bytes": 120665,
-  "sha256": "03116215005de0a4d3e3af7da66205e828a267f8adcc1e7c3ed19157d8711020",
-  "status": "passed",
-  "scope": "Real host REPL, installed compiler and Relational native getter, using the previously verified test floor. Each expression returns to the host between phases so removed code can retire before readmission. Existing numeric probe supplies logical-byte and physical-allocation counters only: its completed/materialized fields count numeric optimization and must remain zero here. Four phases per process: native getter; effectful Id override creating a private vtable; inherited native getter restored with undeclared private layout still refused; unchanged canonical-layout prototype readmitted. This is source correctness and admission evidence, not a timing comparison or a proof of every aggregate shape."
-}

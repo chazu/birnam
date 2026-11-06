@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74s-dispatch-initial-regression.json",
-  "bytes": 133473,
-  "sha256": "b49244ef8e2c4d1107fd3ec2c67121e2c692f85b6c229e0c02253860e9b13b24",
-  "status": "passed",
-  "design": "74S"
-}

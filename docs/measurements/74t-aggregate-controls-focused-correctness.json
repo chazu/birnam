@@ -1,9 +1,0 @@
-{
-  "archive_schema": "birnam-measurement-archive-v1",
-  "archive": "archive-20260914.zip",
-  "member": "74t-aggregate-controls-focused-correctness.json",
-  "bytes": 88322,
-  "sha256": "890056e65c70d2e7162745c30efdb6f543bfc68c07770de578e5b06480ad15ec",
-  "status": "passed",
-  "scope": "Focused preparation-control correctness; expanded installed-source, normal-floor application and full production checks remain pending. No timing claim."
-}
