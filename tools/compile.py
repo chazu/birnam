@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Orchestrate the authored C compiler and the pinned local C toolchain."""
+from __future__ import annotations
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -15,7 +17,26 @@ def quote(text: str) -> str:
     return '"' + text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') + '"'
 
 
-def emit(source: Path, output: Path, name: str) -> None:
+MODULES = ("peg", "lang", "lang-syntax", "compiler-ir", "compiler-c")
+
+
+def emit(source: Path, output: Path, name: str, *, native_dir: Path | None = None,
+         guard: Path | None = None) -> None:
+    if native_dir is not None:
+        command = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib")]
+        if guard:
+            command.append(str(guard.resolve()))
+        command.extend(str(native_dir.resolve() / f"{module}.dylib") for module in MODULES)
+        command.append(str(ROOT / "build/compile-request.dylib"))
+        if guard:
+            command.append(str(guard.resolve()))
+        environment = dict(os.environ, BIRNAM_COMPILE_NAME=name)
+        result = subprocess.run(command, input=source.read_bytes(), env=environment,
+                                cwd="/private/tmp", capture_output=True, timeout=600)
+        if result.returncode:
+            raise RuntimeError(result.stderr.decode(errors="replace").strip())
+        output.write_bytes(result.stdout)
+        return
     # The wrapper passes source as data. Parsing, IR lowering, and C emission
     # belong to the authored modules; this driver does none of those operations.
     text = source.read_bytes().decode("utf-8")
@@ -25,7 +46,7 @@ def emit(source: Path, output: Path, name: str) -> None:
         request = Path(tmp) / "compile.birnam"
         request.write_text(wrapper)
         command = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib")]
-        for module in ("peg", "lang", "lang-syntax", "compiler-ir", "compiler-c"):
+        for module in MODULES:
             command.extend(["--eval", str(ROOT / f"modules/{module}.birnam")])
         command.extend(["--eval", str(ROOT / "examples/lang/takeover.birnam"), "--eval", str(request)])
         result = subprocess.run(command, cwd=tmp, capture_output=True, timeout=300)
@@ -46,11 +67,12 @@ def main():
     parser.add_argument("source", type=Path)
     parser.add_argument("-o", "--output", required=True, type=Path, help="output C file or dylib")
     parser.add_argument("--name", default="NativeProgram", help="namespace export for the compiled program")
+    parser.add_argument("--native-dir", type=Path, help="use compiled PEG/Lang/compiler modules from this directory")
     parser.add_argument("--emit-c", action="store_true", help="emit C without invoking Clang")
     args = parser.parse_args()
     output = args.output.resolve()
     c_path = output if args.emit_c else output.with_suffix(".c")
-    emit(args.source.resolve(), c_path, args.name)
+    emit(args.source.resolve(), c_path, args.name, native_dir=args.native_dir)
     if not args.emit_c:
         compile_c(c_path, output)
 
@@ -58,5 +80,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, UnicodeDecodeError, OSError, subprocess.SubprocessError) as error:
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
         raise SystemExit(f"compile: {error}")

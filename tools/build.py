@@ -58,6 +58,9 @@ def build() -> tuple[list[str], list[str]]:
         "-extra-linker-flags:" + " ".join([f for f in ldflags if f != "-lgc"] + ["-Wl,-export_dynamic"]))
     run("odin", "build", "src/seed", "-build-mode:dll", "-out:build/seed.dylib", "-o:speed", "-debug", "-vet",
         "-extra-linker-flags:" + " ".join([f for f in ldflags if f != "-lgc"] + ["-Wl,-undefined,dynamic_lookup"]))
+    run("clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
+        "-O2", "-g", "-Iinclude", *cflags, "-dynamiclib", "-undefined", "dynamic_lookup",
+        "src/tools/compile_request.c", *ldflags, "-o", "build/compile-request.dylib")
     (BUILD / "toolchain-observed.json").write_text(json.dumps(observed, indent=2) + "\n")
     return cflags, ldflags
 

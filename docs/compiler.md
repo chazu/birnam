@@ -1,6 +1,6 @@
 # First authored C compiler
 
-Implemented first slice, 5 November 2026. This slice builds on authored Lang/PEG and covers the existing seed forms. It is a first native backend, not self-hosting or an optimizing compiler. CBPV remains the separate experiment described in `cbpv-experiment.md`; this slice does not adopt that IR or claim a CBPV preservation result.
+Implemented first slice, 5 November 2026. This slice builds on authored Lang/PEG and covers the existing seed forms. It is a first native backend. The subsequent [native bootstrap](selfhosting.md) qualifies rebuilding the authored toolchain; this remains an unoptimized compiler. CBPV remains the separate experiment described in `cbpv-experiment.md`; this slice does not adopt that IR or claim a CBPV preservation result.
 
 The compiler uses an authored IR whose syntax families are ordinary objects with `evalIn:` and `emitIn:` behavior. Lang's translator constructs these through an injectable syntax-owner protocol. A reference IR evaluator is compared against the existing seed evaluator before native execution is qualified. Errors remain values; only discarded non-final Errors stop a sequence. Sends evaluate receiver and arguments once in order before binding and directly entering the selected Method.
 
@@ -47,4 +47,4 @@ C string constants use fixed-width octal escapes and explicit byte lengths, pres
 
 The reference IR evaluator is itself ordinary authored code. Mutating global infrastructure such as Integer arithmetic, canonical Boolean control, or Vector construction can change its own bookkeeping, just as such edits can change the authored parser/compiler. The tested agreement is for the documented witnesses, including receiver-local arithmetic replacement and source operation/Method replacement. It is not a formal equivalence claim under arbitrary mutation of the evaluator, compiler, or runtime services.
 
-No optimization, deoptimization, packrat parser, CBPV adoption, effect handler, new fiber behavior, image format, or code unloading is introduced. Per-node message dispatch and many object allocations remain. The compiler has not yet been qualified to rebuild PEG/Lang/the compiler into a self-hosted native toolchain. That is the next bootstrap milestone, with independent performance and broader malleability evidence still required.
+No optimization, deoptimization, packrat parser, CBPV adoption, effect handler, new fiber behavior, image format, or code unloading is introduced. Per-node message dispatch and many object allocations remain. The subsequent [native bootstrap qualification](selfhosting.md) rebuilds PEG, Lang, and the compiler with native generations. Independent performance and broader malleability evidence are still required.
