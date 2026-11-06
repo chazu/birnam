@@ -1,0 +1,2 @@
+// Load peg.birnam, lang.birnam, and lang-syntax.birnam before this file.
+[Lang installOn: Seed];

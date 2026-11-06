@@ -1,0 +1,77 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that:label: on: Assert as: [:self :condition :label |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: label]]]]];
+let grammar := [Peg grammar];
+let target := [Peg literal: "a"];
+let sibling := [target clone];
+let captured := [Reflect methodFor: #match:at: on: target];
+[Assert that: [[[captured code] isError] not] label: "matching Method has authored code"];
+[grammar rule: #root is: target];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 1] label: "before replacement"];
+[Reflect defineMethod: #match:at: on: target as: [:self :run :position |
+  [GC collect]; #[position #[]]]];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 0] label: "next parse observes local replacement"];
+[grammar rule: #root is: sibling];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 1] label: "sibling unaffected"];
+let retained := [Object clone];
+[Reflect defineMethod: #match:at: on: retained as: [:self :run :position |
+  [captured valueOn: target with: #[run position]]]];
+[grammar rule: #root is: retained];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 1] label: "captured Method keeps original entry"];
+
+// Explicit edits to the shared behavior are visible to existing patterns.
+let original := [Reflect methodFor: #match:at: on: sibling];
+let behavior := [sibling behavior];
+[behavior at: #match:at: put: [Reflect methodFrom: [:self :run :position | #[position #[]]]]];
+[grammar rule: #root is: sibling];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 0] label: "shared behavior replacement"];
+[behavior at: #match:at: put: original];
+
+// Rule bindings are snapshotted for one parse; future parses see changes.
+let mutate := [Object clone];
+[Reflect defineMethod: #match:at: on: mutate as: [:self :run :position |
+  [grammar rule: #letter is: [Peg literal: "b"]]; #[position #[]]]];
+[grammar rule: #letter is: [Peg literal: "a"]];
+[grammar rule: #root is: [Peg seqOf: #[mutate [Peg ruleRef: #letter]]]];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 1] label: "binding snapshot"];
+[Assert that: [[[grammar parse: "b" from: #root] end] = 1] label: "future binding"];
+
+// A rules snapshot retains pattern identities, not frozen matching Methods.
+let live := [Peg literal: "a"];
+let edit := [Object clone];
+[Reflect defineMethod: #match:at: on: edit as: [:self :run :position |
+  [Reflect defineMethod: #match:at: on: live as: [:self :run :position | #[position #[]]]];
+  #[position #[]]]];
+[grammar rule: #live is: live];
+[grammar rule: #root is: [Peg seqOf: #[edit [Peg ruleRef: #live]]]];
+[Assert that: [[[grammar parse: "a" from: #root] end] = 0] label: "mid-parse Method replacement remains live"];
+
+// Reentrant parses of the same grammar have separate active-rule stacks,
+// source and diagnostic Cells. The outer completion publishes last.
+let nested := [Cell with: false];
+let reentrant := [Object clone];
+[Reflect defineMethod: #match:at: on: reentrant as: [:self :run :position |
+  [[nested value] ifTrue: [| [run failureAt: 2]] ifFalse: [|
+    [nested value: true];
+    let inner := [grammar parse: "xx" from: #reentrant];
+    [nested value: false];
+    [Assert that: [[inner kind] == #syntaxError] label: "reentrant parse has independent active rules"];
+    [Assert that: [[grammar furthestFail] = 2] label: "inner completion publishes diagnostic"];
+    [GC collect];
+    [[Peg literal: "a"] match: run at: position]
+  ]]]];
+[grammar rule: #reentrant is: reentrant];
+[Assert that: [[[grammar parse: "a" from: #reentrant] end] = 1] label: "outer source survives nested parse and GC"];
+[Assert that: [[grammar furthestFail] = 0] label: "outer completion publishes independent diagnostic"];
+
+// Every attempted match sends again, even at a previously visited position.
+let attempts := [Cell with: 0];
+let effectful := [Object clone];
+[Reflect defineMethod: #match:at: on: effectful as: [:self :run :position |
+  [attempts value: [[attempts value] + 1]];
+  [[[attempts value] = 1] ifTrue: [| [run failureAt: position]] ifFalse: [| #[position #[]]]]]];
+[grammar rule: #effectful is: effectful];
+[grammar rule: #root is: [Peg choiceOf: #[[Peg ruleRef: #effectful] [Peg ruleRef: #effectful]]]];
+[Assert that: [[[grammar parse: "" from: #root] childCount] = 1] label: "second attempt succeeds"];
+[Assert that: [[attempts value] = 2] label: "no hidden memoization"];
+[System println: "PASS authored PEG replacement and reentrancy"];

@@ -1,0 +1,137 @@
+// Conservative C backend: each IR node emits a native, message-based entry.
+[[|
+let compiler := Compiler; let ir := [compiler ir];
+let emitter := [Namespace new];
+[Reflect defineMethod: #append: on: emitter as: [:self :text |
+  [[self at: #output] value: [[[self at: #output] value] , text]]; self]];
+[Reflect defineMethod: #initialize: on: emitter as: [:self :text |
+  [[self at: #init] value: [[[self at: #init] value] , text]]; self]];
+// Fixed-width octal escapes preserve arbitrary bytes, including NUL and UTF-8.
+[Reflect defineMethod: #quote: on: emitter as: [:self :value |
+  let bytes := [value asBytes]; let index := [Cell with: 0]; let result := [Cell with: "\""];
+  [[| [[index value] < [bytes byteSize]]] whileTrue: [|
+    let byte := [bytes byteAt: [index value]];
+    [result value: [[[[[result value] , "\\"] , [[byte / 64] printString]] , [[[byte / 8] % 8] printString]] , [[byte % 8] printString]]];
+    [index value: [[index value] + 1]]]];
+  [[result value] , "\""]]];
+[Reflect defineMethod: #bytes: on: emitter as: [:self :value |
+  [[[["bn_bytes(" , [self quote: value]] , ", "] , [[value byteSize] printString]] , ")"]]];
+[Reflect defineMethod: #symbol: on: emitter as: [:self :value |
+  [["birnam_intern(" , [self bytes: [value asString]]] , ")"]]];
+[Reflect defineMethod: #field:on:value: on: emitter as: [:self :field :node :expression |
+  [self initialize: [[[[[["  CG_PUT(" , node] , ", "] , [self quote: field]] , ", "] , expression] , ");\n"]]]];
+[Reflect defineMethod: #begin: on: emitter as: [:self :node |
+  let count := [self at: #next]; let name := ["n" , [[count value] printString]];
+  [count value: [[count value] + 1]];
+  [self initialize: [["  Oop " , name] , " = bn_send0(world, \"new\"); CG_CHECK("]];
+  [self initialize: [name , ");\n"]];
+  name]];
+[Reflect defineMethod: #finish:body: on: emitter as: [:self :name :body |
+  [self append: [[[["static Oop f_" , name] , "(Oop m, Oop r, Oop a) {\n  Services *s = (Services *)m; Oop env = bn_arg(a, 0); (void)s; (void)env;\n"] , body] , "}\n"]];
+  [self initialize: [[[["  CG_CHECK(bn_send2(" , name] , ", \"define:as:\", bn_symbol(\"evalIn:\"), method(f_"] , name] , ", 1, &services)));\n"]];
+  name]];
+[Reflect defineMethod: #link:on:child: on: emitter as: [:self :field :parent :child |
+  let emitted := [child emitIn: self];
+  [[emitted isError] ifTrue: [| emitted] ifFalse: [| [self field: field on: parent value: emitted]]]]];
+[Reflect defineMethod: #items:on: on: emitter as: [:self :items :parent |
+  let index := [Cell with: 0];
+  [[| [[index value] < [items size]]] whileTrue: [|
+    [self link: ["c" , [[index value] printString]] on: parent child: [items at: [index value]]];
+    [index value: [[index value] + 1]]]]]];
+
+let nodes := [ir nodes];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Literal] as: [:self :out |
+  let factory := [self at: #factory];
+  let link := [[factory == Integer] ifTrue: [| "Integer"] ifFalse: [|
+    [[factory == String] ifTrue: [| "String"] ifFalse: [|
+      [[factory == Symbol] ifTrue: [| "Symbol"] ifFalse: [|
+        [Error kind: #unsupportedLiteralFactory message: "C artifacts require a named standard literal factory"]]]
+    ]]
+  ]];
+  [[link isError] ifTrue: [| link] ifFalse: [|
+    let name := [out begin: self];
+    [out field: "factory" on: name value: [["named(world, " , [out quote: link]] , ")"]];
+    [out field: "bytes" on: name value: [out bytes: [self at: #bytes]]];
+    [out finish: name body: "  return bn_send1(get(r, \"factory\"), \"fromBytes:\", get(r, \"bytes\"));\n"]
+  ]]]];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Name] as: [:self :out |
+  let name := [out begin: self];
+  [out field: "name" on: name value: [out symbol: [self at: #name]]];
+  [out finish: name body: "  return bn_send1(env, \"lookup:\", get(r, \"name\"));\n"]]];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Declaration] as: [:self :out |
+  let name := [out begin: self];
+  [out link: "expression" on: name child: [self at: #expression]];
+  [out field: "name" on: name value: [out symbol: [self at: #name]]];
+  [out finish: name body: "  Oop value = bn_send1(get(r, \"expression\"), \"evalIn:\", env);\n  Oop result = bn_send2(env, \"define:as:\", get(r, \"name\"), value);\n  return error(result, s->yes) ? result : s->nil;\n"]]];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Send] as: [:self :out |
+  let name := [out begin: self]; let arguments := [self at: #arguments];
+  [out link: "receiver" on: name child: [self at: #receiver]];
+  [out field: "selector" on: name value: [out symbol: [self at: #selector]]];
+  [out items: arguments on: name];
+  let body := [Cell with: "  Oop receiver = bn_send1(get(r, \"receiver\"), \"evalIn:\", env);\n"];
+  let count := [arguments size]; let index := [Cell with: 0];
+  [[count > 0] ifTrue: [|
+    [body value: [[[body value] , "  Oop values["] , [[count printString] , "];\n"]]]]];
+  [[| [[index value] < count]] whileTrue: [|
+    let i := [[index value] printString];
+    [body value: [[[[[body value] , "  values["] , i] , "] = bn_send1(get(r, \"c"] , [i , "\"), \"evalIn:\", env);\n"]]];
+    [index value: [[index value] + 1]]]];
+  [body value: [[[[body value] , "  Oop arguments = bn_arguments("] , [count printString]] , [[count > 0] ifTrue: [| ", values);\n"] ifFalse: [| ", NULL);\n"]]]];
+  [body value: [[body value] , "  Oop selected = birnam_bind(receiver, get(r, \"selector\"));\n  return birnam_enter(selected, receiver, arguments);\n"]];
+  [out finish: name body: [body value]]]];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Block] as: [:self :out |
+  let name := [out begin: self]; let parameters := [self at: #parameters];
+  [out link: "body" on: name child: [self at: #body]];
+  let values := [Cell with: ""]; let index := [Cell with: 0];
+  [[| [[index value] < [parameters size]]] whileTrue: [|
+    [[[index value] > 0] ifTrue: [| [values value: [[values value] , ", "]]]];
+    [values value: [[values value] , [out symbol: [parameters at: [index value]]]]];
+    [index value: [[index value] + 1]]]];
+  let array := [[[parameters size] = 0] ifTrue: [| "NULL"] ifFalse: [| [["(Oop[]){" , [values value]] , "}"]]];
+  [out field: "parameters" on: name value: [[[["bn_arguments(" , [[parameters size] printString]] , ", "] , array] , ")"]];
+  [out finish: name body: "  Oop values[] = {get(r, \"body\"), env, get(r, \"parameters\")};\n  return birnam_send(s->block, bn_symbol(\"code:environment:parameters:\"), bn_arguments(3, values));\n"]]];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Vector] as: [:self :out |
+  let name := [out begin: self]; let elements := [self at: #elements];
+  [out items: elements on: name];
+  let count := [elements size]; let index := [Cell with: 0]; let body := [Cell with: ""];
+  [[count > 0] ifTrue: [| [body value: [["  Oop values[" , [count printString]] , "];\n"]]]];
+  [[| [[index value] < count]] whileTrue: [|
+    let i := [[index value] printString];
+    [body value: [[[[[body value] , "  values["] , i] , "] = bn_send1(get(r, \"c"] , [i , "\"), \"evalIn:\", env);\n"]]];
+    [index value: [[index value] + 1]]]];
+  [body value: [[[[body value] , "  return bn_send1(s->vector, \"fromElements:\", bn_arguments("] , [count printString]] , [[count > 0] ifTrue: [| ", values));\n"] ifFalse: [| ", NULL));\n"]]]];
+  [out finish: name body: [body value]]]];
+[Reflect defineMethod: #emitIn: on: [nodes at: #Sequence] as: [:self :out |
+  let name := [out begin: self]; let forms := [self at: #forms];
+  [out items: forms on: name];
+  [out field: "source" on: name value: "source"];
+  [out initialize: [["  CG_CHECK(bn_send2(" , name] , ", \"define:as:\", bn_symbol(\"source\"), method(program_source, 0, &services)));\n"]];
+  let body := [Cell with: "  Oop result = s->nil;\n"]; let index := [Cell with: 0];
+  [[| [[index value] < [forms size]]] whileTrue: [|
+    [body value: [[[body value] , "  result = bn_send1(get(r, \"c"] , [[[index value] printString] , "\"), \"evalIn:\", env);\n"]]];
+    [index value: [[index value] + 1]];
+    [[[index value] < [forms size]] ifTrue: [| [body value: [[body value] , "  if (error(result, s->yes)) return result;\n"]]]]
+  ]];
+  [out finish: name body: [[body value] , "  return result;\n"]]]];
+
+[Reflect defineMethod: #emitter on: compiler as: [:self | emitter]];
+[Reflect defineMethod: #emit:as: on: compiler as: [:self :code :moduleName |
+  let out := [[self emitter] clone];
+  [out at: #output put: [Cell with: "#include \"birnam_native.h\"\ntypedef struct { Oop yes, nil, block, vector, environment; } Services;\nstatic Oop named(Oop w, const char *n) { return bn_send1(w, \"at:\", bn_symbol(n)); }\nstatic Oop get(Oop r, const char *n) { return bn_send1(r, \"at:\", bn_symbol(n)); }\nstatic int error(Oop r, Oop yes) { return bn_send0(r, \"isError\") == yes; }\nstatic Oop method(BirnamEntry entry, size_t arity, Services *s) { Oop m = bn_method(entry, arity, sizeof(*s)); *(Services *)m = *s; return m; }\nstatic Oop program_code(Oop m, Oop r, Oop a) { return get(r, \"code\"); }\nstatic Oop program_source(Oop m, Oop r, Oop a) { return get(r, \"source\"); }\nstatic Oop program_run(Oop m, Oop r, Oop a) { Services *s = (Services *)m; Oop env = bn_send1(s->environment, \"forNamespace:\", bn_arg(a, 0)); if (error(env, s->yes)) return env; return bn_send1(get(r, \"code\"), \"evalIn:\", env); }\n#define CG_CHECK(expr) do { Oop check = (expr); if (error(check, services.yes)) return check; } while (0)\n#define CG_PUT(node, key, value) CG_CHECK(bn_send2(node, \"at:put:\", bn_symbol(key), value))\n"]];
+  [out at: #init put: [Cell with: "Oop birnam_module_init_v1(Oop m, Oop world, Oop a) {\n  Services services = {named(world, \"true\"), named(world, \"nil\"), named(world, \"Block\"), named(world, \"Vector\"), named(world, \"Environment\")};\n  CG_CHECK(services.block); CG_CHECK(services.vector); CG_CHECK(services.environment);\n"]];
+  [out at: #next put: [Cell with: 0]];
+  [out initialize: [["  Oop source = " , [out bytes: [code at: #source]]] , ";\n"]];
+  let root := [code emitIn: out];
+  [[root isError] ifTrue: [| root] ifFalse: [|
+    [out initialize: "  Oop program = bn_send0(world, \"new\"); CG_CHECK(program);\n"];
+    [out field: "code" on: "program" value: root];
+    [out field: "source" on: "program" value: "source"];
+    [out initialize: "  CG_CHECK(bn_send2(program, \"define:as:\", bn_symbol(\"code\"), method(program_code, 0, &services)));\n  CG_CHECK(bn_send2(program, \"define:as:\", bn_symbol(\"source\"), method(program_source, 0, &services)));\n  CG_CHECK(bn_send2(program, \"define:as:\", bn_symbol(\"runIn:\"), method(program_run, 1, &services)));\n"];
+    [out initialize: [["  CG_CHECK(bn_send2(world, \"at:put:\", " , [out symbol: [moduleName intern]]] , ", program));\n  return bn_send1(program, \"runIn:\", world);\n}\n"]];
+    [[[out at: #output] value] , [[out at: #init] value]]
+  ]]]];
+[Reflect defineMethod: #compile:as: on: compiler as: [:self :source :moduleName |
+  let code := [self lower: source];
+  [[code isError] ifTrue: [| code] ifFalse: [| [self emit: code as: moduleName]]]]];
+compiler
+] value]

@@ -1,0 +1,9 @@
+let grammar := [Peg grammar];
+let letters := [[Peg charset] from: 97 to: 122];
+[grammar rule: #word is: [letters plus]];
+[grammar rule: #root is: [Peg seqOf: #[[Peg ruleRef: #word] [Peg eof]]]];
+let parsed := [grammar parse: "abc" from: #root];
+[System println: [parsed rule]];
+[System println: [parsed start]];
+[System println: [parsed end]];
+[System println: [[parsed childAt: 0] rule]];

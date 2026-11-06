@@ -1,0 +1,77 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that:label: on: Assert as: [:self :condition :label |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: label]]]]];
+let marker := [Object clone];
+let closure := [[:local | [| local]] value: marker];
+[GC collect];
+[Assert that: [[[[closure code] source] byteSize] > 0] label: "retained code source"];
+[Assert that: [[closure value] == marker] label: "capture survives return and GC"];
+let make := [| [| marker]];
+[Assert that: [[[make value] == [make value]] not] label: "distinct source Blocks"];
+[Namespace at: #ran put: false];
+let deferred := [| [Namespace at: #ran put: true]; marker];
+[Assert that: [[ran not] and: [| [[deferred value] == marker]]] label: "explicit Block invocation"];
+[Assert that: ran label: "body executed"];
+[Reflect defineMethod: #value on: deferred as: [:self | 9]];
+[Assert that: [[deferred value] = 9] label: "Block value replacement"];
+
+// Independent expected trace: receiver, argument installation, chosen method.
+[Namespace at: #order put: ""];
+let target := [Object clone];
+[Reflect defineMethod: #run: on: target as: [:self :value | 1]];
+let receiver := [| [Namespace at: #order put: [order , "R"]]; target];
+let argument := [|
+  [Namespace at: #order put: [order , "A"]];
+  [Reflect defineMethod: #run: on: target as: [:self :value |
+    [Namespace at: #order put: [order , "M"]]; value]];
+  marker];
+[Assert that: [[[receiver value] run: [argument value]] == marker] label: "late selection"];
+[Assert that: [order = "RAM"] label: "receiver and argument once, in order"];
+let captured := [Reflect methodFor: #run: on: target];
+[Reflect defineMethod: #run: on: target as: [:self :value | 7]];
+[Assert that: [[captured valueOn: target with: #[marker]] == marker] label: "captured Method entry"];
+[Assert that: [[target run: marker] = 7] label: "later send sees replacement"];
+let inherited := [Object clone];
+[Reflect defineMethod: #myself on: inherited as: [:self | self]];
+let child := [inherited clone];
+[Assert that: [[child myself] == child] label: "inherited self"];
+[Reflect defineMethod: #myself on: child as: [:self | marker]];
+[Assert that: [[inherited myself] == inherited] label: "local override isolation"];
+
+// A literal's current per-object arithmetic and source constructors are messages.
+let number := 1;
+[Reflect defineMethod: #+ on: number as: [:self :other | 99]];
+[Assert that: [[number + 2] = 99] label: "arithmetic replacement"];
+let vector := #[marker 2]; let updated := [vector at: 1 put: 3];
+[Assert that: [[vector at: 1] = 2] label: "persistent Vector"];
+[Assert that: [[updated at: 0] == marker] label: "Vector referent identity"];
+let vfactory := [| #[marker]];
+[Assert that: [[[vfactory value] == [vfactory value]] not] label: "fresh Vector literal"];
+[Assert that: [[#[] size] = 0] label: "empty Vector"];
+[Assert that: [[[|] value] isNil] label: "empty body"];
+[Assert that: [["é\n\t\r\"\\" byteSize] = 7] label: "byte-exact strings"];
+[Assert that: [[-9223372036854775808 printString] = "-9223372036854775808"] label: "signed minimum"];
+[Assert that: [[[9223372036854775807 + 1] kind] == #integerOverflow] label: "overflow"];
+
+let failure := [1 / 0];
+[Assert that: [[failure kind] == #zeroDivide] label: "Error retained in declaration"];
+[Assert that: [[failure ifError: [:error | 8]] = 8] label: "explicit recovery"];
+[Namespace at: #operandEffect put: ""];
+let propagated := [failure ignored: [Namespace at: #operandEffect put: "argument"]];
+[Assert that: [[propagated kind] == #zeroDivide] label: "Error receiver propagation"];
+[Assert that: [operandEffect = "argument"] label: "Error receiver still evaluates arguments"];
+[Namespace at: #after put: false];
+let stopped := [[| [1 / 0]; [Namespace at: #after put: true]] value];
+[Assert that: [[stopped kind] == #zeroDivide] label: "discarded Error stops body"];
+[Assert that: [after not] label: "later effect not executed"];
+[Assert that: [[[[:x | x] value] kind] == #arityMismatch] label: "arity Error"];
+let duplicate := [[| let x := 1; let x := 2] value];
+[Assert that: [[duplicate kind] == #duplicateBinding] label: "duplicate local"];
+
+let global := marker; let readGlobal := [| global]; let captureLocal := [[:x | [| x]] value: marker];
+[Namespace at: #global put: target];
+[Assert that: [[readGlobal value] == target] label: "late global lookup"];
+[Assert that: [[captureLocal value] == marker] label: "local captured reference"];
+[GC collect];
+[Assert that: [[closure value] == marker] label: "retained closure after all mutations"];
+[System println: "PASS compiler semantics"];

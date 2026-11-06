@@ -1,0 +1,147 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that: on: Assert as: [:self :condition |
+  [condition ifTrue: [| self] ifFalse: [|
+    [Error kind: #assertionFailed message: "seed semantic assertion failed"]]]]];
+
+// Returned lexical captures survive their caller and collection.
+let object := [Object clone];
+let body := [[:n | [:self | n]] value: 42];
+[Reflect defineMethod: #answer on: object as: body];
+let captured := [Reflect methodFor: #answer on: object];
+[GC collect];
+[Assert that: [[captured code] == [body code]]];
+[Assert that: [[[captured parameters] at: 0] == #self]];
+[Assert that: [[[captured environment] lookup: #n] = 42]];
+[Assert that: [[object answer] = 42]];
+[Reflect defineMethod: #answer on: object as: [:self | 7]];
+[Assert that: [[object answer] = 7]];
+[Assert that: [[captured valueOn: object with: #[]] = 42]];
+[Reflect defineMethod: #apply on: captured as: [:self | 99]];
+[Reflect defineMethod: #invoke on: captured as: [:self | 99]];
+[object define: #pinned as: captured];
+[Assert that: [[object pinned] = 42]];
+
+// Local specialization leaves a clone's captured shared behavior unchanged.
+let sibling := [object clone];
+[Reflect defineMethod: #answer on: object as: [:self | 8]];
+[Assert that: [[object answer] = 8]];
+[Assert that: [[sibling answer] = 7]];
+
+// Globals remain live; the explicitly captured local reference remains stable.
+let current := [Object clone];
+let original := current;
+let localReader := [[:value | [| value]] value: current];
+let globalReader := [| current];
+let replacement := [Object clone];
+[Namespace at: #current put: replacement];
+[Assert that: [[localReader value] == original]];
+[Assert that: [[globalReader value] == replacement]];
+let otherNamespace := [Namespace clone];
+[otherNamespace at: #current put: otherNamespace];
+[otherNamespace at: #reader put: globalReader];
+[Assert that: [[Seed eval: "[reader value]" in: otherNamespace] == replacement]];
+[Assert that: [[[[:x | [| x]] value: original] value] == original]];
+
+// Receiver and argument evaluation happen once and before target selection.
+[Namespace at: #order put: ""];
+let target := [Object clone];
+[Reflect defineMethod: #run: on: target as: [:self :argument | 1]];
+let factory := [Object clone];
+[Reflect defineMethod: #receiver on: factory as: [:self |
+  [Namespace at: #order put: [order , "R"]]; target]];
+let installer := [Object clone];
+[Reflect defineMethod: #replaceAndAnswer on: installer as: [:self |
+  [Namespace at: #order put: [order , "A"]];
+  [Reflect defineMethod: #run: on: target as: [:self :argument |
+    [Namespace at: #order put: [order , "M"]]; argument]];
+  3]];
+[Assert that: [[[factory receiver] run: [installer replaceAndAnswer]] = 3]];
+[Assert that: [order = "RAM"]];
+
+// Literal vectors are fresh and evaluate elements in source order.
+[Namespace at: #order put: ""];
+let mark := [:label | [Namespace at: #order put: [order , label]]; label];
+let vector := #[[mark value: "1"] [mark value: "2"]];
+[Assert that: [order = "12"]];
+[Assert that: [[vector at: 0] = "1"]];
+let makeVector := [| #[original]];
+[Assert that: [[[makeVector value] == [makeVector value]] not]];
+let changed := [vector at: 0 put: "changed"];
+[Assert that: [[vector at: 0] = "1"]];
+[Assert that: [[changed at: 0] = "changed"]];
+
+// Constructing/returning Blocks never runs them. Invoking value is a send.
+[Namespace at: #ran put: false];
+let deferred := [| [Namespace at: #ran put: true]; 42];
+[Assert that: [ran == false]];
+[Reflect defineMethod: #value on: deferred as: [:self | 9]];
+[Assert that: [[deferred value] = 9]];
+[Assert that: [ran == false]];
+[Assert that: [[true ifTrue: [| 1] ifFalse: [| missingBranch]] = 1]];
+[Assert that: [[false ifTrue: [| missingBranch] ifFalse: [| 2]] = 2]];
+let oldConditional := [Reflect methodFor: #ifTrue:ifFalse: on: true];
+[true define: #ifTrue:ifFalse: as: [Reflect methodFrom: [:self :yes :no | [no value]]]];
+let redirectedBranch := [true ifTrue: [| 1] ifFalse: [| 2]];
+[true define: #ifTrue:ifFalse: as: oldConditional];
+[Assert that: [redirectedBranch = 2]];
+
+// Arithmetic uses current methods, including shared behavior replacement.
+let integerBehavior := [1 behavior];
+let oldPlus := [Reflect methodFor: #+ on: 1];
+[integerBehavior at: #+ put: [Reflect methodFrom: [:self :other | 99]]];
+[Assert that: [[1 + 2] = 99]];
+[integerBehavior at: #+ put: oldPlus];
+[Assert that: [[1 + 2] = 3]];
+
+// Literal construction is current behavior too.
+let oldConstructor := [Reflect methodFor: #fromBytes: on: Integer];
+[Namespace at: #constructed put: false];
+[Reflect defineMethod: #fromBytes: on: Integer as: [:self :bytes |
+  [Namespace at: #constructed put: true];
+  [oldConstructor valueOn: self with: #[bytes]]]];
+let literal := 12;
+[Assert that: constructed];
+[Integer define: #fromBytes: as: oldConstructor];
+
+// Errors can be retained as values and explicitly recovered.
+let failure := [1 / 0];
+[Assert that: [failure isError]];
+[Assert that: [[failure kind] == #zeroDivide]];
+[Assert that: [[failure ifError: [:error | 8]] = 8]];
+[Assert that: [[[9223372036854775807 + 1] kind] == #integerOverflow]];
+[Assert that: [[[-9223372036854775808 / -1] kind] == #integerOverflow]];
+[Assert that: [[-9223372036854775808 printString] = "-9223372036854775808"]];
+[Assert that: [[[-9223372036854775808 - 1] kind] == #integerOverflow]];
+[Assert that: [[[9223372036854775807 * 2] kind] == #integerOverflow]];
+[Assert that: [[7 / 2] = 3]];
+[Assert that: [[-7 / 2] = -3]];
+[Assert that: [[missingName kind] == #unknownName]];
+
+// UTF-8 and byte operations remain distinct; slicing can produce non-text Bytes.
+[Assert that: [["é" byteSize] = 2]];
+[Assert that: [["é" byteAt: 0] = 195]];
+[Assert that: [["é" byteAt: 1] = 169]];
+[Assert that: [[[["é" bytesFrom: 0 to: 1] asString] kind] == #invalidUtf8]];
+[Assert that: [[["é" asBytes] asString] = "é"]];
+[Assert that: [["hello" intern] == #hello]];
+[Assert that: [["\n\t\r\"\\" byteSize] = 5]];
+
+// Seed eval routes through its replaceable parser behavior.
+let fakeSyntax := [Object clone];
+[Reflect defineMethod: #evalIn: on: fakeSyntax as: [:self :env | replacement]];
+let oldParse := [Reflect methodFor: #parse: on: Seed];
+[Reflect defineMethod: #parse: on: Seed as: [:self :source | fakeSyntax]];
+[Assert that: [[Seed eval: "not real source at all"] == replacement]];
+[Seed define: #parse: as: oldParse];
+[Assert that: [[Seed eval: "[1 + 2]"] = 3]];
+
+// Parsed syntax is an inspectable object graph, with the original source.
+let parsed := [Seed parse: "[1 + 2]"];
+[Assert that: [[[parsed source] asString] = "[1 + 2]"]];
+let sendNode := [[parsed forms] at: 0];
+[Assert that: [[sendNode selector] == #+]];
+[Assert that: [[[[sendNode receiver] textBytes] asString] = "1"]];
+[Assert that: [[[sendNode arguments] size] = 1]];
+[Assert that: [[[parsed evalIn: [Environment forNamespace: Namespace]] printString] = "3"]];
+[GC collect];
+[System println: "PASS seed source semantics"];

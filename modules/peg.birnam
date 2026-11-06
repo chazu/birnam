@@ -1,0 +1,303 @@
+// PEG matching and CST construction are authored Birnam behavior.
+// Internal match result: nil for mismatch, Error for a structural failure,
+// or #[endByteOffset children]. Every attempt receives an explicit position.
+[[|
+let peg := [Namespace new];
+let pattern := [Namespace new];
+[Reflect defineMethod: #star on: pattern as: [:self | [peg star: self]]];
+[Reflect defineMethod: #plus on: pattern as: [:self | [peg plus: self]]];
+[Reflect defineMethod: #opt on: pattern as: [:self | [peg opt: self]]];
+[Reflect defineMethod: #negate on: pattern as: [:self | [peg not: self]]];
+[Reflect defineMethod: #lookahead on: pattern as: [:self | [peg and: self]]];
+
+let literal := [pattern clone];
+let any := [pattern clone];
+let eof := [pattern clone];
+let charset := [pattern clone];
+let sequence := [pattern clone];
+let choice := [pattern clone];
+let repeat := [pattern clone];
+let optional := [pattern clone];
+let lookahead := [pattern clone];
+let reference := [pattern clone];
+let node := [Namespace new];
+let context := [Namespace new];
+let grammar := [Namespace new];
+
+// CST nodes are ordinary objects; consumers walk them through messages.
+[Reflect defineMethod: #create:from:to:children: on: node as: [:self :rule :start :end :children |
+  let result := [self clone];
+  [result at: #rule put: rule];
+  [result at: #start put: start];
+  [result at: #end put: end];
+  [result at: #children put: children]; result]];
+[Reflect defineMethod: #rule on: node as: [:self | [self at: #rule]]];
+[Reflect defineMethod: #ruleName on: node as: [:self | [[self rule] asString]]];
+[Reflect defineMethod: #start on: node as: [:self | [self at: #start]]];
+[Reflect defineMethod: #end on: node as: [:self | [self at: #end]]];
+[Reflect defineMethod: #children on: node as: [:self | [self at: #children]]];
+[Reflect defineMethod: #childCount on: node as: [:self | [[self children] size]]];
+[Reflect defineMethod: #childAt: on: node as: [:self :index | [[self children] at: index]]];
+
+// Context and active-rule state belong to one parse, including reentrant ones.
+[Reflect defineMethod: #source on: context as: [:self | [self at: #source]]];
+[Reflect defineMethod: #furthestFail on: context as: [:self | [[self at: #furthest] value]]];
+[Reflect defineMethod: #failureAt: on: context as: [:self :position |
+  [[position > [self furthestFail]] ifTrue: [| [[self at: #furthest] value: position]]]; nil]];
+[Reflect defineMethod: #rule:at: on: context as: [:self :name :position |
+  let selected := [[self at: #rules] at: name ifAbsent: [| nil]];
+  [[selected isError] ifTrue: [| selected] ifFalse: [|
+    [[selected isNil] ifTrue: [|
+      [self failureAt: position];
+      [Error kind: #undefinedRule message: ["undefined rule: " , [name asString]]]
+    ] ifFalse: [|
+      let active := [self at: #active];
+      let index := [Cell with: 0];
+      let recursive := [Cell with: false];
+      [[| [[[index value] < [active size]] and: [| [[recursive value] not]]]] whileTrue: [|
+        let entry := [active at: [index value]];
+        [[[[entry at: 0] == name] and: [| [[entry at: 1] = position]]]
+          ifTrue: [| [recursive value: true]]];
+        [index value: [[index value] + 1]]]];
+      [[recursive value] ifTrue: [|
+        [self failureAt: position];
+        [Error kind: #leftRecursion message: ["left-recursive rule: " , [name asString]]]
+      ] ifFalse: [|
+        [self at: #active put: [active append: #[name position]]];
+        let result := [selected match: self at: position];
+        [self at: #active put: active];
+        [[result isError] ifTrue: [| result] ifFalse: [|
+          [[result isNil] ifTrue: [| nil] ifFalse: [|
+            let end := [result at: 0];
+            let tree := [node create: name from: position to: end children: [result at: 1]];
+            #[end #[tree]]
+          ]]
+        ]]
+      ]]
+    ]]
+  ]]
+]];
+[Reflect defineMethod: #syntaxError on: context as: [:self |
+  let offset := [self furthestFail];
+  let index := [Cell with: 0];
+  let line := [Cell with: 1];
+  let column := [Cell with: 1];
+  [[| [[index value] < offset]] whileTrue: [|
+    [[[[self source] byteAt: [index value]] = 10]
+      ifTrue: [| [line value: [[line value] + 1]]; [column value: 1]]
+      ifFalse: [| [column value: [[column value] + 1]]]];
+    [index value: [[index value] + 1]]]];
+  [Error kind: #syntaxError message:
+    [[["syntax error at line " , [[line value] printString]] , ", col "] , [[column value] printString]]]
+]];
+
+[Reflect defineMethod: #rule:is: on: grammar as: [:self :rule :body |
+  let name := [rule intern];
+  [[name isError] ifTrue: [| name] ifFalse: [|
+    [[self at: #rules] at: name put: body]; self]]]];
+[Reflect defineMethod: #furthestFail on: grammar as: [:self | [self at: #furthest]]];
+[Reflect defineMethod: #parse:from: on: grammar as: [:self :input :root |
+  let source := [input asBytes];
+  let name := [root intern];
+  [[source isError] ifTrue: [| source] ifFalse: [|
+    [[name isError] ifTrue: [| name] ifFalse: [|
+      let run := [context clone];
+      [run at: #source put: source];
+      [run at: #rules put: [[self at: #rules] clone]];
+      [run at: #active put: #[]];
+      [run at: #furthest put: [Cell with: 0]];
+      let result := [run rule: name at: 0];
+      [self at: #furthest put: [run furthestFail]];
+      [[result isError] ifTrue: [| result] ifFalse: [|
+        [[result isNil] ifTrue: [| [run syntaxError]] ifFalse: [| [[result at: 1] at: 0]]]
+      ]]
+    ]]
+  ]]
+]];
+
+// Terminals return no CST nodes. Literal comparison is one bulk byte operation.
+[Reflect defineMethod: #match:at: on: literal as: [:self :run :position |
+  let text := [self at: #literal];
+  let matched := [[run source] commonPrefixLengthWith: text at: position];
+  [[matched = [text byteSize]] ifTrue: [| #[[position + matched] #[]]]
+    ifFalse: [| [run failureAt: [position + matched]]]]
+]];
+[Reflect defineMethod: #match:at: on: any as: [:self :run :position |
+  [[position < [[run source] byteSize]] ifTrue: [| #[[position + 1] #[]]]
+    ifFalse: [| [run failureAt: position]]]
+]];
+[Reflect defineMethod: #match:at: on: eof as: [:self :run :position |
+  [[position = [[run source] byteSize]] ifTrue: [| #[position #[]]]
+    ifFalse: [| [run failureAt: position]]]
+]];
+[Reflect defineMethod: #from:to: on: charset as: [:self :low :high |
+  [[[low >= 0] and: [| [[low <= high] and: [| [high <= 255]]]]]
+    ifTrue: [| [self at: #ranges put: [[self at: #ranges] append: #[low high]]]; self]
+    ifFalse: [| [Error kind: #invalidByteRange message: "charset requires 0 <= low <= high <= 255"]]]
+]];
+[Reflect defineMethod: #match:at: on: charset as: [:self :run :position |
+  [[position < [[run source] byteSize]] ifTrue: [|
+    let byte := [[run source] byteAt: position];
+    let ranges := [self at: #ranges];
+    let index := [Cell with: 0];
+    let found := [Cell with: false];
+    [[| [[[index value] < [ranges size]] and: [| [[found value] not]]]] whileTrue: [|
+      let range := [ranges at: [index value]];
+      [[[byte >= [range at: 0]] and: [| [byte <= [range at: 1]]]] ifTrue: [| [found value: true]]];
+      [index value: [[index value] + 1]]]];
+    [[found value] ifTrue: [| #[[position + 1] #[]]] ifFalse: [| [run failureAt: position]]]
+  ] ifFalse: [| [run failureAt: position]]]
+]];
+
+[Reflect defineMethod: #add: on: sequence as: [:self :child |
+  [self at: #children put: [[self at: #children] append: child]]; self]];
+[Reflect defineMethod: #add: on: choice as: [:self :child |
+  [self at: #children put: [[self at: #children] append: child]]; self]];
+[Reflect defineMethod: #match:at: on: sequence as: [:self :run :position |
+  let children := [self at: #children];
+  let index := [Cell with: 0];
+  let at := [Cell with: position];
+  let nodes := [Cell with: #[]];
+  let status := [Cell with: true];
+  [[| [[[index value] < [children size]] and: [| [[status value] == true]]]] whileTrue: [|
+    let result := [[children at: [index value]] match: run at: [at value]];
+    [[result isError] ifTrue: [| [status value: result]] ifFalse: [|
+      [[result isNil] ifTrue: [| [status value: false]] ifFalse: [|
+        [at value: [result at: 0]];
+        [nodes value: [[nodes value] concat: [result at: 1]]]
+      ]]
+    ]];
+    [index value: [[index value] + 1]]]];
+  [[[status value] isError] ifTrue: [| [status value]] ifFalse: [|
+    [[status value] ifTrue: [| #[[at value] [nodes value]]] ifFalse: [| nil]]
+  ]]
+]];
+[Reflect defineMethod: #match:at: on: choice as: [:self :run :position |
+  let children := [self at: #children];
+  let index := [Cell with: 0];
+  let result := [Cell with: nil];
+  let trying := [Cell with: true];
+  [[| [[[index value] < [children size]] and: [| [trying value]]]] whileTrue: [|
+    let next := [[children at: [index value]] match: run at: position];
+    [result value: next];
+    [[next isError] ifTrue: [| [trying value: false]] ifFalse: [|
+      [[next isNil] ifFalse: [| [trying value: false]]]
+    ]];
+    [index value: [[index value] + 1]]]];
+  [result value]
+]];
+
+// A zero-width success contributes its child nodes once, then stops.
+// Plus requires at least one advancing match, matching the existing contract.
+[Reflect defineMethod: #match:at: on: repeat as: [:self :run :position |
+  let child := [self at: #child];
+  let at := [Cell with: position];
+  let nodes := [Cell with: #[]];
+  let advances := [Cell with: 0];
+  let running := [Cell with: true];
+  let problem := [Cell with: nil];
+  [[| [running value]] whileTrue: [|
+    let result := [child match: run at: [at value]];
+    [[result isError] ifTrue: [| [problem value: result]; [running value: false]] ifFalse: [|
+      [[result isNil] ifTrue: [| [running value: false]] ifFalse: [|
+        let end := [result at: 0];
+        [nodes value: [[nodes value] concat: [result at: 1]]];
+        [[end = [at value]] ifTrue: [| [running value: false]] ifFalse: [|
+          [at value: end]; [advances value: [[advances value] + 1]]
+        ]]
+      ]]
+    ]]
+  ]];
+  [[[problem value] isError] ifTrue: [| [problem value]] ifFalse: [|
+    [[[advances value] >= [self at: #minimum]] ifTrue: [| #[[at value] [nodes value]]]
+      ifFalse: [| [run failureAt: position]]]
+  ]]
+]];
+[Reflect defineMethod: #match:at: on: optional as: [:self :run :position |
+  let result := [[self at: #child] match: run at: position];
+  [[result isError] ifTrue: [| result] ifFalse: [|
+    [[result isNil] ifTrue: [| #[position #[]]] ifFalse: [| result]]
+  ]]
+]];
+[Reflect defineMethod: #match:at: on: lookahead as: [:self :run :position |
+  let result := [[self at: #child] match: run at: position];
+  [[result isError] ifTrue: [| result] ifFalse: [|
+    let matched := [[result isNil] not];
+    [[matched == [self at: #positive]] ifTrue: [| #[position #[]]]
+      ifFalse: [| [run failureAt: position]]]
+  ]]
+]];
+[Reflect defineMethod: #match:at: on: reference as: [:self :run :position |
+  [run rule: [self at: #name] at: position]
+]];
+
+// Constructors and aliases used by authored grammars, including Lang.
+[Reflect defineMethod: #grammar on: peg as: [:self |
+  let result := [grammar clone];
+  [result at: #rules put: [Namespace new]];
+  [result at: #furthest put: 0]; result]];
+[Reflect defineMethod: #newGrammar on: peg as: [:self | [self grammar]]];
+[Reflect defineMethod: #literal: on: peg as: [:self :value |
+  let text := [value asBytes];
+  [[text isError] ifTrue: [| text] ifFalse: [|
+    let result := [literal clone]; [result at: #literal put: text]; result]]]];
+[Reflect defineMethod: #any on: peg as: [:self | [any clone]]];
+[Reflect defineMethod: #anyByte on: peg as: [:self | [self any]]];
+[Reflect defineMethod: #eof on: peg as: [:self | [eof clone]]];
+[Reflect defineMethod: #charset on: peg as: [:self |
+  let result := [charset clone]; [result at: #ranges put: #[]]; result]];
+[Reflect defineMethod: #seqOf: on: peg as: [:self :children |
+  let result := [sequence clone]; [result at: #children put: children]; result]];
+[Reflect defineMethod: #choiceOf: on: peg as: [:self :children |
+  let result := [choice clone]; [result at: #children put: children]; result]];
+[Reflect defineMethod: #seq on: peg as: [:self | [self seqOf: #[]]]];
+[Reflect defineMethod: #sequence on: peg as: [:self | [self seq]]];
+[Reflect defineMethod: #choice on: peg as: [:self | [self choiceOf: #[]]]];
+[Reflect defineMethod: #repeat:minimum: on: peg as: [:self :child :minimum |
+  let result := [repeat clone]; [result at: #child put: child];
+  [result at: #minimum put: minimum]; result]];
+[Reflect defineMethod: #star: on: peg as: [:self :child | [self repeat: child minimum: 0]]];
+[Reflect defineMethod: #plus: on: peg as: [:self :child | [self repeat: child minimum: 1]]];
+[Reflect defineMethod: #opt: on: peg as: [:self :child |
+  let result := [optional clone]; [result at: #child put: child]; result]];
+[Reflect defineMethod: #look:positive: on: peg as: [:self :child :positive |
+  let result := [lookahead clone]; [result at: #child put: child];
+  [result at: #positive put: positive]; result]];
+[Reflect defineMethod: #and: on: peg as: [:self :child | [self look: child positive: true]]];
+[Reflect defineMethod: #not: on: peg as: [:self :child | [self look: child positive: false]]];
+[Reflect defineMethod: #ruleRef: on: peg as: [:self :rule |
+  let name := [rule intern];
+  [[name isError] ifTrue: [| name] ifFalse: [|
+    let result := [reference clone]; [result at: #name put: name]; result]]]];
+[Reflect defineMethod: #anyOf: on: peg as: [:self :value |
+  let bytes := [value asBytes];
+  [[bytes isError] ifTrue: [| bytes] ifFalse: [|
+    let result := [self charset]; let index := [Cell with: 0];
+    [[| [[index value] < [bytes byteSize]]] whileTrue: [|
+      let byte := [bytes byteAt: [index value]];
+      [result from: byte to: byte]; [index value: [[index value] + 1]]]];
+    result
+  ]]
+]];
+[Reflect defineMethod: #range:to: on: peg as: [:self :first :last |
+  let low := [first asBytes]; let high := [last asBytes];
+  [[low isError] ifTrue: [| low] ifFalse: [|
+    [[high isError] ifTrue: [| high] ifFalse: [|
+      [[[[low byteSize] = 1] and: [| [[high byteSize] = 1]]]
+        ifTrue: [| [[self charset] from: [low byteAt: 0] to: [high byteAt: 0]]]
+        ifFalse: [| [Error kind: #invalidByteRange message: "range endpoints must each contain one byte"]]]
+    ]]
+  ]]
+]];
+
+let prototypes := [Namespace new];
+[prototypes at: #Literal put: literal]; [prototypes at: #Any put: any];
+[prototypes at: #Eof put: eof]; [prototypes at: #Charset put: charset];
+[prototypes at: #Sequence put: sequence]; [prototypes at: #Choice put: choice];
+[prototypes at: #Repeat put: repeat]; [prototypes at: #Optional put: optional];
+[prototypes at: #Lookahead put: lookahead]; [prototypes at: #Reference put: reference];
+[Reflect defineMethod: #patterns on: peg as: [:self | prototypes]];
+[Reflect defineMethod: #cst on: peg as: [:self | node]];
+[Namespace at: #Peg put: peg];
+peg
+] value]

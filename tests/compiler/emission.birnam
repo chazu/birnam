@@ -1,0 +1,22 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that: on: Assert as: [:self :condition |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: "emission assertion"]]]]];
+let code := [Compiler lower: "42"];
+let original := [Reflect methodFor: #emitIn: on: code];
+[Reflect defineMethod: #emitIn: on: code as: [:self :out | [Error kind: #emitterChanged message: "expected"]]];
+[Assert that: [[[Compiler emit: code as: #Example] kind] == #emitterChanged]];
+[code define: #emitIn: as: original];
+let emitted := [Compiler emit: code as: #Example];
+[Assert that: [[emitted byteSize] > 0]];
+let invalid := [[Compiler ir] literal: [Object clone] bytes: "x"];
+let badProgram := [[Compiler ir] sequence: #[invalid] source: ""];
+[Assert that: [[[Compiler emit: badProgram as: #Bad] kind] == #unsupportedLiteralFactory]];
+let emitter := [Compiler emitter];
+let quote := [Reflect methodFor: #quote: on: emitter];
+let called := [Cell with: false];
+[Reflect defineMethod: #quote: on: emitter as: [:self :value |
+  [called value: true]; [quote valueOn: self with: #[value]]]];
+[Compiler emit: code as: #Example];
+[emitter define: #quote: as: quote];
+[Assert that: [called value]];
+[System println: "PASS replaceable compiler emission and unsupported factories"];

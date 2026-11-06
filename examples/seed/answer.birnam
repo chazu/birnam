@@ -1,0 +1,6 @@
+// A returned Block retains a local binding after its enclosing call returns.
+let object := [Object clone];
+let body := [[:n | [:self | n]] value: 42];
+[Reflect defineMethod: #answer on: object as: body];
+[GC collect];
+[System println: [object answer]];

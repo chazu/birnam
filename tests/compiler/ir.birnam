@@ -1,0 +1,18 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that: on: Assert as: [:self :condition |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: "compiler IR assertion"]]]]];
+let sources := #["[1 + 2]" "let x := 4; [x * 3]" "[[[:x | [| x]] value: 42] value]" "[[true ifTrue: [| 7] ifFalse: [| 8]] + 1]" "[[1 / 0] ifError: [:e | 9]]" "[#[1 2 3] at: 2]"];
+let expected := #[3 12 42 8 9 3]; let index := [Cell with: 0];
+[[| [[index value] < [sources size]]] whileTrue: [|
+  let source := [sources at: [index value]];
+  let direct := [Seed eval: source in: [Namespace clone]];
+  let lowered := [Compiler evaluate: source in: [Namespace clone]];
+  [Assert that: [direct = [expected at: [index value]]]];
+  [Assert that: [lowered = direct]];
+  [index value: [[index value] + 1]]]];
+let code := [Compiler lower: "[1 + 2]"];
+[Assert that: [[[[code at: #forms] at: 0] at: #selector] == #+]];
+[Reflect defineMethod: #evalIn: on: code as: [:self :env | 77]];
+[Assert that: [[code evalIn: [Environment forNamespace: Namespace]] = 77]];
+[Assert that: [[[Compiler lower: "1.5"] kind] == #unsupportedSyntax]];
+[System println: "PASS authored compiler IR"];

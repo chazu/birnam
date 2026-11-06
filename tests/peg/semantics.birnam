@@ -1,0 +1,112 @@
+let Assert := [Object clone];
+[Reflect defineMethod: #that:label: on: Assert as: [:self :condition :label |
+  [condition ifTrue: [| self] ifFalse: [| [Error kind: #assertionFailed message: label]]]]];
+let g := [Peg grammar];
+[g rule: "letter" is: [Peg range: "a" to: "z"]];
+[g rule: #word is: [[Peg ruleRef: #letter] plus]];
+[g rule: #root is: [Peg seqOf: #[[Peg ruleRef: #word] [Peg eof]]]];
+let tree := [g parse: "abc" from: "root"];
+[Assert that: [[tree rule] == #root] label: "root label"];
+[Assert that: [[tree ruleName] = "root"] label: "ruleName"];
+[Assert that: [[tree start] = 0] label: "root start"];
+[Assert that: [[tree end] = 3] label: "root end"];
+[Assert that: [[tree childCount] = 1] label: "only rules make nodes"];
+let word := [tree childAt: 0];
+[Assert that: [[word rule] == #word] label: "nested word"];
+[Assert that: [[word childCount] = 3] label: "repeat flattens rule children"];
+[Assert that: [[[word childAt: 2] start] = 2] label: "child order"];
+[Assert that: [[[word childAt: 2] end] = 3] label: "child span"];
+[Assert that: [[[g parse: "abc!" from: #root] kind] == #syntaxError] label: "explicit eof"];
+[Assert that: [[[g parse: "abc!" from: #word] end] = 3] label: "prefix parse"];
+[Assert that: [[g furthestFail] = 3] label: "successful repeat records mismatch"];
+
+// Ordered choice restores the starting position and discards failed children.
+[g rule: #a is: [Peg literal: "a"]];
+[g rule: #b is: [Peg literal: "b"]];
+let failed := [Peg seqOf: #[[Peg ruleRef: #a] [Peg literal: "x"]]];
+let winning := [Peg seqOf: #[[Peg ruleRef: #a] [Peg ruleRef: #b]]];
+[g rule: #backtrack is: [Peg choiceOf: #[failed winning]]];
+let back := [g parse: "ab" from: #backtrack];
+[Assert that: [[back childCount] = 2] label: "failed children discarded"];
+[Assert that: [[[back childAt: 1] rule] == #b] label: "winning children"];
+let shortFirst := [Peg choiceOf: #[[Peg literal: "a"] [Peg literal: "ab"]]];
+[g rule: #priority is: [Peg seqOf: #[shortFirst [Peg eof]]]];
+[Assert that: [[[g parse: "ab" from: #priority] kind] == #syntaxError] label: "choice commits first success"];
+[g rule: #look is: [Peg seqOf: #[[[Peg ruleRef: #a] lookahead] [[Peg ruleRef: #b] negate] [Peg ruleRef: #a]]]];
+let looked := [g parse: "a" from: #look];
+[Assert that: [[looked childCount] = 1] label: "lookahead has no children"];
+[Assert that: [[looked end] = 1] label: "lookahead consumes nothing"];
+[g rule: #optional is: [Peg seqOf: #[[[Peg ruleRef: #b] opt] [Peg ruleRef: #a]]]];
+[Assert that: [[[g parse: "a" from: #optional] childCount] = 1] label: "optional mismatch"];
+[g rule: #empty is: [Peg literal: ""]];
+[g rule: #zeroStar is: [[Peg ruleRef: #empty] star]];
+[g rule: #zeroPlus is: [[Peg ruleRef: #empty] plus]];
+let zero := [g parse: "" from: #zeroStar];
+[Assert that: [[zero childCount] = 1] label: "zero width contributes once"];
+[Assert that: [[zero end] = 0] label: "zero width terminates"];
+[Assert that: [[[g parse: "" from: #zeroPlus] kind] == #syntaxError] label: "plus requires progress"];
+[g rule: #nothing is: [Peg seq]];
+[Assert that: [[[g parse: "" from: #nothing] end] = 0] label: "empty sequence"];
+[g rule: #nothing is: [Peg choice]];
+[Assert that: [[[g parse: "" from: #nothing] kind] == #syntaxError] label: "empty choice"];
+[g rule: #constructors is: [[[Peg sequence] add: [Peg anyByte]] add: [Peg eof]]];
+[Assert that: [[[g parse: "x" from: #constructors] end] = 1] label: "sequence add and anyByte"];
+[g rule: #constructors is: [[[Peg choice] add: [Peg literal: "a"]] add: [Peg anyOf: "xy"]]];
+[Assert that: [[[g parse: "y" from: #constructors] end] = 1] label: "choice add and anyOf"];
+[Assert that: [[[[Peg charset] from: -1 to: 0] kind] == #invalidByteRange] label: "invalid range"];
+[Assert that: [[[Peg range: "é" to: "z"] kind] == #invalidByteRange] label: "range byte endpoints"];
+
+// Structural errors must survive every combinator.
+let missing := [Peg ruleRef: #missing];
+let wrappers := #[[Peg choiceOf: #[missing [Peg literal: ""]]] [missing opt] [missing negate] [missing lookahead] [missing star] [missing plus]];
+let index := [Cell with: 0];
+[[| [[index value] < [wrappers size]]] whileTrue: [|
+  [g rule: #bad is: [wrappers at: [index value]]];
+  [Assert that: [[[g parse: "" from: #bad] kind] == #undefinedRule] label: "undefined survives combinators"];
+  [index value: [[index value] + 1]]]];
+[Assert that: [[[g parse: "" from: #missing] kind] == #undefinedRule] label: "undefined root"];
+[g rule: #left is: [Peg choiceOf: #[[Peg ruleRef: #left] [Peg literal: ""]]]];
+[Assert that: [[[g parse: "" from: #left] kind] == #leftRecursion] label: "direct left recursion"];
+[g rule: #leftA is: [[Peg ruleRef: #leftB] opt]];
+[g rule: #leftB is: [[Peg ruleRef: #leftA] negate]];
+[Assert that: [[[g parse: "" from: #leftA] kind] == #leftRecursion] label: "indirect left recursion"];
+[g rule: #right is: [Peg choiceOf: #[[Peg seqOf: #[[Peg literal: "a"] [Peg ruleRef: #right]]] [Peg eof]]]];
+[Assert that: [[[g parse: "aaa" from: #right] end] = 3] label: "advancing recursion"];
+
+// Diagnostics are byte-based, reset per parse, and independent per grammar.
+let other := [Peg newGrammar];
+[other rule: #root is: [Peg literal: "a\néx"]];
+let diagnostic := [other parse: "a\né!" from: #root];
+[Assert that: [[diagnostic kind] == #syntaxError] label: "diagnostic kind"];
+[Assert that: [[diagnostic description] = "syntax error at line 2, col 3"] label: "byte line column"];
+[Assert that: [[other furthestFail] = 4] label: "multibyte failure offset"];
+let reset := [g parse: "!" from: #root];
+[Assert that: [[reset kind] == #syntaxError] label: "reset mismatch"];
+[Assert that: [[g furthestFail] = 0] label: "offset reset"];
+[Assert that: [[other furthestFail] = 4] label: "independent diagnostics"];
+[other rule: #root is: [Peg literal: "é"]];
+[Assert that: [[[other parse: "é" from: #root] end] = 2] label: "UTF8 span"];
+let nontext := ["é" bytesFrom: 0 to: 1];
+[other rule: #root is: [Peg literal: nontext]];
+[Assert that: [[[other parse: nontext from: #root] end] = 1] label: "arbitrary Bytes"];
+
+// A finite deep chain must not be confused with left recursion.
+let deep := [Peg grammar];
+[index value: 0];
+[[| [[index value] < 128]] whileTrue: [|
+  let name := ["deep" , [[index value] printString]];
+  let next := ["deep" , [[[index value] + 1] printString]];
+  [deep rule: name is: [Peg ruleRef: next]];
+  [index value: [[index value] + 1]]]];
+[deep rule: "deep128" is: [Peg literal: "z"]];
+let nested := [deep parse: "z" from: "deep0"];
+[Assert that: [[nested end] = 1] label: "128 deep rules"];
+let cursor := [Cell with: nested];
+[index value: 0];
+[[| [[index value] < 128]] whileTrue: [|
+  [cursor value: [[cursor value] childAt: 0]];
+  [index value: [[index value] + 1]]]];
+[Assert that: [[[cursor value] ruleName] = "deep128"] label: "deep CST labels"];
+[GC collect];
+[Assert that: [[tree end] = 3] label: "retained CST survives collection"];
+[System println: "PASS authored PEG semantics"];
