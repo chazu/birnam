@@ -1,6 +1,6 @@
 # Birnam architecture
 
-Consolidated 4 November 2026 from the agreed design discussion. This document specifies the end product and its architectural boundaries. Milestone proposals and research do not silently add requirements. The [native siphon](docs/siphon.md) and [loadable seed interpreter](docs/seed-interpreter.md) are implemented as of 5 November 2026; their bounded delivery is distinct from the complete runtime described here.
+Consolidated 4 November 2026 from the agreed design discussion. This document specifies the end product and its architectural boundaries. Milestone proposals and research do not silently add requirements. The [native siphon](docs/siphon.md) and [loadable seed interpreter](docs/seed-interpreter.md) are implemented as of 5 November 2026, and the first [authored fuller Id](docs/id.md) as of 7 November 2026. On 9 November 2026 the seed's runtime services moved into a separate [runtime-services module](docs/runtime.md), so natively compiled code runs without the interpreter loaded. These bounded deliveries are distinct from the complete runtime described here.
 
 ## Purpose
 
@@ -96,7 +96,7 @@ The initial build/execution baseline is agreed (5 November 2026): support this M
 
 The development sequence is seed interpreter → authored PEG → authored Lang → authored compiler producing C → native compiler rebuilding the authored sources. The native compiler continues using the authored modules. Checking in generated C as another bootstrap seed is optional and requires a regeneration path. Self-hosting is not evidence of performance, image, or multicore acceptance.
 
-The siphon supplies initial Id dispatch, allocation, loading, and machine primitives. A fuller Id module takes over by installing/replacing methods on existing objects and vtables, preserving object identities and compatible payloads/invocation ABI. Subsequent sends see replacement; entered calls retain their implementation. Later representation changes use the migration contract. The siphon remains reachable as a replaceable object. The target startup loads fuller Id, concurrency, base library, and additional modules; the first interpreter milestone need not already implement that entire lifecycle.
+The siphon supplies initial Id dispatch, allocation, loading, and machine primitives. A fuller Id module takes over by installing/replacing methods on existing objects and vtables, preserving object identities and compatible payloads/invocation ABI. Subsequent sends see replacement; entered calls retain their implementation. Later representation changes use the migration contract. The siphon remains reachable as a replaceable object. The [first authored Id module](docs/id.md) (7 November 2026) owns definition, cloning, and reflection policy while default lookup remains native: authored code cannot run its own root lookup without a further native base case, which would be a separate kernel decision. The target startup loads fuller Id, concurrency, base library, and additional modules; the first interpreter milestone need not already implement that entire lifecycle.
 
 ## Remaining implementation decisions
 

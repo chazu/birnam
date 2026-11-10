@@ -2,7 +2,7 @@
 
 Lang owns Birnam's source grammar and uses the Birnam-authored PEG module. The first slice supplies [modules/lang.birnam](../modules/lang.birnam), which publishes `Lang` with `parse:`, `grammar`, and `furthestFail`. `parse:` accepts String/Bytes and returns a labelled CST covering the complete source, or an Error. Parsing validates UTF-8; source positions count bytes. Grammar matching uses ordinary PEG messages.
 
-Load `seed.dylib`, then `modules/peg.birnam`, then `modules/lang.birnam` with successive `--eval` arguments. This is explicit source loading, not dependency resolution or coordinated module reload.
+Load `runtime.dylib` and `seed.dylib`, then `modules/peg.birnam`, then `modules/lang.birnam` with successive `--eval` arguments. This is explicit source loading, not dependency resolution or coordinated module reload.
 
 The initial grammar covers the existing seed subset: bracketed unary/binary/keyword sends, immutable declarations, signed decimal Integer literals, escaped Strings, Symbols, Vectors, lexical Blocks, comments, and optional semicolons. Identifiers use ASCII letters/underscore and subsequent digits. The grammar preserves the seed's token boundaries, including keyword colons, `:=`, and the distinction between binary minus and negative literals. Deferred float/map/relational/result-threaded forms and numeric prefixes/exponents answer `unsupportedSyntax`.
 
@@ -18,7 +18,7 @@ The second slice adds [modules/lang-syntax.birnam](../modules/lang-syntax.birnam
 
 ```sh
 make build
-./build/siphon ./build/seed.dylib \
+./build/siphon ./build/runtime.dylib ./build/seed.dylib \
   --eval modules/peg.birnam \
   --eval modules/lang.birnam \
   --eval modules/lang-syntax.birnam \
@@ -30,7 +30,7 @@ This prints `42`. The takeover file sends `[Lang installOn: Seed]`. Later `Seed 
 
 The visitor selects an ordinary Method using the CST's rule Symbol and enters it with the CST node. A fresh shallow clone holds the source for each translation; nested sequences retain that original source. Methods handle the individual syntax families, flatten expression wrappers, combine keyword selector pieces, decode String escapes, check signed-64-bit Integer bounds, and reject duplicate Block parameters. All syntax construction goes through the existing representation owner's messages. The visitor never interprets native payloads or calls the bootstrap parser.
 
-The visitor obtains its syntax owner through its replaceable `syntax` message; the compiler supplies a separate authored IR owner through that protocol. The default syntax namespace returned by `Seed syntax` provides:
+The visitor obtains its syntax owner through its replaceable `syntax` message; the compiler supplies a separate authored IR owner through that protocol. Since 9 November 2026 the default `syntax` Method sends `[Seed syntax]` each time it is called instead of capturing the owner when the module loads. Lang therefore loads where `Seed` is unbound, as in the native toolchain. Replacing `Seed` or its `syntax` Method affects the next translation, and with no `Seed` bound the default answers the lookup Error. The default syntax namespace returned by `Seed syntax` provides:
 
 | Message | Result |
 |---|---|

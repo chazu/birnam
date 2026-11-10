@@ -4,7 +4,7 @@ Birnam's first PEG module is [modules/peg.birnam](../modules/peg.birnam). Gramma
 
 ```sh
 make build
-./build/siphon ./build/seed.dylib --eval modules/peg.birnam --eval examples/peg/word.birnam
+./build/siphon ./build/runtime.dylib ./build/seed.dylib --eval modules/peg.birnam --eval examples/peg/word.birnam
 make verify
 ```
 

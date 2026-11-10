@@ -2,7 +2,7 @@
 
 Implemented 5 November 2026. This is the first native bootstrap slice, not the seed interpreter or a completed Birnam runtime.
 
-Follow-up: [the seed interpreter](seed-interpreter.md) is now available as a separately loaded module. The host's thin `--eval` option sends `evalFile:` to the current `Seed` object; it contains no parser/evaluator. The original native-slice qualification below remains separate from the new source-language evidence.
+Follow-up: [the seed interpreter](seed-interpreter.md) is now available as a separately loaded module. The host's thin `--eval` option sends `evalFile:` to the current `Seed` object; it contains no parser/evaluator. Since 9 November 2026 the interpreter needs the separate [runtime services](runtime.md) loaded before it, and `--help` gives that order. The original native-slice qualification below remains separate from the new source-language evidence.
 
 ## Build and run
 
@@ -56,7 +56,7 @@ Generic entry validates the call-Vector extent, arity, null arguments, and null 
 | Siphon | `world`, `load:`, `retain:`, `modules`, identity-preserving `clone` |
 | Loaded module | `name`, `result`, identity-preserving `clone` |
 
-Object-local `define:as:` creates a new behavior delegating to the previous one, so edits remain local even after a specialized object has been cloned. Explicit vtable `at:put:` changes shared behavior. This simple implementation accumulates delegation layers for repeated local definitions; it is not yet optimized. Default cloning copies opaque payload bytes shallowly; native owners must override it when that is not their intended resource behavior. Vtable and Namespace clones copy their own binding lists while retaining referenced values.
+Object-local `define:as:` creates a new behavior delegating to the previous one, so edits remain local even after a specialized object has been cloned. Explicit vtable `at:put:` changes shared behavior. This simple implementation accumulates delegation layers for repeated local definitions. Each new layer records its owner, and every operation that shares a behavior clears that record; the [authored Id](id.md) uses it to reuse an owned layer. `IdPrimitives` exposes the Behavior/Namespace storage operations the authored module builds on. Default cloning copies opaque payload bytes shallowly; native owners must override it when that is not their intended resource behavior. Vtable and Namespace clones copy their own binding lists while retaining referenced values.
 
 The symbol service sends `intern` to the name object, allowing that object's current behavior to interpret its payload. Native Bytes implement exact-byte interning; Symbol interning returns the same canonical object. This avoids making generic Id decode arbitrary name objects.
 
@@ -76,7 +76,7 @@ The loader wraps this C entry in a zero-arity Method, passes the existing namesp
 
 Every successful native open remains mapped until process exit, including a missing-entry or failed-initializer case. OS constructors or an initializer may already have published code, so the loader cannot safely infer that an error permits unmapping. Retained module objects are reachable through `Siphon modules`. No rollback or immediate unload is provided. Missing-entry detection is not a guarantee that OS-native constructors had no effects.
 
-The handover fixture replaces root lookup and shared behavior using messages in the existing world. A later module verifies that a pre-existing object observes new sends while a previously captured Method still executes old code after GC. This demonstrates compatible takeover mechanics; it is not a separate production fuller-Id module.
+The handover fixture replaces root lookup and shared behavior using messages in the existing world. A later module verifies that a pre-existing object observes new sends while a previously captured Method still executes old code after GC. This demonstrates compatible takeover mechanics. The production takeover is the separate [authored Id module](id.md).
 
 ## Memory qualification and limits
 

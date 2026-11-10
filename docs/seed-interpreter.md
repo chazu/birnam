@@ -1,12 +1,12 @@
 # Loadable seed interpreter
 
-Implemented 5 November 2026. This slice adds `build/seed.dylib`, an Odin native module that evaluates the initial Birnam source subset in the siphon's existing Id world. It is the direct evaluator intended to bootstrap authored PEG, Lang, and the compiler. It is not a native Birnam compiler or a CBPV implementation.
+Implemented 5 November 2026. This slice adds `build/seed.dylib`, an Odin native module that evaluates the initial Birnam source subset in the siphon's existing Id world. It is the direct evaluator intended to bootstrap authored PEG, Lang, and the compiler. It is not a native Birnam compiler or a CBPV implementation. On 9 November 2026 its runtime services moved into a separate [runtime.dylib](runtime.md); `seed.dylib` now holds only the parser, the syntax families, and `Seed`. The sections below describe the slice as delivered. Every row of the native primitives table except `Seed` is now supplied by `runtime.dylib`.
 
 ## Running source
 
 ```sh
 make build
-./build/siphon ./build/seed.dylib --eval examples/seed/answer.birnam
+./build/siphon ./build/runtime.dylib ./build/seed.dylib --eval examples/seed/answer.birnam
 make verify
 ```
 
@@ -20,21 +20,23 @@ let body := [[:n | [:self | n]] value: 42];
 [System println: [object answer]];
 ```
 
-Native modules and `--eval` source files are processed in command-line order. The seed module must be loaded explicitly. Several source files can use the same namespace in one process. The CLI does not print returned values automatically; output is an explicit message such as `System println:`. A final Error is reported with a failing exit status. The siphon only locates `Seed` in its namespace and sends `evalFile:`; parsing and evaluation stay in the module.
+Native modules and `--eval` source files are processed in command-line order. `runtime.dylib` and then the seed module must be loaded explicitly. Several source files can use the same namespace in one process. The CLI does not print returned values automatically; output is an explicit message such as `System println:`. A final Error is reported with a failing exit status. The siphon only locates `Seed` in its namespace and sends `evalFile:`; parsing and evaluation stay in the module.
 
-The build uses the existing pinned Mac/Odin/Clang/Boehm configuration. `make build` builds both the host and seed module; `make verify` adds native and source acceptance. No previous Rust implementation or installed Birnam is used.
+The build uses the existing pinned Mac/Odin/Clang/Boehm configuration. `make build` builds the host, the runtime module, and the seed module; `make verify` adds native and source acceptance. No previous Rust implementation or installed Birnam is used.
 
 ## Source organization
 
+Since the split, the shared ABI helpers are in [src/abi](../src/abi/abi.odin), and environments, collections, and values are in [src/runtime](../src/runtime). The `src/seed` files are `module.odin`, `parser.odin`, `syntax.odin`, and `abi_aliases.odin`. The table records the original layout.
+
 | File | Responsibility |
 |---|---|
-| [abi.odin](../src/seed/abi.odin) | Imports the Oop-only host ABI; supplies native construction/call adapters; registers module roots; keeps parser scratch references in GC-managed lists. |
+| abi.odin | Imports the Oop-only host ABI; supplies native construction/call adapters; registers module roots; keeps parser scratch references in GC-managed lists. |
 | [module.odin](../src/seed/module.odin) | Installs the module's behaviors/exports and implements the `Seed` parsing, evaluation, and file-entry messages. |
 | [parser.odin](../src/seed/parser.odin) | Small bootstrap lexer/parser, UTF-8/source diagnostics, and construction of syntax objects. Token enums exist only in this parser. |
 | [syntax.odin](../src/seed/syntax.odin) | Separate ordinary behaviors for literals, names, declarations, sends, Blocks, Vector expressions, and sequences; each implements `evalIn:`. |
-| [environment.odin](../src/seed/environment.odin) | Lexical environments, Block captures/calls, receiver-first interpreted Methods, and reflection operations. |
-| [collections.odin](../src/seed/collections.odin) | General Cell, loop/control, Vector, and byte-prefix operations used by authored modules. |
-| [values.odin](../src/seed/values.odin) | Native Integer, String, byte/Vector operations, Boolean control, Error recovery, and printing Methods. |
+| [environment.odin](../src/runtime/environment.odin) | Lexical environments, Block captures/calls, receiver-first interpreted Methods, and reflection operations. |
+| [collections.odin](../src/runtime/collections.odin) | General Cell, loop/control, Vector, and byte-prefix operations used by authored modules. |
+| [values.odin](../src/runtime/values.odin) | Native Integer, String, byte/Vector operations, Boolean control, Error recovery, and printing Methods. |
 
 The module links against the C ABI exported by the host, not against a second Id runtime. Its native entries have the same Method/receiver/argument-Vector Oop signature as the C fixtures. Odin context is established inside native entry code where Odin library routines need it.
 
@@ -101,4 +103,4 @@ Defining a Method from a Block obtains the Block's code, parameters, and environ
 
 The implementation and qualification are recorded in [seed interpreter validation](seed-interpreter-validation.md).
 
-The authored [PEG](peg.md) and [Lang](lang.md) layers now run on this seed, including explicit parser takeover. The [first authored C compiler](compiler.md) emits native modules using these services. The [native bootstrap](selfhosting.md) now rebuilds the authored toolchain while retaining the seed runtime services. Map and broader collection libraries, source slot/accessor factories, source module declaration/dependency protocols, full language syntax, image persistence, native-code optimization, CBPV, fibers, and complete Alien facilities remain later work. Loading the same seed library again in the same process returns the already-installed Seed; it is not rebuilt-code hot reload. The original evaluator receipt predates the authored front end; see the separate PEG/Lang receipts for those milestones. No native-speed claim is made.
+The authored [PEG](peg.md) and [Lang](lang.md) layers now run on this seed, including explicit parser takeover. The [first authored C compiler](compiler.md) emits native modules using these services. The [native bootstrap](selfhosting.md) now rebuilds the authored toolchain; its native stages use the runtime services without the interpreter. Map and broader collection libraries, source slot/accessor factories, source module declaration/dependency protocols, full language syntax, image persistence, native-code optimization, CBPV, fibers, and complete Alien facilities remain later work. Loading the same seed library again in the same process returns the already-installed Seed; it is not rebuilt-code hot reload. The original evaluator receipt predates the authored front end; see the separate PEG/Lang receipts for those milestones. No native-speed claim is made.

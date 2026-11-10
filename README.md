@@ -7,8 +7,8 @@ The native siphon boots one Id world and loads modules through an Oop-only C int
 ```sh
 make doctor
 make build
-./build/siphon ./build/seed.dylib --eval examples/seed/answer.birnam
-./build/siphon ./build/seed.dylib --eval modules/peg.birnam --eval examples/peg/word.birnam
+./build/siphon ./build/runtime.dylib ./build/seed.dylib --eval examples/seed/answer.birnam
+./build/siphon ./build/runtime.dylib ./build/seed.dylib --eval modules/peg.birnam --eval examples/peg/word.birnam
 make verify
 ./build/siphon ./build/hello.dylib
 ```
@@ -29,13 +29,14 @@ make build
 `doctor` checks the pinned Mac toolchain. `build` uses Odin and Clang to produce:
 
 - **`build/siphon`** — the executable hosting the Id object universe: objects, Methods, lookup/dispatch, namespaces, GC integration, and native-module loading.
-- **`build/seed.dylib`** — the small Odin parser/interpreter, plus runtime services such as Integers, Strings, collections, lexical environments, Blocks, and reflection.
+- **`build/runtime.dylib`** — Odin runtime services such as Integers, Strings, collections, lexical environments, Blocks, and reflection ([details](docs/runtime.md)). Source runs and compiled programs load it first.
+- **`build/seed.dylib`** — the small Odin parser/interpreter. It publishes only `Seed` and is needed only to run source.
 - **`build/compile-request.dylib`** — a small C adapter that passes source bytes to the authored compiler.
 
-The seed loads into the siphon's existing object world. To run source directly:
+Both libraries load into the siphon's existing object world, the runtime first. To run source directly:
 
 ```sh
-./build/siphon ./build/seed.dylib \
+./build/siphon ./build/runtime.dylib ./build/seed.dylib \
   --eval examples/seed/answer.birnam
 ```
 
@@ -43,10 +44,11 @@ This prints `42`. The seed parser constructs syntax objects; evaluation sends `e
 
 ### 2. Let Birnam take over parsing
 
-Five authored modules form the toolchain, loaded in this order:
+Six authored modules form the toolchain, loaded in this order:
 
 | Module | Responsibility |
 |---|---|
+| `modules/id.birnam` | Object definition, cloning, and reflection policy, replacing the siphon's Methods ([details](docs/id.md)) |
 | `modules/peg.birnam` | Parser combinators, matching, and labelled concrete syntax trees |
 | `modules/lang.birnam` | Birnam's grammar, expressed using PEG |
 | `modules/lang-syntax.birnam` | Translation from concrete syntax trees into executable syntax or compiler IR |
@@ -58,7 +60,7 @@ Initially, the Odin seed interprets these modules so their definitions exist. Pa
 To exercise that transition:
 
 ```sh
-./build/siphon ./build/seed.dylib \
+./build/siphon ./build/runtime.dylib ./build/seed.dylib \
   --eval modules/peg.birnam \
   --eval modules/lang.birnam \
   --eval modules/lang-syntax.birnam \
@@ -94,28 +96,28 @@ The default compilation command bootstraps the authored compiler through the int
 python3 tools/compile.py examples/compiler/answer.birnam \
   -o build/answer.dylib
 
-./build/siphon ./build/seed.dylib ./build/answer.dylib
+./build/siphon ./build/runtime.dylib ./build/answer.dylib
 ```
 
 The program prints `42`. Use `--emit-c` to stop at C output, or `--name Example` to choose the program's namespace export. Python orchestrates module loading and Clang; parsing, lowering, and C generation live in Birnam. See [compiler details](docs/compiler.md).
 
 ### 4. Bootstrap the compiler itself
 
-The same compiler can compile all five toolchain modules:
+The same compiler can compile all six toolchain modules:
 
 ```text
 Odin seed interprets the authored toolchain
-    ↓ compile the five Birnam modules → C → Clang
+    ↓ compile the six Birnam modules → C → Clang
 Stage 1 native toolchain
-    ↓ compile the same five sources → C → Clang
+    ↓ compile the same six sources → C → Clang
 Stage 2 native toolchain
-    ↓ compile the same five sources → C
+    ↓ compile the same six sources → C
 Stage 3 C output
 ```
 
 The pipeline requires `Stage 1 C == Stage 2 C == Stage 3 C` for each module. There is no third library generation: the third emission checks that Stage 2 reproduces the same C. This establishes generated-C stability for these inputs, not binary reproducibility or a formal correctness proof.
 
-Stage 2 construction and Stage 3 emission run with guards disabling the seed's parser/evaluator entry points and syntax evaluation Methods. This checks that native compilation does not fall back to interpreted source. General runtime services remain available.
+Stage 2 construction and Stage 3 emission load `runtime.dylib` without `seed.dylib`. A witness module loaded first and last fails the run if `Seed` is bound. This checks that native compilation does not fall back to interpreted source. General runtime services remain available.
 
 ```sh
 make selfhost
@@ -130,7 +132,7 @@ python3 tools/compile.py examples/compiler/answer.birnam \
   --native-dir build/selfhost/stage2 \
   -o build/native-answer.dylib
 
-./build/siphon ./build/seed.dylib ./build/native-answer.dylib
+./build/siphon ./build/runtime.dylib ./build/native-answer.dylib
 ```
 
 Without `--native-dir`, compilation uses the interpreted bootstrap path. With it, the specified native libraries are required; missing libraries cause failure. The native request adapter reads source bytes from stdin and sends `Compiler compile:as:`, so this path needs no interpreted request script.
@@ -140,34 +142,35 @@ Without `--native-dir`, compilation uses the interpreted bootstrap path. With it
 The siphon processes command-line arguments left to right, in one object world:
 
 1. Bootstrap the core Id world.
-2. Load `seed.dylib` to install runtime services.
+2. Load `runtime.dylib` to install runtime services.
 3. Load the application library and call its `birnam_module_init_v1` entry.
 4. The application constructs its code objects, connects runtime services and literal factories, publishes its program object, and executes its top level.
 
-Running a compiled application requires neither PEG nor Lang nor the compiler. It still requires the runtime services currently packaged inside `seed.dylib`. This is native-module loading; saved-image loading remains future work.
+Running a compiled application requires neither PEG nor Lang nor the compiler, and not the interpreter in `seed.dylib`. It still requires the Odin runtime services in `runtime.dylib`. This is native-module loading; saved-image loading remains future work.
 
 ### 6. Validate the stages and understand the boundary
 
 ```sh
-make verify             # Runtime, seed, PEG, Lang, and compiler regression gates
-make verify-selfhost    # Rebuild generations, compare C, run guarded acceptance
+make verify             # Runtime, seed, Id, PEG, Lang, and compiler regression gates
+make verify-selfhost    # Rebuild generations, compare C, run acceptance without the interpreter
 ```
 
-These are separate gates. The [recorded bootstrap validation](docs/selfhosting-validation.md) reports passing generation and acceptance checks, including identical C for all five modules. That bootstrap run took about 15.7 minutes; this is an observed build duration, not a performance guarantee. A successful local run writes its hashes and results to `build/selfhost/receipt.json`.
+These are separate gates. The [recorded bootstrap validation](docs/selfhosting-validation.md) reports passing generation and acceptance checks, including identical C for all five original modules. That run took about 15.7 minutes; the [Id validation](docs/id-validation.md) repeats it with Id as a sixth module in about 22.6 minutes, plus acceptance. These are observed build durations, not performance guarantees. A successful local run writes its hashes and results to `build/selfhost/receipt.json`.
 
 The delivered language remains the seed subset: bracketed sends, immutable bindings, signed Integer literals, String and Symbol literals, Vectors, lexical Blocks, comments, and message-based control. Full language coverage, fibers, image persistence, identity-preserving reload, and optimizing compilation remain unfinished. CBPV remains an experiment.
 
-Self-hosting currently covers the authored parser/compiler toolchain. The Odin interpreter is still needed to bootstrap a source-only checkout; the native generations retain Odin runtime services and Clang. No old Rust implementation, installed Birnam, or checked-in generated C participates. See the [bootstrap guide](docs/selfhosting.md) for the detailed boundary.
+Self-hosting currently covers the authored parser/compiler toolchain. The Odin interpreter is still needed to bootstrap a source-only checkout; the native generations run without it but retain the Odin runtime services and Clang. No old Rust implementation, installed Birnam, or checked-in generated C participates. See the [bootstrap guide](docs/selfhosting.md) for the detailed boundary.
 
 ## Documentation
 
 - [Architecture](ARCHITECTURE.md) is the consolidated record of the agreed requirements and directions.
 - [Native siphon](docs/siphon.md) describes the delivered first slice; [validation](docs/siphon-validation.md) records its evidence.
 - [Loadable seed interpreter](docs/seed-interpreter.md) documents source execution and the supported subset; [validation](docs/seed-interpreter-validation.md) records the checks.
+- [Runtime services](docs/runtime.md) describes `runtime.dylib`, its split from the interpreter, and the interpreter-absence witness; [validation](docs/runtime-validation.md) records evidence.
 - [Authored PEG](docs/peg.md) documents grammar construction, matching, replacement, and limitations; [validation](docs/peg-validation.md) records acceptance.
 - [Authored Lang](docs/lang.md) covers the grammar, CST translation, and parser takeover; [validation](docs/lang-validation.md) records acceptance.
 - [Authored C compiler](docs/compiler.md) documents native module generation and the reference IR; [validation](docs/compiler-validation.md) records acceptance.
-- [Native bootstrap](docs/selfhosting.md) describes the self-hosting stages, guarded acceptance, and remaining runtime dependencies; [validation](docs/selfhosting-validation.md) records evidence.
+- [Native bootstrap](docs/selfhosting.md) describes the self-hosting stages, acceptance without the interpreter, and remaining runtime dependencies; [validation](docs/selfhosting-validation.md) records evidence.
 - [First milestone](docs/first-milestone.md) records the seed-language scope and acceptance requirements: an Odin interpreter running Birnam-authored PEG.
 - [Seed invocation contract and ABI proposal](docs/seed-invocation.md) records the selected receiver-aware lookup design and separates the still-proposed native calling convention and recursion details.
 - [Dispatch equivalence analysis](docs/dispatch-equivalence.md) examines whether replaceable lookup can replace the proposed extra send/bind layers, with explicit assumptions and a counterexample.
