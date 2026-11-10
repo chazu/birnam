@@ -2,8 +2,8 @@
 [[|
 let lang := Lang;
 let visitor := [Namespace new];
-let syntax := [Seed syntax];
-[Reflect defineMethod: #syntax on: visitor as: [:self | syntax]];
+// Ask Seed for its syntax owner at each use, so Lang can load where Seed is unbound.
+[Reflect defineMethod: #syntax on: visitor as: [:self | [Seed syntax]]];
 [Reflect defineMethod: #lower: on: visitor as: [:self :node |
   let selected := [Reflect methodFor: [node rule] on: self];
   [selected valueOn: self with: #[node]]]];

@@ -20,6 +20,14 @@ let oldName := [Reflect methodFor: #identifier on: translator];
 [Assert that: [[Seed eval: "unbound"] = 73] label: "replaceable translator"];
 [translator define: #identifier as: oldName];
 
+// The default translator looks up Seed's syntax owner when asked, not at load.
+let oldSyntax := [Reflect methodFor: #syntax on: Seed];
+let otherSyntax := [Object clone];
+[Reflect defineMethod: #syntax on: Seed as: [:self | otherSyntax]];
+let observed := [translator syntax];
+[Seed define: #syntax as: oldSyntax];
+[Assert that: [[observed == otherSyntax] and: [| [[translator syntax] == [Seed syntax]]]] label: "live syntax owner lookup"];
+
 // The syntax owner constructs objects; Lang does not decode native payloads.
 let syntax := [Seed syntax];
 let oldLiteral := [Reflect methodFor: #literal:bytes: on: syntax];
