@@ -1,0 +1,12 @@
+// Loaded before modules/id.birnam: objects, specializations, and Methods
+// created under the siphon's native Id.
+let beforeObject := [Object clone];
+[Reflect defineMethod: #answer on: beforeObject as: [:self | 41]];
+let beforeSibling := [beforeObject clone];
+let beforeOwned := [Object clone];
+[Reflect defineMethod: #answer on: beforeOwned as: [:self | 40]];
+let beforeDefine := [Reflect methodFor: #define:as: on: beforeObject];
+let beforeVtableClone := [Reflect methodFor: #clone on: Vtable];
+let beforeIdentities := #[Object Namespace Vtable Error Symbols Siphon GC IdPrimitives];
+let beforeVt := [[Object behavior] delegated];
+[beforeVt at: #kind put: [Reflect methodFrom: [:self | #before]]];

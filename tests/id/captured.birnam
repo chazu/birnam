@@ -1,0 +1,25 @@
+// Runs after tests/id/before.birnam and modules/id.birnam, without the
+// takeover guard: it deliberately enters Methods captured before takeover.
+let Assert := [Object clone];
+[Reflect defineMethod: #that: on: Assert as: [:self :condition |
+  [condition ifTrue: [| self] ifFalse: [|
+    [Error kind: #assertionFailed message: "captured Id Method assertion failed"]]]]];
+let one := [Reflect methodFrom: [:self | 1]];
+// A captured native Method still runs its own implementation: native
+// define:as: always adds a layer, unlike the authored replacement.
+let pinned := [Object clone];
+[beforeDefine valueOn: pinned with: #[#answer one]];
+let nativeLayer := [pinned behavior];
+[beforeDefine valueOn: pinned with: #[#answer one]];
+[Assert that: [[[pinned behavior] parent] == nativeLayer]];
+[Assert that: [[nativeLayer parent] == [Object behavior]]];
+[Assert that: [[pinned answer] = 1]];
+// The authored policy then reuses that owned native layer.
+let top := [pinned behavior];
+[Reflect defineMethod: #more on: pinned as: [:self | 2]];
+[Assert that: [[pinned behavior] == top]];
+let copy := [beforeVtableClone valueOn: beforeVt with: #[]];
+[Assert that: [[[copy at: #kind] == [beforeVt at: #kind]] and: [| [[copy parent] == [beforeVt parent]]]]];
+[GC collect];
+[Assert that: [[[beforeDefine valueOn: [Object clone] with: #[#answer one]] answer] = 1]];
+[System println: "PASS captured pre-takeover Id Methods"];

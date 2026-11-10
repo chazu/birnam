@@ -1,0 +1,148 @@
+// Authored Id: definition, cloning, and reflection policy over the siphon's
+// storage primitives. Loading it replaces Methods on the existing vtables, so
+// every object keeps its identity. Default lookup remains the siphon's native
+// lookup:for:, and Namespace at:/at:put: stay native storage operations: the
+// execution of authored code depends on both.
+//
+// Branches use the identity choice [prim if:then:else:] instead of Boolean
+// messages, so define:as: and at:put: can repair a replaced Boolean protocol.
+// Loops still use the library's Block, Integer, Cell, and Vector behavior.
+[[|
+let prim := IdPrimitives;
+let id := [Namespace new];
+let unknownSelector := [| [Error kind: #unknownSelector message: "vtable has no entry for the selector"]];
+let notMethod := [| [Error kind: #notMethod message: "definition requires a Method"]];
+let nothing := [| nil];
+
+// An object's local layers are the behaviors made for it alone. A clone or
+// a namespace sharing the behavior clears ownership, which ends the prefix.
+[Reflect defineMethod: #localLayersOf: on: id as: [:self :target |
+  let layers := [Cell with: #[]]; let current := [Cell with: [prim behaviorOf: target]];
+  [[| [prim behavior: [current value] isOwnedBy: target]] whileTrue: [|
+    [layers value: [[layers value] append: [current value]]];
+    [current value: [prim parentOf: [current value]]]]];
+  [layers value]]];
+[Reflect defineMethod: #sharedBehaviorOf: on: id as: [:self :target |
+  let current := [Cell with: [prim behaviorOf: target]];
+  [[| [prim behavior: [current value] isOwnedBy: target]] whileTrue: [|
+    [current value: [prim parentOf: [current value]]]]];
+  [current value]]];
+// Reuse the object's own top layer; a shared behavior gets a new one, so an
+// edit never reaches siblings or existing clones.
+[Reflect defineMethod: #privateBehaviorFor: on: id as: [:self :target |
+  let current := [prim behaviorOf: target];
+  [[prim if: [prim behavior: current isOwnedBy: target] then: [| current] else: [|
+    let layer := [prim newBehaviorWithParent: current];
+    [prim object: target behavior: layer];
+    [prim behavior: layer owner: target];
+    layer]] value]]];
+[Reflect defineMethod: #vector:includes: on: id as: [:self :items :value |
+  let index := [Cell with: 0]; let found := [Cell with: false];
+  [[| [[index value] < [items size]]] whileTrue: [|
+    [[prim if: [[items at: [index value]] == value] then: [| [found value: true]] else: nothing] value];
+    [index value: [[index value] + 1]]]];
+  [found value]]];
+[Reflect defineMethod: #primitives on: id as: [:self | prim]];
+
+// Object protocol. These Methods never send to self, so the Error behavior
+// can share define:as: without its propagation intercepting the receiver.
+let define := [Reflect methodFrom: [:self :selector :method |
+  [[prim if: [prim isCallable: method] then: [|
+    [prim behavior: [id privateBehaviorFor: self] at: selector put: method]; self
+  ] else: notMethod] value]]];
+let undefine := [Reflect methodFrom: [:self :selector |
+  let layers := [id localLayersOf: self]; let index := [Cell with: 0]; let removed := [Cell with: false];
+  [[| [[index value] < [layers size]]] whileTrue: [|
+    [[prim if: [prim behavior: [layers at: [index value]] remove: selector]
+      then: [| [removed value: true]] else: nothing] value];
+    [index value: [[index value] + 1]]]];
+  [[prim if: [removed value] then: [| self] else: unknownSelector] value]]];
+let localSelectors := [Reflect methodFrom: [:self |
+  let layers := [id localLayersOf: self]; let result := [Cell with: #[]];
+  let index := [Cell with: [layers size]];
+  // Deepest layer first, so the answer follows definition order.
+  [[| [[index value] > 0]] whileTrue: [|
+    [index value: [[index value] - 1]];
+    let names := [prim selectorsOf: [layers at: [index value]]]; let position := [Cell with: 0];
+    [[| [[position value] < [names size]]] whileTrue: [|
+      let name := [names at: [position value]];
+      [[prim if: [id vector: [result value] includes: name] then: nothing
+        else: [| [result value: [[result value] append: name]]]] value];
+      [position value: [[position value] + 1]]]]]];
+  [result value]]];
+let respondsTo := [Reflect methodFrom: [:self :selector |
+  [prim if: [[Reflect methodFor: selector on: self] isError] then: false else: true]]];
+let methodFor := [Reflect methodFrom: [:self :selector | [Reflect methodFor: selector on: self]]];
+let objectClone := [Reflect methodFrom: [:self | [prim copyObject: self]]];
+
+// Vtable protocol. A vtable's entries are its own; lookup:for: still decides
+// what a send selects through the parent chain.
+let put := [Reflect methodFrom: [:self :selector :method |
+  [[prim if: [prim isCallable: method] then: [| [prim behavior: self at: selector put: method]] else: notMethod] value]]];
+let entryAt := [Reflect methodFrom: [:self :selector |
+  [[prim if: [prim behavior: self includes: selector] then: [| [prim behavior: self at: selector]] else: unknownSelector] value]]];
+let includesSelector := [Reflect methodFrom: [:self :selector | [prim behavior: self includes: selector]]];
+let removeSelector := [Reflect methodFrom: [:self :selector |
+  [[prim if: [prim behavior: self includes: selector] then: [|
+    let found := [prim behavior: self at: selector]; [prim behavior: self remove: selector]; found
+  ] else: unknownSelector] value]]];
+let selectors := [Reflect methodFrom: [:self | [prim selectorsOf: self]]];
+let parent := [Reflect methodFrom: [:self | [prim parentOf: self]]];
+let setParent := [Reflect methodFrom: [:self :behavior | [prim behavior: self parent: behavior]]];
+let delegated := [Reflect methodFrom: [:self | [prim newBehaviorWithParent: self]]];
+// Same parent, meta behavior, and entries; later edits to either stay apart.
+let vtableClone := [Reflect methodFrom: [:self |
+  let meta := [prim behaviorOf: self];
+  let copy := [prim newBehaviorWithParent: [prim parentOf: self]];
+  [prim behavior: meta owner: nil];
+  [prim object: copy behavior: meta];
+  let names := [prim selectorsOf: self]; let index := [Cell with: 0];
+  [[| [[index value] < [names size]]] whileTrue: [|
+    let name := [names at: [index value]];
+    [prim behavior: copy at: name put: [prim behavior: self at: name]];
+    [index value: [[index value] + 1]]]];
+  copy]];
+
+// Namespace protocol. Copies share values and behavior, not binding storage.
+let namespaceNew := [Reflect methodFrom: [:self | [prim newNamespaceLike: self]]];
+let namespaceClone := [Reflect methodFrom: [:self |
+  let copy := [prim newNamespaceLike: self];
+  let names := [prim keysOf: self]; let index := [Cell with: 0];
+  [[| [[index value] < [names size]]] whileTrue: [|
+    let name := [names at: [index value]];
+    [prim namespace: copy at: name put: [prim namespace: self at: name]];
+    [index value: [[index value] + 1]]]];
+  copy]];
+let keys := [Reflect methodFrom: [:self | [prim keysOf: self]]];
+let includesKey := [Reflect methodFrom: [:self :name | [prim namespace: self includes: name]]];
+let removeKey := [Reflect methodFrom: [:self :name |
+  [[prim if: [prim namespace: self includes: name] then: [|
+    let value := [prim namespace: self at: name]; [prim namespace: self remove: name]; value
+  ] else: [| [Error kind: #unknownName message: "namespace has no such binding"]]] value]]];
+
+let objectVt := [id sharedBehaviorOf: Object];
+let namespaceVt := [id sharedBehaviorOf: Namespace];
+let errorVt := [id sharedBehaviorOf: Error];
+// Replacing at:put: last keeps every installation on the same entry.
+let replacements := #[
+  #[objectVt #define:as: define] #[objectVt #undefine: undefine]
+  #[objectVt #localSelectors localSelectors] #[objectVt #respondsTo: respondsTo]
+  #[objectVt #methodFor: methodFor] #[objectVt #clone objectClone]
+  #[errorVt #define:as: define]
+  #[Vtable #at: entryAt] #[Vtable #includesSelector: includesSelector]
+  #[Vtable #removeSelector: removeSelector] #[Vtable #selectors selectors]
+  #[Vtable #parent parent] #[Vtable #parent: setParent] #[Vtable #delegated delegated]
+  #[Vtable #clone vtableClone]
+  #[namespaceVt #new namespaceNew] #[namespaceVt #clone namespaceClone]
+  #[namespaceVt #keys keys] #[namespaceVt #includesKey: includesKey] #[namespaceVt #removeKey: removeKey]
+  #[Vtable #at:put: put]
+];
+let index := [Cell with: 0];
+[[| [[index value] < [replacements size]]] whileTrue: [|
+  let row := [replacements at: [index value]];
+  [[row at: 0] at: [row at: 1] put: [row at: 2]];
+  [index value: [[index value] + 1]]]];
+[Reflect defineMethod: #replacements on: id as: [:self | replacements]];
+[Namespace at: #Id put: id];
+id
+] value]

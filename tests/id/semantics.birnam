@@ -1,0 +1,176 @@
+// Runs after tests/id/before.birnam and modules/id.birnam.
+let Assert := [Object clone];
+let checks := [Cell with: 0];
+[Reflect defineMethod: #that: on: Assert as: [:self :condition |
+  [checks value: [[checks value] + 1]];
+  [condition ifTrue: [| self] ifFalse: [|
+    [Error kind: #assertionFailed message: ["authored Id assertion failed: check " , [checks value]]]]]]];
+[Reflect defineMethod: #error:is: on: Assert as: [:self :value :kind |
+  [self that: [[value isError] and: [| [[value kind] == kind]]]]]];
+let one := [Reflect methodFrom: [:self | 1]];
+let two := [Reflect methodFrom: [:self | 2]];
+
+// Takeover replaced Methods on the existing vtables, keeping identities.
+let replacements := [Id replacements]; let index := [Cell with: 0];
+[[| [[index value] < [replacements size]]] whileTrue: [|
+  let row := [replacements at: [index value]];
+  [Assert that: [[[row at: 0] at: [row at: 1]] == [row at: 2]]];
+  [index value: [[index value] + 1]]]];
+let identities := #[Object Namespace Vtable Error Symbols Siphon GC IdPrimitives];
+[index value: 0];
+[[| [[index value] < [identities size]]] whileTrue: [|
+  [Assert that: [[identities at: [index value]] == [beforeIdentities at: [index value]]]];
+  [index value: [[index value] + 1]]]];
+[Assert that: [[Id primitives] == IdPrimitives]];
+[Assert that: [[beforeDefine == [Reflect methodFor: #define:as: on: Object]] not]];
+
+// Objects specialized before takeover keep behavior. The native layer is
+// owned, so a later definition reuses it rather than adding another.
+[Assert that: [[beforeObject answer] = 41]];
+[Assert that: [[beforeSibling answer] = 41]];
+let beforeLayer := [beforeSibling behavior];
+[Reflect defineMethod: #answer on: beforeSibling as: [:self | 42]];
+[Assert that: [[beforeSibling answer] = 42]];
+[Assert that: [[beforeObject answer] = 41]];
+let siblingLayer := [beforeSibling behavior];
+[Assert that: [[siblingLayer parent] == beforeLayer]];
+[Reflect defineMethod: #other on: beforeSibling as: [:self | 7]];
+[Assert that: [[beforeSibling behavior] == siblingLayer]];
+let ownedLayer := [beforeOwned behavior];
+[Reflect defineMethod: #answer on: beforeOwned as: [:self | 43]];
+[Assert that: [[[beforeOwned behavior] == ownedLayer] and: [| [[beforeOwned answer] = 43]]]];
+
+// Repeated local definitions share one private layer.
+let object := [Object clone];
+let shared := [object behavior];
+[Reflect defineMethod: #a on: object as: [:self | 1]];
+let layer := [object behavior];
+[Assert that: [[layer parent] == shared]];
+[Reflect defineMethod: #b on: object as: [:self | 2]];
+[Reflect defineMethod: #a on: object as: [:self | 3]];
+[Assert that: [[object behavior] == layer]];
+[Assert that: [[[object a] + [object b]] = 5]];
+[Assert that: [[[object localSelectors] size] = 2]];
+[Assert that: [[[object localSelectors] at: 0] == #a]];
+[Assert that: [[[[Object clone] localSelectors] size] = 0]];
+
+// Specialized clones stay isolated in both directions.
+let clone := [object clone];
+[Assert that: [[clone behavior] == layer]];
+[Assert that: [[[clone localSelectors] size] = 0]];
+[Reflect defineMethod: #a on: object as: [:self | 4]];
+[Reflect defineMethod: #b on: clone as: [:self | 5]];
+[Assert that: [[[object a] = 4] and: [| [[object b] = 2]]]];
+[Assert that: [[[clone a] = 3] and: [| [[clone b] = 5]]]];
+[Assert that: [[[object behavior] parent] == layer]];
+// Unoverridden inherited methods observe the shared behavior's edits.
+[layer at: #c put: [Reflect methodFrom: [:self | 6]]];
+[Assert that: [[[object c] = 6] and: [| [[clone c] = 6]]]];
+
+// undefine: removes only local definitions, exposing inherited behavior.
+[Assert that: [[object undefine: #a] == object]];
+[Assert that: [[object a] = 3]];
+[Assert error: [object undefine: #b] is: #unknownSelector];
+[Assert error: [object undefine: #a] is: #unknownSelector];
+[Assert that: [object respondsTo: #c]];
+[Assert that: [[object respondsTo: #missing] not]];
+[Assert that: [[object methodFor: #b] == [Reflect methodFor: #b on: object]]];
+[Assert error: [object methodFor: #missing] is: #messageNotUnderstood];
+[Assert error: [object define: #x as: 3] is: #notMethod];
+
+// Vtable entries, parents, and copies.
+let vt := [[Object behavior] delegated];
+[Assert that: [[vt parent] == [Object behavior]]];
+[Assert that: [[vt at: #one put: one] == vt]];
+[vt at: #two put: two];
+[Assert that: [[vt at: #one] == one]];
+[Assert that: [vt includesSelector: #two]];
+[Assert that: [[vt includesSelector: #clone] not]];
+[Assert that: [[[vt selectors] size] = 2]];
+[Assert that: [[[vt selectors] at: 1] == #two]];
+[Assert that: [[vt removeSelector: #one] == one]];
+[Assert that: [[vt includesSelector: #one] not]];
+[Assert error: [vt removeSelector: #one] is: #unknownSelector];
+[Assert error: [vt at: #one] is: #unknownSelector];
+[Assert error: [vt at: #bad put: 3] is: #notMethod];
+let copy := [vt clone];
+[Assert that: [[[copy at: #two] == two] and: [| [[copy parent] == [vt parent]]]]];
+[Assert that: [[copy behavior] == [vt behavior]]];
+[copy at: #two put: one];
+[Assert that: [[vt at: #two] == two]];
+let child := [vt delegated];
+[Assert error: [vt parent: child] is: #behaviorCycle];
+[Assert error: [vt parent: vt] is: #behaviorCycle];
+[Assert error: [vt parent: 3] is: #typeMismatch];
+[Assert that: [[child parent: [Object behavior]] == child]];
+[Assert that: [[child parent] == [Object behavior]]];
+[Assert that: [[vt parent: nil] == vt]];
+[Assert that: [[vt parent] isNil]];
+// A vtable with its own lookup keeps that meta behavior when copied.
+let custom := [[Object behavior] delegated];
+let lookups := [Cell with: 0];
+let inner := [Reflect methodFor: #lookup:for: on: custom];
+[Reflect defineMethod: #lookup:for: on: custom as: [:self :selector :receiver |
+  [lookups value: [[lookups value] + 1]]; [inner valueOn: self with: #[selector receiver]]]];
+let customCopy := [custom clone];
+[Assert that: [[customCopy behavior] == [custom behavior]]];
+[Reflect defineMethod: #lookup:for: on: custom as: [:self :selector :receiver |
+  [inner valueOn: self with: #[selector receiver]]]];
+[Assert that: [[[customCopy behavior] == [custom behavior]] not]];
+[customCopy lookup: #clone for: customCopy];
+[Assert that: [[lookups value] = 1]];
+
+// Namespace copies, keys, and removal.
+let names := [Namespace new];
+[Assert that: [[[names keys] size] = 0]];
+[names at: #x put: 1]; [names at: #y put: nil];
+[Assert that: [[[names keys] at: 0] == #x]];
+[Assert that: [names includesKey: #y]];
+let namesCopy := [names clone];
+[namesCopy at: #x put: 2];
+[Assert that: [[[names at: #x] = 1] and: [| [[namesCopy at: #x] = 2]]]];
+[Assert that: [[names removeKey: #y] isNil]];
+[Assert that: [[names includesKey: #y] not]];
+[Assert that: [namesCopy includesKey: #y]];
+[Assert error: [names removeKey: #y] is: #unknownName];
+let localNames := [Namespace new];
+[Reflect defineMethod: #hello on: localNames as: [:self | 1]];
+let localCopy := [localNames clone];
+[Reflect defineMethod: #hello on: localNames as: [:self | 2]];
+[Assert that: [[[localNames hello] = 2] and: [| [[localCopy hello] = 1]]]];
+[Reflect defineMethod: #hello on: [localCopy new] as: [:self | 3]];
+[Assert that: [[localCopy hello] = 1]];
+
+// Errors use the same definition policy and still propagate.
+let failure := [Error kind: #probe message: "probe"];
+let other := [Error kind: #probe message: "other"];
+[Assert that: [[failure define: #extra as: one] == failure]];
+[Assert that: [[failure extra] = 1]];
+[Assert that: [[other extra] == other]];
+[Assert that: [[[failure anything] kind] == #probe]];
+
+// Primitives reject representations they do not own.
+[Assert error: [IdPrimitives selectorsOf: object] is: #typeMismatch];
+[Assert error: [IdPrimitives keysOf: object] is: #typeMismatch];
+[Assert error: [IdPrimitives object: object behavior: [Namespace behavior]] is: #incompatibleBehavior];
+[Assert error: [IdPrimitives behavior: layer owner: object] is: #incompatibleBehavior];
+
+// Definition does not depend on the Boolean protocol it may need to repair.
+let trueVt := [true behavior];
+let oldIfTrue := [Reflect methodFor: #ifTrue:ifFalse: on: true];
+[true define: #ifTrue:ifFalse: as: [Reflect methodFrom: [:self :yes :no | [no value]]]];
+let broken := [true ifTrue: [| 1] ifFalse: [| 2]];
+[true define: #ifTrue:ifFalse: as: oldIfTrue];
+[Assert that: [broken = 2]];
+[Assert that: [[true ifTrue: [| 1] ifFalse: [| 2]] = 1]];
+[Assert that: [[true behavior] == trueVt]];
+let falseIf := [Reflect methodFor: #ifTrue:ifFalse: on: false];
+[[false behavior] at: #ifTrue:ifFalse: put: [Reflect methodFrom: [:self :yes :no | [yes value]]]];
+let brokenFalse := [false ifTrue: [| 1] ifFalse: [| 2]];
+[[false behavior] at: #ifTrue:ifFalse: put: falseIf];
+[Assert that: [brokenFalse = 1]];
+[Assert that: [[false ifTrue: [| 1] ifFalse: [| 2]] = 2]];
+
+[GC collect];
+[Assert that: [[object c] = 6]];
+[System println: "PASS authored Id semantics"];

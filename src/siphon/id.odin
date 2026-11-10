@@ -1,7 +1,8 @@
 package main
 
 Binding :: struct { key, value: Oop, next: ^Binding }
-Behavior :: struct { parent: Oop, bindings: ^Binding }
+// owner is the single object a private layer was made for; nil once shared.
+Behavior :: struct { parent: Oop, bindings: ^Binding, owner: Oop }
 Namespace :: struct { bindings: ^Binding }
 Interned :: struct { symbol: Oop, next: ^Interned }
 Symbols :: struct { names: ^Interned }
@@ -20,6 +21,9 @@ new_behavior :: proc "contextless" (parent: Oop) -> Oop {
 	(cast(^Behavior)object).parent = parent
 	return object
 }
+
+// Another object now uses this behavior, so in-place local edits would leak.
+share_behavior :: proc "contextless" (vt: Oop) { (cast(^Behavior)vt).owner = nil }
 
 binding_at :: proc "contextless" (list: ^Binding, key: Oop) -> Oop {
 	for row := list; row != nil; row = row.next {
@@ -144,6 +148,7 @@ same_entry :: proc "c" (m, r, a: Oop) -> Oop {
 
 clone_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	h := header(r)
+	share_behavior(h.behavior)
 	copy_object := allocate(h.behavior, h.payload_bytes)
 	copy((cast([^]u8)copy_object)[:int(h.payload_bytes)], (cast([^]u8)r)[:int(h.payload_bytes)])
 	header(copy_object).entry = h.entry
@@ -157,6 +162,7 @@ define_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	// Never mutate a behavior which may be shared by a clone.
 	private := new_behavior(header(r).behavior)
 	binding_put(&(cast(^Behavior)private).bindings, arg(a, 0), selected)
+	(cast(^Behavior)private).owner = r
 	header(r).behavior = private
 	return r
 }
@@ -175,6 +181,7 @@ put_method_entry :: proc "c" (m, r, a: Oop) -> Oop {
 vtable_clone_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	old := cast(^Behavior)r
 	result := new_behavior(old.parent)
+	share_behavior(header(r).behavior)
 	header(result).behavior = header(r).behavior
 	for row := old.bindings; row != nil; row = row.next {
 		binding_put(&(cast(^Behavior)result).bindings, row.key, row.value)
@@ -198,6 +205,7 @@ namespace_at_if_absent_entry :: proc "c" (m, r, a: Oop) -> Oop {
 }
 
 namespace_clone_entry :: proc "c" (m, r, a: Oop) -> Oop {
+	share_behavior(header(r).behavior)
 	result := allocate(header(r).behavior, size_of(Namespace))
 	for row := (cast(^Namespace)r).bindings; row != nil; row = row.next {
 		binding_put(&(cast(^Namespace)result).bindings, row.key, row.value)
@@ -205,6 +213,7 @@ namespace_clone_entry :: proc "c" (m, r, a: Oop) -> Oop {
 	return result
 }
 namespace_new_entry :: proc "c" (m, r, a: Oop) -> Oop {
+	share_behavior(header(r).behavior)
 	return allocate(header(r).behavior, size_of(Namespace))
 }
 
@@ -333,6 +342,7 @@ birnam_bootstrap :: proc "c" () -> Oop {
 	publish("Namespace", roots.world)
 	publish("Siphon", roots.siphon)
 	publish("GC", roots.collector)
+	publish("IdPrimitives", install_primitives())
 	publish("nil", roots.nil_value)
 	publish("true", roots.true_value)
 	publish("false", roots.false_value)

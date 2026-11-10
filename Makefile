@@ -1,4 +1,4 @@
-.PHONY: build test verify doctor clean selfhost verify-selfhost
+.PHONY: build test verify doctor clean selfhost verify-selfhost verify-id
 build:
 	python3 tools/build.py build
 test:
@@ -13,3 +13,5 @@ selfhost: build
 	python3 tools/selfhost.py
 verify-selfhost: build
 	python3 tests/selfhost_test.py
+verify-id: build
+	python3 tests/id_test.py
