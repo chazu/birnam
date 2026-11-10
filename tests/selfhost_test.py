@@ -19,7 +19,8 @@ def validate_receipt(directory: Path) -> dict:
     report = json.loads((directory / "receipt.json").read_text())
     assert report["status"] == "passed", report
     assert report["toolchain"] == build.configuration()[2], "toolchain changed"
-    for key, name in (("siphon_sha256", "siphon"), ("seed_sha256", "seed.dylib"),
+    assert report.get("interpreter_absent") is True, "native stages did not witness an absent interpreter"
+    for key, name in (("siphon_sha256", "siphon"), ("runtime_sha256", "runtime.dylib"), ("seed_sha256", "seed.dylib"),
                       ("request_adapter_sha256", "compile-request.dylib")):
         assert report[key] == selfhost.digest(ROOT / "build" / name), f"changed bootstrap artifact: {name}"
     for module in driver.MODULES:
@@ -37,9 +38,14 @@ def qualify(directory: Path) -> None:
     report["acceptance"] = {"status": "running"}
     (directory / "receipt.json").write_text(json.dumps(report, indent=2) + "\n")
     native = directory / "stage2"
-    guard = directory / "test-guard.dylib"
-    driver.compile_c(ROOT / "tests/selfhost_guard.c", guard)
-    base = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib"), str(guard)]
+    witness = directory / "test-no-interpreter.dylib"
+    driver.compile_c(ROOT / "tests/no_interpreter.c", witness)
+    # The witness can fail: with the interpreter loaded it rejects the process.
+    present = subprocess.run([str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"), str(ROOT / "build/seed.dylib"),
+                              str(witness)], cwd="/private/tmp", text=True, capture_output=True, timeout=60)
+    assert present.returncode == 1 and ": interpreterPresent:" in present.stderr, present
+    # Compiled corpora run on the runtime services alone, without seed.dylib.
+    base = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"), str(witness)]
     modules = [str(native / f"{module}.dylib") for module in driver.MODULES]
     tests = (("compiler/semantics", "PASS compiler semantics\n"),
              ("peg/semantics", "PASS authored PEG semantics\n"),
@@ -49,9 +55,9 @@ def qualify(directory: Path) -> None:
     for name, expected in tests:
         stem = name.replace("/", "-")
         c, library = directory / f"test-{stem}.c", directory / f"test-{stem}.dylib"
-        driver.emit(ROOT / f"tests/{name}.birnam", c, "SelfhostAcceptance", native_dir=native, guard=guard)
+        driver.emit(ROOT / f"tests/{name}.birnam", c, "SelfhostAcceptance", native_dir=native, witness=witness)
         driver.compile_c(c, library)
-        result = subprocess.run([*base, *modules, str(library), str(guard)], cwd="/private/tmp",
+        result = subprocess.run([*base, *modules, str(library), str(witness)], cwd="/private/tmp",
                                 text=True, capture_output=True, timeout=180)
         assert result.returncode == 0 and result.stdout == expected, (name, result.stdout, result.stderr)
         print(expected, end="", flush=True)
@@ -63,7 +69,7 @@ def qualify(directory: Path) -> None:
             path.write_bytes(source)
             target = Path(tmp) / f"failure{i}.c"
             try:
-                driver.emit(path, target, "Failure", native_dir=native, guard=guard)
+                driver.emit(path, target, "Failure", native_dir=native, witness=witness)
             except RuntimeError as error:
                 assert f": {kind}:" in str(error), str(error)
             else:
@@ -86,9 +92,10 @@ def qualify(directory: Path) -> None:
     assert (directory / "cli-answer.c").read_bytes() == (directory / "answer.c").read_bytes()
     report["acceptance"] = {"status": "passed", "native_corpora": [name for name, _ in tests],
                             "compile_failures": 5, "missing_module_fallback": False,
-                            "native_cli": True, "guard_sha256": selfhost.digest(guard)}
+                            "native_cli": True, "interpreter_present_rejected": True,
+                            "witness_sha256": selfhost.digest(witness)}
     (directory / "receipt.json").write_text(json.dumps(report, indent=2) + "\n")
-    print("PASS self-hosted compiler acceptance: native PEG/Lang/compiler, guarded execution, failures, CLI", flush=True)
+    print("PASS self-hosted compiler acceptance: native PEG/Lang/compiler with the interpreter absent, failures, CLI", flush=True)
 
 
 def main():

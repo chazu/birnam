@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PREFIX = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib"),
+PREFIX = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"), str(ROOT / "build/seed.dylib"),
           "--eval", str(ROOT / "modules/peg.birnam"),
           "--eval", str(ROOT / "modules/lang.birnam")]
 

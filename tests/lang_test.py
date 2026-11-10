@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PREFIX = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib")]
+PREFIX = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"), str(ROOT / "build/seed.dylib")]
 for name in ("peg", "lang", "lang-syntax"):
     PREFIX.extend(["--eval", str(ROOT / f"modules/{name}.birnam")])
 PREFIX.append(str(ROOT / "build/lang_guard.dylib"))

@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import compile as driver
 
-HOST = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib")]
+HOST = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"), str(ROOT / "build/seed.dylib")]
+# Natively compiled programs run on the runtime services alone, with no interpreter.
+NATIVE = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib")]
 AUTHORED = HOST.copy()
 for module in ("peg", "lang", "lang-syntax", "compiler-ir", "compiler-c"):
     AUTHORED.extend(["--eval", str(ROOT / f"modules/{module}.birnam")])
@@ -50,17 +52,19 @@ def main():
         ir.write_text('[Compiler evaluate: ' + driver.quote(source) + ' in: Namespace];')
         run([*AUTHORED, "--eval", str(ir)], expected="PASS compiler semantics\n")
         native = compile_source(source, tmp, "semantics")
-        output = run([*HOST, GUARD, str(native), str(ROOT / "build/compiler_contract.dylib")])
+        output = run([*NATIVE, GUARD, str(native), str(ROOT / "build/compiler_contract.dylib")])
         assert output.count("PASS compiler semantics\n") == 2, output
         assert "no interpreter fallback" in output, output
         print(output, end="")
+        # The guard can fail: it rejects a process where the interpreter is loaded.
+        run([*HOST, GUARD], kind="interpreterPresent")
 
         probe_source = (ROOT / "tests/compiler/dispatch.birnam").read_text()
         run([*HOST, PROBE, "--eval", str(ROOT / "tests/compiler/dispatch.birnam"), CHECKED], expected="PASS effectful lookup and direct selected entry\n")
         ir.write_text('[Compiler evaluate: ' + driver.quote(probe_source) + ' in: Namespace];')
         run([*AUTHORED, PROBE, "--eval", str(ir), CHECKED], expected="PASS effectful lookup and direct selected entry\n")
         native = compile_source(probe_source, tmp, "dispatch")
-        run([*HOST, GUARD, PROBE, str(native), CHECKED], expected="PASS effectful lookup and direct selected entry\n")
+        run([*NATIVE, GUARD, PROBE, str(native), CHECKED], expected="PASS effectful lookup and direct selected entry\n")
 
         cases = [
             ('[System println: "before"]; [1 / 0]; [System println: "after"]', "before\n", "zeroDivide"),
@@ -69,7 +73,7 @@ def main():
         ]
         for i, (text, expected, kind) in enumerate(cases):
             native = compile_source(text, tmp, f"case{i}")
-            run([*HOST, GUARD, str(native)], expected=expected, kind=kind)
+            run([*NATIVE, GUARD, str(native)], expected=expected, kind=kind)
         for i, (text, kind) in enumerate((('1.5', 'unsupportedSyntax'), ('[x]', 'syntaxError'),
                                          ('9223372036854775808', 'integerRange'), ('[:x :x | x]', 'duplicateBinding'))):
             path, target = tmp / "invalid.birnam", tmp / f"invalid{i}.c"

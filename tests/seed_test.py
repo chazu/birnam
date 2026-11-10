@@ -7,9 +7,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SIPHON = ROOT / "build/siphon"
+RUNTIME = ROOT / "build/runtime.dylib"
 SEED = ROOT / "build/seed.dylib"
 AUTHORED = "--authored" in sys.argv
-PREFIX = [str(SIPHON), str(SEED)]
+PREFIX = [str(SIPHON), str(RUNTIME), str(SEED)]
 if AUTHORED:
     for name in ("peg", "lang", "lang-syntax"):
         PREFIX.extend(["--eval", str(ROOT / f"modules/{name}.birnam")])
@@ -76,7 +77,7 @@ def main():
         assert result.returncode == 1 and "sourceOpenFailed" in result.stderr, result
         result = subprocess.run([str(SIPHON), "--eval", str(first)], text=True, capture_output=True, timeout=120)
         assert result.returncode == 1 and "unknownName" in result.stderr, result
-        result = subprocess.run([str(SIPHON), str(SEED), "--eval"], text=True, capture_output=True, timeout=120)
+        result = subprocess.run([str(SIPHON), str(RUNTIME), str(SEED), "--eval"], text=True, capture_output=True, timeout=120)
         assert result.returncode == 2 and "requires a source path" in result.stderr, result
     print(f"PASS {'authored Lang' if AUTHORED else 'seed'} CLI: sample, semantic corpus, {len(cases)} failure cases, ordering and diagnostics")
 

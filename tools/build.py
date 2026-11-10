@@ -56,8 +56,11 @@ def build() -> tuple[list[str], list[str]]:
     BUILD.mkdir(exist_ok=True)
     run("odin", "build", "src/siphon", "-out:build/siphon", "-o:speed", "-debug", "-vet",
         "-extra-linker-flags:" + " ".join([f for f in ldflags if f != "-lgc"] + ["-Wl,-export_dynamic"]))
-    run("odin", "build", "src/seed", "-build-mode:dll", "-out:build/seed.dylib", "-o:speed", "-debug", "-vet",
-        "-extra-linker-flags:" + " ".join([f for f in ldflags if f != "-lgc"] + ["-Wl,-undefined,dynamic_lookup"]))
+    # Runtime services and the optional bootstrap interpreter are separate
+    # modules; each statically includes its own copy of the src/abi helpers.
+    for package, library in (("src/runtime", "runtime.dylib"), ("src/seed", "seed.dylib")):
+        run("odin", "build", package, "-build-mode:dll", f"-out:build/{library}", "-o:speed", "-debug", "-vet",
+            "-extra-linker-flags:" + " ".join([f for f in ldflags if f != "-lgc"] + ["-Wl,-undefined,dynamic_lookup"]))
     run("clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
         "-O2", "-g", "-Iinclude", *cflags, "-dynamiclib", "-undefined", "dynamic_lookup",
         "src/tools/compile_request.c", *ldflags, "-o", "build/compile-request.dylib")
@@ -69,7 +72,7 @@ def test() -> None:
     cflags, ldflags = build()
     common = ["clang", "-std=c11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
               "-O2", "-g", "-Iinclude", *cflags, "-dynamiclib", "-undefined", "dynamic_lookup"]
-    for name in ("contract", "handover", "after_handover", "no_entry", "fail_init", "seed_contract", "peg_contract", "lang_guard", "lang_contract", "compiler_guard", "compiler_probe", "compiler_contract", "compiler_checked"):
+    for name in ("contract", "handover", "after_handover", "no_entry", "fail_init", "runtime_contract", "seed_contract", "peg_contract", "lang_guard", "lang_contract", "compiler_guard", "compiler_probe", "compiler_contract", "compiler_checked", "no_interpreter"):
         run(*common, f"tests/{name}.c", *ldflags, "-o", f"build/{name}.dylib")
     run(*common, "examples/native/hello.c", *ldflags, "-o", "build/hello.dylib")
     run("build/siphon", "--version")
@@ -82,22 +85,39 @@ def test() -> None:
     print("PASS native example from a different working directory")
     for name, expected in (("missing.dylib", "moduleOpenFailed"),
                            ("no_entry.dylib", "moduleEntryMissing"),
-                           ("fail_init.dylib", "unknownName")):
+                           ("fail_init.dylib", "unknownName"),
+                           # The interpreter needs runtime.dylib loaded before it.
+                           ("seed.dylib", "unknownName")):
         result = subprocess.run([str(BUILD / "siphon"), str(BUILD / name)], cwd=ROOT,
                                 text=True, capture_output=True)
         if result.returncode != 1 or expected not in result.stderr:
             raise RuntimeError(f"bad failure path {name}: {result.returncode}: {result.stdout} {result.stderr}")
         print(f"PASS loader failure: {expected}")
     print("PASS siphon native acceptance (no source interpreter or fiber qualification)")
+    run("build/siphon", str(BUILD / "runtime.dylib"), str(BUILD / "runtime_contract.dylib"))
     run("python3", "tests/seed_test.py")
-    run("build/siphon", str(BUILD / "seed.dylib"), str(BUILD / "seed_contract.dylib"))
+    run("build/siphon", str(BUILD / "runtime.dylib"), str(BUILD / "seed.dylib"), str(BUILD / "seed_contract.dylib"))
     run("python3", "tests/peg_test.py")
-    run("build/siphon", str(BUILD / "seed.dylib"), "--eval", "modules/peg.birnam",
+    run("build/siphon", str(BUILD / "runtime.dylib"), str(BUILD / "seed.dylib"), "--eval", "modules/peg.birnam",
         str(BUILD / "peg_contract.dylib"))
     run("python3", "tests/lang_grammar_test.py")
     run("python3", "tests/seed_test.py", "--authored")
     run("python3", "tests/lang_test.py")
     run("python3", "tests/compiler_test.py")
+    # A compiled program runs on the runtime services alone. The witness,
+    # loaded before and after it, rejects any process where Seed is bound.
+    run("python3", "tools/compile.py", "examples/compiler/answer.birnam", "-o", "build/answer.dylib")
+    witness = str(BUILD / "no_interpreter.dylib")
+    answer = subprocess.run([str(BUILD / "siphon"), str(BUILD / "runtime.dylib"), witness, str(BUILD / "answer.dylib"), witness],
+                            cwd="/private/tmp", text=True, capture_output=True)
+    if answer.returncode or answer.stdout != "42\n":
+        raise RuntimeError(f"compiled program failed without the interpreter: {answer.returncode}: {answer.stdout} {answer.stderr}")
+    present = subprocess.run([str(BUILD / "siphon"), str(BUILD / "runtime.dylib"), str(BUILD / "seed.dylib"), witness],
+                             cwd="/private/tmp", text=True, capture_output=True)
+    if present.returncode != 1 or ": interpreterPresent:" not in present.stderr:
+        raise RuntimeError(f"interpreter witness accepted seed.dylib: {present.returncode}: {present.stdout} {present.stderr}")
+    print("PASS compiled program without the interpreter: answer.dylib prints 42 on runtime.dylib; witness rejects seed.dylib")
+    run("python3", "tests/id_test.py")
 
 
 def main() -> None:

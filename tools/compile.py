@@ -17,19 +17,23 @@ def quote(text: str) -> str:
     return '"' + text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t') + '"'
 
 
-MODULES = ("peg", "lang", "lang-syntax", "compiler-ir", "compiler-c")
+# The authored Id loads first, so the toolchain runs on its takeover.
+MODULES = ("id", "peg", "lang", "lang-syntax", "compiler-ir", "compiler-c")
 
 
 def emit(source: Path, output: Path, name: str, *, native_dir: Path | None = None,
-         guard: Path | None = None) -> None:
+         witness: Path | None = None, modules: tuple[str, ...] = MODULES) -> None:
     if native_dir is not None:
-        command = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib")]
-        if guard:
-            command.append(str(guard.resolve()))
-        command.extend(str(native_dir.resolve() / f"{module}.dylib") for module in MODULES)
+        # Compiled modules run on the runtime services alone; the interpreter
+        # (seed.dylib) is not loaded. An optional witness, loaded before and
+        # after the compiler, fails the run if Seed is bound.
+        command = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib")]
+        if witness:
+            command.append(str(witness.resolve()))
+        command.extend(str(native_dir.resolve() / f"{module}.dylib") for module in modules)
         command.append(str(ROOT / "build/compile-request.dylib"))
-        if guard:
-            command.append(str(guard.resolve()))
+        if witness:
+            command.append(str(witness.resolve()))
         environment = dict(os.environ, BIRNAM_COMPILE_NAME=name)
         result = subprocess.run(command, input=source.read_bytes(), env=environment,
                                 cwd="/private/tmp", capture_output=True, timeout=600)
@@ -45,8 +49,8 @@ def emit(source: Path, output: Path, name: str, *, native_dir: Path | None = Non
     with tempfile.TemporaryDirectory(prefix="birnam-compile-") as tmp:
         request = Path(tmp) / "compile.birnam"
         request.write_text(wrapper)
-        command = [str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib")]
-        for module in MODULES:
+        command = [str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"), str(ROOT / "build/seed.dylib")]
+        for module in modules:
             command.extend(["--eval", str(ROOT / f"modules/{module}.birnam")])
         command.extend(["--eval", str(ROOT / "examples/lang/takeover.birnam"), "--eval", str(request)])
         result = subprocess.run(command, cwd=tmp, capture_output=True, timeout=300)

@@ -28,10 +28,13 @@ def build_pipeline(directory: Path) -> dict:
     # A failed new run must not leave an old success receipt at this location.
     receipt = directory / "receipt.json"
     receipt.write_text(json.dumps({"status": "building"}) + "\n")
-    guard = directory / "guard.dylib"
-    driver.compile_c(ROOT / "tests/selfhost_guard.c", guard)
+    # Every native run loads this witness first and last; it fails the run if
+    # the interpreter's Seed is bound in the process.
+    witness = directory / "no-interpreter.dylib"
+    driver.compile_c(ROOT / "tests/no_interpreter.c", witness)
     report = {"status": "building", "toolchain": build.configuration()[2],
               "siphon_sha256": digest(ROOT / "build/siphon"),
+              "runtime_sha256": digest(ROOT / "build/runtime.dylib"),
               "seed_sha256": digest(ROOT / "build/seed.dylib"),
               "request_adapter_sha256": digest(ROOT / "build/compile-request.dylib"),
               "modules": {}, "stages": {}}
@@ -48,7 +51,7 @@ def build_pipeline(directory: Path) -> dict:
             then = time.monotonic()
             c, library = target / f"{module}.c", target / f"{module}.dylib"
             driver.emit(ROOT / f"modules/{module}.birnam", c, export_name(module),
-                        native_dir=previous, guard=guard if previous else None)
+                        native_dir=previous, witness=witness if previous else None)
             if previous and c.read_bytes() != (previous / c.name).read_bytes():
                 raise RuntimeError(f"native compiler output differs from seed output: {module}")
             driver.compile_c(c, library)
@@ -62,22 +65,22 @@ def build_pipeline(directory: Path) -> dict:
     for module in MODULES:
         print(f"stage3-c: {module}", flush=True)
         c = final / f"{module}.c"
-        driver.emit(ROOT / f"modules/{module}.birnam", c, export_name(module), native_dir=previous, guard=guard)
+        driver.emit(ROOT / f"modules/{module}.birnam", c, export_name(module), native_dir=previous, witness=witness)
         if c.read_bytes() != (previous / c.name).read_bytes():
             raise RuntimeError(f"second native generation output changed: {module}")
         report["stages"]["stage3-c"][module] = {"c_sha256": digest(c)}
     c, application = directory / "answer.c", directory / "answer.dylib"
-    driver.emit(ROOT / "examples/compiler/answer.birnam", c, "NativeProgram", native_dir=previous, guard=guard)
+    driver.emit(ROOT / "examples/compiler/answer.birnam", c, "NativeProgram", native_dir=previous, witness=witness)
     driver.compile_c(c, application)
-    result = subprocess.run([str(ROOT / "build/siphon"), str(ROOT / "build/seed.dylib"),
-                             str(guard), str(application), str(guard)],
+    result = subprocess.run([str(ROOT / "build/siphon"), str(ROOT / "build/runtime.dylib"),
+                             str(witness), str(application), str(witness)],
                             cwd="/private/tmp", text=True, capture_output=True, timeout=60)
     if result.returncode or result.stdout != "42\n":
         raise RuntimeError(f"self-compiled application failed: {result.stdout} {result.stderr}")
     report.update(status="passed", seconds=round(time.monotonic()-start, 3),
-                  generated_c_fixed_point=True, interpreter_guard=True, example_stdout=result.stdout)
+                  generated_c_fixed_point=True, interpreter_absent=True, example_stdout=result.stdout)
     receipt.write_text(json.dumps(report, indent=2) + "\n")
-    print(f"PASS native bootstrap: two compiled generations; all five modules stable across three C emissions; {report['seconds']}s", flush=True)
+    print(f"PASS native bootstrap: two compiled generations; all {len(MODULES)} modules stable across three C emissions; {report['seconds']}s", flush=True)
     return report
 
 
