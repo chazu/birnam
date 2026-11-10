@@ -1,4 +1,6 @@
-package seed
+package services
+
+import "../abi"
 
 // General storage/control/buffer operations. Parsing policies live in Birnam.
 cell_with :: proc "c" (m, r, a: Oop) -> Oop {
@@ -13,14 +15,14 @@ block_while_true :: proc "c" (m, r, a: Oop) -> Oop {
 	for {
 		condition := send(r, "value")
 		if is_error(condition) { return condition }
-		if condition == state.no { return state.nil_value }
-		if condition != state.yes { return fail("nonBooleanCondition", "whileTrue: requires a Boolean condition") }
+		if condition == abi.known.no { return abi.known.nil_value }
+		if condition != abi.known.yes { return fail("nonBooleanCondition", "whileTrue: requires a Boolean condition") }
 		result := send(arg(a, 0), "value")
 		if is_error(result) { return result }
 	}
 }
-bool_and :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value") if r == state.yes else state.no }
-bool_or :: proc "c" (m, r, a: Oop) -> Oop { return state.yes if r == state.yes else send(arg(a, 0), "value") }
+bool_and :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value") if r == abi.known.yes else abi.known.no }
+bool_or :: proc "c" (m, r, a: Oop) -> Oop { return abi.known.yes if r == abi.known.yes else send(arg(a, 0), "value") }
 
 vector_append :: proc "c" (m, r, a: Oop) -> Oop {
 	result := new_arguments(count(r)+1)

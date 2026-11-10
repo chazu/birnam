@@ -1,5 +1,7 @@
 package seed
 
+import "../abi"
+
 // Each syntax family is an ordinary object behavior with its own evalIn:
 // Method. There is no runtime switch over a native AST/value tag.
 Literal :: struct { factory, text: Oop }
@@ -29,7 +31,7 @@ declaration_eval :: proc "c" (m, r, a: Oop) -> Oop {
 	result := send(env, "define:as:", node.name, value)
 	if is_error(result) { return result }
 	// Binding an Error retains it for inspection; it is not a discarded Error.
-	return state.nil_value
+	return abi.known.nil_value
 }
 send_eval :: proc "c" (m, r, a: Oop) -> Oop {
 	node := cast(^Send)r
@@ -57,7 +59,7 @@ vector_expression_eval :: proc "c" (m, r, a: Oop) -> Oop {
 }
 sequence_eval :: proc "c" (m, r, a: Oop) -> Oop {
 	forms := (cast(^Sequence)r).forms
-	result := state.nil_value
+	result := abi.known.nil_value
 	for i in 0..<count(forms) {
 		result = send(arg(forms, i), "evalIn:", arg(a, 0))
 		if i+1 < count(forms) && is_error(result) { return result }

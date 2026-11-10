@@ -17,7 +17,7 @@ main :: proc() {
 	}
 	if len(os.args) == 1 || (len(os.args) == 2 && os.args[1] == "--help") {
 		fmt.println("usage: siphon [--version | --help | module.dylib | --eval source.birnam] ...")
-		fmt.println("Load seed.dylib before --eval. Native modules and sources run in command-line order in one world.")
+		fmt.println("Load runtime.dylib, then seed.dylib, before --eval. Native modules and sources run in command-line order in one world.")
 		return
 	}
 	siphon := birnam_send(world, symbol("at:"), arguments(symbol("Siphon")))

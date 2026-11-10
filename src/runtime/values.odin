@@ -1,18 +1,9 @@
-package seed
+package services
 
 import "base:runtime"
 import "core:fmt"
-import "core:unicode/utf8"
+import "../abi"
 
-utf8_error_offset :: proc "contextless" (text: string) -> int {
-	i := 0
-	for i < len(text) {
-		r, width := utf8.decode_rune(text[i:])
-		if r == utf8.RUNE_ERROR && width == 1 { return i }
-		i += width
-	}
-	return -1
-}
 new_string :: proc "contextless" (text: string) -> Oop {
 	result := allocate(state.text_vt, uintptr(len(text)))
 	copy((cast([^]u8)result)[:len(text)], transmute([]u8)text)
@@ -23,23 +14,7 @@ new_integer :: proc "contextless" (value: i64) -> Oop {
 	(cast(^i64)result)^ = value
 	return result
 }
-boolean :: proc "contextless" (value: bool) -> Oop { return state.yes if value else state.no }
-parse_decimal :: proc "contextless" (text: string) -> (i64, bool) {
-	if len(text) == 0 { return 0, false }
-	i, negative := 0, false
-	if text[0] == '-' { negative = true; i = 1 }
-	if i == len(text) { return 0, false }
-	limit := i128(max(i64)) + (1 if negative else 0)
-	n: i128
-	for i < len(text) {
-		ch := text[i]
-		if ch < '0' || ch > '9' { return 0, false }
-		n = n*10 + i128(ch-'0')
-		if n > limit { return 0, false }
-		i += 1
-	}
-	return i64(-n if negative else n), true
-}
+boolean :: proc "contextless" (value: bool) -> Oop { return abi.known.yes if value else abi.known.no }
 integer_operand :: proc "contextless" (value: Oop) -> (i64, Oop) {
 	converted := send(value, "asInteger")
 	if is_error(converted) { return 0, converted }
@@ -186,14 +161,14 @@ vector_put :: proc "c" (m, r, a: Oop) -> Oop {
 	return result
 }
 
-if_true_false :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0 if r == state.yes else 1), "value") }
-if_true :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value") if r == state.yes else state.nil_value }
-if_false :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value") if r == state.no else state.nil_value }
-bool_not :: proc "c" (m, r, a: Oop) -> Oop { return boolean(r == state.no) }
-bool_print :: proc "c" (m, r, a: Oop) -> Oop { return new_string("true" if r == state.yes else "false") }
+if_true_false :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0 if r == abi.known.yes else 1), "value") }
+if_true :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value") if r == abi.known.yes else abi.known.nil_value }
+if_false :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value") if r == abi.known.no else abi.known.nil_value }
+bool_not :: proc "c" (m, r, a: Oop) -> Oop { return boolean(r == abi.known.no) }
+bool_print :: proc "c" (m, r, a: Oop) -> Oop { return new_string("true" if r == abi.known.yes else "false") }
 nil_print :: proc "c" (m, r, a: Oop) -> Oop { return new_string("nil") }
-answer_true :: proc "c" (m, r, a: Oop) -> Oop { return state.yes }
-answer_false :: proc "c" (m, r, a: Oop) -> Oop { return state.no }
+answer_true :: proc "c" (m, r, a: Oop) -> Oop { return abi.known.yes }
+answer_false :: proc "c" (m, r, a: Oop) -> Oop { return abi.known.no }
 error_recover :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value:", r) }
 success_apply :: proc "c" (m, r, a: Oop) -> Oop { return send(arg(a, 0), "value:", r) }
 error_print :: proc "c" (m, r, a: Oop) -> Oop { return send(state.text, "fromBytes:", send(r, "description")) }

@@ -2,6 +2,7 @@ package seed
 
 import "core:fmt"
 import "core:strings"
+import "../abi"
 
 // Token kinds exist only in the disposable bootstrap parser. Parsed syntax
 // and runtime values are objects, evaluated through their current Methods.
@@ -120,14 +121,14 @@ decode_string :: proc(p: ^Parser, token: Token) -> Oop {
 		ch := token.text[i]
 		i += 1
 		if ch == '\\' {
-			if i == len(token.text) { parser_error(p, "syntaxError", "unfinished escape", token.start+i); return state.nil_value }
+			if i == len(token.text) { parser_error(p, "syntaxError", "unfinished escape", token.start+i); return abi.known.nil_value }
 			ch = token.text[i]; i += 1
 			switch ch {
 			case 'n': ch = '\n'
 			case 'r': ch = '\r'
 			case 't': ch = '\t'
 			case '"', '\\':
-			case: parser_error(p, "syntaxError", "unsupported String escape", token.start+i); return state.nil_value
+			case: parser_error(p, "syntaxError", "unsupported String escape", token.start+i); return abi.known.nil_value
 			}
 		}
 		dest[out] = ch; out += 1
@@ -163,16 +164,16 @@ parse_sequence :: proc(p: ^Parser, closing: bool) -> Oop {
 }
 
 parse_expression :: proc(p: ^Parser) -> Oop {
-	if p.error != nil { return state.nil_value }
+	if p.error != nil { return abi.known.nil_value }
 	p.depth += 1
 	defer p.depth -= 1
-	if p.depth > 512 { parser_error(p, "sourceTooDeep", "seed source nesting limit exceeded", p.token.start); return state.nil_value }
+	if p.depth > 512 { parser_error(p, "sourceTooDeep", "seed source nesting limit exceeded", p.token.start); return abi.known.nil_value }
 	token := p.token
 	advance(p)
 	#partial switch token.kind {
 	case .Number:
 		_, ok := parse_decimal(token.text)
-		if !ok { parser_error(p, "integerRange", "Integer literal exceeds signed 64-bit range", token.start); return state.nil_value }
+		if !ok { parser_error(p, "integerRange", "Integer literal exceeds signed 64-bit range", token.start); return abi.known.nil_value }
 		return literal(state.integer, new_bytes(token.text))
 	case .Text:
 		return literal(state.text, decode_string(p, token))
@@ -187,7 +188,7 @@ parse_expression :: proc(p: ^Parser) -> Oop {
 		for p.error == nil && p.token.kind != .Close && p.token.kind != .End {
 			append(&elements, parse_expression(p))
 		}
-		if !expect(p, .Close, "unterminated Vector") { return state.nil_value }
+		if !expect(p, .Close, "unterminated Vector") { return abi.known.nil_value }
 		result := allocate(state.vector_expr_vt, size_of(Vector_Expression))
 		(cast(^Vector_Expression)result).elements = vector(elements)
 		return result
@@ -196,23 +197,23 @@ parse_expression :: proc(p: ^Parser) -> Oop {
 			parameters: List
 			for p.error == nil && p.token.kind == .Colon {
 				advance(p)
-				if p.token.kind != .Name { parser_error(p, "syntaxError", "expected Block parameter", p.token.start); return state.nil_value }
+				if p.token.kind != .Name { parser_error(p, "syntaxError", "expected Block parameter", p.token.start); return abi.known.nil_value }
 				name := symbol(p.token.text)
 				for row := parameters.head; row != nil; row = row.next {
-					if row.value == name { parser_error(p, "duplicateBinding", "duplicate Block parameter", p.token.start); return state.nil_value }
+					if row.value == name { parser_error(p, "duplicateBinding", "duplicate Block parameter", p.token.start); return abi.known.nil_value }
 				}
 				append(&parameters, name)
 				advance(p)
 			}
-			if !expect(p, .Bar, "Block requires | after parameters") { return state.nil_value }
+			if !expect(p, .Bar, "Block requires | after parameters") { return abi.known.nil_value }
 			body := parse_sequence(p, true)
-			if !expect(p, .Close, "unterminated Block") { return state.nil_value }
+			if !expect(p, .Close, "unterminated Block") { return abi.known.nil_value }
 			result := allocate(state.block_expr_vt, size_of(Block_Expression))
 			(cast(^Block_Expression)result)^ = Block_Expression{vector(parameters), body}
 			return result
 		}
 		receiver := parse_expression(p)
-		if p.error != nil { return state.nil_value }
+		if p.error != nil { return abi.known.nil_value }
 		selector: Oop
 		values: List
 		#partial switch p.token.kind {
@@ -220,7 +221,7 @@ parse_expression :: proc(p: ^Parser) -> Oop {
 			selector = symbol(p.token.text)
 			advance(p)
 		case .Operator, .Bar:
-			if p.token.text == "=>" { parser_error(p, "unsupportedSyntax", "result-threaded sends are not supported by the seed", p.token.start); return state.nil_value }
+			if p.token.text == "=>" { parser_error(p, "unsupportedSyntax", "result-threaded sends are not supported by the seed", p.token.start); return abi.known.nil_value }
 			selector = symbol(p.token.text)
 			advance(p)
 			append(&values, parse_expression(p))
@@ -235,15 +236,15 @@ parse_expression :: proc(p: ^Parser) -> Oop {
 			selector = symbol(strings.to_string(builder))
 		case:
 			parser_error(p, "syntaxError", "send requires a selector", p.token.start)
-			return state.nil_value
+			return abi.known.nil_value
 		}
-		if !expect(p, .Close, "send must end after one dispatch") { return state.nil_value }
+		if !expect(p, .Close, "send must end after one dispatch") { return abi.known.nil_value }
 		result := allocate(state.send_vt, size_of(Send))
 		(cast(^Send)result)^ = Send{receiver, selector, vector(values)}
 		return result
 	case:
 		parser_error(p, "syntaxError", "expected expression", token.start)
-		return state.nil_value
+		return abi.known.nil_value
 	}
 }
 

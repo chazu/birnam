@@ -1,4 +1,6 @@
-package seed
+package services
+
+import "../abi"
 
 Binding :: struct { name, value: Oop, next: ^Binding }
 Environment :: struct { namespace, parent: Oop, bindings: ^Binding, top_level: bool }
@@ -23,7 +25,7 @@ environment_lookup :: proc "c" (m, r, a: Oop) -> Oop {
 			if row.name == name { return row.value }
 		}
 	}
-	if env.parent != state.nil_value { return send(env.parent, "lookup:", name) }
+	if env.parent != abi.known.nil_value { return send(env.parent, "lookup:", name) }
 	return send(env.namespace, "at:", name)
 }
 environment_define :: proc "c" (m, r, a: Oop) -> Oop {
@@ -33,13 +35,13 @@ environment_define :: proc "c" (m, r, a: Oop) -> Oop {
 		if row.name == name { return fail("duplicateBinding", "let cannot reassign a binding in the same scope") }
 	}
 	row := cast(^Binding)GC_malloc(size_of(Binding))
-	row^ = Binding{name, value if !env.top_level else state.nil_value, env.bindings}
+	row^ = Binding{name, value if !env.top_level else abi.known.nil_value, env.bindings}
 	env.bindings = row
 	if env.top_level { return send(env.namespace, "at:put:", name, value) }
 	return r
 }
 environment_for_namespace :: proc "c" (m, r, a: Oop) -> Oop {
-	return new_environment(arg(a, 0), state.nil_value, true)
+	return new_environment(arg(a, 0), abi.known.nil_value, true)
 }
 
 Function :: struct { parameters, code, environment: Oop }
